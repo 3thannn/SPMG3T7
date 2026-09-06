@@ -1,0 +1,3 @@
+# Runtime dependencies. Pinned so every machine and CI run installs the same tree.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
