@@ -27,7 +27,7 @@ export default function App() {
       <p>Frontend is running.</p>
       <p role="status">
         {status === 'checking' && 'Checking backend…'}
-        {status === 'connected' && 'Backend online'}
+        {status === 'connected' && 'Backend connected'}
         {status === 'unreachable' && 'Backend unreachable'}
       </p>
     </main>
