@@ -33,10 +33,34 @@ describe('login', () => {
   const credentials = { email: 'ada@example.com', password: 'hunter2' }
 
   it('returns the session when the credentials are accepted', async () => {
-    const session = { token: 'test-token', email: 'ada@example.com' }
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => session }))
+    const body = { token: 'test-token', email: 'ada@example.com' }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }))
 
-    await expect(login(credentials)).resolves.toEqual(session)
+    await expect(login(credentials)).resolves.toMatchObject({
+      token: 'test-token',
+      email: 'ada@example.com',
+    })
+  })
+
+  it('takes the role from the server', async () => {
+    const body = { token: 't', email: 'ada@example.com', role: 'Coordinator' as const }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }))
+
+    await expect(login(credentials)).resolves.toMatchObject({ role: 'Coordinator' })
+  })
+
+  it('defaults to Organiser until the server issues a role', async () => {
+    const body = { token: 't', email: 'ada@example.com' }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }))
+
+    await expect(login(credentials)).resolves.toMatchObject({ role: 'Organiser' })
+  })
+
+  it('derives a display name from the email when the server sends none', async () => {
+    const body = { token: 't', email: 'ada.lovelace@example.com' }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }))
+
+    await expect(login(credentials)).resolves.toMatchObject({ name: 'Ada Lovelace' })
   })
 
   it('raises AuthError on 401 so the UI can distinguish a rejection', async () => {

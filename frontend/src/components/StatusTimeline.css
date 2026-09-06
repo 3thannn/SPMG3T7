@@ -1,0 +1,69 @@
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+/* The rail the markers sit on. */
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 0.6rem;
+  bottom: 0.6rem;
+  width: 1px;
+  background: var(--line-strong);
+}
+
+.timeline-item {
+  position: relative;
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 0;
+}
+
+.timeline-marker {
+  position: relative;
+  z-index: 1;
+  margin-top: 0.45rem;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--muted-soft);
+  flex: none;
+}
+
+.timeline-item:first-child .timeline-marker {
+  border-color: var(--navy);
+  background: var(--navy);
+}
+
+.timeline-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.timeline-change {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.timeline-arrow {
+  color: var(--muted-soft);
+}
+
+.timeline-created {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.timeline-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+}

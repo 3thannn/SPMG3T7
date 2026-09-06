@@ -1,0 +1,92 @@
+/*
+ * The nine US4.1 statuses. Each pairs a tinted ground with a darker ink so the
+ * label carries its own contrast, and a dot so the badge is distinguishable
+ * without relying on colour.
+ */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.status-badge-sm {
+  padding: 0.32rem 0.68rem;
+  font-size: 0.8rem;
+}
+
+.status-badge-lg {
+  padding: 0.5rem 0.95rem;
+  font-size: 0.92rem;
+}
+
+.status-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+/* Not yet acted on */
+.status-badge-draft {
+  background: #f3f4f6;
+  border-color: #e3e5e9;
+  color: #545c6b;
+}
+
+/* In the pipeline */
+.status-badge-submitted {
+  background: #eef4ff;
+  border-color: #d6e3ff;
+  color: #2b53a8;
+}
+
+.status-badge-review {
+  background: #fff6e8;
+  border-color: #ffe6c2;
+  color: #97590d;
+}
+
+.status-badge-planning {
+  background: #f2f0ff;
+  border-color: #e0dbff;
+  color: #4c3ca8;
+}
+
+/* Positive outcomes */
+.status-badge-approved {
+  background: #eaf7ef;
+  border-color: #cfead9;
+  color: #1f6b3f;
+}
+
+.status-badge-confirmed {
+  background: #e8f6f5;
+  border-color: #c9e9e5;
+  color: #17635c;
+}
+
+.status-badge-completed {
+  background: #eef1f4;
+  border-color: #dae0e7;
+  color: #34455c;
+}
+
+/* Terminal negatives */
+.status-badge-cancelled {
+  background: #f4f4f5;
+  border-color: #e2e2e5;
+  color: #6b6b73;
+}
+
+.status-badge-rejected {
+  background: #fdf2f1;
+  border-color: #f6d5d2;
+  color: #a3302a;
+}

@@ -1,0 +1,309 @@
+.landing-hero {
+  position: relative;
+  min-height: min(78svh, 720px);
+  display: grid;
+  place-items: center;
+  padding: 5rem 0 6rem;
+  text-align: center;
+}
+
+.landing-hero-inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.6rem;
+}
+
+.landing-hero h1 {
+  margin: 0.4rem 0 0;
+}
+
+.landing-lede {
+  max-width: 34rem;
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  color: var(--muted);
+}
+
+.landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.85rem;
+  margin-top: 0.6rem;
+}
+
+/* ---------- Floating event pieces ---------- */
+
+.landing-floaters {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.floater {
+  position: absolute;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 1.05rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Calendar tile — a date, the way an event first exists. */
+.floater-calendar {
+  width: 148px;
+  left: 4%;
+  top: 16%;
+  transform: rotate(-9deg);
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.9rem 1rem 1.05rem;
+}
+
+.cal-month {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #c2564e;
+}
+
+.cal-day {
+  font-size: 2.9rem;
+  line-height: 1.05;
+  font-weight: 700;
+  color: var(--ink-strong);
+  letter-spacing: -0.04em;
+}
+
+.cal-weekday {
+  font-size: 0.76rem;
+  color: var(--muted-soft);
+}
+
+/* An event card, badge and all. */
+.floater-event {
+  width: 262px;
+  left: 12%;
+  bottom: 12%;
+  transform: rotate(6deg);
+  gap: 0.45rem;
+  align-items: flex-start;
+}
+
+.fe-title {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.fe-meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+/* Ticket stub, with a perforation and a barcode. */
+.floater-ticket {
+  width: 250px;
+  right: 5%;
+  top: 14%;
+  transform: rotate(8deg);
+  padding: 1rem 1.15rem 1.1rem;
+  gap: 0.7rem;
+}
+
+.ticket-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ticket-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--ink-strong);
+}
+
+.ticket-seat {
+  font-size: 0.72rem;
+  color: var(--muted-soft);
+  letter-spacing: 0.06em;
+}
+
+/* The dashed tear line, with the two notches that make it read as a stub. */
+.ticket-perf {
+  position: relative;
+  border-top: 1px dashed var(--line-strong);
+  margin: 0 -1.15rem;
+}
+
+.ticket-perf::before,
+.ticket-perf::after {
+  content: '';
+  position: absolute;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+}
+
+.ticket-perf::before {
+  left: -8px;
+}
+
+.ticket-perf::after {
+  right: -8px;
+}
+
+.ticket-barcode {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 34px;
+}
+
+.ticket-barcode i {
+  flex: 1;
+  background: var(--ink-strong);
+  opacity: 0.75;
+  border-radius: 1px;
+}
+
+/* Varied bar heights and weights, so it looks scanned rather than striped. */
+.ticket-barcode i:nth-child(3n) {
+  height: 100%;
+  opacity: 0.85;
+}
+.ticket-barcode i:nth-child(3n + 1) {
+  height: 74%;
+  opacity: 0.45;
+}
+.ticket-barcode i:nth-child(3n + 2) {
+  height: 90%;
+}
+.ticket-barcode i:nth-child(4n) {
+  flex: 2;
+}
+
+/* Run sheet — the schedule an organiser actually builds. */
+.floater-agenda {
+  width: 216px;
+  right: 9%;
+  bottom: 8%;
+  transform: rotate(-7deg);
+  gap: 0.55rem;
+}
+
+.agenda-head {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted-soft);
+  letter-spacing: 0.04em;
+  margin-bottom: 0.15rem;
+}
+
+.agenda-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.agenda-time {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.agenda-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+}
+
+/* Guest list. */
+.floater-guests {
+  width: 178px;
+  left: 26%;
+  top: 6%;
+  transform: rotate(5deg);
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+}
+
+.guest-avatars {
+  display: flex;
+}
+
+.guest-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+  background: var(--bg-sunken);
+  border: 2px solid var(--bg);
+  margin-left: -8px;
+}
+
+.guest-avatar:first-child {
+  margin-left: 0;
+}
+
+.guest-count {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Thin the arrangement out before it can crowd the copy. */
+@media (max-width: 1180px) {
+  .floater-guests,
+  .floater-agenda {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .landing-floaters {
+    display: none;
+  }
+
+  .landing-hero {
+    min-height: auto;
+    padding: 3.5rem 0 4rem;
+  }
+}
+
+/* ---------- Status vocabulary strip ---------- */
+
+.landing-statuses {
+  padding: 4rem 1.5rem 5rem;
+  text-align: center;
+  border-top: 1px solid var(--line);
+}
+
+.landing-section-lede {
+  margin: 0.6rem auto 0;
+  max-width: 36rem;
+  color: var(--muted);
+}
+
+.landing-status-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.7rem;
+  margin-top: 2rem;
+}

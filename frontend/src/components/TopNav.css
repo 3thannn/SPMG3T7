@@ -1,0 +1,152 @@
+/*
+ * The header is styled as the top half of a ticket: a torn, perforated bottom
+ * edge instead of a plain hairline rule, with notches punched at each end.
+ */
+.topnav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px dashed var(--line-strong);
+}
+
+/* The two punched notches that sit on the tear line. */
+.topnav::before,
+.topnav::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px dashed var(--line-strong);
+  clip-path: inset(50% 0 0 0);
+}
+
+.topnav::before {
+  left: -7px;
+}
+
+.topnav::after {
+  right: -7px;
+}
+
+.topnav-inner {
+  display: flex;
+  align-items: center;
+  gap: 1.75rem;
+  height: 70px;
+}
+
+/* ---------- Brand ---------- */
+
+.topnav-brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  flex: none;
+}
+
+/* Wordmark only — with no mark beside it, the type carries the identity, so it
+   sits a little larger and tighter than a label would. */
+.topnav-wordmark {
+  font-size: 1.32rem;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  color: var(--ink-strong);
+}
+
+/* The second half sits lighter and warmer, so the name is not one solid slab. */
+.topnav-wordmark-tail {
+  font-weight: 400;
+  color: var(--accent);
+}
+
+/* ---------- Segmented link rail ---------- */
+
+.topnav-rail {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+}
+
+.topnav-rail a {
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.42rem 0.95rem;
+  border-radius: var(--radius-pill);
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.topnav-rail a:hover {
+  color: var(--ink-strong);
+}
+
+.topnav-rail a.is-active {
+  background: var(--bg);
+  color: var(--ink-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- Identity ---------- */
+
+.topnav-end {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-left: auto;
+}
+
+.topnav-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+
+.topnav-name {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--ink-strong);
+}
+
+.topnav-role {
+  font-size: 0.74rem;
+  color: var(--muted-soft);
+}
+
+/* A ticket-ish squircle rather than a circle, to match the mark. */
+.topnav-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  border: 1px solid #eddbd7;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  flex: none;
+}
+
+@media (max-width: 860px) {
+  .topnav-inner {
+    gap: 0.9rem;
+  }
+
+  .topnav-identity {
+    display: none;
+  }
+}
