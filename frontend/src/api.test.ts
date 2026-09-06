@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { apiBaseUrl, fetchHealth } from './api'
+import { AuthError, apiBaseUrl, fetchHealth, login } from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -26,5 +26,28 @@ describe('fetchHealth', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }))
 
     await expect(fetchHealth()).rejects.toThrow('Health check failed with status 503')
+  })
+})
+
+describe('login', () => {
+  const credentials = { email: 'ada@example.com', password: 'hunter2' }
+
+  it('returns the session when the credentials are accepted', async () => {
+    const session = { token: 'test-token', email: 'ada@example.com' }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => session }))
+
+    await expect(login(credentials)).resolves.toEqual(session)
+  })
+
+  it('raises AuthError on 401 so the UI can distinguish a rejection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
+
+    await expect(login(credentials)).rejects.toBeInstanceOf(AuthError)
+  })
+
+  it('raises a plain error on a server fault, not AuthError', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }))
+
+    await expect(login(credentials)).rejects.not.toBeInstanceOf(AuthError)
   })
 })

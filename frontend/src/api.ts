@@ -9,6 +9,28 @@ export function apiBaseUrl(): string {
   return (configured ?? 'http://localhost:8000').replace(/\/$/, '')
 }
 
+export type Credentials = { email: string; password: string }
+export type Session = { token: string; email: string }
+
+/** Thrown when the server rejects the credentials, as opposed to failing outright. */
+export class AuthError extends Error {}
+
+export async function login({ email, password }: Credentials): Promise<Session> {
+  const response = await fetch(`${apiBaseUrl()}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+
+  if (response.status === 401) {
+    throw new AuthError('Incorrect email or password.')
+  }
+  if (!response.ok) {
+    throw new Error(`Login failed with status ${response.status}`)
+  }
+  return (await response.json()) as Session
+}
+
 export async function fetchHealth(): Promise<Health> {
   const response = await fetch(`${apiBaseUrl()}/health`)
   if (!response.ok) {
