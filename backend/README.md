@@ -1,7 +1,8 @@
 # SPMG3T7 — Backend
 
-FastAPI service for the SPMG3T7 project. The frontend lives in a separate repo:
-[SPMG3T7FrontEnd](https://github.com/sjzdylan/SPMG3T7FrontEnd).
+FastAPI service for the SPMG3T7 project. The client lives alongside it in this
+same repo, under [`../frontend/`](../frontend/); see the
+[root README](../README.md) for how to run both halves together.
 
 ## Prerequisites
 
@@ -10,11 +11,11 @@ FastAPI service for the SPMG3T7 project. The frontend lives in a separate repo:
 
 ## Local setup
 
-Clone and create a virtual environment:
+All commands below are run from this `backend/` directory.
+
+Create a virtual environment:
 
 ```bash
-git clone https://github.com/sjzdylan/SPMG3T7BackEnd.git
-cd SPMG3T7BackEnd
 python -m venv .venv
 ```
 
@@ -69,9 +70,10 @@ frontend URL.
 
 ## Continuous integration
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to `main`
-and on every pull request. It installs dependencies, lints, byte-compiles the
-sources, and runs the test suite. A failing step fails the build and blocks the PR.
+[`../.github/workflows/backend-ci.yml`](../.github/workflows/backend-ci.yml) runs
+on every push to `main` and on every pull request that touches `backend/`. It
+installs dependencies, lints, byte-compiles the sources, and runs the test suite.
+A failing step fails the build and blocks the PR.
 
 ## Project structure
 
