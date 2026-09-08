@@ -239,28 +239,6 @@ a {
   padding: 1.4rem 1.5rem;
 }
 
-/* The small dot-and-label capsule that sits above the hero heading. */
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.42rem 0.95rem;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--line);
-  background: var(--bg);
-  box-shadow: var(--shadow-sm);
-  font-size: 0.86rem;
-  color: var(--muted);
-}
-
-.pill-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ink-strong);
-  flex: none;
-}
-
 /* ---------- Forms ---------- */
 
 .field {

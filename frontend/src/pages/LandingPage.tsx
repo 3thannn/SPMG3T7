@@ -6,7 +6,6 @@ import type { Session } from '../api'
 
 type LandingPageProps = {
   session: Session | null
-  backend: 'checking' | 'connected' | 'unreachable'
 }
 
 /**
@@ -16,7 +15,7 @@ type LandingPageProps = {
  * calendar, a ticket, a run sheet, a guest list — rather than abstract shapes,
  * so the page says what the product is before anyone reads the heading.
  */
-export default function LandingPage({ session, backend }: LandingPageProps) {
+export default function LandingPage({ session }: LandingPageProps) {
   return (
     <div className="landing">
       <section className="landing-hero hero-ground">
@@ -77,15 +76,6 @@ export default function LandingPage({ session, backend }: LandingPageProps) {
         </div>
 
         <div className="shell landing-hero-inner">
-          <span className="pill">
-            <span className="pill-dot" />
-            {backend === 'connected'
-              ? 'Sprint 1 · Event Status Management'
-              : backend === 'checking'
-                ? 'Connecting…'
-                : 'Offline — backend unreachable'}
-          </span>
-
           <h1>EventHub</h1>
 
           <p className="landing-lede">

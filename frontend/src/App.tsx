@@ -140,7 +140,7 @@ export default function App() {
 
   function renderRoute() {
     if (route === '/') {
-      return <LandingPage session={session} backend={backend} />
+      return <LandingPage session={session} />
     }
 
     if (route === '/signin') {
