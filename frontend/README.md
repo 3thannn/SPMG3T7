@@ -76,14 +76,14 @@ actually enforces the rule — anything the client checks, a user can edit.
 
 ## Available scripts
 
-| Command            | What it does                                    |
-| ------------------ | ----------------------------------------------- |
-| `npm run dev`      | Start the dev server with hot reload            |
-| `npm run build`    | Type-check (`tsc -b`) and bundle to `dist/`     |
-| `npm run lint`     | Lint with oxlint                                |
-| `npm test`         | Run the test suite once (Vitest)                |
-| `npm run test:watch` | Re-run tests on change                        |
-| `npm run preview`  | Serve the production build locally              |
+| Command              | What it does                                |
+| -------------------- | ------------------------------------------- |
+| `npm run dev`        | Start the dev server with hot reload        |
+| `npm run build`      | Type-check (`tsc -b`) and bundle to `dist/` |
+| `npm run lint`       | Lint with oxlint                            |
+| `npm test`           | Run the test suite once (Vitest)            |
+| `npm run test:watch` | Re-run tests on change                      |
+| `npm run preview`    | Serve the production build locally          |
 
 ## Run the checks
 
@@ -122,12 +122,18 @@ and must be kept in sync with `package.json`.
 
 ```
 src/
-  main.tsx        React entry point
-  App.tsx         root component, shows backend connection status
-  LoginForm.tsx   login UI
-  api.ts          backend client
-  api.test.ts     tests for the client
-  App.test.tsx    tests for the component
-  LoginForm.test.tsx  tests for the login form
-  test/setup.ts   Vitest setup (jest-dom matchers, cleanup)
+  main.tsx           React entry point
+  App.tsx            root component: session, route guards, health status
+  router.ts          hash router — five routes, no routing dependency
+  api.ts             backend client and its error types
+  session.ts         the stored session, revived on load
+  permissions.ts     which route needs which permission
+  eventsStore.ts     the /events client
+  status.ts          event status model and roles
+  useIdleSignOut.ts  signs out after the server's idle window
+  pages/             sign-in, landing, events, event detail, new event, access denied
+  components/        top nav, status badge, status timeline
+  test/              Vitest setup and shared session builders
 ```
+
+Tests sit next to what they cover, as `*.test.ts` / `*.test.tsx`.

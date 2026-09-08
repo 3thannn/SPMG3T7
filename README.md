@@ -2,10 +2,10 @@
 
 Monorepo holding both halves of the SPMG3T7 project:
 
-| Directory                | What it is                                    | Stack                          |
-| ------------------------ | --------------------------------------------- | ------------------------------ |
-| [`backend/`](backend/)   | REST API — authentication, roles, events      | Python 3.12, FastAPI, uvicorn, Supabase |
-| [`frontend/`](frontend/) | Web client — sign-in, events, backend status   | Node 22, React 19, Vite, TypeScript |
+| Directory                | What it is                                   | Stack                                   |
+| ------------------------ | -------------------------------------------- | --------------------------------------- |
+| [`backend/`](backend/)   | REST API — authentication, roles, events     | Python 3.12, FastAPI, uvicorn, Supabase |
+| [`frontend/`](frontend/) | Web client — sign-in, events, backend status | Node 22, React 19, Vite, TypeScript     |
 
 Each directory keeps its own dependencies, tooling and README. There is no shared
 build tool at the root — you run each half with its own commands, from its own
@@ -122,12 +122,13 @@ configuration. Change one and you must change the other.
 | `SUPABASE_SERVICE_ROLE_KEY` | backend  | *required*              | Service role key — full admin, backend only |
 | `SUPABASE_DB_URL`           | backend  | unset                   | Postgres connection string; optional        |
 
-The Supabase values are backend-only and deliberately have no `VITE_` twin. Only
-`VITE_`-prefixed variables reach the browser, and none of these should.
+The Supabase values are backend-only and deliberately have no `VITE_` twin: only
+`VITE_`-prefixed variables reach the browser, and none of these should. Never put
+a secret behind that prefix.
 
 Copy [`frontend/.env.example`](frontend/.env.example) to `frontend/.env.local` to
-override the frontend value. Only `VITE_`-prefixed variables reach the browser —
-never put secrets in them.
+override the frontend value, and [`backend/.env.example`](backend/.env.example)
+to `backend/.env` for the rest.
 
 ## Continuous integration
 
@@ -170,6 +171,7 @@ frontend/
   src/
     main.tsx           React entry point
     App.tsx            root component: session, route guards, health status
+    router.ts          hash router — five routes, no routing dependency
     api.ts             backend client and its error types
     session.ts         the stored session, revived on load
     permissions.ts     which route needs which permission

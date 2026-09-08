@@ -313,12 +313,15 @@ app/
   event_status.py   the status label set and the submit rule
   seed.py           writes the development accounts (python -m app.seed)
 tests/
-  conftest.py               shared client and sign-in fixtures
+  conftest.py                 shared client and sign-in fixtures
   test_health.py
   test_config.py
-  test_security.py          hashing and tokens
-  test_sessions.py          expiry and revocation, on a clock the test controls
-  test_auth_login.py        US1.1
-  test_auth_logout.py       US1.2
+  test_security.py            hashing and tokens
+  test_sessions.py            expiry and revocation, on a clock the test controls
+  test_supabase_config.py     which key each client carries
+  test_users.py               the user directory over the Supabase table
+  test_auth_login.py          US1.1
+  test_auth_logout.py         US1.2
   test_access_enforcement.py  US1.3
+  test_events.py              US4.1 and US4.2
 ```
