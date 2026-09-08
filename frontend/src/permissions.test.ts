@@ -11,12 +11,12 @@ import { can, canAny, canOpen, denialMessage, guardFor } from './permissions'
 import { buildSession } from './test/sessions'
 import type { Role } from './status'
 
-const ROLES: Role[] = ['Organiser', 'Coordinator']
+const ROLES: Role[] = ['Event Organiser', 'Event Coordinator']
 
 describe('can', () => {
   it('reads the permissions the server issued', () => {
-    expect(can(buildSession({ role: 'Organiser' }), 'events:create')).toBe(true)
-    expect(can(buildSession({ role: 'Organiser' }), 'events:review')).toBe(false)
+    expect(can(buildSession({ role: 'Event Organiser' }), 'events:create')).toBe(true)
+    expect(can(buildSession({ role: 'Event Organiser' }), 'events:review')).toBe(false)
   })
 
   it('grants nothing without a session', () => {
@@ -28,7 +28,7 @@ describe('can', () => {
   })
 
   it('holding one of several is enough for canAny', () => {
-    const coordinator = buildSession({ role: 'Coordinator' })
+    const coordinator = buildSession({ role: 'Event Coordinator' })
     expect(canAny(coordinator, ['events:read:own', 'events:read:all'])).toBe(true)
     expect(canAny(coordinator, ['events:create', 'events:submit'])).toBe(false)
   })
@@ -36,7 +36,7 @@ describe('can', () => {
 
 describe('canOpen', () => {
   it('lets an Organiser into the events screens', () => {
-    const organiser = buildSession({ role: 'Organiser' })
+    const organiser = buildSession({ role: 'Event Organiser' })
     expect(canOpen(organiser, '/events')).toBe(true)
     expect(canOpen(organiser, '/events/new')).toBe(true)
     expect(canOpen(organiser, '/events/evt_seed0001')).toBe(true)
@@ -45,7 +45,7 @@ describe('canOpen', () => {
   it('lets a Coordinator read events but not create one', () => {
     // The boundary between the two roles: an Organiser proposes, a Coordinator
     // reviews. Reading is shared; creating is not.
-    const coordinator = buildSession({ role: 'Coordinator' })
+    const coordinator = buildSession({ role: 'Event Coordinator' })
     expect(canOpen(coordinator, '/events')).toBe(true)
     expect(canOpen(coordinator, '/events/evt_seed0001')).toBe(true)
     expect(canOpen(coordinator, '/events/new')).toBe(false)
@@ -68,27 +68,27 @@ describe('canOpen', () => {
   })
 
   it('treats /events/new as creating, not as an event with the id "new"', () => {
-    const coordinator = buildSession({ role: 'Coordinator' })
+    const coordinator = buildSession({ role: 'Event Coordinator' })
     expect(guardFor('/events/new')?.anyOf).toEqual(['events:create'])
     expect(canOpen(coordinator, '/events/new')).toBe(false)
   })
 
   it('refuses an Organiser whose permissions were somehow stripped', () => {
     // The role name alone grants nothing; the permission list is what counts.
-    expect(canOpen(buildSession({ role: 'Organiser', permissions: [] }), '/events')).toBe(false)
+    expect(canOpen(buildSession({ role: 'Event Organiser', permissions: [] }), '/events')).toBe(false)
   })
 })
 
 describe('denialMessage', () => {
   it('names the role, what was refused, and who it is for', () => {
-    expect(denialMessage(buildSession({ role: 'Coordinator' }), '/events/new')).toBe(
-      'The Coordinator role cannot open creating an event. That is available to Organisers.',
+    expect(denialMessage(buildSession({ role: 'Event Coordinator' }), '/events/new')).toBe(
+      'The Event Coordinator role cannot open creating an event. That is available to Organisers.',
     )
   })
 
   it('describes the list as a page rather than an action', () => {
-    expect(denialMessage(buildSession({ role: 'Coordinator' }), '/events')).toBe(
-      'The Coordinator role cannot open the events list. That is available to Organisers and Event Coordinators.',
+    expect(denialMessage(buildSession({ role: 'Event Coordinator' }), '/events')).toBe(
+      'The Event Coordinator role cannot open the events list. That is available to Organisers and Event Coordinators.',
     )
   })
 
@@ -99,8 +99,8 @@ describe('denialMessage', () => {
   })
 
   it('still says something useful for a route with no specific rule', () => {
-    expect(denialMessage(buildSession({ role: 'Coordinator' }), '/nowhere')).toContain(
-      'Coordinator',
+    expect(denialMessage(buildSession({ role: 'Event Coordinator' }), '/nowhere')).toContain(
+      'Event Coordinator',
     )
   })
 })

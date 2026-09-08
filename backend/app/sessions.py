@@ -27,7 +27,7 @@ class SessionState(StrEnum):
 @dataclass
 class Session:
     token: str
-    user_id: str
+    user_id: int
     created_at: datetime
     last_seen_at: datetime
 
@@ -50,7 +50,7 @@ class SessionStore:
     def idle_timeout(self) -> timedelta:
         return self._idle_timeout
 
-    def create(self, user_id: str) -> Session:
+    def create(self, user_id: int) -> Session:
         now = self._clock()
         session = Session(
             token=new_token(), user_id=user_id, created_at=now, last_seen_at=now
@@ -81,7 +81,7 @@ class SessionStore:
         """End one session. True when a session was actually removed."""
         return self._sessions.pop(token, None) is not None
 
-    def revoke_all_for(self, user_id: str) -> int:
+    def revoke_all_for(self, user_id: int) -> int:
         """End every session belonging to a user, e.g. after a password change."""
         doomed = [
             token for token, session in self._sessions.items() if session.user_id == user_id

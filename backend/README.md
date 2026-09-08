@@ -38,6 +38,45 @@ pip install -r requirements-dev.txt
 `requirements.txt` holds runtime dependencies only; `requirements-dev.txt` includes
 those plus the test and lint tooling, and is what CI installs.
 
+## Connect to Supabase
+
+Accounts and events live in Supabase (Postgres). The backend is the only thing
+that holds the credentials — the browser talks to this API and never to Supabase
+directly, so the service role key stays on the server.
+
+Copy [`.env.example`](.env.example) to `.env` and fill it in from your Supabase
+project. `.env` is gitignored; the keys in it are secrets and must not be
+committed.
+
+| Variable                    | Where to find it                                  |
+| --------------------------- | ------------------------------------------------- |
+| `SUPABASE_URL`              | Project Settings → Data API → Project URL         |
+| `SUPABASE_ANON_KEY`         | Project Settings → API Keys → `anon` / public     |
+| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API Keys → `service_role`      |
+| `SUPABASE_DB_URL`           | Connect → Session pooler (optional; see below)    |
+
+`SUPABASE_DB_URL` is optional and unused by the API, which goes through
+PostgREST. It is there for reading the schema directly — inspecting Row Level
+Security policies, say. If you do set it, use the **Session pooler** string
+rather than the direct connection, which is IPv6-only and fails on most home
+networks.
+
+Then seed the development accounts:
+
+```bash
+python -m app.seed
+```
+
+There are no migrations to run. This project uses the schema exactly as it is —
+`users`, `events`, `status_changes`, `venues`, `equipment` — and adds no columns
+of its own. If a schema change ever becomes necessary, that is a conversation
+with whoever owns the schema, not something the backend does on startup.
+
+Seeding is a command you run deliberately, not something that happens on
+startup, so nobody creates development credentials in a deployed environment by
+accident. It is idempotent: running it again after changing `SEED_PASSWORD`
+resets the password rather than duplicating the accounts.
+
 ## Run the API
 
 ```bash
@@ -54,6 +93,29 @@ Sign in with `POST /auth/login` and you get back an opaque session token plus
 who you are, what your role may do, and where your role lands in the client.
 Send it as `Authorization: Bearer <token>` on every other route.
 
+### Where a password lives
+
+Not in this project's schema. A person is two records, joined on email:
+
+| Record          | Answers                        | Owned by     |
+| --------------- | ------------------------------ | ------------ |
+| `auth.users`    | can they prove who they are?   | Supabase Auth |
+| `public.users`  | who are they, and what may they do? | this project |
+
+`POST /auth/login` hands the email and password to Supabase Auth. If Auth says
+yes, the `users` row is looked up by email to find the name and role, and this
+API issues its own session token. Nothing about the credential is stored in, or
+read from, the `users` table — which is why the schema needed no new column.
+
+Either half can be missing, and both are refused the same way as a wrong
+password: an Auth account with no profile row has no role we could put on a
+session, and a profile row with no Auth account has nothing to prove itself
+with.
+
+The session token stays this project's own rather than passing Supabase's JWT
+through to the browser. A JWT is valid until it expires and cannot be taken
+back, and US1.2 asks for a sign-out that ends the session *now* — see below.
+
 | Route              | Who                | Purpose                                          |
 | ------------------ | ------------------ | ------------------------------------------------ |
 | `POST /auth/login` | anyone             | Exchange credentials for a session (US1.1)       |
@@ -63,8 +125,42 @@ Send it as `Authorization: Bearer <token>` on every other route.
 
 A session slides: every authenticated request extends it, so it survives normal
 use and lapses only after `SESSION_IDLE_MINUTES` without one. Sessions are held
-in memory, so restarting the API signs everyone out — the same gap as the rest
-of the project's storage, and it closes with the database story.
+in memory, so restarting the API signs everyone out. Accounts and events are in
+Supabase and survive a restart; only the sessions do not, which is the tradeoff
+for being able to revoke one the instant someone signs out.
+
+## Events
+
+The routes behind US4.1 and US4.2. This is their enforcement point: the client
+mirrors the rules so it can disable a button and explain why, but a disabled
+button is a courtesy and a refused request is the rule.
+
+| Route                        | Who                           | Purpose                                    |
+| ---------------------------- | ----------------------------- | ------------------------------------------ |
+| `GET /events`                | Organiser (own), Coordinator (all) | The events list (US4.1)               |
+| `GET /events/{id}`           | as above                      | One event, with its audit trail            |
+| `POST /events`               | Organiser                     | Create — always lands in Draft (US4.2)     |
+| `PUT /events/{id}`           | the owning Organiser          | Save edits; the status does not move       |
+| `POST /events/{id}/submit`   | the owning Organiser          | Draft → Submitted, once (US4.2)            |
+
+An event that belongs to another Organiser answers `404`, not `403`. Telling
+someone an event exists but is not theirs tells them something about another
+Organiser's work that they had no way to know.
+
+A second submit answers `409` with a `reason` — `already-submitted`,
+`not-owner` or `not-draft` — so the client can say which rule refused rather
+than showing a generic failure.
+
+The schema is used exactly as it stands, and two of its shapes are worth
+knowing when reading this code:
+
+- `events.proposed_date` is `NOT NULL`, so an event with no date is not
+  something the database can hold. The create and save routes require one, and
+  the form asks for it up front rather than accepting a draft it cannot store.
+- `status_changes.old_status` is `NOT NULL`, so there is no row that can mean
+  "created". The first entry in an event's history is derived from the event's
+  own `created_at` and organiser instead — which is the honest model anyway:
+  creating an event is not a change of status, it is the first one.
 
 ### Refusals
 
@@ -82,26 +178,32 @@ apart rather than showing "login failed" for all four:
 {
   "detail": {
     "code": "forbidden",
-    "message": "The Organiser role cannot view the user directory. That is available to: Coordinator.",
+    "message": "The Event Organiser role cannot view the user directory. That is available to: Event Coordinator.",
     "required": "users:read",
-    "role": "Organiser"
+    "role": "Event Organiser"
   }
 }
 ```
 
 ### Development accounts
 
-There is no way to create an account yet, so one account per role is seeded at
-startup, both sharing the password `Sprint1!demo`:
+There is no way to create an account yet, so `python -m app.seed` writes one
+account per role — an Auth account holding the password, and a `users` row
+holding the name and role — both sharing the password `Sprint1!demo`:
 
-| Email                     | Role        |
-| ------------------------- | ----------- |
-| `organiser@spmg3t7.edu`   | Organiser   |
-| `coordinator@spmg3t7.edu` | Coordinator |
+| Email                     | Role              |
+| ------------------------- | ----------------- |
+| `organiser@spmg3t7.edu`   | Event Organiser   |
+| `coordinator@spmg3t7.edu` | Event Coordinator |
 
 These are development credentials, not secrets, and they must not survive into a
 deployed environment. Set `SEED_PASSWORD` to change the shared password; drop
 the seeding entirely once accounts can be created.
+
+The role names are the values of the `user_role` enum in the database, which is
+why they read as `Event Organiser` rather than `Organiser`. Postgres rejects
+anything else, so a typo in a role name fails at the write rather than silently
+creating a user nobody has permissions for.
 
 Try the whole thing from a terminal:
 
@@ -121,16 +223,18 @@ Two roles, each holding a set of named permissions. The catalogue lives in
 written down — the client keeps no copy of it, it just reads the permissions the
 server put on the session.
 
-| Role        | May                                                   |
-| ----------- | ----------------------------------------------------- |
-| Organiser   | create, read own, and submit events                   |
-| Coordinator | read all events, review them, read the user directory |
+| Role              | May                                                   |
+| ----------------- | ----------------------------------------------------- |
+| Event Organiser   | create, read own, and submit events                   |
+| Event Coordinator | read all events, review them, read the user directory |
 
 Venue Staff, Technical Support and Attendee are part of the wider plan and are
 deliberately not modelled yet: a role that can sign in but can do nothing is a
 dead end for whoever holds it. They come back with the epics that give them
 something to do, and adding one means a row in `ROLE_PERMISSIONS`, a landing
-route, and nothing else.
+route, and nothing else. The database already declares all five in `user_role`;
+a row holding one of the other three is skipped by the directory and refused at
+sign-in rather than being forced into a role it does not have.
 
 Several of the permissions above have no route behind them yet. They are
 declared now so the roles mean something consistent as each epic lands, and so a
@@ -154,11 +258,23 @@ pytest                  # tests
 
 ## Environment variables
 
-| Variable                | Default                 | Purpose                                                 |
-| ----------------------- | ----------------------- | ------------------------------------------------------- |
-| `CORS_ORIGINS`          | `http://localhost:5173` | Comma-separated list of origins allowed to call the API |
-| `SESSION_IDLE_MINUTES`  | `30`                    | Inactivity after which a session expires (US1.1)        |
-| `SEED_PASSWORD`         | `Sprint1!demo`          | Shared password for the seeded development accounts     |
+Read from the process environment, with `.env` loaded first for local
+development. `.env` never overrides a variable that is already set, so CI and a
+deployed environment keep control of their own configuration.
+
+| Variable                    | Default                 | Purpose                                                 |
+| --------------------------- | ----------------------- | ------------------------------------------------------- |
+| `SUPABASE_URL`              | *required*              | Supabase project URL                                    |
+| `SUPABASE_ANON_KEY`         | *required*              | Anon key — subject to Row Level Security                |
+| `SUPABASE_SERVICE_ROLE_KEY` | *required*              | Service role key — full admin, backend only             |
+| `SUPABASE_DB_URL`           | unset                   | Postgres connection string; optional, unused by the API  |
+| `CORS_ORIGINS`              | `http://localhost:5173` | Comma-separated list of origins allowed to call the API |
+| `SESSION_IDLE_MINUTES`      | `30`                    | Inactivity after which a session expires (US1.1)        |
+| `SEED_PASSWORD`             | `Sprint1!demo`          | Shared password for the seeded development accounts     |
+
+The three required values have no defaults on purpose. A plausible-looking
+default would let the API start and then fail on the first query; a missing one
+is named at the point it is read, pointing at `.env.example`.
 
 `SESSION_IDLE_MINUTES` is sent to the client on the session, so the browser signs
 out on the same schedule instead of waiting to be refused. A value that is not a
@@ -188,9 +304,14 @@ app/
   config.py         environment-driven settings
   auth.py           /auth routes, and the dependencies that guard a route
   permissions.py    roles, permissions, and which role holds what
-  users.py          the user directory (seeded, in memory)
+  users.py          the user directory, backed by the Supabase users table
   sessions.py       session store with a sliding inactivity window
-  security.py       password hashing and token generation
+  security.py       session-token generation
+  supabase_client.py  the admin, anonymous and per-user Supabase clients
+  events.py         /events routes — US4.1 and US4.2
+  event_store.py    event data access, over the events and status_changes tables
+  event_status.py   the status label set and the submit rule
+  seed.py           writes the development accounts (python -m app.seed)
 tests/
   conftest.py               shared client and sign-in fixtures
   test_health.py

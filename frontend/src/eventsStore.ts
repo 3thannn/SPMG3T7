@@ -1,30 +1,27 @@
 /**
- * Event data access for Sprint 1.
+ * Event data access.
  *
- * The backend has no /events endpoints yet, so this module stands in for them.
- * Every function is async and shaped like the HTTP call that will replace it,
- * so swapping in `fetch` later is a change to this file alone — no page or
- * component needs to move.
+ * This used to be a localStorage stand-in for endpoints that did not exist. The
+ * endpoints exist now (`/events`), backed by Supabase, so every function here is
+ * a thin call over `authorizedFetch` — the shape the module was always written
+ * towards, which is why the pages above it did not have to move.
  *
- * IMPORTANT: the US4.2 rules enforced here (submit exactly once, audit trail)
- * are mirrored on the client for a responsive UI. They are NOT the enforcement
- * point. A browser store is trivially editable, so the server must re-check
- * both rules and own the timestamps when the real endpoints land.
+ * The US4.2 rules are no longer enforced here. The server owns them: it decides
+ * what you may see, refuses a second submit, and writes the timestamps. What is
+ * left in the browser is `status.ts`, which mirrors the rules so the UI can
+ * disable a button and say why — a courtesy, and no longer the only thing
+ * standing between a user and a rule they can break.
  */
 
-import {
-  checkSubmit,
-  submitRefusalMessage,
-  type EventStatus,
-  type StatusChange,
-} from './status'
+import { ApiError, authorizedFetch, type Session } from './api'
+import type { EventStatus, StatusChange } from './status'
 
 export type EventRecord = {
   id: string
   title: string
   description: string
-  startsAt: string // ISO-8601, or '' while still a rough draft
-  location: string
+  /** ISO-8601. Required: `events.proposed_date` is NOT NULL in the database. */
+  startsAt: string
   status: EventStatus
   organiserId: string
   organiserName: string
@@ -37,176 +34,93 @@ export type EventDraft = {
   title: string
   description: string
   startsAt: string
-  location: string
 }
-
-export type Actor = { id: string; name: string }
 
 /** Raised when a write is refused by a business rule, e.g. a second submit. */
 export class EventRuleError extends Error {}
 
-const STORAGE_KEY = 'spmg3t7.events.v1'
-
-function nowIso(): string {
-  return new Date().toISOString()
-}
-
-function newId(): string {
-  return `evt_${Math.random().toString(36).slice(2, 10)}`
-}
-
-function readAll(): EventRecord[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return seed()
-    const parsed = JSON.parse(raw) as EventRecord[]
-    return Array.isArray(parsed) ? parsed : seed()
-  } catch {
-    // A private window or blocked storage should not break the page.
-    return seed()
+/**
+ * Turn the API's refusals into the one error the pages already handle.
+ *
+ * A 409 is a rule saying no (submitted twice, not a Draft) and a 400 is the
+ * request being incomplete. Both are things to show the user in the page they
+ * are already on, unlike a 401, which has to bubble up and end the session.
+ */
+function asRuleError(error: unknown): never {
+  if (error instanceof ApiError && (error.status === 409 || error.status === 400)) {
+    throw new EventRuleError(error.message)
   }
-}
-
-function writeAll(events: EventRecord[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(events))
-  } catch {
-    // Non-fatal: the session keeps working, it just will not persist.
+  if (error instanceof ApiError && error.status === 403) {
+    throw new EventRuleError(error.message)
   }
-}
-
-/** A couple of events so the list and detail pages are demonstrable on a cold start. */
-function seed(): EventRecord[] {
-  const created = new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString()
-  const events: EventRecord[] = [
-    {
-      id: 'evt_seed0001',
-      title: 'Faculty Welcome Night',
-      description: 'Opening social for incoming students, with a short programme of talks.',
-      startsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 21).toISOString().slice(0, 16),
-      location: 'Great Hall',
-      status: 'Draft',
-      organiserId: 'user_organiser',
-      organiserName: 'Dylan',
-      createdAt: created,
-      updatedAt: created,
-      history: [
-        { from: null, to: 'Draft', at: created, byId: 'user_organiser', byName: 'Dylan' },
-      ],
-    },
-    {
-      id: 'evt_seed0002',
-      title: 'Inter-Faculty Hackathon',
-      description: 'Twenty-four hour build event across four tracks.',
-      startsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 45).toISOString().slice(0, 16),
-      location: 'Engineering Block, Level 3',
-      status: 'Submitted',
-      organiserId: 'user_organiser',
-      organiserName: 'Dylan',
-      createdAt: created,
-      updatedAt: nowIso(),
-      history: [
-        { from: null, to: 'Draft', at: created, byId: 'user_organiser', byName: 'Dylan' },
-        {
-          from: 'Draft',
-          to: 'Submitted',
-          at: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
-          byId: 'user_organiser',
-          byName: 'Dylan',
-        },
-      ],
-    },
-  ]
-  writeAll(events)
-  return events
+  throw error
 }
 
 /**
- * US4.1: an Organiser sees the events they own; a Coordinator sees all events.
- * The role check lives with the caller's session, so both arms are passed in.
+ * US4.1: an Organiser gets the events they own, a Coordinator gets all of them.
+ *
+ * The role is not passed — the server reads it from the session. A client that
+ * asked for "all events" could simply ask, which is the bug this avoids.
  */
-export async function listEvents(actor: Actor, seesAll: boolean): Promise<EventRecord[]> {
-  const all = readAll()
-  const visible = seesAll ? all : all.filter((event) => event.organiserId === actor.id)
-  return [...visible].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+export async function listEvents(session: Session): Promise<EventRecord[]> {
+  const response = await authorizedFetch('/events', session.token)
+  return (await response.json()) as EventRecord[]
 }
 
-export async function getEvent(id: string): Promise<EventRecord | null> {
-  return readAll().find((event) => event.id === id) ?? null
-}
-
-/** A new event always begins as a Draft (US4.2). */
-export async function createEvent(draft: EventDraft, actor: Actor): Promise<EventRecord> {
-  const at = nowIso()
-  const event: EventRecord = {
-    id: newId(),
-    ...draft,
-    status: 'Draft',
-    organiserId: actor.id,
-    organiserName: actor.name,
-    createdAt: at,
-    updatedAt: at,
-    history: [{ from: null, to: 'Draft', at, byId: actor.id, byName: actor.name }],
+/** The event, or null when it does not exist or is not this caller's to see. */
+export async function getEvent(id: string, session: Session): Promise<EventRecord | null> {
+  try {
+    const response = await authorizedFetch(`/events/${id}`, session.token)
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    throw error
   }
-  writeAll([event, ...readAll()])
-  return event
 }
 
-/**
- * US4.2: "Draft stays Draft on save." Saving edits content and never moves the
- * status, so no history entry is written — a save is not a status change.
- */
+/** US4.2: a new event always begins as a Draft. */
+export async function createEvent(
+  draft: EventDraft,
+  session: Session,
+): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch('/events', session.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/** US4.2: saving edits content and never moves the status. */
 export async function saveEvent(
   id: string,
   draft: EventDraft,
-  actor: Actor,
+  session: Session,
 ): Promise<EventRecord> {
-  const all = readAll()
-  const index = all.findIndex((event) => event.id === id)
-  if (index === -1) throw new EventRuleError('That event no longer exists.')
-
-  const existing = all[index]
-  if (existing.organiserId !== actor.id) {
-    throw new EventRuleError('Only the Organiser who owns this event can edit it.')
+  try {
+    const response = await authorizedFetch(`/events/${id}`, session.token, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
   }
-
-  const updated: EventRecord = { ...existing, ...draft, updatedAt: nowIso() }
-  all[index] = updated
-  writeAll(all)
-  return updated
 }
 
-/**
- * US4.2: Draft -> Submitted, exactly once, timestamped and attributable. A
- * second submit is refused rather than silently ignored.
- */
-export async function submitEvent(id: string, actor: Actor): Promise<EventRecord> {
-  const all = readAll()
-  const index = all.findIndex((event) => event.id === id)
-  if (index === -1) throw new EventRuleError('That event no longer exists.')
-
-  const existing = all[index]
-  const check = checkSubmit(existing, actor.id)
-  if (!check.allowed) {
-    throw new EventRuleError(submitRefusalMessage(check.reason))
+/** US4.2: Draft -> Submitted, once. A second submit comes back as a refusal. */
+export async function submitEvent(id: string, session: Session): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/submit`, session.token, {
+      method: 'POST',
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
   }
-
-  const at = nowIso()
-  const updated: EventRecord = {
-    ...existing,
-    status: 'Submitted',
-    updatedAt: at,
-    history: [
-      ...existing.history,
-      { from: existing.status, to: 'Submitted', at, byId: actor.id, byName: actor.name },
-    ],
-  }
-  all[index] = updated
-  writeAll(all)
-  return updated
-}
-
-/** Test helper — drops everything so each test starts from a known state. */
-export function __resetStore(events: EventRecord[] = []): void {
-  writeAll(events)
 }

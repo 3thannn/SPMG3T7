@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import router as auth_router
 from app.config import cors_origins
+from app.events import router as events_router
 
 app = FastAPI(title="SPMG3T7 API", version="0.1.0")
 
@@ -15,6 +16,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(events_router)
 
 
 @app.get("/health")

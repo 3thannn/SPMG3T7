@@ -9,7 +9,7 @@ from app.permissions import Permission, Role, denial_message, permissions_for, r
 
 
 def test_an_allowed_role_gets_through(client, auth_headers):
-    response = client.get("/auth/users", headers=auth_headers("Coordinator"))
+    response = client.get("/auth/users", headers=auth_headers("Event Coordinator"))
 
     assert response.status_code == 200
     assert {entry["role"] for entry in response.json()} == {str(role) for role in Role}
@@ -17,22 +17,23 @@ def test_an_allowed_role_gets_through(client, auth_headers):
 
 def test_an_out_of_role_request_is_blocked(client, auth_headers):
     """An Organiser is signed in and legitimate, and still may not read this."""
-    assert client.get("/auth/users", headers=auth_headers("Organiser")).status_code == 403
+    assert client.get("/auth/users", headers=auth_headers("Event Organiser")).status_code == 403
 
 
 def test_the_denial_says_what_was_refused_and_who_may_do_it(client, auth_headers):
-    detail = client.get("/auth/users", headers=auth_headers("Organiser")).json()["detail"]
+    detail = client.get("/auth/users", headers=auth_headers("Event Organiser")).json()["detail"]
 
     assert detail["code"] == "forbidden"
     assert detail["message"] == (
-        "The Organiser role cannot view the user directory. That is available to: Coordinator."
+        "The Event Organiser role cannot view the user directory. "
+        "That is available to: Event Coordinator."
     )
-    assert detail["role"] == "Organiser"
+    assert detail["role"] == "Event Organiser"
     assert detail["required"] == "users:read"
 
 
 def test_a_blocked_request_returns_none_of_the_data_it_guarded(client, auth_headers):
-    body = client.get("/auth/users", headers=auth_headers("Organiser")).text
+    body = client.get("/auth/users", headers=auth_headers("Event Organiser")).text
 
     assert "coordinator@spmg3t7.edu" not in body
 
@@ -40,7 +41,7 @@ def test_a_blocked_request_returns_none_of_the_data_it_guarded(client, auth_head
 def test_being_signed_out_and_being_out_of_role_are_different_answers(client, auth_headers):
     """401 means sign in; 403 means signing in again will not help."""
     assert client.get("/auth/users").status_code == 401
-    assert client.get("/auth/users", headers=auth_headers("Organiser")).status_code == 403
+    assert client.get("/auth/users", headers=auth_headers("Event Organiser")).status_code == 403
 
 
 def test_a_missing_token_asks_the_caller_to_sign_in(client):
@@ -98,4 +99,4 @@ class TestPermissionCatalogue:
         for permission in Permission:
             message = denial_message(Role.ORGANISER, permission)
             assert str(permission) not in message, f"{permission} has no readable label"
-            assert message.startswith("The Organiser role cannot ")
+            assert message.startswith("The Event Organiser role cannot ")

@@ -6,6 +6,7 @@ hide what a user cannot do, but this module is the enforcement point: a hidden
 button is a courtesy, a refused request is the rule.
 """
 
+from collections.abc import Iterable
 from enum import StrEnum
 
 
@@ -19,8 +20,8 @@ class Role(StrEnum):
     back with the epics that give them something to do.
     """
 
-    ORGANISER = "Organiser"
-    COORDINATOR = "Coordinator"
+    ORGANISER = "Event Organiser"
+    COORDINATOR = "Event Coordinator"
 
 
 class Permission(StrEnum):
@@ -98,5 +99,29 @@ def denial_message(role: Role, permission: Permission) -> str:
         return f"The {role} role cannot {action}. That is not available to any role yet."
     return (
         f"The {role} role cannot {action}. "
+        f"That is available to: {', '.join(str(item) for item in allowed)}."
+    )
+
+
+def roles_with_any(permissions: "Iterable[Permission]") -> list[Role]:
+    """Which roles hold at least one of these, in the order the roles are declared."""
+    wanted = set(permissions)
+    return [role for role in Role if wanted & permissions_for(role)]
+
+
+def denial_message_any(role: Role, permissions: "Iterable[Permission]") -> str:
+    """The US1.3 denial for a route that more than one permission can open.
+
+    The events list is the case that needs it: an Organiser reaches it through
+    events:read:own and a Coordinator through events:read:all, so naming a
+    single required permission would misdescribe the rule to one of them.
+    """
+    wanted = list(permissions)
+    actions = " or ".join(PERMISSION_LABELS.get(item, str(item)) for item in wanted)
+    allowed = roles_with_any(wanted)
+    if not allowed:
+        return f"The {role} role cannot {actions}. That is not available to any role yet."
+    return (
+        f"The {role} role cannot {actions}. "
         f"That is available to: {', '.join(str(item) for item in allowed)}."
     )

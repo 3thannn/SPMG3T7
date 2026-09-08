@@ -17,13 +17,13 @@ export default function NewEventPage({ session }: NewEventPageProps) {
     title: '',
     description: '',
     startsAt: '',
-    location: '',
   })
   const [titleError, setTitleError] = useState('')
+  const [startsAtError, setStartsAtError] = useState('')
   const [formError, setFormError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  if (session.role !== 'Organiser') {
+  if (session.role !== 'Event Organiser') {
     return (
       <div className="page shell">
         <div className="card empty">
@@ -46,15 +46,18 @@ export default function NewEventPage({ session }: NewEventPageProps) {
     event.preventDefault()
     setFormError('')
 
-    if (!draft.title.trim()) {
-      setTitleError('Give the event a title.')
-      return
-    }
-    setTitleError('')
+    // Both are required by the database: events.proposed_date is NOT NULL, so
+    // there is no such thing as a stored draft without a date. Checking here
+    // means the user is told in the field rather than by a rejected request.
+    const missingTitle = !draft.title.trim()
+    const missingDate = !draft.startsAt.trim()
+    setTitleError(missingTitle ? 'Give the event a title.' : '')
+    setStartsAtError(missingDate ? 'Give the event a date.' : '')
+    if (missingTitle || missingDate) return
 
     setBusy(true)
     try {
-      const created = await createEvent(draft, { id: session.id, name: session.name })
+      const created = await createEvent(draft, session)
       navigate(`/events/${created.id}`)
     } catch {
       setFormError('Could not create the event. Try again.')
@@ -119,19 +122,15 @@ export default function NewEventPage({ session }: NewEventPageProps) {
                 type="datetime-local"
                 value={draft.startsAt}
                 onChange={(e) => setDraft({ ...draft, startsAt: e.target.value })}
+                aria-invalid={Boolean(startsAtError)}
+                aria-describedby={startsAtError ? 'startsAt-error' : undefined}
                 disabled={busy}
               />
-              <span className="field-hint">You can fill this in later while it is a Draft.</span>
-            </div>
-
-            <div className="field">
-              <label htmlFor="location">Location</label>
-              <input
-                id="location"
-                value={draft.location}
-                onChange={(e) => setDraft({ ...draft, location: e.target.value })}
-                disabled={busy}
-              />
+              {startsAtError && (
+                <span className="field-error" id="startsAt-error">
+                  {startsAtError}
+                </span>
+              )}
             </div>
 
             <div className="field">

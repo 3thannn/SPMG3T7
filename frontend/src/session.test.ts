@@ -11,7 +11,7 @@ beforeEach(() => {
 
 describe('storeSession', () => {
   it('round-trips a session', () => {
-    const session = buildSession({ role: 'Coordinator' })
+    const session = buildSession({ role: 'Event Coordinator' })
 
     storeSession(session)
 
@@ -46,7 +46,7 @@ describe('loadStoredSession', () => {
   })
 
   it('returns null for a record with no token', () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: 'user_1', role: 'Organiser' }))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: 'user_1', role: 'Event Organiser' }))
 
     expect(loadStoredSession()).toBeNull()
   })

@@ -21,15 +21,15 @@ describe('US4.1 — the fixed label set', () => {
 
 describe('US4.1 — who can see a status', () => {
   it('shows an Organiser the events they own', () => {
-    expect(canViewStatus('Organiser', 'user_1', owned)).toBe(true)
+    expect(canViewStatus('Event Organiser', 'user_1', owned)).toBe(true)
   })
 
   it('hides another Organiser’s event', () => {
-    expect(canViewStatus('Organiser', 'user_2', owned)).toBe(false)
+    expect(canViewStatus('Event Organiser', 'user_2', owned)).toBe(false)
   })
 
   it('shows any Coordinator every event, per the Sprint 1 scope', () => {
-    expect(canViewStatus('Coordinator', 'anyone', owned)).toBe(true)
+    expect(canViewStatus('Event Coordinator', 'anyone', owned)).toBe(true)
   })
 })
 

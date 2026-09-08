@@ -22,7 +22,7 @@ type MeOutcome = 'ok' | 'expired' | 'revoked'
  * Stand in for the API, routing by URL, so a test can say what /auth/me should
  * answer without hand-stubbing every other call the page makes on load.
  */
-function stubApi({ me = 'ok', role = 'Organiser' }: { me?: MeOutcome; role?: Role } = {}) {
+function stubApi({ me = 'ok', role = 'Event Organiser' }: { me?: MeOutcome; role?: Role } = {}) {
   const session = buildSession({ role })
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -97,7 +97,7 @@ it('sends an anonymous visitor to sign in rather than the events list', () => {
 /* ---------- US1.1: the session survives a reload ---------- */
 
 it('restores a stored session and opens the guarded page', async () => {
-  signedInAs('Organiser')
+  signedInAs('Event Organiser')
   stubApi({ me: 'ok' })
   window.location.hash = '/events'
 
@@ -108,7 +108,7 @@ it('restores a stored session and opens the guarded page', async () => {
 })
 
 it('checks the stored token with the server rather than trusting it', async () => {
-  signedInAs('Organiser')
+  signedInAs('Event Organiser')
   const { fetchMock } = stubApi({ me: 'ok' })
 
   render(<App />)
@@ -125,7 +125,7 @@ it('checks the stored token with the server rather than trusting it', async () =
 it('signs the user out when the stored token has been revoked', async () => {
   // What the user sees after signing out on another device: the token is still
   // in this browser, and it is worth nothing.
-  signedInAs('Organiser')
+  signedInAs('Event Organiser')
   stubApi({ me: 'revoked' })
   window.location.hash = '/events'
 
@@ -136,7 +136,7 @@ it('signs the user out when the stored token has been revoked', async () => {
 })
 
 it('explains an expired session instead of just showing the form again', async () => {
-  signedInAs('Organiser')
+  signedInAs('Event Organiser')
   stubApi({ me: 'expired' })
   window.location.hash = '/events'
 
@@ -148,7 +148,7 @@ it('explains an expired session instead of just showing the form again', async (
 })
 
 it('ends the session on the server when the user signs out', async () => {
-  signedInAs('Organiser')
+  signedInAs('Event Organiser')
   const { fetchMock } = stubApi({ me: 'ok' })
   window.location.hash = '/events'
   render(<App />)
@@ -165,7 +165,7 @@ it('ends the session on the server when the user signs out', async () => {
 })
 
 it('needs a fresh sign-in for a guarded page after signing out', async () => {
-  signedInAs('Organiser')
+  signedInAs('Event Organiser')
   stubApi({ me: 'ok' })
   window.location.hash = '/events'
   render(<App />)
@@ -182,7 +182,7 @@ it('needs a fresh sign-in for a guarded page after signing out', async () => {
 
 it('signs the user out after the inactivity window and says why', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
-  signedInAs('Organiser')
+  signedInAs('Event Organiser')
   stubApi({ me: 'ok' })
   window.location.hash = '/events'
 
@@ -200,7 +200,7 @@ it('signs the user out after the inactivity window and says why', async () => {
 
 it('keeps the session alive while the user is still working', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
-  signedInAs('Organiser')
+  signedInAs('Event Organiser')
   stubApi({ me: 'ok' })
   window.location.hash = '/events'
 
@@ -228,21 +228,21 @@ it('keeps the session alive while the user is still working', async () => {
  */
 
 it('blocks a Coordinator from creating an event and explains why', async () => {
-  signedInAs('Coordinator')
-  stubApi({ me: 'ok', role: 'Coordinator' })
+  signedInAs('Event Coordinator')
+  stubApi({ me: 'ok', role: 'Event Coordinator' })
   window.location.hash = '/events/new'
 
   render(<App />)
 
   expect(await screen.findByText('Access denied')).toBeInTheDocument()
   expect(screen.getByRole('alert')).toHaveTextContent(
-    'The Coordinator role cannot open creating an event. That is available to Organisers.',
+    'The Event Coordinator role cannot open creating an event. That is available to Organisers.',
   )
 })
 
 it('renders none of the guarded page when the role is refused', async () => {
-  signedInAs('Coordinator')
-  stubApi({ me: 'ok', role: 'Coordinator' })
+  signedInAs('Event Coordinator')
+  stubApi({ me: 'ok', role: 'Event Coordinator' })
   window.location.hash = '/events/new'
 
   render(<App />)
@@ -252,8 +252,8 @@ it('renders none of the guarded page when the role is refused', async () => {
 })
 
 it('gives a blocked role somewhere to go', async () => {
-  signedInAs('Coordinator')
-  stubApi({ me: 'ok', role: 'Coordinator' })
+  signedInAs('Event Coordinator')
+  stubApi({ me: 'ok', role: 'Event Coordinator' })
   window.location.hash = '/events/new'
   render(<App />)
   await screen.findByText('Access denied')
@@ -264,8 +264,8 @@ it('gives a blocked role somewhere to go', async () => {
 })
 
 it('lets an Organiser through to the page a Coordinator is refused', async () => {
-  signedInAs('Organiser')
-  stubApi({ me: 'ok', role: 'Organiser' })
+  signedInAs('Event Organiser')
+  stubApi({ me: 'ok', role: 'Event Organiser' })
   window.location.hash = '/events/new'
 
   render(<App />)
@@ -274,8 +274,8 @@ it('lets an Organiser through to the page a Coordinator is refused', async () =>
 })
 
 it('leaves the create link out of the header for a Coordinator', async () => {
-  signedInAs('Coordinator')
-  stubApi({ me: 'ok', role: 'Coordinator' })
+  signedInAs('Event Coordinator')
+  stubApi({ me: 'ok', role: 'Event Coordinator' })
   window.location.hash = '/events'
 
   render(<App />)
@@ -286,8 +286,8 @@ it('leaves the create link out of the header for a Coordinator', async () => {
 })
 
 it('offers the create link to an Organiser', async () => {
-  signedInAs('Organiser')
-  stubApi({ me: 'ok', role: 'Organiser' })
+  signedInAs('Event Organiser')
+  stubApi({ me: 'ok', role: 'Event Organiser' })
   window.location.hash = '/events'
 
   render(<App />)
@@ -297,8 +297,8 @@ it('offers the create link to an Organiser', async () => {
 })
 
 it('offers the events link to a role that can open it', async () => {
-  signedInAs('Organiser')
-  stubApi({ me: 'ok', role: 'Organiser' })
+  signedInAs('Event Organiser')
+  stubApi({ me: 'ok', role: 'Event Organiser' })
   window.location.hash = '/events'
 
   render(<App />)

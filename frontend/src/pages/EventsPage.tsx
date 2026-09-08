@@ -20,18 +20,30 @@ type Filter = EventStatus | 'All'
 export default function EventsPage({ session }: EventsPageProps) {
   const [events, setEvents] = useState<EventRecord[] | null>(null)
   const [filter, setFilter] = useState<Filter>('All')
+  const [loadError, setLoadError] = useState('')
 
-  const seesAll = session.role === 'Coordinator'
+  const seesAll = session.role === 'Event Coordinator'
 
   useEffect(() => {
     let cancelled = false
-    listEvents({ id: session.id, name: session.name }, seesAll).then((loaded) => {
-      if (!cancelled) setEvents(loaded)
-    })
+    listEvents(session)
+      .then((loaded) => {
+        if (!cancelled) setEvents(loaded)
+      })
+      .catch(() => {
+        // The list is now a network call, so it can fail for reasons that have
+        // nothing to do with the user. Say so rather than showing "no events",
+        // which reads as "you have none" and is a different thing entirely.
+        if (cancelled) return
+        setEvents([])
+        setLoadError('Could not load your events. Check the API is running and try again.')
+      })
     return () => {
       cancelled = true
     }
-  }, [session.id, session.name, seesAll])
+    // The token identifies both the caller and the session; a new one means a
+    // different view of the list.
+  }, [session, session.token])
 
   // Only offer filters for statuses actually present, so the control never
   // shows nine chips against two events.
@@ -92,9 +104,15 @@ export default function EventsPage({ session }: EventsPageProps) {
           </div>
         )}
 
+        {loadError && (
+          <p className="form-error" role="alert">
+            {loadError}
+          </p>
+        )}
+
         {events === null ? (
           <p className="muted">Loading events…</p>
-        ) : visible.length === 0 ? (
+        ) : loadError ? null : visible.length === 0 ? (
           <div className="card empty">
             <h3>{events.length === 0 ? 'No events yet' : 'Nothing matches that filter'}</h3>
             <p>
@@ -130,7 +148,7 @@ export default function EventsPage({ session }: EventsPageProps) {
                   <div className="event-row-main">
                     <h3 className="event-row-title">{event.title}</h3>
                     <p className="event-row-meta">
-                      {event.location || 'Location not set'}
+                      {formatTimestamp(event.startsAt)}
                       {seesAll && <> · Organiser: {event.organiserName}</>}
                     </p>
                   </div>

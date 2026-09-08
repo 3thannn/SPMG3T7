@@ -36,7 +36,7 @@ export const SPRINT_1_REACHABLE: readonly EventStatus[] = ['Draft', 'Submitted']
  * agrees, and this type is what makes a stray role name a build error rather
  * than a runtime surprise.
  */
-export type Role = 'Organiser' | 'Coordinator'
+export type Role = 'Event Organiser' | 'Event Coordinator'
 
 /**
  * US4.1: status is visible to the Organiser who owns the event, and to any
@@ -49,8 +49,8 @@ export function canViewStatus(
   viewerId: string,
   event: { organiserId: string },
 ): boolean {
-  if (role === 'Coordinator') return true
-  if (role === 'Organiser') return event.organiserId === viewerId
+  if (role === 'Event Coordinator') return true
+  if (role === 'Event Organiser') return event.organiserId === viewerId
   // Unreachable for the roles above, and deliberately the safe answer for any
   // role added later that has not been considered here.
   return false

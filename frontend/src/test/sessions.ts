@@ -11,17 +11,17 @@ import type { Permission, Session } from '../api'
 import type { Role } from '../status'
 
 const PERMISSIONS: Record<Role, Permission[]> = {
-  Organiser: ['events:create', 'events:read:own', 'events:submit'],
-  Coordinator: ['events:read:all', 'events:review', 'users:read'],
+  'Event Organiser': ['events:create', 'events:read:own', 'events:submit'],
+  'Event Coordinator': ['events:read:all', 'events:review', 'users:read'],
 }
 
 const HOME: Record<Role, string> = {
-  Organiser: '/events',
-  Coordinator: '/events',
+  'Event Organiser': '/events',
+  'Event Coordinator': '/events',
 }
 
 export function buildSession(overrides: Partial<Session> = {}): Session {
-  const role = overrides.role ?? 'Organiser'
+  const role = overrides.role ?? 'Event Organiser'
   return {
     token: 'test-token',
     id: 'user_1',

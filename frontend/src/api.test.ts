@@ -22,7 +22,7 @@ const SESSION_BODY = {
   id: 'user_organiser',
   email: 'organiser@spmg3t7.edu',
   name: 'Dylan',
-  role: 'Organiser',
+  role: 'Event Organiser',
   permissions: ['events:create', 'events:read:own', 'events:submit'],
   home: '/events',
   idleMinutes: 30,
@@ -84,7 +84,7 @@ describe('login', () => {
       id: 'user_organiser',
       email: 'organiser@spmg3t7.edu',
       name: 'Dylan',
-      role: 'Organiser',
+      role: 'Event Organiser',
       permissions: ['events:create', 'events:read:own', 'events:submit'],
       home: '/events',
       idleMinutes: 30,
@@ -92,11 +92,11 @@ describe('login', () => {
   })
 
   it('takes the role from the server rather than anywhere else', async () => {
-    const body = { ...SESSION_BODY, role: 'Coordinator', permissions: ['events:review'] }
+    const body = { ...SESSION_BODY, role: 'Event Coordinator', permissions: ['events:review'] }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok(body)))
 
     await expect(login(credentials)).resolves.toMatchObject({
-      role: 'Coordinator',
+      role: 'Event Coordinator',
       permissions: ['events:review'],
     })
   })
@@ -105,7 +105,7 @@ describe('login', () => {
     // Deliberately a route the client does not know about: the point is that
     // the destination travels with the session rather than being hardcoded, so
     // a role with its own workspace needs no change here.
-    const body = { ...SESSION_BODY, role: 'Coordinator', home: '/review' }
+    const body = { ...SESSION_BODY, role: 'Event Coordinator', home: '/review' }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok(body)))
 
     await expect(login(credentials)).resolves.toMatchObject({ home: '/review' })
@@ -183,7 +183,7 @@ describe('fetchMe', () => {
 
     await expect(fetchMe('test-token')).resolves.toMatchObject({
       id: 'user_organiser',
-      role: 'Organiser',
+      role: 'Event Organiser',
       token: 'test-token',
     })
   })

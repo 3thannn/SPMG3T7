@@ -25,17 +25,17 @@ def build() -> tuple[SessionStore, FakeClock]:
 
 def test_a_new_session_resolves_to_its_user():
     store, _ = build()
-    session = store.create("user_organiser")
+    session = store.create(1)
 
     state, found = store.touch(session.token)
 
     assert state is SessionState.ACTIVE
-    assert found is not None and found.user_id == "user_organiser"
+    assert found is not None and found.user_id == 1
 
 
 def test_each_session_gets_its_own_token():
     store, _ = build()
-    assert store.create("user_organiser").token != store.create("user_organiser").token
+    assert store.create(1).token != store.create(1).token
 
 
 def test_an_unknown_token_is_unknown_rather_than_expired():
@@ -45,7 +45,7 @@ def test_an_unknown_token_is_unknown_rather_than_expired():
 
 def test_a_session_survives_inactivity_shorter_than_the_timeout():
     store, clock = build()
-    session = store.create("user_organiser")
+    session = store.create(1)
 
     clock.advance(minutes=29)
 
@@ -54,7 +54,7 @@ def test_a_session_survives_inactivity_shorter_than_the_timeout():
 
 def test_a_session_expires_once_the_idle_window_passes():
     store, clock = build()
-    session = store.create("user_organiser")
+    session = store.create(1)
 
     clock.advance(minutes=30)
 
@@ -64,7 +64,7 @@ def test_a_session_expires_once_the_idle_window_passes():
 def test_use_slides_the_window_so_an_active_session_stays_alive():
     """US1.1: a session stays active during normal use, however long that runs."""
     store, clock = build()
-    session = store.create("user_organiser")
+    session = store.create(1)
 
     for _ in range(10):
         clock.advance(minutes=25)
@@ -76,7 +76,7 @@ def test_use_slides_the_window_so_an_active_session_stays_alive():
 
 def test_an_expired_session_is_reported_once_then_forgotten():
     store, clock = build()
-    session = store.create("user_organiser")
+    session = store.create(1)
     clock.advance(minutes=31)
 
     assert store.touch(session.token)[0] is SessionState.EXPIRED
@@ -85,7 +85,7 @@ def test_an_expired_session_is_reported_once_then_forgotten():
 
 def test_revoking_ends_the_session_immediately():
     store, _ = build()
-    session = store.create("user_organiser")
+    session = store.create(1)
 
     assert store.revoke(session.token) is True
     assert store.touch(session.token)[0] is SessionState.UNKNOWN
@@ -98,8 +98,8 @@ def test_revoking_an_unknown_token_reports_that_nothing_was_removed():
 
 def test_revoking_one_session_leaves_the_users_other_sessions_alone():
     store, _ = build()
-    phone = store.create("user_organiser")
-    laptop = store.create("user_organiser")
+    phone = store.create(1)
+    laptop = store.create(1)
 
     store.revoke(phone.token)
 
@@ -108,11 +108,11 @@ def test_revoking_one_session_leaves_the_users_other_sessions_alone():
 
 def test_revoke_all_ends_every_session_for_one_user_only():
     store, _ = build()
-    phone = store.create("user_organiser")
-    laptop = store.create("user_organiser")
-    other = store.create("user_coordinator")
+    phone = store.create(1)
+    laptop = store.create(1)
+    other = store.create(2)
 
-    assert store.revoke_all_for("user_organiser") == 2
+    assert store.revoke_all_for(1) == 2
     assert store.touch(phone.token)[0] is SessionState.UNKNOWN
     assert store.touch(laptop.token)[0] is SessionState.UNKNOWN
     assert store.touch(other.token)[0] is SessionState.ACTIVE
@@ -120,8 +120,8 @@ def test_revoke_all_ends_every_session_for_one_user_only():
 
 def test_active_count_ignores_sessions_that_have_timed_out():
     store, clock = build()
-    store.create("user_organiser")
+    store.create(1)
     clock.advance(minutes=31)
-    store.create("user_coordinator")
+    store.create(2)
 
     assert store.active_count() == 1

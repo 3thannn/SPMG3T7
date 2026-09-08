@@ -18,7 +18,7 @@ const SESSION_BODY = {
   id: 'user_organiser',
   email: 'organiser@spmg3t7.edu',
   name: 'Dylan',
-  role: 'Organiser',
+  role: 'Event Organiser',
   permissions: ['events:create', 'events:read:own', 'events:submit'],
   home: '/events',
   idleMinutes: 30,
@@ -67,7 +67,7 @@ it('hands the session up when the credentials are accepted', async () => {
 
   await submit(user)
 
-  expect(onSignedIn).toHaveBeenCalledWith(expect.objectContaining({ role: 'Organiser' }))
+  expect(onSignedIn).toHaveBeenCalledWith(expect.objectContaining({ role: 'Event Organiser' }))
 })
 
 it('sends the user to the view the server picked for their role', async () => {
@@ -75,7 +75,7 @@ it('sends the user to the view the server picked for their role', async () => {
   // by following the server rather than choosing a destination itself.
   const body = {
     ...SESSION_BODY,
-    role: 'Coordinator',
+    role: 'Event Coordinator',
     home: '/review',
     permissions: ['events:read:all', 'events:review'],
   }

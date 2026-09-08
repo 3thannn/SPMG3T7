@@ -15,7 +15,14 @@ from pydantic import BaseModel, Field
 
 from app import users
 from app.config import session_idle_minutes
-from app.permissions import HOME_ROUTE, Permission, Role, denial_message, has_permission
+from app.permissions import (
+    HOME_ROUTE,
+    Permission,
+    Role,
+    denial_message,
+    denial_message_any,
+    has_permission,
+)
 from app.sessions import SessionState, SessionStore
 from app.users import User
 
@@ -49,7 +56,13 @@ class LoginRequest(BaseModel):
 
 
 class Identity(BaseModel):
-    """Who the caller is and what they may do — the shape the client stores."""
+    """Who the caller is and what they may do — the shape the client stores.
+
+    `id` goes out as a string although the table stores an integer. The client
+    only ever compares ids for equality — is this event mine? — so the wire
+    format can stay opaque, and a later move to a UUID key becomes a change to
+    the database and this line rather than to every comparison in the browser.
+    """
 
     id: str
     email: str
@@ -66,7 +79,7 @@ class SessionResponse(Identity):
 
 def _identity_fields(user: User) -> dict:
     return {
-        "id": user.id,
+        "id": str(user.id),
         "email": user.email,
         "name": user.name,
         "role": user.role,
@@ -129,6 +142,31 @@ def require_permission(permission: Permission):
     return dependency
 
 
+def require_any_permission(*permissions: Permission):
+    """Guard a route that more than one permission can open.
+
+    The events list is the case: an Organiser reaches it through
+    events:read:own and a Coordinator through events:read:all. Holding either
+    is enough, and the denial names both rather than pretending one of them is
+    the requirement.
+    """
+
+    def dependency(user: CurrentUser) -> User:
+        if not any(has_permission(user.role, item) for item in permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": ErrorCode.FORBIDDEN,
+                    "message": denial_message_any(user.role, permissions),
+                    "required": [str(item) for item in permissions],
+                    "role": str(user.role),
+                },
+            )
+        return user
+
+    return dependency
+
+
 @router.post("/login", response_model=SessionResponse)
 def login(payload: LoginRequest) -> SessionResponse:
     """US1.1: exchange credentials for a session and a role-appropriate landing."""
@@ -181,6 +219,6 @@ def directory(
     that explains itself. Coordinator Assignment will be its real consumer.
     """
     return [
-        DirectoryEntry(id=user.id, name=user.name, email=user.email, role=user.role)
+        DirectoryEntry(id=str(user.id), name=user.name, email=user.email, role=user.role)
         for user in users.list_users()
     ]

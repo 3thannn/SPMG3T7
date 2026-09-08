@@ -26,13 +26,13 @@ type PageState = Loading | Loaded | Missing | Forbidden
 
 export default function EventDetailPage({ eventId, session }: EventDetailPageProps) {
   const [page, setPage] = useState<PageState>({ state: 'loading' })
-  const [draft, setDraft] = useState({ title: '', description: '', startsAt: '', location: '' })
+  const [draft, setDraft] = useState({ title: '', description: '', startsAt: '' })
   const [banner, setBanner] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    getEvent(eventId).then((event) => {
+    getEvent(eventId, session).then((event) => {
       if (cancelled) return
       if (!event) {
         setPage({ state: 'missing' })
@@ -49,13 +49,12 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         title: event.title,
         description: event.description,
         startsAt: event.startsAt,
-        location: event.location,
       })
     })
     return () => {
       cancelled = true
     }
-  }, [eventId, session.id, session.role])
+  }, [eventId, session])
 
   if (page.state === 'loading') {
     return (
@@ -105,15 +104,18 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const dirty =
     draft.title !== event.title ||
     draft.description !== event.description ||
-    draft.startsAt !== event.startsAt ||
-    draft.location !== event.location
+    draft.startsAt !== event.startsAt
 
   async function handleSave() {
+    if (!draft.startsAt.trim()) {
+      setBanner({ kind: 'error', text: 'Give the event a date.' })
+      return
+    }
     setBusy(true)
     setBanner(null)
     try {
       // US4.2: a save edits content and leaves a Draft as a Draft.
-      const updated = await saveEvent(event.id, draft, { id: session.id, name: session.name })
+      const updated = await saveEvent(event.id, draft, session)
       setPage({ state: 'loaded', event: updated })
       setBanner({ kind: 'ok', text: `Saved. Status is still ${updated.status}.` })
     } catch (error) {
@@ -131,7 +133,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     setBanner(null)
     try {
       // US4.2: Draft -> Submitted, exactly once.
-      const updated = await submitEvent(event.id, { id: session.id, name: session.name })
+      const updated = await submitEvent(event.id, session)
       setPage({ state: 'loaded', event: updated })
       setBanner({ kind: 'ok', text: 'Submitted. The status change has been recorded.' })
     } catch (error) {
@@ -203,15 +205,6 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                   />
                 </div>
                 <div className="field">
-                  <label htmlFor="location">Location</label>
-                  <input
-                    id="location"
-                    value={draft.location}
-                    onChange={(e) => setDraft({ ...draft, location: e.target.value })}
-                    disabled={busy}
-                  />
-                </div>
-                <div className="field">
                   <label htmlFor="description">Description</label>
                   <textarea
                     id="description"
@@ -225,8 +218,6 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               <dl className="detail-readonly">
                 <dt>Starts</dt>
                 <dd>{event.startsAt ? formatTimestamp(event.startsAt) : 'Not set'}</dd>
-                <dt>Location</dt>
-                <dd>{event.location || 'Not set'}</dd>
                 <dt>Description</dt>
                 <dd>{event.description || 'No description.'}</dd>
               </dl>
