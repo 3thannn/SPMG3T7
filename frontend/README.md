@@ -106,10 +106,14 @@ prefixed with `VITE_` are exposed to the browser — never put secrets in them.
 
 ## Continuous integration
 
-[`../.github/workflows/frontend-ci.yml`](../.github/workflows/frontend-ci.yml)
-runs on every push to `main` and on every pull request that touches `frontend/`.
-It installs dependencies with `npm ci`, lints, builds, and runs the tests. A
-failing step fails the build and blocks the PR.
+The `frontend` job in [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+runs on every push to `main` and on every pull request. It installs dependencies
+with `npm ci`, lints, builds, and runs the tests. A failing step fails the build
+and blocks the PR.
+
+It runs alongside the `backend` job on every change, not only on changes under
+`frontend/` — the two halves call each other, so a green client against a broken
+API is not a useful signal.
 
 `npm ci` installs strictly from `package-lock.json`, so the lockfile is committed
 and must be kept in sync with `package.json`.

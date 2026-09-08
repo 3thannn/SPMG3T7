@@ -104,20 +104,19 @@ never put secrets in them.
 
 ## Continuous integration
 
-Two workflows, one per half, each filtered by path so a change to one side does
-not spend a runner on the other:
+One workflow, [`.github/workflows/ci.yml`](.github/workflows/ci.yml), with a job
+per half. Both jobs lint, build and test, and both run on every push to `main`
+and on every pull request. A failing step fails the build and blocks the PR.
 
-- [`.github/workflows/backend-ci.yml`](.github/workflows/backend-ci.yml) — runs on changes under `backend/`
-- [`.github/workflows/frontend-ci.yml`](.github/workflows/frontend-ci.yml) — runs on changes under `frontend/`
+The jobs run in parallel, so a full run takes as long as the slower half rather
+than the sum of the two. They show up as `CI / backend` and `CI / frontend`.
 
-Both run on every push to `main` and on every pull request that touches their
-paths, and both lint, build and test. A failing step fails the build and blocks
-the PR.
-
-Note on branch protection: because of the path filters, a frontend-only PR never
-starts Backend CI. If you mark these as *required* status checks, such a PR will
-wait forever for a check that will not run. Either leave them unrequired, or drop
-the `paths:` filters so both always run.
+There are deliberately no `paths:` filters. The two halves are not independent —
+the client calls the API, so a change to one can break the other — and a check
+that only sometimes runs cannot safely be marked as a *required* status check: a
+pull request that misses the filter would wait forever for a check that never
+starts. Running both every time costs a couple of runner-minutes and means a
+missing check is always a real problem rather than something to work out.
 
 ## Repository layout
 
@@ -149,7 +148,7 @@ frontend/
   index.html
   package.json
   vite.config.ts
-.github/workflows/     one CI workflow per half
+.github/workflows/     ci.yml — one job per half
 ```
 
 ## History

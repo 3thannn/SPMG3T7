@@ -171,10 +171,14 @@ frontend URL.
 
 ## Continuous integration
 
-[`../.github/workflows/backend-ci.yml`](../.github/workflows/backend-ci.yml) runs
-on every push to `main` and on every pull request that touches `backend/`. It
-installs dependencies, lints, byte-compiles the sources, and runs the test suite.
-A failing step fails the build and blocks the PR.
+The `backend` job in [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+runs on every push to `main` and on every pull request. It installs dependencies,
+lints, byte-compiles the sources, and runs the test suite. A failing step fails
+the build and blocks the PR.
+
+It runs alongside the `frontend` job on every change, not only on changes under
+`backend/` — the two halves call each other, so a green backend against a broken
+client is not a useful signal.
 
 ## Project structure
 
