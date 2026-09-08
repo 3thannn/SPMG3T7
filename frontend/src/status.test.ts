@@ -31,13 +31,6 @@ describe('US4.1 — who can see a status', () => {
   it('shows any Coordinator every event, per the Sprint 1 scope', () => {
     expect(canViewStatus('Coordinator', 'anyone', owned)).toBe(true)
   })
-
-  it.each(['Venue Staff', 'Technical Support', 'Attendee'] as const)(
-    'keeps %s out of scope for Sprint 1',
-    (role) => {
-      expect(canViewStatus(role, 'user_1', owned)).toBe(false)
-    },
-  )
 })
 
 describe('US4.2 — submitting exactly once', () => {

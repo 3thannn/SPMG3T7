@@ -4,8 +4,8 @@ Monorepo holding both halves of the SPMG3T7 project:
 
 | Directory                | What it is                                    | Stack                          |
 | ------------------------ | --------------------------------------------- | ------------------------------ |
-| [`backend/`](backend/)   | REST API — health check, CORS, config          | Python 3.12, FastAPI, uvicorn  |
-| [`frontend/`](frontend/) | Web client — login UI, backend status          | Node 22, React 19, Vite, TypeScript |
+| [`backend/`](backend/)   | REST API — authentication, roles, health check | Python 3.12, FastAPI, uvicorn  |
+| [`frontend/`](frontend/) | Web client — sign-in, events, backend status   | Node 22, React 19, Vite, TypeScript |
 
 Each directory keeps its own dependencies, tooling and README. There is no shared
 build tool at the root — you run each half with its own commands, from its own
@@ -63,6 +63,18 @@ Open <http://localhost:5173>. The page reports **Backend connected** when it can
 reach `/health`, and **Backend unreachable** when it cannot — the latter is the
 expected state if you skipped terminal 1, not a build failure.
 
+Sign in with one of the seeded development accounts, both with the password
+`Sprint1!demo`:
+
+| Email                     | Role        | Can do                                |
+| ------------------------- | ----------- | ------------------------------------- |
+| `organiser@spmg3t7.edu`   | Organiser   | create, edit and submit their events  |
+| `coordinator@spmg3t7.edu` | Coordinator | see every event, review them          |
+
+These are development credentials, not secrets, and they must not survive into a
+deployed environment. Signing in needs the API running — there is no way past
+the form without it.
+
 ## Run the checks
 
 These are exactly what CI runs, so green here means green there.
@@ -79,10 +91,12 @@ the API; the backend reads `CORS_ORIGINS` (default `http://localhost:5173`) to
 decide who may call it. The defaults line up, so local development needs no
 configuration. Change one and you must change the other.
 
-| Variable            | Side     | Default                 | Purpose                                     |
-| ------------------- | -------- | ----------------------- | ------------------------------------------- |
-| `VITE_API_BASE_URL` | frontend | `http://localhost:8000` | Base URL of the backend API                 |
-| `CORS_ORIGINS`      | backend  | `http://localhost:5173` | Comma-separated origins allowed to call it  |
+| Variable               | Side     | Default                 | Purpose                                    |
+| ---------------------- | -------- | ----------------------- | ------------------------------------------ |
+| `VITE_API_BASE_URL`    | frontend | `http://localhost:8000` | Base URL of the backend API                |
+| `CORS_ORIGINS`         | backend  | `http://localhost:5173` | Comma-separated origins allowed to call it |
+| `SESSION_IDLE_MINUTES` | backend  | `30`                    | Inactivity after which a session expires   |
+| `SEED_PASSWORD`        | backend  | `Sprint1!demo`          | Password for the seeded development accounts |
 
 Copy [`frontend/.env.example`](frontend/.env.example) to `frontend/.env.local` to
 override the frontend value. Only `VITE_`-prefixed variables reach the browser —
@@ -112,19 +126,26 @@ backend/
   app/
     main.py            FastAPI application and routes
     config.py          environment-driven settings
-  tests/
-    test_health.py
-    test_config.py
+    auth.py            /auth routes and the dependencies that guard a route
+    permissions.py     roles, permissions, and which role holds what
+    users.py           the user directory (seeded, in memory)
+    sessions.py        session store with a sliding inactivity window
+    security.py        password hashing and token generation
+  tests/               one file per story, plus unit tests for each module
   pyproject.toml       ruff and pytest configuration
   requirements.txt     runtime dependencies
   requirements-dev.txt runtime + test/lint tooling (what CI installs)
 frontend/
   src/
     main.tsx           React entry point
-    App.tsx            root component, shows backend connection status
-    LoginForm.tsx      login UI
-    api.ts             backend client
-    test/setup.ts      Vitest setup (jest-dom matchers, cleanup)
+    App.tsx            root component: session, route guards, health status
+    api.ts             backend client and its error types
+    session.ts         the stored session, revived on load
+    permissions.ts     which route needs which permission
+    useIdleSignOut.ts  signs out after the server's idle window
+    status.ts          event status model and roles
+    pages/             sign-in, landing, events, event detail, access denied
+    components/        top nav, status badge, status timeline
   index.html
   package.json
   vite.config.ts

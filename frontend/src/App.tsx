@@ -1,19 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import TopNav from './components/TopNav'
+import AccessDeniedPage from './pages/AccessDeniedPage'
 import EventDetailPage from './pages/EventDetailPage'
 import EventsPage from './pages/EventsPage'
 import LandingPage from './pages/LandingPage'
 import NewEventPage from './pages/NewEventPage'
 import SignInPage from './pages/SignInPage'
 import { matchEventDetail, navigate, useRoute, useScrollToTopOnRouteChange } from './router'
-import { fetchHealth, type Session } from './api'
+import { canOpen } from './permissions'
+import { clearStoredSession, loadStoredSession, storeSession } from './session'
+import { useIdleSignOut } from './useIdleSignOut'
+import { fetchHealth, fetchMe, logout, SessionExpiredError, type Session } from './api'
 
 type Backend = 'checking' | 'connected' | 'unreachable'
 
+/** Public routes. Everything else needs a session. */
+const OPEN_ROUTES = new Set(['/', '/signin'])
+
 export default function App() {
   const [backend, setBackend] = useState<Backend>('checking')
-  const [session, setSession] = useState<Session | null>(null)
+  // Seeded from storage during the first render rather than in an effect, so
+  // the header shows the signed-in user in the very first frame and there is no
+  // signed-out flash on every reload.
+  const [session, setSession] = useState<Session | null>(loadStoredSession)
+  const [restoring, setRestoring] = useState(session !== null)
+  const [notice, setNotice] = useState('')
   const route = useRoute()
 
   useScrollToTopOnRouteChange(route)
@@ -32,14 +44,86 @@ export default function App() {
     }
   }, [])
 
-  function handleSignOut() {
-    setSession(null)
-    navigate('/')
-  }
+  /*
+   * Revive a stored session, but only on the server's say-so.
+   *
+   * The stored copy is shown straight away so the header does not flicker, then
+   * the token is put to the server for confirmation. A session signed out on
+   * another device, or one that lapsed while the tab was shut, fails that check
+   * and is dropped here — which is what US1.2's "subsequent requests require
+   * re-authentication" amounts to once a token can outlive the page.
+   * It also re-reads the role each load, so a role change lands without
+   * waiting for the user to sign in again.
+   */
+  useEffect(() => {
+    const stored = loadStoredSession()
+    if (!stored) return
+
+    let cancelled = false
+
+    fetchMe(stored.token)
+      .then((fresh) => {
+        if (cancelled) return
+        setSession(fresh)
+        storeSession(fresh)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setSession(null)
+        clearStoredSession()
+        if (error instanceof SessionExpiredError) {
+          setNotice(error.message)
+        }
+        // Anything else — a revoked token, an unreachable API — leaves the user
+        // signed out without an explanation they did not ask for.
+      })
+      .finally(() => {
+        if (!cancelled) setRestoring(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const signOut = useCallback(
+    (reason: 'manual' | 'idle' = 'manual') => {
+      // US1.2: tell the server, so the token stops working everywhere rather
+      // than only in this tab. `logout` never rejects, so nothing is awaited —
+      // the session is cleared here whether or not the server heard about it.
+      if (session) void logout(session.token)
+
+      if (reason === 'idle') {
+        setNotice(`You were signed out after ${session?.idleMinutes ?? 30} minutes of inactivity.`)
+      }
+
+      setSession(null)
+      clearStoredSession()
+      // An idle sign-out lands on the form, where the reason is waiting; a
+      // deliberate one lands on the landing page, because leaving was the point.
+      navigate(reason === 'idle' ? '/signin' : '/')
+    },
+    [session],
+  )
+
+  // US1.1: the session lapses after a period of inactivity, on both ends.
+  useIdleSignOut(session ? session.idleMinutes : null, () => signOut('idle'))
+
+  const handleSignedIn = useCallback((next: Session) => {
+    setNotice('')
+    setSession(next)
+    storeSession(next)
+  }, [])
+
+  // A signed-in user has no business on the sign-in form; send them to the view
+  // their role actually works from.
+  useEffect(() => {
+    if (session && route === '/signin') navigate(session.home)
+  }, [session, route])
 
   return (
     <>
-      <TopNav route={route} session={session} onSignOut={handleSignOut} />
+      <TopNav route={route} session={session} onSignOut={() => signOut('manual')} />
       {renderRoute()}
       <footer className="app-footer">
         <div className="shell app-footer-inner">
@@ -60,13 +144,35 @@ export default function App() {
     }
 
     if (route === '/signin') {
-      return <SignInPage onSignedIn={setSession} />
+      return <SignInPage onSignedIn={handleSignedIn} notice={notice} />
     }
 
-    // Everything below needs a session; send anonymous visitors to sign in
-    // rather than rendering an empty shell.
+    if (!OPEN_ROUTES.has(route)) {
+      // Deciding before the stored token has been checked would sign the user
+      // out on every reload for as long as that request takes.
+      if (restoring) {
+        return (
+          <div className="page shell">
+            <div className="card empty" role="status">
+              <p>Restoring your session…</p>
+            </div>
+          </div>
+        )
+      }
+
+      if (!session) {
+        return <SignInPage onSignedIn={handleSignedIn} notice={notice} />
+      }
+
+      // US1.3: the role is checked before the page is built, so a blocked page
+      // never renders a frame of the data it was guarding.
+      if (!canOpen(session, route)) {
+        return <AccessDeniedPage session={session} route={route} />
+      }
+    }
+
     if (!session) {
-      return <SignInPage onSignedIn={setSession} />
+      return <SignInPage onSignedIn={handleSignedIn} notice={notice} />
     }
 
     if (route === '/events') {

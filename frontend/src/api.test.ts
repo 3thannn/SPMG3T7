@@ -1,9 +1,44 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AuthError, apiBaseUrl, fetchHealth, login } from './api'
+import {
+  ApiError,
+  AuthError,
+  ForbiddenError,
+  SessionExpiredError,
+  apiBaseUrl,
+  authorizedFetch,
+  fetchHealth,
+  fetchMe,
+  login,
+  logout,
+} from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+/** What POST /auth/login answers with for the seeded Organiser. */
+const SESSION_BODY = {
+  token: 'test-token',
+  id: 'user_organiser',
+  email: 'organiser@spmg3t7.edu',
+  name: 'Dylan',
+  role: 'Organiser',
+  permissions: ['events:create', 'events:read:own', 'events:submit'],
+  home: '/events',
+  idleMinutes: 30,
+}
+
+function ok(body: unknown) {
+  return { ok: true, status: 200, json: async () => body }
+}
+
+function failure(status: number, code?: string, message?: string) {
+  return {
+    ok: false,
+    status,
+    json: async () => (code ? { detail: { code, message } } : {}),
+  }
+}
 
 describe('apiBaseUrl', () => {
   it('falls back to the local backend', () => {
@@ -13,10 +48,7 @@ describe('apiBaseUrl', () => {
 
 describe('fetchHealth', () => {
   it('returns the parsed payload when the API responds', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'ok' }) }),
-    )
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok({ status: 'ok' })))
 
     await expect(fetchHealth()).resolves.toEqual({ status: 'ok' })
     expect(fetch).toHaveBeenCalledWith('http://localhost:8000/health')
@@ -30,48 +62,199 @@ describe('fetchHealth', () => {
 })
 
 describe('login', () => {
-  const credentials = { email: 'ada@example.com', password: 'hunter2' }
+  const credentials = { email: 'organiser@spmg3t7.edu', password: 'Sprint1!demo' }
 
-  it('returns the session when the credentials are accepted', async () => {
-    const body = { token: 'test-token', email: 'ada@example.com' }
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }))
+  it('posts the credentials to the sign-in route', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok(SESSION_BODY))
+    vi.stubGlobal('fetch', fetchMock)
 
-    await expect(login(credentials)).resolves.toMatchObject({
+    await login(credentials)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://localhost:8000/auth/login')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual(credentials)
+  })
+
+  it('returns the session the server issued', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok(SESSION_BODY)))
+
+    await expect(login(credentials)).resolves.toEqual({
       token: 'test-token',
-      email: 'ada@example.com',
+      id: 'user_organiser',
+      email: 'organiser@spmg3t7.edu',
+      name: 'Dylan',
+      role: 'Organiser',
+      permissions: ['events:create', 'events:read:own', 'events:submit'],
+      home: '/events',
+      idleMinutes: 30,
     })
   })
 
-  it('takes the role from the server', async () => {
-    const body = { token: 't', email: 'ada@example.com', role: 'Coordinator' as const }
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }))
+  it('takes the role from the server rather than anywhere else', async () => {
+    const body = { ...SESSION_BODY, role: 'Coordinator', permissions: ['events:review'] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok(body)))
 
-    await expect(login(credentials)).resolves.toMatchObject({ role: 'Coordinator' })
+    await expect(login(credentials)).resolves.toMatchObject({
+      role: 'Coordinator',
+      permissions: ['events:review'],
+    })
   })
 
-  it('defaults to Organiser until the server issues a role', async () => {
-    const body = { token: 't', email: 'ada@example.com' }
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }))
+  it('uses whatever landing route the server sends, without deciding for itself', async () => {
+    // Deliberately a route the client does not know about: the point is that
+    // the destination travels with the session rather than being hardcoded, so
+    // a role with its own workspace needs no change here.
+    const body = { ...SESSION_BODY, role: 'Coordinator', home: '/review' }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok(body)))
 
-    await expect(login(credentials)).resolves.toMatchObject({ role: 'Organiser' })
+    await expect(login(credentials)).resolves.toMatchObject({ home: '/review' })
   })
 
-  it('derives a display name from the email when the server sends none', async () => {
-    const body = { token: 't', email: 'ada.lovelace@example.com' }
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }))
+  it('refuses a response with no role instead of assuming one', async () => {
+    // Guessing here would be the client deciding what its user may do.
+    const { role: _role, ...withoutRole } = SESSION_BODY
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok(withoutRole)))
 
-    await expect(login(credentials)).resolves.toMatchObject({ name: 'Ada Lovelace' })
+    await expect(login(credentials)).rejects.toThrow(/does not recognise/)
   })
 
-  it('raises AuthError on 401 so the UI can distinguish a rejection', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
+  it('refuses a response with no permissions', async () => {
+    const { permissions: _permissions, ...withoutPermissions } = SESSION_BODY
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok(withoutPermissions)))
 
-    await expect(login(credentials)).rejects.toBeInstanceOf(AuthError)
+    await expect(login(credentials)).rejects.toThrow(/does not recognise/)
+  })
+
+  it('refuses a response with no token', async () => {
+    const { token: _token, ...withoutToken } = SESSION_BODY
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok(withoutToken)))
+
+    await expect(login(credentials)).rejects.toThrow(/does not recognise/)
+  })
+
+  it('raises AuthError on 401 so the form can name the real problem', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(failure(401, 'invalid_credentials', 'Incorrect email or password.')),
+    )
+
+    const error = await login(credentials).catch((thrown: unknown) => thrown)
+    expect(error).toBeInstanceOf(AuthError)
+    expect((error as AuthError).message).toBe('Incorrect email or password.')
   })
 
   it('raises a plain error on a server fault, not AuthError', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(failure(500)))
 
     await expect(login(credentials)).rejects.not.toBeInstanceOf(AuthError)
+  })
+
+  it('lets a connection failure through as itself', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+
+    await expect(login(credentials)).rejects.toBeInstanceOf(TypeError)
+  })
+})
+
+describe('logout', () => {
+  it('sends the token so the server can end that session', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await logout('test-token')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://localhost:8000/auth/logout')
+    expect(init.method).toBe('POST')
+    expect(init.headers.Authorization).toBe('Bearer test-token')
+  })
+
+  it('never throws, so a sign-out is not blocked by an unreachable server', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+
+    await expect(logout('test-token')).resolves.toBeUndefined()
+  })
+})
+
+describe('fetchMe', () => {
+  it('returns the session the token belongs to', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok(SESSION_BODY)))
+
+    await expect(fetchMe('test-token')).resolves.toMatchObject({
+      id: 'user_organiser',
+      role: 'Organiser',
+      token: 'test-token',
+    })
+  })
+
+  it('reports an expired session distinctly from a rejected one', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(failure(401, 'session_expired', 'Your session expired.')),
+    )
+
+    const error = await fetchMe('stale').catch((thrown: unknown) => thrown)
+    expect(error).toBeInstanceOf(SessionExpiredError)
+    expect(error).not.toBeInstanceOf(AuthError)
+  })
+
+  it('reports a revoked token as simply not authenticated', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(failure(401, 'not_authenticated', 'Your session is no longer valid.')),
+    )
+
+    const error = await fetchMe('revoked').catch((thrown: unknown) => thrown)
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error).not.toBeInstanceOf(SessionExpiredError)
+    expect((error as ApiError).code).toBe('not_authenticated')
+  })
+})
+
+describe('authorizedFetch', () => {
+  it('carries the session token', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok({}))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await authorizedFetch('/auth/users', 'test-token')
+
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer test-token')
+  })
+
+  it('turns a 403 into a ForbiddenError carrying the server explanation', async () => {
+    const message = 'The Organiser role cannot view the user directory.'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(failure(403, 'forbidden', message)))
+
+    const error = await authorizedFetch('/auth/users', 'test-token').catch(
+      (thrown: unknown) => thrown,
+    )
+    expect(error).toBeInstanceOf(ForbiddenError)
+    expect((error as ForbiddenError).message).toBe(message)
+  })
+
+  it('still classifies a refusal when the body is not the expected shape', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403, json: async () => 'nope' }))
+
+    await expect(authorizedFetch('/auth/users', 'test-token')).rejects.toBeInstanceOf(
+      ForbiddenError,
+    )
+  })
+
+  it('survives a response that is not JSON at all', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        json: async () => {
+          throw new SyntaxError('Unexpected token <')
+        },
+      }),
+    )
+
+    await expect(authorizedFetch('/auth/me', 'test-token')).rejects.toThrow(
+      'Request failed with status 502.',
+    )
   })
 })

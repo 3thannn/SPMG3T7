@@ -38,8 +38,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         setPage({ state: 'missing' })
         return
       }
-      // US4.1: Venue Staff, Technical Support and Attendees have no status
-      // visibility in Sprint 1, so they get an explicit refusal, not an empty page.
+      // US4.1: an Organiser sees only the events they own, so someone else's
+      // event is an explicit refusal rather than an empty page.
       if (!canViewStatus(session.role, session.id, event)) {
         setPage({ state: 'forbidden' })
         return
@@ -90,8 +90,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         <div className="card empty">
           <h3>Not available for your role</h3>
           <p>
-            Event status is visible to the owning Organiser and to Coordinators in Sprint 1.
-            Venue Staff, Technical Support and Attendee access arrives with their own features.
+            An event is visible to the Organiser who owns it and to Event Coordinators. This
+            one belongs to another Organiser.
           </p>
         </div>
       </div>

@@ -1,0 +1,66 @@
+/*
+ * A refusal, not an error. It uses the danger tokens for the one line that
+ * explains the denial and stays neutral everywhere else — the user has not done
+ * anything wrong, so the page should not read like a fault.
+ */
+
+.access-denied {
+  display: flex;
+  justify-content: center;
+}
+
+.access-denied-card {
+  max-width: 34rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.access-denied-eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--danger);
+}
+
+.access-denied-title {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--ink-strong);
+  text-wrap: balance;
+}
+
+.access-denied-message {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.access-denied .muted {
+  margin: 0;
+}
+
+.access-denied-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.access-denied-route {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--muted-soft);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.5rem;
+}

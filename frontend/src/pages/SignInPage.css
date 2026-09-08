@@ -34,12 +34,56 @@
   margin-top: 0.25rem;
 }
 
-.signin-preview {
+/*
+ * Why the user is on this page, when they did not choose to be: an expired
+ * session or a completed sign-out. It is information, not a failure, so it
+ * stays off the danger palette that .form-error uses.
+ */
+.signin-notice {
+  margin: 0 0 1.25rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+/* ---------- Development accounts ---------- */
+
+.signin-accounts {
   margin-top: 1.25rem;
   padding-top: 1.25rem;
   border-top: 1px solid var(--line);
+  font-size: 0.85rem;
+}
+
+.signin-accounts summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.signin-accounts summary:hover {
+  color: var(--ink);
+}
+
+.signin-accounts p {
+  margin: 0.75rem 0 0.5rem;
+}
+
+.signin-accounts ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   display: grid;
-  gap: 0.75rem;
-  justify-items: start;
-  font-size: 0.9rem;
+  gap: 0.3rem;
+  color: var(--muted);
+}
+
+.signin-accounts code {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--ink);
 }

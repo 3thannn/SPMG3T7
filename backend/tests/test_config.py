@@ -1,4 +1,4 @@
-from app.config import cors_origins
+from app.config import cors_origins, seed_password, session_idle_minutes
 
 
 def test_defaults_to_local_frontend(monkeypatch):
@@ -9,3 +9,26 @@ def test_defaults_to_local_frontend(monkeypatch):
 def test_splits_and_trims_configured_origins(monkeypatch):
     monkeypatch.setenv("CORS_ORIGINS", "https://a.example.com, https://b.example.com ")
     assert cors_origins() == ["https://a.example.com", "https://b.example.com"]
+
+
+def test_session_idle_defaults_to_thirty_minutes(monkeypatch):
+    monkeypatch.delenv("SESSION_IDLE_MINUTES", raising=False)
+    assert session_idle_minutes() == 30
+
+
+def test_session_idle_is_configurable(monkeypatch):
+    monkeypatch.setenv("SESSION_IDLE_MINUTES", "15")
+    assert session_idle_minutes() == 15
+
+
+def test_a_nonsense_idle_window_falls_back_rather_than_never_expiring(monkeypatch):
+    for value in ("", "soon", "0", "-5"):
+        monkeypatch.setenv("SESSION_IDLE_MINUTES", value)
+        assert session_idle_minutes() == 30
+
+
+def test_seed_password_defaults_and_is_overridable(monkeypatch):
+    monkeypatch.delenv("SEED_PASSWORD", raising=False)
+    assert seed_password() == "Sprint1!demo"
+    monkeypatch.setenv("SEED_PASSWORD", "something-else")
+    assert seed_password() == "something-else"

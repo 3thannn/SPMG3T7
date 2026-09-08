@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import './SignInPage.css'
-import { AuthError, login, previewSession, type Session } from '../api'
+import { AuthError, login, type Session } from '../api'
 import { navigate } from '../router'
 
 type SignInPageProps = {
   onSignedIn: (session: Session) => void
+  /** Why the user is looking at this page — an expired session, a sign-out. */
+  notice?: string
 }
 
 type FieldErrors = {
@@ -28,23 +30,16 @@ function validate(email: string, password: string): FieldErrors {
   return errors
 }
 
-export default function SignInPage({ onSignedIn }: SignInPageProps) {
+export default function SignInPage({ onSignedIn, notice }: SignInPageProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState('')
-  const [offerPreview, setOfferPreview] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-
-  function completeSignIn(session: Session) {
-    onSignedIn(session)
-    navigate('/events')
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setFormError('')
-    setOfferPreview(false)
 
     const errors = validate(email, password)
     setFieldErrors(errors)
@@ -54,15 +49,23 @@ export default function SignInPage({ onSignedIn }: SignInPageProps) {
 
     setSubmitting(true)
     try {
-      completeSignIn(await login({ email, password }))
+      const session = await login({ email, password })
+      onSignedIn(session)
+      // US1.1: the server decides which view suits the role, not this page.
+      navigate(session.home)
     } catch (error) {
-      // Anything that is not an explicit rejection is a connectivity or server
-      // problem, and saying so is more useful than "login failed".
+      // A rejected credential and an unreachable server are different problems
+      // with different fixes, so they never share a message. Telling someone
+      // their password is wrong when the API is down sends them to reset a
+      // password that was fine.
       if (error instanceof AuthError) {
         setFormError(error.message)
+      } else if (error instanceof Error && error.name === 'TypeError') {
+        setFormError('Could not reach the server. Check that the API is running, then try again.')
       } else {
-        setFormError('Could not reach the server. The backend has no sign-in route yet.')
-        setOfferPreview(true)
+        setFormError(
+          error instanceof Error ? error.message : 'Something went wrong. Try again.',
+        )
       }
     } finally {
       setSubmitting(false)
@@ -76,6 +79,12 @@ export default function SignInPage({ onSignedIn }: SignInPageProps) {
           <h2>Sign in</h2>
           <p className="muted">Welcome back. Pick up where your events left off.</p>
         </div>
+
+        {notice && (
+          <p className="signin-notice" role="status">
+            {notice}
+          </p>
+        )}
 
         <form className="signin-form" onSubmit={handleSubmit} noValidate>
           {formError && (
@@ -129,20 +138,26 @@ export default function SignInPage({ onSignedIn }: SignInPageProps) {
           </button>
         </form>
 
-        {offerPreview && (
-          <div className="signin-preview">
+        {/*
+          Development accounts, listed because there is no way to create one yet
+          (US1.4) and the team needs to reach each role. This block goes when
+          accounts can be created — it must never ship to a real deployment.
+        */}
+        {import.meta.env.DEV && (
+          <details className="signin-accounts">
+            <summary>Development accounts</summary>
             <p className="muted">
-              Auth is not built yet. You can continue without it to work on the Sprint 1 event
-              screens.
+              One per role, both with the password <code>Sprint1!demo</code>.
             </p>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => completeSignIn(previewSession())}
-            >
-              Continue without signing in
-            </button>
-          </div>
+            <ul>
+              <li>
+                <code>organiser@spmg3t7.edu</code> — Organiser
+              </li>
+              <li>
+                <code>coordinator@spmg3t7.edu</code> — Coordinator
+              </li>
+            </ul>
+          </details>
         )}
       </div>
     </div>

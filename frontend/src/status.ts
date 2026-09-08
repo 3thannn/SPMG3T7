@@ -27,10 +27,16 @@ export type EventStatus = (typeof EVENT_STATUSES)[number]
  */
 export const SPRINT_1_REACHABLE: readonly EventStatus[] = ['Draft', 'Submitted']
 
-/** Roles that can see an event's status in Sprint 1 (US4.1). */
-export type Role = 'Organiser' | 'Coordinator' | 'Venue Staff' | 'Technical Support' | 'Attendee'
-
-export const SPRINT_1_STATUS_VIEWERS: readonly Role[] = ['Organiser', 'Coordinator']
+/**
+ * The roles the system knows about.
+ *
+ * Scoped to the two that have features: an Organiser proposes events, a
+ * Coordinator reviews them. Venue Staff, Technical Support and Attendee are
+ * part of the wider plan and are deliberately not modelled yet — the server
+ * agrees, and this type is what makes a stray role name a build error rather
+ * than a runtime surprise.
+ */
+export type Role = 'Organiser' | 'Coordinator'
 
 /**
  * US4.1: status is visible to the Organiser who owns the event, and to any
@@ -43,10 +49,10 @@ export function canViewStatus(
   viewerId: string,
   event: { organiserId: string },
 ): boolean {
-  if (role === 'Organiser') return event.organiserId === viewerId
   if (role === 'Coordinator') return true
-  // Venue Staff, Technical Support and Attendee are explicitly out of scope for
-  // Sprint 1 and gain visibility with their own features.
+  if (role === 'Organiser') return event.organiserId === viewerId
+  // Unreachable for the roles above, and deliberately the safe answer for any
+  // role added later that has not been considered here.
   return false
 }
 

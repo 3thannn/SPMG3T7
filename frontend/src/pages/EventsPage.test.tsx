@@ -2,23 +2,16 @@ import { render, screen } from '@testing-library/react'
 import { beforeEach, expect, it } from 'vitest'
 import EventsPage from './EventsPage'
 import { __resetStore, createEvent } from '../eventsStore'
-import type { Session } from '../api'
+import { buildSession } from '../test/sessions'
 
-const organiser: Session = {
-  token: 't',
-  email: 'dylan@example.edu',
-  id: 'user_1',
-  name: 'Dylan',
-  role: 'Organiser',
-}
+const organiser = buildSession({ role: 'Organiser', id: 'user_1', name: 'Dylan' })
 
-const coordinator: Session = {
-  token: 't',
-  email: 'ethan@example.edu',
+const coordinator = buildSession({
+  role: 'Coordinator',
   id: 'user_9',
   name: 'Ethan',
-  role: 'Coordinator',
-}
+  email: 'ethan@example.edu',
+})
 
 const draft = { title: 'Mine', description: '', startsAt: '', location: 'Hall' }
 

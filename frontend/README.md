@@ -37,7 +37,42 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 Without the backend running, the page loads and reports **Backend unreachable** —
-that is expected, not a build failure.
+that is expected, not a build failure. Signing in, though, needs the API: there
+is no way past the form without it, by design.
+
+## Signing in
+
+Use one of the seeded development accounts — the sign-in form lists them in dev
+builds, and [the backend README](../backend/README.md#development-accounts) has
+the table. Both share the password `Sprint1!demo`.
+
+Where you land is the server's decision, sent on the session rather than decided
+here:
+
+| Role        | Lands on  | Can reach                       |
+| ----------- | --------- | ------------------------------- |
+| Organiser   | `/events` | the events list, create, detail |
+| Coordinator | `/events` | the events list and detail      |
+
+The boundary between the two is creating an event: an Organiser proposes, a
+Coordinator reviews. Open `#/events/new` while signed in as a Coordinator and
+you get an access-denied page naming the role and who the page is for, rather
+than a form that fails on submit.
+
+### How it fits together
+
+- [`api.ts`](src/api.ts) — the calls, and the error types that keep a wrong
+  password, a lapsed session and a blocked role distinct from one another
+- [`session.ts`](src/session.ts) — the stored session, which is checked with the
+  server on every load rather than trusted
+- [`permissions.ts`](src/permissions.ts) — which route needs which permission,
+  and how to explain a refusal
+- [`useIdleSignOut.ts`](src/useIdleSignOut.ts) — signs out after the same idle
+  window the server uses, which the server sends on the session
+
+The route guard and the hidden nav links are conveniences: they keep people out
+of dead ends. The API refuses the request regardless, and that refusal is what
+actually enforces the rule — anything the client checks, a user can edit.
 
 ## Available scripts
 
