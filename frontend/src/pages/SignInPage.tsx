@@ -137,28 +137,6 @@ export default function SignInPage({ onSignedIn, notice }: SignInPageProps) {
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-
-        {/*
-          Development accounts, listed because there is no way to create one yet
-          (US1.4) and the team needs to reach each role. This block goes when
-          accounts can be created — it must never ship to a real deployment.
-        */}
-        {import.meta.env.DEV && (
-          <details className="signin-accounts">
-            <summary>Development accounts</summary>
-            <p className="muted">
-              One per role, both with the password <code>Sprint1!demo</code>.
-            </p>
-            <ul>
-              <li>
-                <code>organiser@spmg3t7.edu</code> — Organiser
-              </li>
-              <li>
-                <code>coordinator@spmg3t7.edu</code> — Coordinator
-              </li>
-            </ul>
-          </details>
-        )}
       </div>
     </div>
   )
