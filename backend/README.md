@@ -72,6 +72,12 @@ There are no migrations to run. This project uses the schema exactly as it is â€
 of its own. If a schema change ever becomes necessary, that is a conversation
 with whoever owns the schema, not something the backend does on startup.
 
+For a new project, run [`SUPABASE_SETUP.sql`](SUPABASE_SETUP.sql) once. For the
+already-created project, run [`SUPABASE_HARDENING.sql`](SUPABASE_HARDENING.sql)
+once in the Supabase SQL Editor. It adds the missing audit foreign-key index,
+locks the timestamp trigger's search path, and makes the server-only Data API
+access model explicit; it does not alter existing rows or table shapes.
+
 Seeding is a command you run deliberately, not something that happens on
 startup, so nobody creates development credentials in a deployed environment by
 accident. It is idempotent: running it again after changing `SEED_PASSWORD`
