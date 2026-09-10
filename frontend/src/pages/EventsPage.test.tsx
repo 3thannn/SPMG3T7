@@ -38,8 +38,10 @@ function buildEvent(overrides: Partial<EventRecord> = {}): EventRecord {
   return {
     id: '101',
     title: 'Mine',
+    purpose: '',
     description: '',
     startsAt: '2026-11-02T18:00',
+    expectedAttendance: null,
     status: 'Draft',
     organiserId: '1',
     organiserName: 'Dylan',

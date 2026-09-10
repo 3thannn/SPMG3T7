@@ -31,8 +31,8 @@ CHANGES_TABLE = "status_changes"
 
 # `users(name)` resolves through the one foreign key each table has to users.
 EVENT_COLUMNS = (
-    "id, name, description, proposed_date, status, organiser_id, "
-    "created_at, updated_at, submitted_at, users(name)"
+    "id, name, purpose, description, proposed_date, expected_attendance, status, "
+    "organiser_id, created_at, updated_at, submitted_at, users(name)"
 )
 CHANGE_COLUMNS = (
     "id, old_status, new_status, changed_at, notes, changed_by_id, users(name)"
@@ -54,8 +54,12 @@ class StatusChange:
 class Event:
     id: int
     title: str
+    purpose: str
     description: str
     starts_at: str
+    #: `events.expected_attendance` is nullable, so "not estimated yet" is a
+    #: real answer and distinct from an estimate of zero.
+    expected_attendance: int | None
     status: EventStatus
     organiser_id: int
     organiser_name: str
@@ -102,8 +106,10 @@ def to_event(row: dict, changes: list[dict] | None = None) -> Event:
     event = Event(
         id=row["id"],
         title=row["name"],
+        purpose=row.get("purpose") or "",
         description=row.get("description") or "",
         starts_at=str(row["proposed_date"]) if row.get("proposed_date") else "",
+        expected_attendance=row.get("expected_attendance"),
         status=EventStatus(row["status"]),
         organiser_id=row["organiser_id"],
         organiser_name=_embedded_name(row),
@@ -123,11 +129,25 @@ class Repository(Protocol):
     def get_event(self, event_id: int) -> Event | None: ...
 
     def create_event(
-        self, *, title: str, description: str, starts_at: str, organiser_id: int
+        self,
+        *,
+        title: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        expected_attendance: int | None,
+        organiser_id: int,
     ) -> Event: ...
 
     def save_event(
-        self, event_id: int, *, title: str, description: str, starts_at: str
+        self,
+        event_id: int,
+        *,
+        title: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        expected_attendance: int | None,
     ) -> Event: ...
 
     def submit_event(
@@ -177,7 +197,14 @@ class SupabaseEvents:
         return to_event(response.data[0], self._changes_for([event_id]).get(event_id))
 
     def create_event(
-        self, *, title: str, description: str, starts_at: str, organiser_id: int
+        self,
+        *,
+        title: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        expected_attendance: int | None,
+        organiser_id: int,
     ) -> Event:
         """US4.2: a new event always begins as a Draft."""
         at = _now()
@@ -187,8 +214,10 @@ class SupabaseEvents:
             .insert(
                 {
                     "name": title,
+                    "purpose": purpose or None,
                     "description": description,
                     "proposed_date": starts_at,
+                    "expected_attendance": expected_attendance,
                     "status": str(EventStatus.DRAFT),
                     "organiser_id": organiser_id,
                     "created_at": at,
@@ -204,14 +233,23 @@ class SupabaseEvents:
         return event
 
     def save_event(
-        self, event_id: int, *, title: str, description: str, starts_at: str
+        self,
+        event_id: int,
+        *,
+        title: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        expected_attendance: int | None,
     ) -> Event:
         """US4.2: saving edits content and never moves the status."""
         supabase_client.admin().table(EVENTS_TABLE).update(
             {
                 "name": title,
+                "purpose": purpose or None,
                 "description": description,
                 "proposed_date": starts_at,
+                "expected_attendance": expected_attendance,
                 "updated_at": _now(),
             }
         ).eq("id", event_id).execute()
@@ -266,15 +304,24 @@ class InMemoryEvents:
         return next((event for event in self.events if event.id == event_id), None)
 
     def create_event(
-        self, *, title: str, description: str, starts_at: str, organiser_id: int
+        self,
+        *,
+        title: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        expected_attendance: int | None,
+        organiser_id: int,
     ) -> Event:
         at = _now()
         self.next_id += 1
         event = Event(
             id=self.next_id,
             title=title,
+            purpose=purpose,
             description=description,
             starts_at=starts_at,
+            expected_attendance=expected_attendance,
             status=EventStatus.DRAFT,
             organiser_id=organiser_id,
             organiser_name=self.names.get(organiser_id, ""),
@@ -286,7 +333,14 @@ class InMemoryEvents:
         return event
 
     def save_event(
-        self, event_id: int, *, title: str, description: str, starts_at: str
+        self,
+        event_id: int,
+        *,
+        title: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        expected_attendance: int | None,
     ) -> Event:
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 — the caller checked it exists
@@ -294,8 +348,10 @@ class InMemoryEvents:
             replace(
                 existing,
                 title=title,
+                purpose=purpose,
                 description=description,
                 starts_at=starts_at,
+                expected_attendance=expected_attendance,
                 updated_at=_now(),
             )
         )

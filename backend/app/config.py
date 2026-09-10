@@ -17,7 +17,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 DEFAULT_SESSION_IDLE_MINUTES = 30
-DEFAULT_SEED_PASSWORD = "Sprint1!demo"
 
 #: backend/.env — one level up from this package.
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
@@ -64,16 +63,6 @@ def session_idle_minutes() -> int:
     except ValueError:
         return DEFAULT_SESSION_IDLE_MINUTES
     return minutes if minutes > 0 else DEFAULT_SESSION_IDLE_MINUTES
-
-
-def seed_password() -> str:
-    """Shared password for the seeded development accounts.
-
-    Set SEED_PASSWORD to override. These accounts exist so the team can sign in
-    as each role while there is no way to create one; they are not a production
-    credential store.
-    """
-    return os.getenv("SEED_PASSWORD") or DEFAULT_SEED_PASSWORD
 
 
 def supabase_url() -> str:

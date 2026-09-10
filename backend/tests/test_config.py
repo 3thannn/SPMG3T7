@@ -1,4 +1,4 @@
-from app.config import cors_origins, seed_password, session_idle_minutes
+from app.config import cors_origins, session_idle_minutes
 
 
 def test_defaults_to_local_frontend(monkeypatch):
@@ -25,10 +25,3 @@ def test_a_nonsense_idle_window_falls_back_rather_than_never_expiring(monkeypatc
     for value in ("", "soon", "0", "-5"):
         monkeypatch.setenv("SESSION_IDLE_MINUTES", value)
         assert session_idle_minutes() == 30
-
-
-def test_seed_password_defaults_and_is_overridable(monkeypatch):
-    monkeypatch.delenv("SEED_PASSWORD", raising=False)
-    assert seed_password() == "Sprint1!demo"
-    monkeypatch.setenv("SEED_PASSWORD", "something-else")
-    assert seed_password() == "something-else"

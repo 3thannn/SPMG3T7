@@ -16,7 +16,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-/** What POST /auth/login answers with for the seeded Organiser. */
+/** What POST /auth/login answers with for the development Organiser. */
 const SESSION_BODY = {
   token: 'test-token',
   id: 'user_organiser',

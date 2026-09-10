@@ -8,7 +8,13 @@ not against a disabled button.
 
 from tests.conftest import COORDINATOR_ID, ORGANISER_ID
 
-DRAFT = {"title": "Faculty Welcome Night", "startsAt": "2026-11-02T18:00", "description": "Talks."}
+DRAFT = {
+    "title": "Faculty Welcome Night",
+    "purpose": "Welcome the new intake.",
+    "startsAt": "2026-11-02T18:00",
+    "description": "Talks.",
+    "expectedAttendance": 120,
+}
 
 
 def create(client, headers, **overrides) -> dict:
@@ -60,6 +66,66 @@ class TestCreating:
         assert response.status_code == 400
         assert response.json()["detail"]["message"] == "Give the event a date."
 
+    def test_it_keeps_every_writable_column_of_the_events_table(
+        self, client, auth_headers
+    ):
+        event = create(client, auth_headers("Event Organiser"))
+
+        assert event["purpose"] == "Welcome the new intake."
+        assert event["description"] == "Talks."
+        assert event["startsAt"] == "2026-11-02T18:00"
+        assert event["expectedAttendance"] == 120
+
+    def test_the_nullable_columns_may_be_left_out(self, client, auth_headers):
+        """`purpose` and `expected_attendance` are nullable, so blank is a value."""
+        response = client.post(
+            "/events",
+            json={"title": "Quiet one", "startsAt": "2026-11-02T18:00"},
+            headers=auth_headers(),
+        )
+
+        assert response.status_code == 201, response.text
+        event = response.json()
+        assert event["purpose"] == ""
+        assert event["description"] == ""
+        assert event["expectedAttendance"] is None
+
+    def test_no_attendance_is_not_the_same_as_an_attendance_of_zero(
+        self, client, auth_headers
+    ):
+        """The column distinguishes "not estimated yet" from "nobody is coming"."""
+        blank = create(client, auth_headers(), expectedAttendance=None)
+        none_expected = create(client, auth_headers(), expectedAttendance=0)
+
+        assert blank["expectedAttendance"] is None
+        assert none_expected["expectedAttendance"] == 0
+
+    def test_attendance_cannot_be_negative(self, client, auth_headers):
+        response = client.post(
+            "/events", json={**DRAFT, "expectedAttendance": -1}, headers=auth_headers()
+        )
+
+        assert response.status_code == 400
+        assert "negative" in response.json()["detail"]["message"]
+
+    def test_a_title_longer_than_the_column_is_refused(self, client, auth_headers):
+        """events.name is VARCHAR(255); saying so beats a database error."""
+        response = client.post(
+            "/events", json={**DRAFT, "title": "x" * 256}, headers=auth_headers()
+        )
+
+        assert response.status_code == 400
+        assert "255 characters" in response.json()["detail"]["message"]
+
+    def test_a_purpose_longer_than_the_column_is_refused(self, client, auth_headers):
+        """events.purpose is VARCHAR(500)."""
+        response = client.post(
+            "/events", json={**DRAFT, "purpose": "x" * 501}, headers=auth_headers()
+        )
+
+        assert response.status_code == 400
+        assert "500 characters" in response.json()["detail"]["message"]
+
     def test_signing_in_is_required(self, client):
         assert client.post("/events", json=DRAFT).status_code == 401
 
@@ -78,7 +144,7 @@ class TestVisibility:
         self, client, auth_headers, event_repository
     ):
         create(client, auth_headers("Event Organiser"))
-        # Reassign it, standing in for a second Organiser the seed does not have.
+        # Reassign it, standing in for a second Organiser the fixtures do not have.
         event_repository.events = [
             event.__class__(**{**event.__dict__, "organiser_id": 999})
             for event in event_repository.events

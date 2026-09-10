@@ -38,7 +38,6 @@ Then connect it to Supabase, which is where accounts and events live:
 
 ```bash
 cp .env.example .env      # then fill in the values from your Supabase project
-python -m app.seed        # writes the development accounts
 ```
 
 The keys go in `backend/.env`, which is gitignored. Only the backend holds them
@@ -80,7 +79,7 @@ Open <http://localhost:5173>. The page reports **Backend connected** when it can
 reach `/health`, and **Backend unreachable** when it cannot — the latter is the
 expected state if you skipped terminal 1, not a build failure.
 
-Sign in with one of the seeded development accounts, both with the password
+Sign in with one of the development accounts, both with the password
 `Sprint1!demo`:
 
 | Email                     | Role              | Can do                                |
@@ -92,8 +91,10 @@ The role names come from the `user_role` enum in the database, which is why they
 read as `Event Organiser` rather than `Organiser`.
 
 These are development credentials, not secrets, and they must not survive into a
-deployed environment. They exist only once you have run `python -m app.seed`.
-Signing in needs the API running — there is no way past the form without it.
+deployed environment. Nothing in the app creates an account, so they exist only
+once someone has made them by hand in the Supabase dashboard — [the backend
+README](backend/README.md#development-accounts) says how. Signing in needs the
+API running — there is no way past the form without it.
 
 ## Run the checks
 
@@ -116,7 +117,6 @@ configuration. Change one and you must change the other.
 | `VITE_API_BASE_URL`         | frontend | `http://localhost:8000` | Base URL of the backend API                |
 | `CORS_ORIGINS`              | backend  | `http://localhost:5173` | Comma-separated origins allowed to call it |
 | `SESSION_IDLE_MINUTES`      | backend  | `30`                    | Inactivity after which a session expires   |
-| `SEED_PASSWORD`             | backend  | `Sprint1!demo`          | Password for the seeded development accounts |
 | `SUPABASE_URL`              | backend  | *required*              | Supabase project URL                       |
 | `SUPABASE_ANON_KEY`         | backend  | *required*              | Anon key, subject to Row Level Security    |
 | `SUPABASE_SERVICE_ROLE_KEY` | backend  | *required*              | Service role key — full admin, backend only |
@@ -162,7 +162,6 @@ backend/
     events.py          /events routes — US4.1 and US4.2
     event_store.py     event data access, over events and status_changes
     event_status.py    the status label set and the submit rule
-    seed.py            writes the development accounts
   tests/               one file per story, plus unit tests for each module
   pyproject.toml       ruff and pytest configuration
   requirements.txt     runtime dependencies
