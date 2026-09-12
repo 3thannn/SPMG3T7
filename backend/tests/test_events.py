@@ -161,6 +161,28 @@ class TestVisibility:
 
         assert [event["title"] for event in listed] == ["Faculty Welcome Night"]
 
+    # --- Added for SPMG3T7-33 (US5.1) ---
+    def test_a_coordinator_can_open_any_event_and_see_every_field(self, client, auth_headers):
+        """US5.1: a Coordinator opens an event that is not theirs and reads it whole."""
+        event = create(client, auth_headers("Event Organiser"))
+        client.post(f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser"))
+
+        fetched = client.get(
+            f"/events/{event['id']}", headers=auth_headers("Event Coordinator")
+        )
+
+        assert fetched.status_code == 200
+        body = fetched.json()
+        assert body["title"] == "Faculty Welcome Night"
+        assert body["purpose"] == "Welcome the new intake."
+        assert body["description"] == "Talks."
+        assert body["startsAt"] == "2026-11-02T18:00"
+        assert body["expectedAttendance"] == 120
+        assert body["status"] == "Submitted"
+        assert body["organiserId"] == str(ORGANISER_ID)
+        assert body["organiserName"] == "Dylan"
+        assert len(body["history"]) == 2
+
     def test_an_event_that_is_not_yours_reads_as_missing_not_forbidden(
         self, client, auth_headers, event_repository
     ):
