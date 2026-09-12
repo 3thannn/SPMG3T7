@@ -4,7 +4,9 @@ import StatusBadge from '../components/StatusBadge'
 import StatusTimeline from '../components/StatusTimeline'
 import {
   EventRuleError,
+  attendanceField,
   getEvent,
+  parseAttendance,
   saveEvent,
   submitEvent,
   type EventRecord,
@@ -26,7 +28,13 @@ type PageState = Loading | Loaded | Missing | Forbidden
 
 export default function EventDetailPage({ eventId, session }: EventDetailPageProps) {
   const [page, setPage] = useState<PageState>({ state: 'loading' })
-  const [draft, setDraft] = useState({ title: '', description: '', startsAt: '' })
+  const [draft, setDraft] = useState({
+    title: '',
+    purpose: '',
+    description: '',
+    startsAt: '',
+    expectedAttendance: '',
+  })
   const [banner, setBanner] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -47,8 +55,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
       setPage({ state: 'loaded', event })
       setDraft({
         title: event.title,
+        purpose: event.purpose,
         description: event.description,
         startsAt: event.startsAt,
+        expectedAttendance: attendanceField(event.expectedAttendance),
       })
     })
     return () => {
@@ -103,19 +113,45 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const editable = isOwner && event.status === 'Draft'
   const dirty =
     draft.title !== event.title ||
+    draft.purpose !== event.purpose ||
     draft.description !== event.description ||
-    draft.startsAt !== event.startsAt
+    draft.startsAt !== event.startsAt ||
+    draft.expectedAttendance !== attendanceField(event.expectedAttendance)
 
   async function handleSave() {
+    if (!draft.title.trim()) {
+      setBanner({ kind: 'error', text: 'Give the event a title.' })
+      return
+    }
     if (!draft.startsAt.trim()) {
       setBanner({ kind: 'error', text: 'Give the event a date.' })
+      return
+    }
+    const attendance = parseAttendance(draft.expectedAttendance)
+    if (attendance === 'invalid') {
+      setBanner({
+        kind: 'error',
+        text: 'Enter a whole number for expected attendance, or leave it blank.',
+      })
       return
     }
     setBusy(true)
     setBanner(null)
     try {
-      // US4.2: a save edits content and leaves a Draft as a Draft.
-      const updated = await saveEvent(event.id, draft, session)
+      // US4.2: a save edits content and leaves a Draft as a Draft. Every
+      // writable column goes with it, so a field left alone is written back
+      // unchanged rather than being cleared by its absence.
+      const updated = await saveEvent(
+        event.id,
+        {
+          title: draft.title.trim(),
+          purpose: draft.purpose.trim(),
+          description: draft.description.trim(),
+          startsAt: draft.startsAt.trim(),
+          expectedAttendance: attendance,
+        },
+        session,
+      )
       setPage({ state: 'loaded', event: updated })
       setBanner({ kind: 'ok', text: `Saved. Status is still ${updated.status}.` })
     } catch (error) {
@@ -205,6 +241,34 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                   />
                 </div>
                 <div className="field">
+                  <label htmlFor="purpose">Purpose</label>
+                  <input
+                    id="purpose"
+                    maxLength={500}
+                    value={draft.purpose}
+                    onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
+                    disabled={busy}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="expectedAttendance">Expected attendance</label>
+                  <input
+                    id="expectedAttendance"
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    value={draft.expectedAttendance}
+                    onChange={(e) =>
+                      setDraft({ ...draft, expectedAttendance: e.target.value })
+                    }
+                    disabled={busy}
+                  />
+                  <span className="field-hint">
+                    Optional. Leave blank if you do not have an estimate yet.
+                  </span>
+                </div>
+                <div className="field">
                   <label htmlFor="description">Description</label>
                   <textarea
                     id="description"
@@ -218,6 +282,14 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               <dl className="detail-readonly">
                 <dt>Starts</dt>
                 <dd>{event.startsAt ? formatTimestamp(event.startsAt) : 'Not set'}</dd>
+                <dt>Purpose</dt>
+                <dd>{event.purpose || 'Not stated.'}</dd>
+                <dt>Expected attendance</dt>
+                <dd>
+                  {event.expectedAttendance === null
+                    ? 'Not estimated.'
+                    : `${event.expectedAttendance} people`}
+                </dd>
                 <dt>Description</dt>
                 <dd>{event.description || 'No description.'}</dd>
               </dl>

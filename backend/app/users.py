@@ -150,7 +150,7 @@ class SupabaseUsers:
 
 @dataclass
 class InMemoryUsers:
-    """A stand-in for tests, holding the same accounts the seed script writes.
+    """A stand-in for tests, holding accounts the suite defines itself.
 
     `passwords` plays the part of Supabase Auth: the credential lives beside the
     directory rather than in it, the same split the real store has.

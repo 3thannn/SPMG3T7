@@ -1,7 +1,7 @@
 /**
  * Session builders for tests.
  *
- * These mirror what the API issues for each seeded account, so a test that
+ * These mirror what the API issues for each development account, so a test that
  * renders a signed-in page gets the same permission set the real server would
  * send. Keeping them in one place means a change to the catalogue shows up as a
  * failing test rather than as five stale copies that quietly disagree.

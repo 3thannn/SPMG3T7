@@ -19,9 +19,16 @@ import type { EventStatus, StatusChange } from './status'
 export type EventRecord = {
   id: string
   title: string
+  /** `events.purpose`, nullable in the database — empty string when unset. */
+  purpose: string
   description: string
   /** ISO-8601. Required: `events.proposed_date` is NOT NULL in the database. */
   startsAt: string
+  /**
+   * `events.expected_attendance`, nullable. null means nobody has estimated
+   * yet, which the column keeps distinct from an estimate of zero.
+   */
+  expectedAttendance: number | null
   status: EventStatus
   organiserId: string
   organiserName: string
@@ -32,8 +39,27 @@ export type EventRecord = {
 
 export type EventDraft = {
   title: string
+  purpose: string
   description: string
   startsAt: string
+  expectedAttendance: number | null
+}
+
+/**
+ * Read an attendance field: the number the database will hold, or null for
+ * "not estimated yet". The column is nullable, so an empty field means unknown
+ * rather than nobody, and 'invalid' is anything that is not a whole number.
+ */
+export function parseAttendance(raw: string): number | null | 'invalid' {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  if (!/^\d+$/.test(trimmed)) return 'invalid'
+  return Number(trimmed)
+}
+
+/** An attendance value as the form shows it — null becomes an empty field. */
+export function attendanceField(value: number | null): string {
+  return value === null ? '' : String(value)
 }
 
 /** Raised when a write is refused by a business rule, e.g. a second submit. */

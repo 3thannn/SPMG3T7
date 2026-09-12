@@ -42,7 +42,7 @@ is no way past the form without it, by design.
 
 ## Signing in
 
-Use one of the seeded development accounts — [the backend
+Use one of the development accounts — [the backend
 README](../backend/README.md#development-accounts) has the table. Both share the
 password `Sprint1!demo`.
 

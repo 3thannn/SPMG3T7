@@ -28,8 +28,10 @@ const session = buildSession({ token: 'session-token', id: '1', name: 'Dylan' })
 const EVENT = {
   id: '101',
   title: 'Faculty Welcome Night',
+  purpose: 'Welcome the new intake.',
   description: 'Talks.',
   startsAt: '2026-11-02T18:00',
+  expectedAttendance: 120,
   status: 'Draft',
   organiserId: '1',
   organiserName: 'Dylan',
@@ -40,7 +42,13 @@ const EVENT = {
   ],
 }
 
-const DRAFT = { title: 'Faculty Welcome Night', description: 'Talks.', startsAt: '2026-11-02T18:00' }
+const DRAFT = {
+  title: 'Faculty Welcome Night',
+  purpose: 'Welcome the new intake.',
+  description: 'Talks.',
+  startsAt: '2026-11-02T18:00',
+  expectedAttendance: 120,
+}
 
 function ok(body: unknown, status = 200) {
   return { ok: true, status, json: async () => body }

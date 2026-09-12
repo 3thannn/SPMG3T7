@@ -61,12 +61,6 @@ Security policies, say. If you do set it, use the **Session pooler** string
 rather than the direct connection, which is IPv6-only and fails on most home
 networks.
 
-Then seed the development accounts:
-
-```bash
-python -m app.seed
-```
-
 There are no migrations to run. This project uses the schema exactly as it is —
 `users`, `events`, `status_changes`, `venues`, `equipment` — and adds no columns
 of its own. If a schema change ever becomes necessary, that is a conversation
@@ -77,11 +71,6 @@ already-created project, run [`SUPABASE_HARDENING.sql`](SUPABASE_HARDENING.sql)
 once in the Supabase SQL Editor. It adds the missing audit foreign-key index,
 locks the timestamp trigger's search path, and makes the server-only Data API
 access model explicit; it does not alter existing rows or table shapes.
-
-Seeding is a command you run deliberately, not something that happens on
-startup, so nobody creates development credentials in a deployed environment by
-accident. It is idempotent: running it again after changing `SEED_PASSWORD`
-resets the password rather than duplicating the accounts.
 
 ## Run the API
 
@@ -193,9 +182,12 @@ apart rather than showing "login failed" for all four:
 
 ### Development accounts
 
-There is no way to create an account yet, so `python -m app.seed` writes one
-account per role — an Auth account holding the password, and a `users` row
-holding the name and role — both sharing the password `Sprint1!demo`:
+There is no way to create an account from the app yet, so development accounts
+are made by hand in the Supabase dashboard. Each one needs two records, because
+two systems own different halves of a person: an Auth account holding the
+password (Authentication → Users → Add user, with **Auto Confirm User** on, or
+it cannot sign in), and a `public.users` row holding the name and role. They are
+joined on email, so both must use the same address. One account per role:
 
 | Email                     | Role              |
 | ------------------------- | ----------------- |
@@ -203,8 +195,8 @@ holding the name and role — both sharing the password `Sprint1!demo`:
 | `coordinator@spmg3t7.edu` | Event Coordinator |
 
 These are development credentials, not secrets, and they must not survive into a
-deployed environment. Set `SEED_PASSWORD` to change the shared password; drop
-the seeding entirely once accounts can be created.
+deployed environment. Creating them by hand is deliberate: nothing in the app
+writes an account, so none can appear in a deployed environment by accident.
 
 The role names are the values of the `user_role` enum in the database, which is
 why they read as `Event Organiser` rather than `Organiser`. Postgres rejects
@@ -276,7 +268,6 @@ deployed environment keep control of their own configuration.
 | `SUPABASE_DB_URL`           | unset                   | Postgres connection string; optional, unused by the API  |
 | `CORS_ORIGINS`              | `http://localhost:5173` | Comma-separated list of origins allowed to call the API |
 | `SESSION_IDLE_MINUTES`      | `30`                    | Inactivity after which a session expires (US1.1)        |
-| `SEED_PASSWORD`             | `Sprint1!demo`          | Shared password for the seeded development accounts     |
 
 The three required values have no defaults on purpose. A plausible-looking
 default would let the API start and then fail on the first query; a missing one
@@ -317,7 +308,6 @@ app/
   events.py         /events routes — US4.1 and US4.2
   event_store.py    event data access, over the events and status_changes tables
   event_status.py   the status label set and the submit rule
-  seed.py           writes the development accounts (python -m app.seed)
 tests/
   conftest.py                 shared client and sign-in fixtures
   test_health.py
