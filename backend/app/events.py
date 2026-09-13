@@ -219,28 +219,68 @@ def create_event(
 
 @router.put("/{event_id}", response_model=EventOut)
 def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
-    """US4.2: saving edits content and never moves the status.
+    """US4.2 & US5.2: saving edits content and never moves the status.
 
-    No history entry is written, because a save is not a status change.
+    Owner (organiser) can save Draft events without logging changes.
+    Coordinator can edit Submitted (or later) events with change tracking.
     """
     event = _readable(_as_id(event_id), user)
-    if event.organiser_id != user.id:
+    is_owner = event.organiser_id == user.id
+    is_coordinator = has_permission(user.role, Permission.EVENTS_EDIT)
+
+    # Coordinators can only edit submitted events (not drafts)
+    # Owners can only edit their own draft events
+    if is_coordinator and event.status == EventStatus.DRAFT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "code": ErrorCode.FORBIDDEN,
-                "message": "Only the Organiser who owns this event can edit it.",
+                "message": "Coordinators can only edit submitted events. Draft events can only be edited by their owner.",
             },
         )
+
+    if not is_owner and not is_coordinator:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": ErrorCode.FORBIDDEN,
+                "message": "Only the Organiser who owns this event or a Coordinator can edit it.",
+            },
+        )
+
+    if is_owner and event.status != EventStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": ErrorCode.FORBIDDEN,
+                "message": "Organisers can only edit their own Draft events.",
+            },
+        )
+
     clean = _validated(draft)
-    saved = event_store.repository().save_event(
-        event.id,
-        title=clean.title,
-        purpose=clean.purpose,
-        description=clean.description,
-        starts_at=clean.starts_at,
-        expected_attendance=clean.expected_attendance,
-    )
+
+    # If coordinator is editing (not the owner), use change tracking
+    if is_coordinator and not is_owner:
+        saved = event_store.repository().save_event_with_tracking(
+            event.id,
+            title=clean.title,
+            purpose=clean.purpose,
+            description=clean.description,
+            starts_at=clean.starts_at,
+            expected_attendance=clean.expected_attendance,
+            editor_id=user.id,
+            previous_event=event,
+        )
+    else:
+        # Owner editing: no change tracking (original US4.2 behavior)
+        saved = event_store.repository().save_event(
+            event.id,
+            title=clean.title,
+            purpose=clean.purpose,
+            description=clean.description,
+            starts_at=clean.starts_at,
+            expected_attendance=clean.expected_attendance,
+        )
     return _to_out(saved)
 
 
