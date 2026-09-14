@@ -28,9 +28,16 @@ describe('US4.1 — who can see a status', () => {
     expect(canViewStatus('Event Organiser', 'user_2', owned)).toBe(false)
   })
 
-  it('shows any Coordinator every event, per the Sprint 1 scope', () => {
-    expect(canViewStatus('Event Coordinator', 'anyone', owned)).toBe(true)
+  it('hides Draft events from Coordinators', () => {
+    expect(canViewStatus('Event Coordinator', 'anyone', owned)).toBe(false)
   })
+
+  it.each(['Submitted', 'Under Review', 'Approved'] as EventStatus[])(
+    'shows a Coordinator an event after submission when it is %s',
+    (status) => {
+      expect(canViewStatus('Event Coordinator', 'anyone', { ...owned, status })).toBe(true)
+    },
+  )
 })
 
 describe('US4.2 — submitting exactly once', () => {

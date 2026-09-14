@@ -39,17 +39,16 @@ export const SPRINT_1_REACHABLE: readonly EventStatus[] = ['Draft', 'Submitted']
 export type Role = 'Event Organiser' | 'Event Coordinator'
 
 /**
- * US4.1: status is visible to the Organiser who owns the event, and to any
- * Event Coordinator. Sprint 2 narrows the Coordinator arm to only the assigned
- * Coordinator once Coordinator Assignment exists — that is the single line that
- * will need to change.
+ * US4.1: status is visible to the Organiser who owns the event. Coordinators
+ * can see an event only after its Organiser submits it; later workflow statuses
+ * remain visible because they still represent a submitted request.
  */
 export function canViewStatus(
   role: Role,
   viewerId: string,
-  event: { organiserId: string },
+  event: { organiserId: string; status: EventStatus },
 ): boolean {
-  if (role === 'Event Coordinator') return true
+  if (role === 'Event Coordinator') return event.status !== 'Draft'
   if (role === 'Event Organiser') return event.organiserId === viewerId
   // Unreachable for the roles above, and deliberately the safe answer for any
   // role added later that has not been considered here.

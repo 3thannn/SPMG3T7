@@ -146,7 +146,7 @@ def require_any_permission(*permissions: Permission):
     """Guard a route that more than one permission can open.
 
     The events list is the case: an Organiser reaches it through
-    events:read:own and a Coordinator through events:read:all. Holding either
+    events:read:own and a Coordinator through events:read:submitted. Holding either
     is enough, and the denial names both rather than pretending one of them is
     the requirement.
     """

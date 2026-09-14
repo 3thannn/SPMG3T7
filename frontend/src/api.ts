@@ -17,7 +17,7 @@ export type Credentials = { email: string; password: string }
 export type Permission =
   | 'events:create'
   | 'events:read:own'
-  | 'events:read:all'
+  | 'events:read:submitted'
   | 'events:submit'
   | 'events:review'
   | 'users:read'

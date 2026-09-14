@@ -60,6 +60,8 @@ def test_the_session_carries_the_permissions_the_role_holds(sign_in):
 
     assert "events:create" in organiser
     assert "events:review" not in organiser
+    assert "events:read:submitted" in coordinator
+    assert "events:read:all" not in coordinator
     assert "events:review" in coordinator
     assert "events:create" not in coordinator
 
