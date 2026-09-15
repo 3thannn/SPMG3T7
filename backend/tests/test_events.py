@@ -484,7 +484,7 @@ class TestCoordinatorEditing:
         assert response.status_code == 404
         detail = response.json()["detail"]
         assert detail["code"] == "event_not_found"
-        assert "only edit submitted events" in detail["message"].lower()
+        assert detail["message"] == "That event no longer exists."
 
     def test_coordinator_can_edit_submitted_event(self, client, auth_headers):
         """Coordinators can edit events in Submitted status."""
