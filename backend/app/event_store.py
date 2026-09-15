@@ -621,9 +621,6 @@ class InMemoryEvents:
         self.events.insert(0, event)
         return event
 
-            expected_attendance=expected_attendance,
-        )
-
     def submit_event(
         self, event_id: int, *, actor_id: int, from_status: EventStatus
     ) -> Event:
