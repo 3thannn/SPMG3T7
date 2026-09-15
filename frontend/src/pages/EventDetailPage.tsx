@@ -330,7 +330,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
             {!isOwner && !canEdit && (
               <p className="detail-note">
-                You are viewing this as {session.role}. Only the owning Organiser or a Coordinator can edit it.
+                You are viewing this as {session.role}. Only the owning Organiser can edit or submit it.
               </p>
             )}
 
