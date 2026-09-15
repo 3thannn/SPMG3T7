@@ -111,7 +111,7 @@ it('keeps submission strict for a titleless partial draft', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Give the event a title.')
   expect(saveEventMock).not.toHaveBeenCalled()
   expect(submitEventMock).not.toHaveBeenCalled()
-}))
+})
 
 const coordinator = buildSession({ role: 'Event Coordinator', id: '9', name: 'Priya' })
 
