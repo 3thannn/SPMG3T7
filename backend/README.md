@@ -137,6 +137,7 @@ button is a courtesy and a refused request is the rule.
 | `POST /events`               | Organiser                     | Create — always lands in Draft (US4.2)     |
 | `PUT /events/{id}`           | the owning Organiser          | Save edits; the status does not move       |
 | `POST /events/{id}/submit`   | the owning Organiser          | Draft → Submitted, once (US4.2)            |
+| `POST /event-requests`       | Organiser                     | A complete request — lands already Submitted |
 
 An event that belongs to another Organiser answers `404`, not `403`. Telling
 someone an event exists but is not theirs tells them something about another
@@ -156,6 +157,75 @@ knowing when reading this code:
   "created". The first entry in an event's history is derived from the event's
   own `created_at` and organiser instead — which is the honest model anyway:
   creating an event is not a change of status, it is the first one.
+- `events.end_date` is the one column this project has added to the schema, in
+  Event requests need an end time and there was nowhere to put one. It is
+  nullable, because every draft and every row that predates it has no end time
+  and inventing one would be worse than leaving it absent.
+
+### Event requests
+
+`POST /event-requests` is the second way to raise an event, and it does not
+replace the first. `POST /events` creates a Draft to come back to; this creates
+a finished proposal and submits it in one step, so the row lands in `events`
+with `status = 'Submitted'` and `submitted_at` set. Nothing about the draft flow
+changes.
+
+It asks for more, because it is finished: a name, a purpose, a proposed date, a
+start time, an end time and an expected attendance are all required. The
+description is the one optional field. Every field is plain text, a date or a
+number — Venue and Equipment catalogue lookups arrive in Sprint 2 and 3.
+
+```json
+{
+  "name": "Faculty Welcome Night",
+  "purpose": "Welcome the new intake.",
+  "description": "Talks, then supper.",
+  "proposedDate": "2026-11-02",
+  "startTime": "18:00",
+  "endTime": "21:30",
+  "expectedAttendance": 120
+}
+```
+
+The rules live in [`app/event_request_rules.py`](app/event_request_rules.py),
+away from the route, so the check that refuses a request is the same one that
+explains why:
+
+| Rule                                        | Refused with                                  |
+| ------------------------------------------- | --------------------------------------------- |
+| Name, purpose, date, both times, attendance | "Give the event a name.", and so on           |
+| Attendance is a positive whole number       | "Expected attendance must be at least 1."     |
+| End time after start time                   | "The end time must be after the start time."  |
+| Proposed date not in the past (today is fine) | "The proposed date cannot be in the past."  |
+
+A refusal is a `400` carrying the field it is about, so the form can put the
+sentence beside the input rather than on top of it:
+
+```json
+{
+  "detail": {
+    "code": "invalid_event_request",
+    "message": "The end time must be after the start time.",
+    "field": "endTime"
+  }
+}
+```
+
+Only the first failing field is reported. The client checks every field before
+it sends, so by the time a request arrives the realistic case is one bad field,
+and one clear sentence beats a list.
+
+The date and the two times are three questions to the person filling the form in
+and two columns in the table: `proposed_date` holds the date and the start time,
+`end_date` holds the same date and the end time. An event running past midnight
+is therefore not expressible — a deliberate limit, since "end after start" is
+the rule as written and an overnight event would need a second date field to say
+so unambiguously.
+
+The audit trail reads `Draft → Submitted` at the creation timestamp.
+`status_changes.old_status` is `NOT NULL`, so there is no row that can mean
+"created straight into Submitted", and recording the pair is the honest version:
+the event did exist as a draft, for no time at all.
 
 ### Refusals
 
@@ -254,6 +324,12 @@ python -m compileall -q app   # build
 pytest                  # tests
 ```
 
+Event Request Creation is covered end to end. To see it:
+
+```bash
+pytest --cov=app.event_requests --cov=app.event_request_rules        --cov-branch --cov-report=term-missing
+```
+
 ## Environment variables
 
 Read from the process environment, with `.env` loaded first for local
@@ -306,6 +382,8 @@ app/
   security.py       session-token generation
   supabase_client.py  the admin, anonymous and per-user Supabase clients
   events.py         /events routes — US4.1 and US4.2
+  event_requests.py /event-requests route — Event Request Creation
+  event_request_rules.py  what a complete event request must satisfy
   event_store.py    event data access, over the events and status_changes tables
   event_status.py   the status label set and the submit rule
 tests/
@@ -320,4 +398,7 @@ tests/
   test_auth_logout.py         US1.2
   test_access_enforcement.py  US1.3
   test_events.py              US4.1 and US4.2
+  test_event_request_rules.py US2.1 — the rules, one at a time
+  test_event_requests.py      US2.1 — the endpoint
+  test_event_request_store.py US2.1 
 ```

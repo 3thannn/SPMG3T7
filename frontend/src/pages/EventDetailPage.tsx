@@ -26,6 +26,13 @@ type Missing = { state: 'missing' }
 type Forbidden = { state: 'forbidden' }
 type PageState = Loading | Loaded | Missing | Forbidden
 
+function todayIso(): string {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
 export default function EventDetailPage({ eventId, session }: EventDetailPageProps) {
   const [page, setPage] = useState<PageState>({ state: 'loading' })
   const [draft, setDraft] = useState({
@@ -33,6 +40,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     purpose: '',
     description: '',
     startsAt: '',
+    endsAt: '',
     expectedAttendance: '',
   })
   const [banner, setBanner] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
@@ -58,6 +66,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         purpose: event.purpose,
         description: event.description,
         startsAt: event.startsAt,
+        endsAt: event.endsAt ?? '',
         expectedAttendance: attendanceField(event.expectedAttendance),
       })
     })
@@ -116,6 +125,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     draft.purpose !== event.purpose ||
     draft.description !== event.description ||
     draft.startsAt !== event.startsAt ||
+    draft.endsAt !== (event.endsAt ?? '') ||
     draft.expectedAttendance !== attendanceField(event.expectedAttendance)
 
   async function handleSave() {
@@ -125,6 +135,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     }
     if (!draft.startsAt.trim()) {
       setBanner({ kind: 'error', text: 'Give the event a date.' })
+      return
+    }
+    if (draft.endsAt.trim() && draft.endsAt <= draft.startsAt) {
+      setBanner({ kind: 'error', text: 'The end date must be after the start date.' })
       return
     }
     const attendance = parseAttendance(draft.expectedAttendance)
@@ -148,6 +162,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
           purpose: draft.purpose.trim(),
           description: draft.description.trim(),
           startsAt: draft.startsAt.trim(),
+          endsAt: draft.endsAt.trim() || null,
           expectedAttendance: attendance,
         },
         session,
@@ -165,11 +180,57 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   }
 
   async function handleSubmit() {
+    if (!draft.startsAt.trim()) {
+      setBanner({ kind: 'error', text: 'Give the event a date.' })
+      return
+    }
+    if (!draft.endsAt.trim()) {
+      setBanner({ kind: 'error', text: 'Give the event an end date.' })
+      return
+    }
+    if (draft.endsAt <= draft.startsAt) {
+      setBanner({ kind: 'error', text: 'The end date must be after the start date.' })
+      return
+    }
+    if (!draft.purpose.trim()) {
+      setBanner({ kind: 'error', text: 'Give the event a purpose.' })
+      return
+    }
+    if (!draft.expectedAttendance.trim()) {
+      setBanner({ kind: 'error', text: 'Give the expected attendance.' })
+      return
+    }
+    const attendance = parseAttendance(draft.expectedAttendance)
+    if (attendance === 'invalid') {
+      setBanner({ kind: 'error', text: 'Enter a whole number of people.' })
+      return
+    }
+    if (attendance === null || attendance < 1) {
+      setBanner({ kind: 'error', text: 'Expected attendance must be at least 1.' })
+      return
+    }
+    if (draft.startsAt.slice(0, 10) < todayIso()) {
+      setBanner({ kind: 'error', text: 'The start date cannot be in the past.' })
+      return
+    }
     setBusy(true)
     setBanner(null)
     try {
-      // US4.2: Draft -> Submitted, exactly once.
-      const updated = await submitEvent(event.id, session)
+      // Save the fields edited on this page before moving the draft to Submitted.
+      // Otherwise the submit request would validate the older database values.
+      const saved = await saveEvent(
+        event.id,
+        {
+          title: draft.title.trim(),
+          purpose: draft.purpose.trim(),
+          description: draft.description.trim(),
+          startsAt: draft.startsAt.trim(),
+          endsAt: draft.endsAt.trim(),
+          expectedAttendance: attendance,
+        },
+        session,
+      )
+      const updated = await submitEvent(saved.id, session)
       setPage({ state: 'loaded', event: updated })
       setBanner({ kind: 'ok', text: 'Submitted. The status change has been recorded.' })
     } catch (error) {
@@ -226,7 +287,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                   <input
                     id="title"
                     value={draft.title}
-                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                    onChange={(e) => {
+                      setDraft({ ...draft, title: e.target.value })
+                      setBanner(null)
+                    }}
                     disabled={busy}
                   />
                 </div>
@@ -236,7 +300,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     id="startsAt"
                     type="datetime-local"
                     value={draft.startsAt}
-                    onChange={(e) => setDraft({ ...draft, startsAt: e.target.value })}
+                    onChange={(e) => {
+                      setDraft({ ...draft, startsAt: e.target.value })
+                      setBanner(null)
+                    }}
                     disabled={busy}
                   />
                 </div>
@@ -246,7 +313,23 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     id="purpose"
                     maxLength={500}
                     value={draft.purpose}
-                    onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
+                    onChange={(e) => {
+                      setDraft({ ...draft, purpose: e.target.value })
+                      setBanner(null)
+                    }}
+                    disabled={busy}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="endsAt">Ends</label>
+                  <input
+                    id="endsAt"
+                    type="datetime-local"
+                    value={draft.endsAt}
+                    onChange={(e) => {
+                      setDraft({ ...draft, endsAt: e.target.value })
+                      setBanner(null)
+                    }}
                     disabled={busy}
                   />
                 </div>
@@ -259,9 +342,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     step={1}
                     inputMode="numeric"
                     value={draft.expectedAttendance}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setDraft({ ...draft, expectedAttendance: e.target.value })
-                    }
+                      setBanner(null)
+                    }}
                     disabled={busy}
                   />
                   <span className="field-hint">
@@ -273,7 +357,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                   <textarea
                     id="description"
                     value={draft.description}
-                    onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                    onChange={(e) => {
+                      setDraft({ ...draft, description: e.target.value })
+                      setBanner(null)
+                    }}
                     disabled={busy}
                   />
                 </div>
@@ -282,6 +369,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               <dl className="detail-readonly">
                 <dt>Starts</dt>
                 <dd>{event.startsAt ? formatTimestamp(event.startsAt) : 'Not set'}</dd>
+                <dt>Ends</dt>
+                <dd>{event.endsAt ? formatTimestamp(event.endsAt) : 'Not set'}</dd>
                 <dt>Purpose</dt>
                 <dd>{event.purpose || 'Not stated.'}</dd>
                 <dt>Expected attendance</dt>

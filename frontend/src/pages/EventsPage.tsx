@@ -70,13 +70,15 @@ export default function EventsPage({ session }: EventsPageProps) {
             </p>
           </div>
           {!seesAll && (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => navigate('/events/new')}
-            >
-              New event
-            </button>
+            <div className="page-head-actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => navigate('/events/new')}
+              >
+                Create event
+              </button>
+            </div>
           )}
         </header>
 

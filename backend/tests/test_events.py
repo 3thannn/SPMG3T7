@@ -234,6 +234,38 @@ class TestSubmitting:
 
         assert submitted["status"] == "Submitted"
 
+    def test_submission_needs_a_purpose(self, client, auth_headers):
+        event = create(client, auth_headers(), purpose="")
+
+        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == "Give the event a purpose."
+
+    def test_submission_needs_expected_attendance(self, client, auth_headers):
+        event = create(client, auth_headers(), expectedAttendance=None)
+
+        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == "Give the expected attendance."
+
+    def test_submission_needs_at_least_one_attendee(self, client, auth_headers):
+        event = create(client, auth_headers(), expectedAttendance=0)
+
+        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == "Expected attendance must be at least 1."
+
+    def test_submission_rejects_a_past_start_date(self, client, auth_headers):
+        event = create(client, auth_headers(), startsAt="2020-01-01T18:00")
+
+        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == "The start date cannot be in the past."
+
     def test_the_submission_is_recorded_with_who_and_when(self, client, auth_headers):
         event = create(client, auth_headers())
 

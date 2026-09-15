@@ -16,6 +16,7 @@ Ids go out as strings for the same reason they do in `auth.Identity`: the client
 only ever compares them.
 """
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -55,6 +56,9 @@ class EventOut(BaseModel):
     purpose: str
     description: str
     starts_at: str = Field(serialization_alias="startsAt")
+    #: `events.end_date`. Empty for an event created through the US4.2 draft
+    #: flow, which has no end time to record; set for an event request.
+    ends_at: str = Field(serialization_alias="endsAt")
     expected_attendance: int | None = Field(serialization_alias="expectedAttendance")
     status: EventStatus
     organiser_id: str = Field(serialization_alias="organiserId")
@@ -84,6 +88,7 @@ class EventDraft(BaseModel):
     purpose: str = ""
     description: str = ""
     starts_at: str = Field(alias="startsAt")
+    ends_at: str | None = Field(default=None, alias="endsAt")
     expected_attendance: int | None = Field(default=None, alias="expectedAttendance")
 
 
@@ -94,6 +99,7 @@ def _to_out(event: Event) -> EventOut:
         purpose=event.purpose,
         description=event.description,
         starts_at=event.starts_at,
+        ends_at=event.ends_at,
         expected_attendance=event.expected_attendance,
         status=event.status,
         organiser_id=str(event.organiser_id),
@@ -157,8 +163,24 @@ def _validated(draft: EventDraft) -> EventDraft:
         purpose=purpose,
         description=draft.description.strip(),
         starts_at=starts_at,
+        ends_at=draft.ends_at.strip() if draft.ends_at and draft.ends_at.strip() else None,
         expected_attendance=draft.expected_attendance,
     )
+
+
+def _validate_submission(event: Event) -> None:
+    if not event.purpose.strip():
+        raise _invalid("Give the event a purpose.")
+    if event.expected_attendance is None:
+        raise _invalid("Give the expected attendance.")
+    if event.expected_attendance < 1:
+        raise _invalid("Expected attendance must be at least 1.")
+    try:
+        start_date = date.fromisoformat(event.starts_at[:10])
+    except ValueError:
+        raise _invalid("Give the event a valid date.") from None
+    if start_date < date.today():
+        raise _invalid("The start date cannot be in the past.")
 
 
 def _readable(event_id: int, user: User) -> Event:
@@ -211,6 +233,7 @@ def create_event(
         purpose=clean.purpose,
         description=clean.description,
         starts_at=clean.starts_at,
+        ends_at=clean.ends_at,
         expected_attendance=clean.expected_attendance,
         organiser_id=user.id,
     )
@@ -239,6 +262,7 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
         purpose=clean.purpose,
         description=clean.description,
         starts_at=clean.starts_at,
+        ends_at=clean.ends_at,
         expected_attendance=clean.expected_attendance,
     )
     return _to_out(saved)
@@ -266,6 +290,7 @@ def submit_event(
                 "reason": str(refusal),
             },
         )
+    _validate_submission(event)
     submitted = event_store.repository().submit_event(
         event.id, actor_id=user.id, from_status=event.status
     )

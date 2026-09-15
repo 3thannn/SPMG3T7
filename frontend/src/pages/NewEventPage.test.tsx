@@ -13,15 +13,17 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import NewEventPage from './NewEventPage'
-import { createEvent, type EventRecord } from '../eventsStore'
+import { createEvent, submitEvent, type EventRecord } from '../eventsStore'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../eventsStore')>()),
   createEvent: vi.fn(),
+  submitEvent: vi.fn(),
 }))
 
 const createEventMock = vi.mocked(createEvent)
+const submitEventMock = vi.mocked(submitEvent)
 
 afterEach(() => {
   vi.resetAllMocks()
@@ -56,6 +58,7 @@ it('offers a field for every writable column of the events table', () => {
   expect(screen.getByLabelText('Title')).toBeInTheDocument()
   expect(screen.getByLabelText('Purpose')).toBeInTheDocument()
   expect(screen.getByLabelText('Starts')).toBeInTheDocument()
+  expect(screen.getByLabelText('Ends')).toBeInTheDocument()
   expect(screen.getByLabelText('Expected attendance')).toBeInTheDocument()
   expect(screen.getByLabelText('Description')).toBeInTheDocument()
 })
@@ -69,7 +72,7 @@ it('sends every field that was filled in', async () => {
   await user.type(screen.getByLabelText('Purpose'), 'Welcome the new intake.')
   await user.type(screen.getByLabelText('Expected attendance'), '120')
   await user.type(screen.getByLabelText('Description'), 'Talks.')
-  await user.click(screen.getByRole('button', { name: 'Create draft' }))
+  await user.click(screen.getByRole('button', { name: 'Save as draft' }))
 
   await waitFor(() => expect(createEventMock).toHaveBeenCalled())
   expect(createEventMock.mock.calls[0][0]).toEqual({
@@ -77,6 +80,7 @@ it('sends every field that was filled in', async () => {
     purpose: 'Welcome the new intake.',
     description: 'Talks.',
     startsAt: '2026-11-02T18:00',
+    endsAt: null,
     expectedAttendance: 120,
   })
 })
@@ -87,12 +91,50 @@ it('sends a blank attendance as null, because the column is nullable', async () 
 
   render(<NewEventPage session={organiser} />)
   await fillRequired(user)
-  await user.click(screen.getByRole('button', { name: 'Create draft' }))
+  await user.click(screen.getByRole('button', { name: 'Save as draft' }))
 
   await waitFor(() => expect(createEventMock).toHaveBeenCalled())
   const draft = createEventMock.mock.calls[0][0]
   expect(draft.expectedAttendance).toBeNull()
   expect(draft.purpose).toBe('')
+})
+
+it('submits the newly created event when Submit is clicked', async () => {
+  const user = userEvent.setup()
+  createEventMock.mockResolvedValue(created)
+  submitEventMock.mockResolvedValue({ ...created, status: 'Submitted' })
+
+  render(<NewEventPage session={organiser} />)
+  await fillRequired(user)
+  await user.type(screen.getByLabelText('Ends'), '2026-11-02T21:00')
+  await user.type(screen.getByLabelText('Purpose'), 'Welcome the new intake.')
+  await user.type(screen.getByLabelText('Expected attendance'), '120')
+  await user.click(screen.getByRole('button', { name: 'Submit' }))
+
+  await waitFor(() => expect(submitEventMock).toHaveBeenCalledWith('101', organiser))
+})
+
+it('requires purpose and attendance before submitting', async () => {
+  const user = userEvent.setup()
+
+  render(<NewEventPage session={organiser} />)
+  await fillRequired(user)
+  await user.type(screen.getByLabelText('Ends'), '2026-11-02T21:00')
+  await user.click(screen.getByRole('button', { name: 'Submit' }))
+
+  expect(await screen.findByText('Give the event a purpose.')).toBeInTheDocument()
+  expect(screen.getByText('Give the expected attendance.')).toBeInTheDocument()
+  expect(createEventMock).not.toHaveBeenCalled()
+})
+
+it('sets today as the earliest selectable start date', () => {
+  render(<NewEventPage session={organiser} />)
+
+  const today = new Date()
+  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
+    today.getDate(),
+  ).padStart(2, '0')}`
+  expect(screen.getByLabelText('Starts')).toHaveAttribute('min', `${iso}T00:00`)
 })
 
 it('keeps an attendance of zero, which is not the same as leaving it blank', async () => {
@@ -102,7 +144,7 @@ it('keeps an attendance of zero, which is not the same as leaving it blank', asy
   render(<NewEventPage session={organiser} />)
   await fillRequired(user)
   await user.type(screen.getByLabelText('Expected attendance'), '0')
-  await user.click(screen.getByRole('button', { name: 'Create draft' }))
+  await user.click(screen.getByRole('button', { name: 'Save as draft' }))
 
   await waitFor(() => expect(createEventMock).toHaveBeenCalled())
   expect(createEventMock.mock.calls[0][0].expectedAttendance).toBe(0)
@@ -112,7 +154,7 @@ it('asks for a title and a date, which the table requires', async () => {
   const user = userEvent.setup()
 
   render(<NewEventPage session={organiser} />)
-  await user.click(screen.getByRole('button', { name: 'Create draft' }))
+  await user.click(screen.getByRole('button', { name: 'Save as draft' }))
 
   expect(await screen.findByText('Give the event a title.')).toBeInTheDocument()
   expect(screen.getByText('Give the event a date.')).toBeInTheDocument()
@@ -125,7 +167,7 @@ it('refuses an attendance that is not a whole number', async () => {
   render(<NewEventPage session={organiser} />)
   await fillRequired(user)
   await user.type(screen.getByLabelText('Expected attendance'), '-4')
-  await user.click(screen.getByRole('button', { name: 'Create draft' }))
+  await user.click(screen.getByRole('button', { name: 'Save as draft' }))
 
   expect(
     await screen.findByText('Enter a whole number of people, or leave it blank.'),
