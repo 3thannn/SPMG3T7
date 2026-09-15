@@ -14,6 +14,7 @@ import {
 import { navigate } from '../router'
 import { canViewStatus, checkSubmit, formatTimestamp, submitRefusalMessage } from '../status'
 import type { Session } from '../api'
+import { can } from '../permissions'
 
 type EventDetailPageProps = {
   eventId: string
@@ -109,8 +110,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
   const { event } = page
   const isOwner = event.organiserId === session.id
+  const canEdit = can(session, 'events:edit')
   const submitCheck = checkSubmit(event, session.id)
-  const editable = isOwner && event.status === 'Draft'
+  // US5.2: Coordinators can edit submitted events (not drafts), owners can edit their own drafts
+  const editable = (canEdit && event.status !== 'Draft') || (isOwner && event.status === 'Draft')
   const dirty =
     draft.title !== event.title ||
     draft.purpose !== event.purpose ||
@@ -295,7 +298,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               </dl>
             )}
 
-            {isOwner && (
+            {(isOwner || canEdit) && (
               <div className="detail-actions">
                 {editable && (
                   <button
@@ -304,18 +307,20 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     onClick={handleSave}
                     disabled={busy || !dirty}
                   >
-                    {busy ? 'Saving…' : 'Save draft'}
+                    {busy ? 'Saving…' : canEdit && !isOwner ? 'Save changes' : 'Save draft'}
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleSubmit}
-                  disabled={busy || !submitCheck.allowed}
-                  title={submitCheck.allowed ? undefined : submitRefusalMessage(submitCheck.reason)}
-                >
-                  {busy ? 'Working…' : 'Submit event'}
-                </button>
+                {isOwner && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleSubmit}
+                    disabled={busy || !submitCheck.allowed}
+                    title={submitCheck.allowed ? undefined : submitRefusalMessage(submitCheck.reason)}
+                  >
+                    {busy ? 'Working…' : 'Submit event'}
+                  </button>
+                )}
               </div>
             )}
 
@@ -323,10 +328,15 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               <p className="detail-note">{submitRefusalMessage(submitCheck.reason)}</p>
             )}
 
-            {!isOwner && (
+            {!isOwner && !canEdit && (
               <p className="detail-note">
-                You are viewing this as {session.role}. Only the owning Organiser can edit or
-                submit it.
+                You are viewing this as {session.role}. Only the owning Organiser can edit or submit it.
+              </p>
+            )}
+
+            {!isOwner && canEdit && (
+              <p className="detail-note">
+                You are editing this event as {session.role}. Changes are tracked and logged.
               </p>
             )}
           </section>
