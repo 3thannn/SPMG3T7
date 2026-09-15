@@ -241,7 +241,9 @@ class TestSaving:
         saved = response.json()
         assert saved["title"] == "Edited by Coordinator"
 
-    def test_non_owner_without_edit_permission_cannot_edit(self, client, auth_headers, event_repository):
+    def test_non_owner_without_edit_permission_cannot_edit(
+        self, client, auth_headers, event_repository
+    ):
         """Someone who is neither owner nor coordinator cannot edit."""
         event = create(client, auth_headers("Event Organiser"))
         # Reassign to simulate another user's event

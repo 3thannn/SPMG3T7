@@ -305,8 +305,16 @@ class SupabaseEvents:
             changes_to_log.append({
                 "event_id": event_id,
                 "changed_field": "expected_attendance",
-                "old_value": str(previous_event.expected_attendance) if previous_event.expected_attendance is not None else None,
-                "new_value": str(expected_attendance) if expected_attendance is not None else None,
+                "old_value": (
+                    str(previous_event.expected_attendance)
+                    if previous_event.expected_attendance is not None
+                    else None
+                ),
+                "new_value": (
+                    str(expected_attendance)
+                    if expected_attendance is not None
+                    else None
+                ),
                 "change_type": "important",
                 "changed_by_user_id": editor_id,
                 "changed_at": at,

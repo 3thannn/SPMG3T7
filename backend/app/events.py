@@ -235,7 +235,10 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "code": ErrorCode.FORBIDDEN,
-                "message": "Coordinators can only edit submitted events. Draft events can only be edited by their owner.",
+                "message": (
+                    "Coordinators can only edit submitted events. Draft events can "
+                    "only be edited by their owner."
+                ),
             },
         )
 
