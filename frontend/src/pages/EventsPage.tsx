@@ -16,14 +16,14 @@ type Filter = EventStatus | 'All'
 /**
  * US4.1: the list surface. Every row carries its status badge, and what the
  * list contains depends on the viewer's role — an Organiser sees the events
- * they own, a Coordinator sees all of them.
+ * they own, while a Coordinator sees requests after submission.
  */
 export default function EventsPage({ session }: EventsPageProps) {
   const [events, setEvents] = useState<EventRecord[] | null>(null)
   const [filter, setFilter] = useState<Filter>('All')
   const [loadError, setLoadError] = useState('')
 
-  const seesAll = session.role === 'Event Coordinator'
+  const seesAcrossOrganisers = session.role === 'Event Coordinator'
 
   useEffect(() => {
     let cancelled = false
@@ -65,21 +65,19 @@ export default function EventsPage({ session }: EventsPageProps) {
           <div>
             <h1 className="page-title">Events</h1>
             <p className="page-subtitle">
-              {seesAll
-                ? 'Every event across the programme, as Coordinator.'
+              {seesAcrossOrganisers
+                ? 'Submitted event requests across the programme, as Coordinator.'
                 : 'Events you own, as Organiser.'}
             </p>
           </div>
-          {!seesAll && (
-            <div className="page-head-actions">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => navigate('/events/new')}
-              >
-                Create event
-              </button>
-            </div>
+          {!seesAcrossOrganisers && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => navigate('/events/new')}
+            >
+              New event
+            </button>
           )}
         </header>
 
@@ -120,12 +118,12 @@ export default function EventsPage({ session }: EventsPageProps) {
             <h3>{events.length === 0 ? 'No events yet' : 'Nothing matches that filter'}</h3>
             <p>
               {events.length === 0
-                ? seesAll
-                  ? 'Once an Organiser creates an event, it appears here.'
+                ? seesAcrossOrganisers
+                  ? 'Once an Organiser submits an event, it appears here.'
                   : 'Create your first event and it will start as a Draft.'
                 : 'Try a different status.'}
             </p>
-            {events.length === 0 && !seesAll && (
+            {events.length === 0 && !seesAcrossOrganisers && (
               <button
                 type="button"
                 className="btn btn-primary"
@@ -152,7 +150,7 @@ export default function EventsPage({ session }: EventsPageProps) {
                     <h3 className="event-row-title">{displayEventTitle(event.title)}</h3>
                     <p className="event-row-meta">
                       {event.startsAt ? formatTimestamp(event.startsAt) : 'Not set'}
-                      {seesAll && <> · Organiser: {event.organiserName}</>}
+                      {seesAcrossOrganisers && <> · Organiser: {event.organiserName}</>}
                     </p>
                   </div>
                   <div className="event-row-end">

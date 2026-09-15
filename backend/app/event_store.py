@@ -128,7 +128,9 @@ def to_event(row: dict, changes: list[dict] | None = None) -> Event:
 
 
 class Repository(Protocol):
-    def list_events(self, organiser_id: int | None) -> list[Event]: ...
+    def list_events(
+        self, *, organiser_id: int | None, include_drafts: bool
+    ) -> list[Event]: ...
 
     def get_event(self, event_id: int) -> Event | None: ...
 
@@ -206,11 +208,15 @@ class SupabaseEvents:
             grouped.setdefault(row["event_id"], []).append(row)
         return grouped
 
-    def list_events(self, organiser_id: int | None) -> list[Event]:
-        """US4.1: an Organiser sees their own events, a Coordinator sees every one."""
+    def list_events(
+        self, *, organiser_id: int | None, include_drafts: bool
+    ) -> list[Event]:
+        """Filter visibility in the database before event data leaves it."""
         query = supabase_client.admin().table(EVENTS_TABLE).select(EVENT_COLUMNS)
         if organiser_id is not None:
             query = query.eq("organiser_id", organiser_id)
+        if not include_drafts:
+            query = query.neq("status", str(EventStatus.DRAFT))
         rows = query.order("updated_at", desc=True).execute().data or []
         changes = self._changes_for([row["id"] for row in rows])
         return [to_event(row, changes.get(row["id"])) for row in rows]
@@ -490,11 +496,14 @@ class InMemoryEvents:
         self.events = [event if item.id == event.id else item for item in self.events]
         return event
 
-    def list_events(self, organiser_id: int | None) -> list[Event]:
+    def list_events(
+        self, *, organiser_id: int | None, include_drafts: bool
+    ) -> list[Event]:
         visible = [
             event
             for event in self.events
-            if organiser_id is None or event.organiser_id == organiser_id
+            if (organiser_id is None or event.organiser_id == organiser_id)
+            and (include_drafts or event.status != EventStatus.DRAFT)
         ]
         return sorted(visible, key=lambda event: event.updated_at, reverse=True)
 

@@ -294,7 +294,7 @@ server put on the session.
 | Role              | May                                                   |
 | ----------------- | ----------------------------------------------------- |
 | Event Organiser   | create, read own, and submit events                   |
-| Event Coordinator | read all events, review them, read the user directory |
+| Event Coordinator | read submitted events, review them, read the user directory |
 
 Venue Staff, Technical Support and Attendee are part of the wider plan and are
 deliberately not modelled yet: a role that can sign in but can do nothing is a
@@ -310,7 +310,9 @@ new route only has to name the permission it needs:
 
 ```python
 @router.get("/events")
-def list_events(user: Annotated[User, Depends(require_permission(Permission.EVENTS_READ_ALL))]):
+def list_events(
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_READ_SUBMITTED))]
+):
     ...
 ```
 

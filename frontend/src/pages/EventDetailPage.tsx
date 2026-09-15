@@ -56,8 +56,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         setPage({ state: 'missing' })
         return
       }
-      // US4.1: an Organiser sees only the events they own, so someone else's
-      // event is an explicit refusal rather than an empty page.
+      // The API enforces visibility. Keep the same check here so an invalid or
+      // stale response still cannot render a private Draft.
       if (!canViewStatus(session.role, session.id, event)) {
         setPage({ state: 'forbidden' })
         return
@@ -110,8 +110,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         <div className="card empty">
           <h3>Not available for your role</h3>
           <p>
-            An event is visible to the Organiser who owns it and to Event Coordinators. This
-            one belongs to another Organiser.
+            Drafts are visible only to the Organiser who owns them. Event Coordinators can
+            view an event after it has been submitted.
           </p>
         </div>
       </div>

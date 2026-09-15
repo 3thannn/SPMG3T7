@@ -159,7 +159,7 @@ class TestCreating:
 
 
 class TestVisibility:
-    """US4.1: an Organiser sees their own events, a Coordinator sees every one."""
+    """US4.1: Organisers see their events; Coordinators see submitted requests."""
 
     def test_an_organiser_sees_their_own_event(self, client, auth_headers):
         create(client, auth_headers("Event Organiser"))
@@ -182,16 +182,36 @@ class TestVisibility:
 
         assert listed == []
 
-    def test_a_coordinator_sees_every_event(self, client, auth_headers):
-        create(client, auth_headers("Event Organiser"))
+    def test_a_coordinator_sees_submitted_events_but_not_drafts(
+        self, client, auth_headers
+    ):
+        draft = create(client, auth_headers("Event Organiser"), title="Private Draft")
+        submitted = create(client, auth_headers("Event Organiser"), title="Ready for Review")
+        client.post(
+            f"/events/{submitted['id']}/submit",
+            headers=auth_headers("Event Organiser"),
+        )
 
         listed = client.get("/events", headers=auth_headers("Event Coordinator")).json()
 
-        assert [event["title"] for event in listed] == ["Faculty Welcome Night"]
+        assert [event["title"] for event in listed] == ["Ready for Review"]
+        assert draft["id"] not in {event["id"] for event in listed}
+
+    def test_a_coordinator_cannot_open_a_draft_directly(self, client, auth_headers):
+        event = create(client, auth_headers("Event Organiser"))
+
+        response = client.get(
+            f"/events/{event['id']}", headers=auth_headers("Event Coordinator")
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "event_not_found"
 
     # --- Added for SPMG3T7-33 (US5.1) ---
-    def test_a_coordinator_can_open_any_event_and_see_every_field(self, client, auth_headers):
-        """US5.1: a Coordinator opens an event that is not theirs and reads it whole."""
+    def test_a_coordinator_can_open_a_submitted_event_and_see_every_field(
+        self, client, auth_headers
+    ):
+        """US5.1: a Coordinator opens a submitted request and reads it whole."""
         event = create(client, auth_headers("Event Organiser"))
         client.post(f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser"))
 
@@ -288,8 +308,24 @@ class TestSaving:
         assert response.status_code == 400
         assert "at least one letter or number" in response.json()["detail"]["message"]
 
-    def test_only_the_owner_can_edit(self, client, auth_headers):
+    def test_a_coordinator_cannot_open_a_draft_to_edit_it(self, client, auth_headers):
         event = create(client, auth_headers("Event Organiser"))
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={**DRAFT, "title": "Hijacked"},
+            headers=auth_headers("Event Coordinator"),
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "event_not_found"
+
+    def test_owner_can_edit_their_event(self, client, auth_headers):
+        """US4.2: Original behavior - owners can edit without change tracking."""
+        event = create(client, auth_headers("Event Organiser"))
+        client.post(
+            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
+        )
 
         response = client.put(
             f"/events/{event['id']}",
@@ -550,10 +586,10 @@ class TestCoordinatorEditing:
             headers=auth_headers("Event Coordinator"),
         )
 
-        assert response.status_code == 403
+        assert response.status_code == 404
         detail = response.json()["detail"]
-        assert detail["code"] == "forbidden"
-        assert "only edit submitted events" in detail["message"].lower()
+        assert detail["code"] == "event_not_found"
+        assert detail["message"] == "That event no longer exists."
 
     def test_coordinator_can_edit_submitted_event(self, client, auth_headers):
         """Coordinators can edit events in Submitted status."""
@@ -591,7 +627,10 @@ class TestSprintOneReachableStatuses:
 
 def test_the_directory_and_the_events_list_agree_on_ids(client, auth_headers):
     """A Coordinator reading both must be able to join them without translating."""
-    create(client, auth_headers("Event Organiser"))
+    event = create(client, auth_headers("Event Organiser"))
+    client.post(
+        f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
+    )
 
     directory = client.get("/auth/users", headers=auth_headers("Event Coordinator")).json()
     listed = client.get("/events", headers=auth_headers("Event Coordinator")).json()

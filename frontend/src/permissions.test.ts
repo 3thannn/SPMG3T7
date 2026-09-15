@@ -29,7 +29,7 @@ describe('can', () => {
 
   it('holding one of several is enough for canAny', () => {
     const coordinator = buildSession({ role: 'Event Coordinator' })
-    expect(canAny(coordinator, ['events:read:own', 'events:read:all'])).toBe(true)
+    expect(canAny(coordinator, ['events:read:own', 'events:read:submitted'])).toBe(true)
     expect(canAny(coordinator, ['events:create', 'events:submit'])).toBe(false)
   })
 })

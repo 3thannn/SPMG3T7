@@ -34,7 +34,7 @@ class Permission(StrEnum):
 
     EVENTS_CREATE = "events:create"
     EVENTS_READ_OWN = "events:read:own"
-    EVENTS_READ_ALL = "events:read:all"
+    EVENTS_READ_SUBMITTED = "events:read:submitted"
     EVENTS_SUBMIT = "events:submit"
     EVENTS_REVIEW = "events:review"
     EVENTS_EDIT = "events:edit"
@@ -45,7 +45,7 @@ class Permission(StrEnum):
 PERMISSION_LABELS: dict[Permission, str] = {
     Permission.EVENTS_CREATE: "create events",
     Permission.EVENTS_READ_OWN: "view your own events",
-    Permission.EVENTS_READ_ALL: "view every event",
+    Permission.EVENTS_READ_SUBMITTED: "view submitted events",
     Permission.EVENTS_SUBMIT: "submit events for approval",
     Permission.EVENTS_REVIEW: "review submitted events",
     Permission.EVENTS_EDIT: "edit events",
@@ -62,7 +62,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     ),
     Role.COORDINATOR: frozenset(
         {
-            Permission.EVENTS_READ_ALL,
+            Permission.EVENTS_READ_SUBMITTED,
             Permission.EVENTS_REVIEW,
             Permission.EVENTS_EDIT,
             Permission.USERS_READ,
@@ -116,7 +116,7 @@ def denial_message_any(role: Role, permissions: "Iterable[Permission]") -> str:
     """The US1.3 denial for a route that more than one permission can open.
 
     The events list is the case that needs it: an Organiser reaches it through
-    events:read:own and a Coordinator through events:read:all, so naming a
+    events:read:own and a Coordinator through events:read:submitted, so naming a
     single required permission would misdescribe the rule to one of them.
     """
     wanted = list(permissions)

@@ -145,6 +145,15 @@ it('shows every captured field as read-only text to a Coordinator', async () => 
   expect(screen.getByText('120 people')).toBeInTheDocument()
 })
 
+it('does not render a Draft if an invalid API response returns one to a Coordinator', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Draft' })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  expect(await screen.findByText('Not available for your role')).toBeInTheDocument()
+  expect(screen.queryByText('Faculty Welcome Night')).not.toBeInTheDocument()
+})
+
 it('offers no inputs or edit actions to a Coordinator, who does not own the event', async () => {
   getEventMock.mockResolvedValue(submittedEvent)
 

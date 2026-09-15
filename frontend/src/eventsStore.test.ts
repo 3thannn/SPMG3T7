@@ -83,7 +83,7 @@ describe('listEvents', () => {
 
   it('does not tell the server which role is asking', async () => {
     // The server reads the role from the session. A client that could ask for
-    // "all events" could simply ask, which is the bug this guards against.
+    // "submitted events" could simply ask, which is the bug this guards against.
     const spy = stubFetch(ok([]))
 
     await listEvents(session)

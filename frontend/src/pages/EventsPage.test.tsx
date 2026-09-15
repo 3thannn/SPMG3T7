@@ -2,7 +2,7 @@
  * What the list page renders, given what the API returns.
  *
  * Visibility itself — an Organiser seeing only their own events, a Coordinator
- * seeing every one — moved to the server with US6.3 and is tested there, in
+ * seeing only submitted requests — moved to the server and is tested there, in
  * backend/tests/test_events.py. What is still this page's job is showing a
  * status on every row, naming the organiser when the viewer is a Coordinator,
  * and saying something useful when there is nothing to show.
@@ -72,8 +72,14 @@ it('labels an untitled and undated draft without inventing stored details', asyn
 
 it('names the organiser for a Coordinator, who is looking across owners', async () => {
   listEventsMock.mockResolvedValue([
-    buildEvent(),
-    buildEvent({ id: '102', title: 'Theirs', organiserId: '2', organiserName: 'Ariel' }),
+    buildEvent({ status: 'Submitted' }),
+    buildEvent({
+      id: '102',
+      title: 'Theirs',
+      status: 'Submitted',
+      organiserId: '2',
+      organiserName: 'Ariel',
+    }),
   ])
 
   render(<EventsPage session={coordinator} />)

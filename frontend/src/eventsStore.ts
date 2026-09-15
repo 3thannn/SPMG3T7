@@ -89,10 +89,10 @@ function asRuleError(error: unknown): never {
 }
 
 /**
- * US4.1: an Organiser gets the events they own, a Coordinator gets all of them.
+ * US4.1: an Organiser gets their events; a Coordinator gets non-Draft requests.
  *
  * The role is not passed — the server reads it from the session. A client that
- * asked for "all events" could simply ask, which is the bug this avoids.
+ * asked for "submitted events" could simply ask, which is the bug this avoids.
  */
 export async function listEvents(session: Session): Promise<EventRecord[]> {
   const response = await authorizedFetch('/events', session.token)

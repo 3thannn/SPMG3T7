@@ -4,7 +4,7 @@ These are the endpoints the frontend's event store used to fake in localStorage.
 Two rules moved with them, and this is now their enforcement point rather than
 their second opinion:
 
-* An Organiser sees the events they own; a Coordinator sees every event (US4.1).
+* An Organiser sees the events they own; a Coordinator sees submitted events (US4.1).
 * An event goes Draft -> Submitted exactly once, by the Organiser who owns it,
   and the change is timestamped and attributable (US4.2).
 
@@ -31,7 +31,7 @@ from app.users import User
 
 router = APIRouter(prefix="/events", tags=["events"])
 
-READ_ANY = (Permission.EVENTS_READ_OWN, Permission.EVENTS_READ_ALL)
+READ_ANY = (Permission.EVENTS_READ_OWN, Permission.EVENTS_READ_SUBMITTED)
 
 
 class EventError:
@@ -193,8 +193,10 @@ def _readable(event_id: int, user: User) -> Event:
     event = event_store.repository().get_event(event_id)
     if event is None:
         raise _not_found()
-    sees_all = has_permission(user.role, Permission.EVENTS_READ_ALL)
-    if not sees_all and event.organiser_id != user.id:
+    sees_own = has_permission(user.role, Permission.EVENTS_READ_OWN)
+    owns_event = sees_own and event.organiser_id == user.id
+    sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
+    if not owns_event and not (sees_submitted and event.status != EventStatus.DRAFT):
         raise _not_found()
     return event
 
@@ -211,11 +213,15 @@ def _as_id(raw: str) -> int:
 def list_events(
     user: Annotated[User, Depends(require_any_permission(*READ_ANY))],
 ) -> list[EventOut]:
-    """US4.1: an Organiser sees their own events, a Coordinator sees every one."""
-    organiser_id = (
-        None if has_permission(user.role, Permission.EVENTS_READ_ALL) else user.id
-    )
-    return [_to_out(event) for event in event_store.repository().list_events(organiser_id)]
+    """US4.1: an Organiser sees their events; a Coordinator sees non-Drafts."""
+    sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
+    return [
+        _to_out(event)
+        for event in event_store.repository().list_events(
+            organiser_id=None if sees_submitted else user.id,
+            include_drafts=not sees_submitted,
+        )
+    ]
 
 
 @router.get("/{event_id}", response_model=EventOut)
@@ -276,15 +282,6 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             detail={
                 "code": ErrorCode.FORBIDDEN,
                 "message": "Only the Organiser who owns this event or a Coordinator can edit it.",
-            },
-        )
-
-    if is_owner and event.status != EventStatus.DRAFT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": ErrorCode.FORBIDDEN,
-                "message": "Organisers can only edit their own Draft events.",
             },
         )
 
