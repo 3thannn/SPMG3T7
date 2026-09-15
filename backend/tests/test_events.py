@@ -231,17 +231,57 @@ class TestSaving:
 
         assert len(saved["history"]) == before
 
-    def test_only_the_owner_can_edit(self, client, auth_headers):
+    def test_owner_can_edit_their_event(self, client, auth_headers):
+        """US4.2: Original behavior - owners can edit without change tracking."""
         event = create(client, auth_headers("Event Organiser"))
 
         response = client.put(
             f"/events/{event['id']}",
-            json={**DRAFT, "title": "Hijacked"},
+            json={**DRAFT, "title": "Renamed by Owner"},
+            headers=auth_headers("Event Organiser"),
+        )
+
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved["title"] == "Renamed by Owner"
+
+    def test_coordinator_can_edit_any_event(self, client, auth_headers):
+        """US5.2: Coordinators can edit submitted events they don't own."""
+        event = create(client, auth_headers("Event Organiser"))
+        # Submit the event first - coordinators can only edit submitted events
+        submitted = client.post(
+            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
+        ).json()
+
+        response = client.put(
+            f"/events/{submitted['id']}",
+            json={**DRAFT, "title": "Edited by Coordinator"},
             headers=auth_headers("Event Coordinator"),
         )
 
-        assert response.status_code == 403
-        assert "owns this event" in response.json()["detail"]["message"]
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved["title"] == "Edited by Coordinator"
+
+    def test_non_owner_without_edit_permission_cannot_edit(
+        self, client, auth_headers, event_repository
+    ):
+        """Someone who is neither owner nor coordinator cannot edit."""
+        event = create(client, auth_headers("Event Organiser"))
+        # Reassign to simulate another user's event
+        event_repository.events = [
+            item.__class__(**{**item.__dict__, "organiser_id": 999})
+            for item in event_repository.events
+        ]
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={**DRAFT, "title": "Hijacked"},
+            headers=auth_headers("Event Organiser"),
+        )
+
+        # Returns 404 because user can't see the event (same as read behavior)
+        assert response.status_code == 404
 
 
 class TestSubmitting:
@@ -301,6 +341,133 @@ class TestSubmitting:
 
         assert response.status_code == 403
         assert "submit events for approval" in response.json()["detail"]["message"]
+
+
+class TestCoordinatorEditing:
+    """US5.2: Coordinators can edit events with change tracking (important vs routine)."""
+
+    def test_coordinator_edit_tracks_important_change_to_date(self, client, auth_headers):
+        """Editing proposed_date is logged as important."""
+        event = create(client, auth_headers("Event Organiser"))
+        # Submit the event first - coordinators can only edit submitted events
+        submitted = client.post(
+            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
+        ).json()
+
+        response = client.put(
+            f"/events/{submitted['id']}",
+            json={**DRAFT, "startsAt": "2026-12-15T20:00"},
+            headers=auth_headers("Event Coordinator"),
+        )
+
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved["startsAt"] == "2026-12-15T20:00"
+
+    def test_coordinator_edit_tracks_important_change_to_attendance(self, client, auth_headers):
+        """Editing expected_attendance is logged as important."""
+        event = create(client, auth_headers("Event Organiser"))
+        # Submit the event first - coordinators can only edit submitted events
+        submitted = client.post(
+            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
+        ).json()
+
+        response = client.put(
+            f"/events/{submitted['id']}",
+            json={**DRAFT, "expectedAttendance": 200},
+            headers=auth_headers("Event Coordinator"),
+        )
+
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved["expectedAttendance"] == 200
+
+    def test_coordinator_edit_tracks_routine_change_to_title(self, client, auth_headers):
+        """Editing title is logged as routine."""
+        event = create(client, auth_headers("Event Organiser"))
+        # Submit the event first - coordinators can only edit submitted events
+        submitted = client.post(
+            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
+        ).json()
+
+        response = client.put(
+            f"/events/{submitted['id']}",
+            json={**DRAFT, "title": "New Title"},
+            headers=auth_headers("Event Coordinator"),
+        )
+
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved["title"] == "New Title"
+
+    def test_coordinator_edit_tracks_routine_change_to_purpose(self, client, auth_headers):
+        """Editing purpose is logged as routine."""
+        event = create(client, auth_headers("Event Organiser"))
+        # Submit the event first - coordinators can only edit submitted events
+        submitted = client.post(
+            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
+        ).json()
+
+        response = client.put(
+            f"/events/{submitted['id']}",
+            json={**DRAFT, "purpose": "Updated purpose statement"},
+            headers=auth_headers("Event Coordinator"),
+        )
+
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved["purpose"] == "Updated purpose statement"
+
+    def test_coordinator_edit_tracks_routine_change_to_description(self, client, auth_headers):
+        """Editing description is logged as routine."""
+        event = create(client, auth_headers("Event Organiser"))
+        # Submit the event first - coordinators can only edit submitted events
+        submitted = client.post(
+            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
+        ).json()
+
+        response = client.put(
+            f"/events/{submitted['id']}",
+            json={**DRAFT, "description": "Updated description with more details"},
+            headers=auth_headers("Event Coordinator"),
+        )
+
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved["description"] == "Updated description with more details"
+
+    def test_coordinator_cannot_edit_draft_event(self, client, auth_headers):
+        """Coordinators cannot edit Draft events - only submitted ones."""
+        event = create(client, auth_headers("Event Organiser"))
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={**DRAFT, "title": "Coordinator tries to edit draft"},
+            headers=auth_headers("Event Coordinator"),
+        )
+
+        assert response.status_code == 403
+        detail = response.json()["detail"]
+        assert detail["code"] == "forbidden"
+        assert "only edit submitted events" in detail["message"].lower()
+
+    def test_coordinator_can_edit_submitted_event(self, client, auth_headers):
+        """Coordinators can edit events in Submitted status."""
+        event = create(client, auth_headers("Event Organiser"))
+        submitted = client.post(
+            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
+        ).json()
+
+        response = client.put(
+            f"/events/{submitted['id']}",
+            json={**DRAFT, "title": "Edited After Submission"},
+            headers=auth_headers("Event Coordinator"),
+        )
+
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved["title"] == "Edited After Submission"
+        assert saved["status"] == "Submitted"  # Status unchanged
 
 
 class TestSprintOneReachableStatuses:

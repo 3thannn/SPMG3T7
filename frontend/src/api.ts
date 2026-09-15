@@ -20,6 +20,7 @@ export type Permission =
   | 'events:read:all'
   | 'events:submit'
   | 'events:review'
+  | 'events:edit'
   | 'users:read'
 
 /**

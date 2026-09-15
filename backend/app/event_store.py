@@ -28,6 +28,7 @@ from app.event_status import EventStatus
 
 EVENTS_TABLE = "events"
 CHANGES_TABLE = "status_changes"
+EVENT_CHANGES_TABLE = "event_changes"
 
 # `users(name)` resolves through the one foreign key each table has to users.
 EVENT_COLUMNS = (
@@ -150,6 +151,19 @@ class Repository(Protocol):
         expected_attendance: int | None,
     ) -> Event: ...
 
+    def save_event_with_tracking(
+        self,
+        event_id: int,
+        *,
+        title: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        expected_attendance: int | None,
+        editor_id: int,
+        previous_event: Event,
+    ) -> Event: ...
+
     def submit_event(
         self, event_id: int, *, actor_id: int, from_status: EventStatus
     ) -> Event: ...
@@ -257,6 +271,109 @@ class SupabaseEvents:
         assert saved is not None  # noqa: S101 — the row was just updated
         return saved
 
+    def save_event_with_tracking(
+        self,
+        event_id: int,
+        *,
+        title: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        expected_attendance: int | None,
+        editor_id: int,
+        previous_event: Event,
+    ) -> Event:
+        """US5.2: coordinator edits with change tracking (important vs routine)."""
+        at = _now()
+
+        # Track changes and classify them as important or routine
+        changes_to_log: list[dict] = []
+
+        # Important changes: proposed_date, expected_attendance
+        if starts_at != previous_event.starts_at:
+            changes_to_log.append({
+                "event_id": event_id,
+                "changed_field": "proposed_date",
+                "old_value": previous_event.starts_at,
+                "new_value": starts_at,
+                "change_type": "important",
+                "changed_by_user_id": editor_id,
+                "changed_at": at,
+            })
+
+        if expected_attendance != previous_event.expected_attendance:
+            changes_to_log.append({
+                "event_id": event_id,
+                "changed_field": "expected_attendance",
+                "old_value": (
+                    str(previous_event.expected_attendance)
+                    if previous_event.expected_attendance is not None
+                    else None
+                ),
+                "new_value": (
+                    str(expected_attendance)
+                    if expected_attendance is not None
+                    else None
+                ),
+                "change_type": "important",
+                "changed_by_user_id": editor_id,
+                "changed_at": at,
+            })
+
+        # Routine changes: name (title), purpose, description
+        if title != previous_event.title:
+            changes_to_log.append({
+                "event_id": event_id,
+                "changed_field": "name",
+                "old_value": previous_event.title,
+                "new_value": title,
+                "change_type": "routine",
+                "changed_by_user_id": editor_id,
+                "changed_at": at,
+            })
+
+        if purpose != previous_event.purpose:
+            changes_to_log.append({
+                "event_id": event_id,
+                "changed_field": "purpose",
+                "old_value": previous_event.purpose,
+                "new_value": purpose,
+                "change_type": "routine",
+                "changed_by_user_id": editor_id,
+                "changed_at": at,
+            })
+
+        if description != previous_event.description:
+            changes_to_log.append({
+                "event_id": event_id,
+                "changed_field": "description",
+                "old_value": previous_event.description,
+                "new_value": description,
+                "change_type": "routine",
+                "changed_by_user_id": editor_id,
+                "changed_at": at,
+            })
+
+        # Update the event
+        supabase_client.admin().table(EVENTS_TABLE).update(
+            {
+                "name": title,
+                "purpose": purpose or None,
+                "description": description,
+                "proposed_date": starts_at,
+                "expected_attendance": expected_attendance,
+                "updated_at": at,
+            }
+        ).eq("id", event_id).execute()
+
+        # Log changes to event_changes table
+        if changes_to_log:
+            supabase_client.admin().table(EVENT_CHANGES_TABLE).insert(changes_to_log).execute()
+
+        saved = self.get_event(event_id)
+        assert saved is not None  # noqa: S101 — the row was just updated
+        return saved
+
     def submit_event(
         self, event_id: int, *, actor_id: int, from_status: EventStatus
     ) -> Event:
@@ -354,6 +471,28 @@ class InMemoryEvents:
                 expected_attendance=expected_attendance,
                 updated_at=_now(),
             )
+        )
+
+    def save_event_with_tracking(
+        self,
+        event_id: int,
+        *,
+        title: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        expected_attendance: int | None,
+        editor_id: int,
+        previous_event: Event,
+    ) -> Event:
+        """In-memory version of coordinator edits. Change tracking is not implemented in memory."""
+        return self.save_event(
+            event_id,
+            title=title,
+            purpose=purpose,
+            description=description,
+            starts_at=starts_at,
+            expected_attendance=expected_attendance,
         )
 
     def submit_event(
