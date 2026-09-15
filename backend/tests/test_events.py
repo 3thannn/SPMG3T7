@@ -483,7 +483,7 @@ class TestCoordinatorEditing:
 
         assert response.status_code == 404
         detail = response.json()["detail"]
-        assert detail["code"] == "forbidden"
+        assert detail["code"] == "event_not_found"
         assert "only edit submitted events" in detail["message"].lower()
 
     def test_coordinator_can_edit_submitted_event(self, client, auth_headers):
