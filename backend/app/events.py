@@ -257,15 +257,6 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             },
         )
 
-    if is_owner and event.status != EventStatus.DRAFT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": ErrorCode.FORBIDDEN,
-                "message": "Organisers can only edit their own Draft events.",
-            },
-        )
-
     clean = _validated(draft)
 
     # If coordinator is editing (not the owner), use change tracking
