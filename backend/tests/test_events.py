@@ -49,22 +49,50 @@ class TestCreating:
         assert response.status_code == 403
         assert "create events" in response.json()["detail"]["message"]
 
-    def test_an_event_needs_a_title(self, client, auth_headers):
+    def test_a_draft_may_have_only_a_description(self, client, auth_headers):
         response = client.post(
-            "/events", json={**DRAFT, "title": "   "}, headers=auth_headers()
+            "/events", json={"description": "Ideas for later"}, headers=auth_headers()
+        )
+
+        assert response.status_code == 201, response.text
+        assert response.json()["title"] == ""
+        assert response.json()["startsAt"] == ""
+
+    def test_a_draft_needs_a_letter_or_number_somewhere(self, client, auth_headers):
+        response = client.post(
+            "/events",
+            json={"title": "   ", "purpose": "---", "description": "!@#"},
+            headers=auth_headers(),
         )
 
         assert response.status_code == 400
-        assert response.json()["detail"]["message"] == "Give the event a title."
-
-    def test_an_event_needs_a_date(self, client, auth_headers):
-        """events.proposed_date is NOT NULL, so a dateless draft cannot be stored."""
-        response = client.post(
-            "/events", json={**DRAFT, "startsAt": ""}, headers=auth_headers()
+        assert response.json()["detail"]["message"] == (
+            "Enter at least one letter or number in any field to save a draft."
         )
 
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == "Give the event a date."
+    def test_a_zero_attendance_is_enough_content_for_a_draft(self, client, auth_headers):
+        response = client.post(
+            "/events", json={"expectedAttendance": 0}, headers=auth_headers()
+        )
+
+        assert response.status_code == 201, response.text
+        assert response.json()["expectedAttendance"] == 0
+
+    def test_draft_text_is_not_trimmed_or_reformatted(self, client, auth_headers):
+        description = "  First line\n    indented line\n  "
+
+        event = create(
+            client,
+            auth_headers(),
+            title="  Working title  ",
+            purpose="  Purpose with spacing  ",
+            description=description,
+            startsAt="",
+        )
+
+        assert event["title"] == "  Working title  "
+        assert event["purpose"] == "  Purpose with spacing  "
+        assert event["description"] == description
 
     def test_it_keeps_every_writable_column_of_the_events_table(
         self, client, auth_headers
@@ -209,6 +237,35 @@ class TestSaving:
 
         assert len(saved["history"]) == before
 
+    def test_saving_allows_title_and_date_to_be_cleared_when_another_field_has_content(
+        self, client, auth_headers
+    ):
+        event = create(client, auth_headers())
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={"description": "  Continue planning here.  "},
+            headers=auth_headers(),
+        )
+
+        assert response.status_code == 200, response.text
+        saved = response.json()
+        assert saved["title"] == ""
+        assert saved["startsAt"] == ""
+        assert saved["description"] == "  Continue planning here.  "
+
+    def test_saving_rejects_whitespace_and_punctuation_only(self, client, auth_headers):
+        event = create(client, auth_headers())
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={"title": "   ", "description": "---"},
+            headers=auth_headers(),
+        )
+
+        assert response.status_code == 400
+        assert "at least one letter or number" in response.json()["detail"]["message"]
+
     def test_only_the_owner_can_edit(self, client, auth_headers):
         event = create(client, auth_headers("Event Organiser"))
 
@@ -233,6 +290,22 @@ class TestSubmitting:
         ).json()
 
         assert submitted["status"] == "Submitted"
+
+    def test_submission_still_needs_a_title(self, client, auth_headers):
+        event = create(client, auth_headers(), title="", description="Planning notes")
+
+        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == "Give the event a title."
+
+    def test_submission_still_needs_a_date(self, client, auth_headers):
+        event = create(client, auth_headers(), startsAt="", description="Planning notes")
+
+        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == "Give the event a date."
 
     def test_submission_needs_a_purpose(self, client, auth_headers):
         event = create(client, auth_headers(), purpose="")

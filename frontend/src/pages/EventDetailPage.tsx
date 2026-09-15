@@ -11,6 +11,7 @@ import {
   submitEvent,
   type EventRecord,
 } from '../eventsStore'
+import { DRAFT_CONTENT_ERROR, displayEventTitle, hasDraftContent } from '../draftRules'
 import { navigate } from '../router'
 import { canViewStatus, checkSubmit, formatTimestamp, submitRefusalMessage } from '../status'
 import type { Session } from '../api'
@@ -129,12 +130,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     draft.expectedAttendance !== attendanceField(event.expectedAttendance)
 
   async function handleSave() {
-    if (!draft.title.trim()) {
-      setBanner({ kind: 'error', text: 'Give the event a title.' })
-      return
-    }
-    if (!draft.startsAt.trim()) {
-      setBanner({ kind: 'error', text: 'Give the event a date.' })
+    if (!hasDraftContent(draft)) {
+      setBanner({ kind: 'error', text: DRAFT_CONTENT_ERROR })
       return
     }
     if (draft.endsAt.trim() && draft.endsAt <= draft.startsAt) {
@@ -158,11 +155,11 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
       const updated = await saveEvent(
         event.id,
         {
-          title: draft.title.trim(),
-          purpose: draft.purpose.trim(),
-          description: draft.description.trim(),
-          startsAt: draft.startsAt.trim(),
-          endsAt: draft.endsAt.trim() || null,
+          title: draft.title,
+          purpose: draft.purpose,
+          description: draft.description,
+          startsAt: draft.startsAt,
+          endsAt: draft.endsAt || null,
           expectedAttendance: attendance,
         },
         session,
@@ -180,6 +177,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   }
 
   async function handleSubmit() {
+    if (!draft.title.trim()) {
+      setBanner({ kind: 'error', text: 'Give the event a title.' })
+      return
+    }
     if (!draft.startsAt.trim()) {
       setBanner({ kind: 'error', text: 'Give the event a date.' })
       return
@@ -259,7 +260,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
         <header className="detail-head">
           <div className="detail-heading">
-            <h1 className="page-title">{event.title}</h1>
+            <h1 className="page-title">{displayEventTitle(event.title)}</h1>
             <p className="page-subtitle">
               Organiser: {event.organiserName} · Created {formatTimestamp(event.createdAt)}
             </p>

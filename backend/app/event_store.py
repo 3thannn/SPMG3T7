@@ -28,6 +28,7 @@ from app.event_status import EventStatus
 
 EVENTS_TABLE = "events"
 CHANGES_TABLE = "status_changes"
+EVENT_CHANGES_TABLE = "event_changes"
 
 # `users(name)` resolves through the one foreign key each table has to users.
 EVENT_COLUMNS = (
@@ -107,7 +108,7 @@ def creation_entry(event: "Event") -> StatusChange:
 def to_event(row: dict, changes: list[dict] | None = None) -> Event:
     event = Event(
         id=row["id"],
-        title=row["name"],
+        title=row.get("name") or "",
         purpose=row.get("purpose") or "",
         description=row.get("description") or "",
         starts_at=str(row["proposed_date"]) if row.get("proposed_date") else "",
@@ -248,8 +249,8 @@ class SupabaseEvents:
                     "name": title,
                     "purpose": purpose or None,
                     "description": description,
-                    "proposed_date": starts_at,
-                    "end_date": ends_at,
+                    "proposed_date": starts_at if starts_at.strip() else None,
+                    "end_date": ends_at if ends_at and ends_at.strip() else None,
                     "expected_attendance": expected_attendance,
                     "status": str(EventStatus.DRAFT),
                     "organiser_id": organiser_id,
@@ -282,8 +283,8 @@ class SupabaseEvents:
                 "name": title,
                 "purpose": purpose or None,
                 "description": description,
-                "proposed_date": starts_at,
-                "end_date": ends_at,
+                "proposed_date": starts_at if starts_at.strip() else None,
+                "end_date": ends_at if ends_at and ends_at.strip() else None,
                 "expected_attendance": expected_attendance,
                 "updated_at": _now(),
             }

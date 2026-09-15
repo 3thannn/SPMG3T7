@@ -61,16 +61,17 @@ Security policies, say. If you do set it, use the **Session pooler** string
 rather than the direct connection, which is IPv6-only and fails on most home
 networks.
 
-There are no migrations to run. This project uses the schema exactly as it is —
-`users`, `events`, `status_changes`, `venues`, `equipment` — and adds no columns
-of its own. If a schema change ever becomes necessary, that is a conversation
-with whoever owns the schema, not something the backend does on startup.
-
 For a new project, run [`SUPABASE_SETUP.sql`](SUPABASE_SETUP.sql) once. For the
 already-created project, run [`SUPABASE_HARDENING.sql`](SUPABASE_HARDENING.sql)
 once in the Supabase SQL Editor. It adds the missing audit foreign-key index,
 locks the timestamp trigger's search path, and makes the server-only Data API
 access model explicit; it does not alter existing rows or table shapes.
+
+To allow a Draft with no start date, existing projects must also run
+[`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`](SUPABASE_ALLOW_PARTIAL_DRAFTS.sql) once.
+It only drops the `NOT NULL` constraint from `events.proposed_date`; completed
+event requests and submitted drafts still require a date in application
+validation.
 
 ## Run the API
 
@@ -147,12 +148,11 @@ A second submit answers `409` with a `reason` — `already-submitted`,
 `not-owner` or `not-draft` — so the client can say which rule refused rather
 than showing a generic failure.
 
-The schema is used exactly as it stands, and two of its shapes are worth
-knowing when reading this code:
+Some schema shapes are worth knowing when reading this code:
 
-- `events.proposed_date` is `NOT NULL`, so an event with no date is not
-  something the database can hold. The create and save routes require one, and
-  the form asks for it up front rather than accepting a draft it cannot store.
+- `events.proposed_date` is nullable so an Organiser may save a partial Draft.
+  Submission still requires a date. Draft creation and saving require at least
+  one letter or number across their fields, and preserve entered text exactly.
 - `status_changes.old_status` is `NOT NULL`, so there is no row that can mean
   "created". The first entry in an event's history is derived from the event's
   own `created_at` and organiser instead — which is the honest model anyway:

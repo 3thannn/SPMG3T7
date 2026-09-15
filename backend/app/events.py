@@ -71,10 +71,10 @@ class EventOut(BaseModel):
 class EventDraft(BaseModel):
     """What the client sends to create or save an event.
 
-    The fields mirror the writable columns of `events`. `startsAt` is required
-    and must be non-empty: `events.proposed_date` is NOT NULL, so an event with
-    no date is not a thing the database can hold. The form asks for one up front
-    rather than accepting a draft it cannot store.
+    The fields mirror the writable columns of `events`. A draft may leave any
+    individual field empty, but must contain a letter or number somewhere.
+    Text is kept exactly as supplied; validation must not rewrite an
+    Organiser's event details.
 
     `purpose` and `expectedAttendance` are nullable columns, so both are
     optional here. An absent attendance is None rather than 0 — the column
@@ -84,10 +84,10 @@ class EventDraft(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    title: str
+    title: str = ""
     purpose: str = ""
     description: str = ""
-    starts_at: str = Field(alias="startsAt")
+    starts_at: str = Field(default="", alias="startsAt")
     ends_at: str | None = Field(default=None, alias="endsAt")
     expected_attendance: int | None = Field(default=None, alias="expectedAttendance")
 
@@ -142,33 +142,38 @@ def _not_found() -> HTTPException:
 #: lengths here turns a database error into a sentence the form can show.
 TITLE_MAX = 255
 PURPOSE_MAX = 500
+DRAFT_CONTENT_ERROR = "Enter at least one letter or number in any field to save a draft."
+
+
+def _has_draft_content(draft: EventDraft) -> bool:
+    values = (
+        draft.title,
+        draft.purpose,
+        draft.description,
+        draft.starts_at,
+        draft.ends_at or "",
+        "" if draft.expected_attendance is None else str(draft.expected_attendance),
+    )
+    return any(character.isalnum() for value in values for character in value)
 
 
 def _validated(draft: EventDraft) -> EventDraft:
-    title = draft.title.strip()
-    purpose = draft.purpose.strip()
-    starts_at = draft.starts_at.strip()
-    if not title:
-        raise _invalid("Give the event a title.")
-    if len(title) > TITLE_MAX:
+    if not _has_draft_content(draft):
+        raise _invalid(DRAFT_CONTENT_ERROR)
+    if len(draft.title) > TITLE_MAX:
         raise _invalid(f"Keep the title to {TITLE_MAX} characters or fewer.")
-    if len(purpose) > PURPOSE_MAX:
+    if len(draft.purpose) > PURPOSE_MAX:
         raise _invalid(f"Keep the purpose to {PURPOSE_MAX} characters or fewer.")
-    if not starts_at:
-        raise _invalid("Give the event a date.")
     if draft.expected_attendance is not None and draft.expected_attendance < 0:
         raise _invalid("Expected attendance cannot be negative.")
-    return EventDraft(
-        title=title,
-        purpose=purpose,
-        description=draft.description.strip(),
-        starts_at=starts_at,
-        ends_at=draft.ends_at.strip() if draft.ends_at and draft.ends_at.strip() else None,
-        expected_attendance=draft.expected_attendance,
-    )
+    return draft
 
 
 def _validate_submission(event: Event) -> None:
+    if not event.title.strip():
+        raise _invalid("Give the event a title.")
+    if not event.starts_at.strip():
+        raise _invalid("Give the event a date.")
     if not event.purpose.strip():
         raise _invalid("Give the event a purpose.")
     if event.expected_attendance is None:

@@ -61,6 +61,15 @@ it('shows a status badge on every event in the list', async () => {
   expect(screen.getByText('Draft')).toBeInTheDocument()
 })
 
+it('labels an untitled and undated draft without inventing stored details', async () => {
+  listEventsMock.mockResolvedValue([buildEvent({ title: '---', startsAt: '' })])
+
+  render(<EventsPage session={organiser} />)
+
+  expect(await screen.findByText('Untitled event')).toBeInTheDocument()
+  expect(screen.getByText('Not set')).toBeInTheDocument()
+})
+
 it('names the organiser for a Coordinator, who is looking across owners', async () => {
   listEventsMock.mockResolvedValue([
     buildEvent(),

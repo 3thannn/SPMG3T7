@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import StatusBadge from '../components/StatusBadge'
 import { createEvent, EventRuleError, parseAttendance, submitEvent } from '../eventsStore'
+import { DRAFT_CONTENT_ERROR, hasDraftContent } from '../draftRules'
 import { navigate } from '../router'
 import type { Session } from '../api'
 
@@ -9,10 +10,9 @@ type NewEventPageProps = {
 }
 
 /**
- * The fields are the writable columns of the `events` table: name, purpose,
- * description, proposed_date and expected_attendance. Title and date are the
- * NOT NULL ones and are asked for as required; the rest are nullable, so the
- * form lets them be left blank rather than inventing a value to store.
+ * The fields are the writable columns of the `events` table. A draft only
+ * needs meaningful content in one of them; submitting still requires the
+ * complete event details.
  *
  * The lengths mirror VARCHAR(255) on `name` and VARCHAR(500) on `purpose`, so
  * an over-long entry is caught in the field rather than by a rejected write.
@@ -51,18 +51,14 @@ function todayIso(): string {
 
 function validate(fields: DraftFields, requireSubmit: boolean): FieldErrors {
   const errors: FieldErrors = {}
-  const title = fields.title.trim()
-  if (!title) errors.title = 'Give the event a title.'
-  else if (title.length > TITLE_MAX) {
+  if (requireSubmit && !fields.title.trim()) errors.title = 'Give the event a title.'
+  else if (fields.title.length > TITLE_MAX) {
     errors.title = `Keep the title to ${TITLE_MAX} characters or fewer.`
   }
-  if (fields.purpose.trim().length > PURPOSE_MAX) {
+  if (fields.purpose.length > PURPOSE_MAX) {
     errors.purpose = `Keep the purpose to ${PURPOSE_MAX} characters or fewer.`
   }
-  // Required by the database: events.proposed_date is NOT NULL, so there is no
-  // such thing as a stored draft without a date. Checking here means the user
-  // is told in the field rather than by a rejected request.
-  if (!fields.startsAt.trim()) errors.startsAt = 'Give the event a date.'
+  if (requireSubmit && !fields.startsAt.trim()) errors.startsAt = 'Give the event a date.'
   else if (requireSubmit && fields.startsAt.slice(0, 10) < todayIso()) {
     errors.startsAt = 'The start date cannot be in the past.'
   }
@@ -122,6 +118,12 @@ export default function NewEventPage({ session }: NewEventPageProps) {
   async function handleAction(action: 'draft' | 'submit') {
     setFormError('')
 
+    if (action === 'draft' && !hasDraftContent(fields)) {
+      setErrors({})
+      setFormError(DRAFT_CONTENT_ERROR)
+      return
+    }
+
     const found = validate(fields, action === 'submit')
     setErrors(found)
     if (Object.values(found).some(Boolean)) return
@@ -131,11 +133,11 @@ export default function NewEventPage({ session }: NewEventPageProps) {
     try {
       const created = await createEvent(
         {
-          title: fields.title.trim(),
-          purpose: fields.purpose.trim(),
-          description: fields.description.trim(),
-          startsAt: fields.startsAt.trim(),
-          endsAt: fields.endsAt.trim() || null,
+          title: action === 'draft' ? fields.title : fields.title.trim(),
+          purpose: action === 'draft' ? fields.purpose : fields.purpose.trim(),
+          description: action === 'draft' ? fields.description : fields.description.trim(),
+          startsAt: action === 'draft' ? fields.startsAt : fields.startsAt.trim(),
+          endsAt: action === 'draft' ? fields.endsAt || null : fields.endsAt.trim() || null,
           expectedAttendance: attendance === 'invalid' ? null : attendance,
         },
         session,

@@ -46,7 +46,7 @@ const created: EventRecord = {
   history: [],
 }
 
-/** Fill in the two required fields, leaving the nullable ones alone. */
+/** Fill in the fields required when submitting, leaving optional details alone. */
 async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Title'), 'Faculty Welcome Night')
   await user.type(screen.getByLabelText('Starts'), '2026-11-02T18:00')
@@ -142,7 +142,6 @@ it('keeps an attendance of zero, which is not the same as leaving it blank', asy
   createEventMock.mockResolvedValue(created)
 
   render(<NewEventPage session={organiser} />)
-  await fillRequired(user)
   await user.type(screen.getByLabelText('Expected attendance'), '0')
   await user.click(screen.getByRole('button', { name: 'Save as draft' }))
 
@@ -150,11 +149,57 @@ it('keeps an attendance of zero, which is not the same as leaving it blank', asy
   expect(createEventMock.mock.calls[0][0].expectedAttendance).toBe(0)
 })
 
-it('asks for a title and a date, which the table requires', async () => {
+it('rejects a completely empty draft', async () => {
   const user = userEvent.setup()
 
   render(<NewEventPage session={organiser} />)
   await user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+  expect(
+    await screen.findByText('Enter at least one letter or number in any field to save a draft.'),
+  ).toBeInTheDocument()
+  expect(createEventMock).not.toHaveBeenCalled()
+})
+
+it('rejects a draft containing only whitespace and punctuation', async () => {
+  const user = userEvent.setup()
+
+  render(<NewEventPage session={organiser} />)
+  await user.type(screen.getByLabelText('Title'), '   ')
+  await user.type(screen.getByLabelText('Purpose'), '---')
+  await user.type(screen.getByLabelText('Description'), '!@#')
+  await user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(/at least one letter or number/i)
+  expect(createEventMock).not.toHaveBeenCalled()
+})
+
+it('allows a description-only draft and preserves its whitespace exactly', async () => {
+  const user = userEvent.setup()
+  createEventMock.mockResolvedValue({ ...created, title: '', startsAt: '' })
+
+  render(<NewEventPage session={organiser} />)
+  const description = '  First line\n    indented line\n  '
+  await user.type(screen.getByLabelText('Description'), description)
+  await user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+  await waitFor(() => expect(createEventMock).toHaveBeenCalled())
+  expect(createEventMock.mock.calls[0][0]).toEqual({
+    title: '',
+    purpose: '',
+    description,
+    startsAt: '',
+    endsAt: null,
+    expectedAttendance: null,
+  })
+})
+
+it('still requires a title and date when submitting', async () => {
+  const user = userEvent.setup()
+
+  render(<NewEventPage session={organiser} />)
+  await user.type(screen.getByLabelText('Description'), 'Planning notes')
+  await user.click(screen.getByRole('button', { name: 'Submit' }))
 
   expect(await screen.findByText('Give the event a title.')).toBeInTheDocument()
   expect(screen.getByText('Give the event a date.')).toBeInTheDocument()
