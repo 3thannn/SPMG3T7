@@ -77,7 +77,7 @@ it('sends the user to the view the server picked for their role', async () => {
     ...SESSION_BODY,
     role: 'Event Coordinator',
     home: '/review',
-    permissions: ['events:read:all', 'events:review'],
+    permissions: ['events:read:submitted', 'events:review'],
   }
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }))
   const { user } = renderPage()

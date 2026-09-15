@@ -12,7 +12,7 @@ import type { Role } from '../status'
 
 const PERMISSIONS: Record<Role, Permission[]> = {
   'Event Organiser': ['events:create', 'events:read:own', 'events:submit'],
-  'Event Coordinator': ['events:read:all', 'events:review', 'users:read'],
+  'Event Coordinator': ['events:read:submitted', 'events:review', 'users:read'],
 }
 
 const HOME: Record<Role, string> = {

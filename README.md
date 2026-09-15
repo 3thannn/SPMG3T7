@@ -85,7 +85,7 @@ Sign in with one of the development accounts, both with the password
 | Email                     | Role              | Can do                                |
 | ------------------------- | ----------------- | ------------------------------------- |
 | `organiser@spmg3t7.edu`   | Event Organiser   | create, edit and submit their events  |
-| `coordinator@spmg3t7.edu` | Event Coordinator | see every event, review them          |
+| `coordinator@spmg3t7.edu` | Event Coordinator | see submitted events, review them     |
 
 The role names come from the `user_role` enum in the database, which is why they
 read as `Event Organiser` rather than `Organiser`.

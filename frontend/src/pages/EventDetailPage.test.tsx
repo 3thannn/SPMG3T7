@@ -1,7 +1,7 @@
 // New file — added for SPMG3T7-33 (US5.1)
 /**
  * What the detail page shows a viewer who does not own the event — US5.1
- * (SPMG3T7-33): a Coordinator opens any event and sees every captured field,
+ * (SPMG3T7-33): a Coordinator opens a submitted event and sees every captured field,
  * read-only.
  *
  * Ownership and the server's visibility rule are already covered in
@@ -57,6 +57,15 @@ it('shows every captured field as read-only text to a Coordinator', async () => 
   expect(screen.getByText('Welcome the new intake.')).toBeInTheDocument()
   expect(screen.getByText('Talks.')).toBeInTheDocument()
   expect(screen.getByText('120 people')).toBeInTheDocument()
+})
+
+it('does not render a Draft if an invalid API response returns one to a Coordinator', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Draft' })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  expect(await screen.findByText('Not available for your role')).toBeInTheDocument()
+  expect(screen.queryByText('Faculty Welcome Night')).not.toBeInTheDocument()
 })
 
 it('offers no inputs or edit actions to a Coordinator, who does not own the event', async () => {
