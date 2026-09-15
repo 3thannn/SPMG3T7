@@ -1,5 +1,7 @@
 # Test and lint tooling. Install alongside requirements.txt for local dev and CI.
 -r requirements.txt
 pytest==9.1.1
+# Coverage, so `--cov` in the README's command works on a fresh checkout.
+pytest-cov==7.0.0
 httpx==0.28.1
 ruff==0.16.6

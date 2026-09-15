@@ -69,6 +69,8 @@ than a form that fails on submit.
   and how to explain a refusal
 - [`useIdleSignOut.ts`](src/useIdleSignOut.ts) — signs out after the same idle
   window the server uses, which the server sends on the session
+- [`eventRequests.ts`](src/eventRequests.ts) — the `/event-requests` client and
+  the form rules it mirrors from the server
 
 The route guard and the hidden nav links are conveniences: they keep people out
 of dead ends. The API refuses the request regardless, and that refusal is what
@@ -93,6 +95,13 @@ These are the same three steps CI runs, so a green run here means a green run th
 npm run lint
 npm run build
 npm test
+```
+
+Event Request Creation is covered end to end. To see it:
+
+```bash
+npx vitest run --coverage.enabled --coverage.all=false   --coverage.include='src/eventRequests.ts'
+npx vitest run --coverage.enabled --coverage.all=false   --coverage.include='src/pages/NewEventRequestPage.tsx'
 ```
 
 ## Environment variables
@@ -129,9 +138,11 @@ src/
   session.ts         the stored session, revived on load
   permissions.ts     which route needs which permission
   eventsStore.ts     the /events client
+  eventRequests.ts   the /event-requests client, and the form rules it mirrors
   status.ts          event status model and roles
   useIdleSignOut.ts  signs out after the server's idle window
-  pages/             sign-in, landing, events, event detail, new event, access denied
+  pages/             sign-in, landing, events, event detail, new event,
+                     new event request, access denied
   components/        top nav, status badge, status timeline
   test/              Vitest setup and shared session builders
 ```

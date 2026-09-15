@@ -32,8 +32,8 @@ EVENT_CHANGES_TABLE = "event_changes"
 
 # `users(name)` resolves through the one foreign key each table has to users.
 EVENT_COLUMNS = (
-    "id, name, purpose, description, proposed_date, expected_attendance, status, "
-    "organiser_id, created_at, updated_at, submitted_at, users(name)"
+    "id, name, purpose, description, proposed_date, end_date, expected_attendance, "
+    "status, organiser_id, created_at, updated_at, submitted_at, users(name)"
 )
 CHANGE_COLUMNS = (
     "id, old_status, new_status, changed_at, notes, changed_by_id, users(name)"
@@ -58,6 +58,8 @@ class Event:
     purpose: str
     description: str
     starts_at: str
+    #: `events.end_date`, optional for drafts and populated when supplied.
+    ends_at: str
     #: `events.expected_attendance` is nullable, so "not estimated yet" is a
     #: real answer and distinct from an estimate of zero.
     expected_attendance: int | None
@@ -106,10 +108,11 @@ def creation_entry(event: "Event") -> StatusChange:
 def to_event(row: dict, changes: list[dict] | None = None) -> Event:
     event = Event(
         id=row["id"],
-        title=row["name"],
+        title=row.get("name") or "",
         purpose=row.get("purpose") or "",
         description=row.get("description") or "",
         starts_at=str(row["proposed_date"]) if row.get("proposed_date") else "",
+        ends_at=str(row["end_date"]) if row.get("end_date") else "",
         expected_attendance=row.get("expected_attendance"),
         status=EventStatus(row["status"]),
         organiser_id=row["organiser_id"],
@@ -138,6 +141,7 @@ class Repository(Protocol):
         purpose: str,
         description: str,
         starts_at: str,
+        ends_at: str | None,
         expected_attendance: int | None,
         organiser_id: int,
     ) -> Event: ...
@@ -150,6 +154,7 @@ class Repository(Protocol):
         purpose: str,
         description: str,
         starts_at: str,
+        ends_at: str | None,
         expected_attendance: int | None,
     ) -> Event: ...
 
@@ -161,9 +166,22 @@ class Repository(Protocol):
         purpose: str,
         description: str,
         starts_at: str,
+        ends_at: str | None,
         expected_attendance: int | None,
         editor_id: int,
         previous_event: Event,
+    ) -> Event: ...
+
+    def create_event_request(
+        self,
+        *,
+        name: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        ends_at: str,
+        expected_attendance: int,
+        organiser_id: int,
     ) -> Event: ...
 
     def submit_event(
@@ -223,6 +241,7 @@ class SupabaseEvents:
         purpose: str,
         description: str,
         starts_at: str,
+        ends_at: str | None,
         expected_attendance: int | None,
         organiser_id: int,
     ) -> Event:
@@ -236,7 +255,8 @@ class SupabaseEvents:
                     "name": title,
                     "purpose": purpose or None,
                     "description": description,
-                    "proposed_date": starts_at,
+                    "proposed_date": starts_at if starts_at.strip() else None,
+                    "end_date": ends_at if ends_at and ends_at.strip() else None,
                     "expected_attendance": expected_attendance,
                     "status": str(EventStatus.DRAFT),
                     "organiser_id": organiser_id,
@@ -260,6 +280,7 @@ class SupabaseEvents:
         purpose: str,
         description: str,
         starts_at: str,
+        ends_at: str | None,
         expected_attendance: int | None,
     ) -> Event:
         """US4.2: saving edits content and never moves the status."""
@@ -268,7 +289,8 @@ class SupabaseEvents:
                 "name": title,
                 "purpose": purpose or None,
                 "description": description,
-                "proposed_date": starts_at,
+                "proposed_date": starts_at if starts_at.strip() else None,
+                "end_date": ends_at if ends_at and ends_at.strip() else None,
                 "expected_attendance": expected_attendance,
                 "updated_at": _now(),
             }
@@ -285,6 +307,7 @@ class SupabaseEvents:
         purpose: str,
         description: str,
         starts_at: str,
+        ends_at: str | None,
         expected_attendance: int | None,
         editor_id: int,
         previous_event: Event,
@@ -367,6 +390,7 @@ class SupabaseEvents:
                 "purpose": purpose or None,
                 "description": description,
                 "proposed_date": starts_at,
+                "end_date": ends_at,
                 "expected_attendance": expected_attendance,
                 "updated_at": at,
             }
@@ -379,6 +403,63 @@ class SupabaseEvents:
         saved = self.get_event(event_id)
         assert saved is not None  # noqa: S101 — the row was just updated
         return saved
+
+    def create_event_request(
+        self,
+        *,
+        name: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        ends_at: str,
+        expected_attendance: int,
+        organiser_id: int,
+    ) -> Event:
+        """Event Request Creation: the row lands already Submitted.
+
+        The audit row is written in the same breath, for the reason the module
+        docstring gives: `status_changes.old_status` is NOT NULL, so there is no
+        entry that can mean "created straight into Submitted". Recording
+        Draft -> Submitted at the creation timestamp keeps the trail honest
+        about what happened — the event did exist as a draft, for no time at
+        all — and keeps the derived creation entry meaning what it always meant.
+        """
+        at = _now()
+        created = (
+            supabase_client.admin()
+            .table(EVENTS_TABLE)
+            .insert(
+                {
+                    "name": name,
+                    "purpose": purpose,
+                    "description": description,
+                    "proposed_date": starts_at,
+                    "end_date": ends_at,
+                    "expected_attendance": expected_attendance,
+                    "status": str(EventStatus.SUBMITTED),
+                    "organiser_id": organiser_id,
+                    "created_at": at,
+                    "updated_at": at,
+                    "submitted_at": at,
+                }
+            )
+            .execute()
+        )
+        event_id = created.data[0]["id"]
+        supabase_client.admin().table(CHANGES_TABLE).insert(
+            {
+                "event_id": event_id,
+                "old_status": str(EventStatus.DRAFT),
+                "new_status": str(EventStatus.SUBMITTED),
+                "changed_by_id": organiser_id,
+                "changed_at": at,
+            }
+        ).execute()
+        # Read back rather than assembled here: the insert response carries no
+        # embedded organiser name, exactly as in `create_event`.
+        event = self.get_event(event_id)
+        assert event is not None  # noqa: S101 — the row was just inserted
+        return event
 
     def submit_event(
         self, event_id: int, *, actor_id: int, from_status: EventStatus
@@ -436,6 +517,7 @@ class InMemoryEvents:
         purpose: str,
         description: str,
         starts_at: str,
+        ends_at: str | None,
         expected_attendance: int | None,
         organiser_id: int,
     ) -> Event:
@@ -447,6 +529,7 @@ class InMemoryEvents:
             purpose=purpose,
             description=description,
             starts_at=starts_at,
+            ends_at=ends_at or "",
             expected_attendance=expected_attendance,
             status=EventStatus.DRAFT,
             organiser_id=organiser_id,
@@ -466,6 +549,7 @@ class InMemoryEvents:
         purpose: str,
         description: str,
         starts_at: str,
+        ends_at: str | None,
         expected_attendance: int | None,
     ) -> Event:
         existing = self.get_event(event_id)
@@ -477,6 +561,7 @@ class InMemoryEvents:
                 purpose=purpose,
                 description=description,
                 starts_at=starts_at,
+                ends_at=ends_at or "",
                 expected_attendance=expected_attendance,
                 updated_at=_now(),
             )
@@ -490,6 +575,7 @@ class InMemoryEvents:
         purpose: str,
         description: str,
         starts_at: str,
+        ends_at: str | None,
         expected_attendance: int | None,
         editor_id: int,
         previous_event: Event,
@@ -501,8 +587,48 @@ class InMemoryEvents:
             purpose=purpose,
             description=description,
             starts_at=starts_at,
+            ends_at=ends_at,
             expected_attendance=expected_attendance,
         )
+
+    def create_event_request(
+        self,
+        *,
+        name: str,
+        purpose: str,
+        description: str,
+        starts_at: str,
+        ends_at: str,
+        expected_attendance: int,
+        organiser_id: int,
+    ) -> Event:
+        """The same two writes as the Supabase store, and the same history."""
+        at = _now()
+        self.next_id += 1
+        event = Event(
+            id=self.next_id,
+            title=name,
+            purpose=purpose,
+            description=description,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            expected_attendance=expected_attendance,
+            status=EventStatus.SUBMITTED,
+            organiser_id=organiser_id,
+            organiser_name=self.names.get(organiser_id, ""),
+            created_at=at,
+            updated_at=at,
+        )
+        submission = StatusChange(
+            from_status=EventStatus.DRAFT,
+            to_status=EventStatus.SUBMITTED,
+            at=at,
+            by_id=organiser_id,
+            by_name=self.names.get(organiser_id, ""),
+        )
+        event = replace(event, history=(creation_entry(event), submission))
+        self.events.insert(0, event)
+        return event
 
     def submit_event(
         self, event_id: int, *, actor_id: int, from_status: EventStatus

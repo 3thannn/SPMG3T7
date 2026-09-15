@@ -44,11 +44,11 @@ The keys go in `backend/.env`, which is gitignored. Only the backend holds them
 — the browser talks to the API and never to Supabase directly, so the service
 role key never leaves the server.
 
-There is nothing to migrate: the project uses the Supabase schema exactly as it
-stands and adds no columns of its own. Passwords are held by Supabase Auth, in
-the `auth.users` table it manages, and joined to the project's own `users` row
-by email. The [backend README](backend/README.md#where-a-password-lives) has the
-detail.
+For an existing project, apply the small SQL scripts documented in the
+[backend README](backend/README.md). Partial drafts require
+`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`, which makes the proposed date nullable.
+Passwords are held by Supabase Auth, in the `auth.users` table it manages, and
+joined to the project's own `users` row by email.
 
 Frontend:
 

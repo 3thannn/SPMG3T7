@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import StatusBadge from '../components/StatusBadge'
-import { createEvent, parseAttendance } from '../eventsStore'
+import { createEvent, EventRuleError, parseAttendance, submitEvent } from '../eventsStore'
+import { DRAFT_CONTENT_ERROR, hasDraftContent } from '../draftRules'
 import { navigate } from '../router'
 import type { Session } from '../api'
 
@@ -9,10 +10,9 @@ type NewEventPageProps = {
 }
 
 /**
- * The fields are the writable columns of the `events` table: name, purpose,
- * description, proposed_date and expected_attendance. Title and date are the
- * NOT NULL ones and are asked for as required; the rest are nullable, so the
- * form lets them be left blank rather than inventing a value to store.
+ * The fields are the writable columns of the `events` table. A draft only
+ * needs meaningful content in one of them; submitting still requires the
+ * complete event details.
  *
  * The lengths mirror VARCHAR(255) on `name` and VARCHAR(500) on `purpose`, so
  * an over-long entry is caught in the field rather than by a rejected write.
@@ -26,6 +26,7 @@ type DraftFields = {
   purpose: string
   description: string
   startsAt: string
+  endsAt: string
   expectedAttendance: string
 }
 
@@ -34,27 +35,45 @@ const EMPTY: DraftFields = {
   purpose: '',
   description: '',
   startsAt: '',
+  endsAt: '',
   expectedAttendance: '',
 }
 
 type FieldErrors = Partial<Record<keyof DraftFields, string>>
 
 /** Everything the fields say is wrong, so the user sees it in one pass. */
-function validate(fields: DraftFields): FieldErrors {
+function todayIso(): string {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
+function validate(fields: DraftFields, requireSubmit: boolean): FieldErrors {
   const errors: FieldErrors = {}
-  const title = fields.title.trim()
-  if (!title) errors.title = 'Give the event a title.'
-  else if (title.length > TITLE_MAX) {
+  if (requireSubmit && !fields.title.trim()) errors.title = 'Give the event a title.'
+  else if (fields.title.length > TITLE_MAX) {
     errors.title = `Keep the title to ${TITLE_MAX} characters or fewer.`
   }
-  if (fields.purpose.trim().length > PURPOSE_MAX) {
+  if (fields.purpose.length > PURPOSE_MAX) {
     errors.purpose = `Keep the purpose to ${PURPOSE_MAX} characters or fewer.`
   }
-  // Required by the database: events.proposed_date is NOT NULL, so there is no
-  // such thing as a stored draft without a date. Checking here means the user
-  // is told in the field rather than by a rejected request.
-  if (!fields.startsAt.trim()) errors.startsAt = 'Give the event a date.'
-  if (parseAttendance(fields.expectedAttendance) === 'invalid') {
+  if (requireSubmit && !fields.startsAt.trim()) errors.startsAt = 'Give the event a date.'
+  else if (requireSubmit && fields.startsAt.slice(0, 10) < todayIso()) {
+    errors.startsAt = 'The start date cannot be in the past.'
+  }
+  if (requireSubmit && !fields.purpose.trim()) errors.purpose = 'Give the event a purpose.'
+  const attendance = parseAttendance(fields.expectedAttendance)
+  if (requireSubmit && !fields.expectedAttendance.trim()) {
+    errors.expectedAttendance = 'Give the expected attendance.'
+  } else if (requireSubmit && attendance !== 'invalid' && (attendance ?? 0) < 1) {
+    errors.expectedAttendance = 'Expected attendance must be at least 1.'
+  }
+  if (requireSubmit && !fields.endsAt.trim()) errors.endsAt = 'Give the event an end date.'
+  if (fields.endsAt.trim() && fields.startsAt.trim() && fields.endsAt <= fields.startsAt) {
+    errors.endsAt = 'The end date must be after the start date.'
+  }
+  if (attendance === 'invalid') {
     errors.expectedAttendance = 'Enter a whole number of people, or leave it blank.'
   }
   return errors
@@ -96,11 +115,16 @@ export default function NewEventPage({ session }: NewEventPageProps) {
     setErrors((current) => ({ ...current, [key]: undefined }))
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleAction(action: 'draft' | 'submit') {
     setFormError('')
 
-    const found = validate(fields)
+    if (action === 'draft' && !hasDraftContent(fields)) {
+      setErrors({})
+      setFormError(DRAFT_CONTENT_ERROR)
+      return
+    }
+
+    const found = validate(fields, action === 'submit')
     setErrors(found)
     if (Object.values(found).some(Boolean)) return
 
@@ -109,17 +133,25 @@ export default function NewEventPage({ session }: NewEventPageProps) {
     try {
       const created = await createEvent(
         {
-          title: fields.title.trim(),
-          purpose: fields.purpose.trim(),
-          description: fields.description.trim(),
-          startsAt: fields.startsAt.trim(),
+          title: action === 'draft' ? fields.title : fields.title.trim(),
+          purpose: action === 'draft' ? fields.purpose : fields.purpose.trim(),
+          description: action === 'draft' ? fields.description : fields.description.trim(),
+          startsAt: action === 'draft' ? fields.startsAt : fields.startsAt.trim(),
+          endsAt: action === 'draft' ? fields.endsAt || null : fields.endsAt.trim() || null,
           expectedAttendance: attendance === 'invalid' ? null : attendance,
         },
         session,
       )
+      if (action === 'submit') await submitEvent(created.id, session)
       navigate(`/events/${created.id}`)
-    } catch {
-      setFormError('Could not create the event. Try again.')
+    } catch (error) {
+      setFormError(
+        error instanceof EventRuleError
+          ? error.message
+          : action === 'submit'
+            ? 'Could not submit the event. Try again.'
+            : 'Could not save the event. Try again.',
+      )
     } finally {
       setBusy(false)
     }
@@ -149,7 +181,14 @@ export default function NewEventPage({ session }: NewEventPageProps) {
           </div>
         </header>
 
-        <form className="card card-pad" onSubmit={handleSubmit} noValidate>
+        <form
+          className="card card-pad"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleAction('draft')
+          }}
+          noValidate
+        >
           {formError && (
             <p className="form-error" role="alert">
               {formError}
@@ -180,6 +219,7 @@ export default function NewEventPage({ session }: NewEventPageProps) {
               <input
                 id="startsAt"
                 type="datetime-local"
+                min={`${todayIso()}T00:00`}
                 value={fields.startsAt}
                 onChange={(e) => set('startsAt', e.target.value)}
                 aria-invalid={Boolean(errors.startsAt)}
@@ -189,6 +229,28 @@ export default function NewEventPage({ session }: NewEventPageProps) {
               {errors.startsAt && (
                 <span className="field-error" id="startsAt-error">
                   {errors.startsAt}
+                </span>
+              )}
+            </div>
+
+            <div className="field">
+              <label htmlFor="endsAt">Ends</label>
+              <input
+                id="endsAt"
+                type="datetime-local"
+                value={fields.endsAt}
+                onChange={(e) => set('endsAt', e.target.value)}
+                aria-invalid={Boolean(errors.endsAt)}
+                aria-describedby={errors.endsAt ? 'endsAt-error' : 'endsAt-hint'}
+                disabled={busy}
+              />
+              {errors.endsAt ? (
+                <span className="field-error" id="endsAt-error">
+                  {errors.endsAt}
+                </span>
+              ) : (
+                <span className="field-hint" id="endsAt-hint">
+                  Required when submitting. Optional for a saved draft.
                 </span>
               )}
             </div>
@@ -210,7 +272,7 @@ export default function NewEventPage({ session }: NewEventPageProps) {
                 </span>
               ) : (
                 <span className="field-hint" id="purpose-hint">
-                  Optional. One line on why the event is being held.
+                  Required when submitting. One line on why the event is being held.
                 </span>
               )}
             </div>
@@ -220,7 +282,7 @@ export default function NewEventPage({ session }: NewEventPageProps) {
               <input
                 id="expectedAttendance"
                 type="number"
-                min={0}
+                min={1}
                 step={1}
                 inputMode="numeric"
                 value={fields.expectedAttendance}
@@ -239,7 +301,7 @@ export default function NewEventPage({ session }: NewEventPageProps) {
                 </span>
               ) : (
                 <span className="field-hint" id="expectedAttendance-hint">
-                  Optional. Leave blank if you do not have an estimate yet.
+                  Required when submitting. Enter at least 1 person.
                 </span>
               )}
             </div>
@@ -256,8 +318,21 @@ export default function NewEventPage({ session }: NewEventPageProps) {
           </div>
 
           <div className="detail-actions">
-            <button type="submit" className="btn btn-primary" disabled={busy}>
-              {busy ? 'Creating…' : 'Create draft'}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void handleAction('draft')}
+              disabled={busy}
+            >
+              Save as draft
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void handleAction('submit')}
+              disabled={busy}
+            >
+              Submit
             </button>
             <button
               type="button"

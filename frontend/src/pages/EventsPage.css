@@ -102,3 +102,11 @@
     align-items: flex-start;
   }
 }
+
+/* The two ways to raise an event sit together in the page header, and wrap
+   rather than shrink when the screen is too narrow to hold both on one line. */
+.page-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}

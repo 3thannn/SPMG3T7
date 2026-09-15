@@ -22,8 +22,13 @@ export type EventRecord = {
   /** `events.purpose`, nullable in the database — empty string when unset. */
   purpose: string
   description: string
-  /** ISO-8601. Required: `events.proposed_date` is NOT NULL in the database. */
+  /** ISO-8601 when set; drafts may leave `events.proposed_date` null. */
   startsAt: string
+  /**
+  * `events.end_date`, optional for drafts. Empty for older drafts that predate
+  * the end-date field; optional so fixtures and callers still type-check.
+   */
+  endsAt?: string
   /**
    * `events.expected_attendance`, nullable. null means nobody has estimated
    * yet, which the column keeps distinct from an estimate of zero.
@@ -42,6 +47,7 @@ export type EventDraft = {
   purpose: string
   description: string
   startsAt: string
+  endsAt?: string | null
   expectedAttendance: number | null
 }
 

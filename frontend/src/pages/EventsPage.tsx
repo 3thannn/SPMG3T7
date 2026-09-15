@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import './EventsPage.css'
 import StatusBadge from '../components/StatusBadge'
 import { listEvents, type EventRecord } from '../eventsStore'
+import { displayEventTitle } from '../draftRules'
 import { navigate } from '../router'
 import { EVENT_STATUSES, formatTimestamp, type EventStatus } from '../status'
 import type { Session } from '../api'
@@ -146,9 +147,9 @@ export default function EventsPage({ session }: EventsPageProps) {
                   }}
                 >
                   <div className="event-row-main">
-                    <h3 className="event-row-title">{event.title}</h3>
+                    <h3 className="event-row-title">{displayEventTitle(event.title)}</h3>
                     <p className="event-row-meta">
-                      {formatTimestamp(event.startsAt)}
+                      {event.startsAt ? formatTimestamp(event.startsAt) : 'Not set'}
                       {seesAcrossOrganisers && <> · Organiser: {event.organiserName}</>}
                     </p>
                   </div>
