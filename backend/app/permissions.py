@@ -37,6 +37,7 @@ class Permission(StrEnum):
     EVENTS_READ_ALL = "events:read:all"
     EVENTS_SUBMIT = "events:submit"
     EVENTS_REVIEW = "events:review"
+    EVENTS_EDIT = "events:edit"
     USERS_READ = "users:read"
 
 
@@ -47,6 +48,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.EVENTS_READ_ALL: "view every event",
     Permission.EVENTS_SUBMIT: "submit events for approval",
     Permission.EVENTS_REVIEW: "review submitted events",
+    Permission.EVENTS_EDIT: "edit events",
     Permission.USERS_READ: "view the user directory",
 }
 
@@ -62,6 +64,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         {
             Permission.EVENTS_READ_ALL,
             Permission.EVENTS_REVIEW,
+            Permission.EVENTS_EDIT,
             Permission.USERS_READ,
         }
     ),

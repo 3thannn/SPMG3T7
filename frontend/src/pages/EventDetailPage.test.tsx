@@ -111,4 +111,60 @@ it('keeps submission strict for a titleless partial draft', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Give the event a title.')
   expect(saveEventMock).not.toHaveBeenCalled()
   expect(submitEventMock).not.toHaveBeenCalled()
+}))
+
+const coordinator = buildSession({ role: 'Event Coordinator', id: '9', name: 'Priya' })
+
+const submittedEvent: EventRecord = {
+  id: '101',
+  title: 'Faculty Welcome Night',
+  purpose: 'Welcome the new intake.',
+  description: 'Talks.',
+  startsAt: '2026-11-02T18:00',
+  expectedAttendance: 120,
+  status: 'Submitted',
+  organiserId: '1',
+  organiserName: 'Dylan',
+  createdAt: '2026-09-08T10:00:00',
+  updatedAt: '2026-09-08T10:05:00',
+  history: [
+    { from: null, to: 'Draft', at: '2026-09-08T10:00:00', byId: '1', byName: 'Dylan' },
+    { from: 'Draft', to: 'Submitted', at: '2026-09-08T10:05:00', byId: '1', byName: 'Dylan' },
+  ],
+}
+
+it('shows every captured field as read-only text to a Coordinator', async () => {
+  getEventMock.mockResolvedValue(submittedEvent)
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  expect(await screen.findByText('Faculty Welcome Night')).toBeInTheDocument()
+  expect(screen.getByText(/Organiser: Dylan/)).toBeInTheDocument()
+  expect(screen.getByText('Welcome the new intake.')).toBeInTheDocument()
+  expect(screen.getByText('Talks.')).toBeInTheDocument()
+  expect(screen.getByText('120 people')).toBeInTheDocument()
+})
+
+it('offers no inputs or edit actions to a Coordinator, who does not own the event', async () => {
+  getEventMock.mockResolvedValue(submittedEvent)
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  await screen.findByText('Faculty Welcome Night')
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /save draft/i })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /submit event/i })).not.toBeInTheDocument()
+  expect(
+    screen.getByText(/only the owning Organiser can edit or submit it/i),
+  ).toBeInTheDocument()
+})
+
+it('shows the full status history, not just the current status', async () => {
+  getEventMock.mockResolvedValue(submittedEvent)
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  await screen.findByText('Faculty Welcome Night')
+  expect(screen.getByText('Created as')).toBeInTheDocument()
+  expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0)
 })
