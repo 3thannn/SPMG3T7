@@ -481,7 +481,7 @@ class TestCoordinatorEditing:
             headers=auth_headers("Event Coordinator"),
         )
 
-        assert response.status_code == 403
+        assert response.status_code == 404
         detail = response.json()["detail"]
         assert detail["code"] == "forbidden"
         assert "only edit submitted events" in detail["message"].lower()
