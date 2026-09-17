@@ -16,7 +16,7 @@ Ids go out as strings for the same reason they do in `auth.Identity`: the client
 only ever compares them.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -166,6 +166,18 @@ def _validated(draft: EventDraft) -> EventDraft:
         raise _invalid(f"Keep the purpose to {PURPOSE_MAX} characters or fewer.")
     if draft.expected_attendance is not None and draft.expected_attendance < 0:
         raise _invalid("Expected attendance cannot be negative.")
+
+    start = draft.starts_at.strip()
+    end = (draft.ends_at or "").strip()
+    if start and end:
+        try:
+            if datetime.fromisoformat(end) <= datetime.fromisoformat(start):
+                raise _invalid("The end date must be after the start date.")
+        except ValueError:
+            # A malformed datetime is already rejected by the field format at the
+            # boundary; if a draft slips through, keep the user-facing message
+            # consistent with the form's date validation.
+            raise _invalid("Give the event a valid date.") from None
     return draft
 
 
@@ -186,6 +198,14 @@ def _validate_submission(event: Event) -> None:
         raise _invalid("Give the event a valid date.") from None
     if start_date < date.today():
         raise _invalid("The start date cannot be in the past.")
+    if event.ends_at and event.ends_at.strip():
+        try:
+            end_date = datetime.fromisoformat(event.ends_at)
+            start_date_time = datetime.fromisoformat(event.starts_at)
+        except ValueError:
+            raise _invalid("Give the event a valid date.") from None
+        if end_date <= start_date_time:
+            raise _invalid("The end date must be after the start date.")
 
 
 def _readable(event_id: int, user: User) -> Event:

@@ -69,12 +69,15 @@ than a form that fails on submit.
   and how to explain a refusal
 - [`useIdleSignOut.ts`](src/useIdleSignOut.ts) — signs out after the same idle
   window the server uses, which the server sends on the session
-- [`eventRequests.ts`](src/eventRequests.ts) — the `/event-requests` client and
-  the form rules it mirrors from the server
+- [`eventsStore.ts`](src/eventsStore.ts) — the `/events` client used by the
+  draft and submit flow
 
 The route guard and the hidden nav links are conveniences: they keep people out
 of dead ends. The API refuses the request regardless, and that refusal is what
 actually enforces the rule — anything the client checks, a user can edit.
+
+The active event flow is the draft-based one: create a draft with `/events`, edit
+it, and submit it via `/events/{id}/submit` once it is ready.
 
 ## Available scripts
 
@@ -97,12 +100,7 @@ npm run build
 npm test
 ```
 
-Event Request Creation is covered end to end. To see it:
-
-```bash
-npx vitest run --coverage.enabled --coverage.all=false   --coverage.include='src/eventRequests.ts'
-npx vitest run --coverage.enabled --coverage.all=false   --coverage.include='src/pages/NewEventRequestPage.tsx'
-```
+The coverage focuses on the draft and submit flow used by the live app.
 
 ## Environment variables
 
@@ -137,12 +135,11 @@ src/
   api.ts             backend client and its error types
   session.ts         the stored session, revived on load
   permissions.ts     which route needs which permission
-  eventsStore.ts     the /events client
-  eventRequests.ts   the /event-requests client, and the form rules it mirrors
+  eventsStore.ts     the /events client used by the draft and submit flow
   status.ts          event status model and roles
   useIdleSignOut.ts  signs out after the server's idle window
   pages/             sign-in, landing, events, event detail, new event,
-                     new event request, access denied
+                     access denied
   components/        top nav, status badge, status timeline
   test/              Vitest setup and shared session builders
 ```
