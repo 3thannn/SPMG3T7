@@ -145,6 +145,20 @@ class TestCreating:
         assert response.status_code == 400
         assert "255 characters" in response.json()["detail"]["message"]
 
+    def test_an_end_time_before_the_start_time_is_refused(self, client, auth_headers):
+        response = client.post(
+            "/events",
+            json={
+                **DRAFT,
+                "startsAt": "2026-11-02T18:00",
+                "endsAt": "2026-11-02T17:00",
+            },
+            headers=auth_headers(),
+        )
+
+        assert response.status_code == 400
+        assert "The end date must be after the start date." in response.json()["detail"]["message"]
+
     def test_a_purpose_longer_than_the_column_is_refused(self, client, auth_headers):
         """events.purpose is VARCHAR(500)."""
         response = client.post(
@@ -435,6 +449,40 @@ class TestSubmitting:
 
         assert response.status_code == 400
         assert response.json()["detail"]["message"] == "The start date cannot be in the past."
+
+    def test_editing_an_event_rejects_an_end_not_after_the_start(self, client, auth_headers):
+        event = create(
+            client,
+            auth_headers(),
+            startsAt="2026-11-02T18:00",
+            endsAt="2026-11-02T19:00",
+        )
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={**DRAFT, "startsAt": "2026-11-02T18:00", "endsAt": "2026-11-02T17:00"},
+            headers=auth_headers(),
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == "The end date must be after the start date."
+
+    def test_editing_an_event_rejects_equal_start_and_end_times(self, client, auth_headers):
+        event = create(
+            client,
+            auth_headers(),
+            startsAt="2026-11-02T18:00",
+            endsAt="2026-11-02T19:00",
+        )
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={**DRAFT, "startsAt": "2026-11-02T18:00", "endsAt": "2026-11-02T18:00"},
+            headers=auth_headers(),
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == "The end date must be after the start date."
 
     def test_the_submission_is_recorded_with_who_and_when(self, client, auth_headers):
         event = create(client, auth_headers())
