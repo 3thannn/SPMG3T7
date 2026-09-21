@@ -67,3 +67,27 @@
   font-size: 0.85rem;
   color: var(--muted);
 }
+
+/* US7.3: a Coordinator's clarification request, on the status change that
+   carried it. Quoted rather than run in with the metadata, because this is
+   someone's words to the Organiser and not a fact about the change. */
+.timeline-note {
+  margin: 0.6rem 0 0;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--accent-soft);
+  color: var(--ink-strong);
+  font-size: 0.92rem;
+  /* The message is one string and may hold line breaks the author meant. */
+  white-space: pre-line;
+}
+
+.timeline-note-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 0.3rem;
+}

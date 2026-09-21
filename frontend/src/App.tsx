@@ -7,7 +7,17 @@ import EventsPage from './pages/EventsPage'
 import LandingPage from './pages/LandingPage'
 import NewEventPage from './pages/NewEventPage'
 import SignInPage from './pages/SignInPage'
-import { matchEventDetail, navigate, useRoute, useScrollToTopOnRouteChange } from './router'
+import VenueDetailPage from './pages/VenueDetailPage'
+import VenueFormPage from './pages/VenueFormPage'
+import VenuesPage from './pages/VenuesPage'
+import {
+  matchEventDetail,
+  matchVenueDetail,
+  matchVenueEdit,
+  navigate,
+  useRoute,
+  useScrollToTopOnRouteChange,
+} from './router'
 import { canOpen } from './permissions'
 import { clearStoredSession, loadStoredSession, storeSession } from './session'
 import { useIdleSignOut } from './useIdleSignOut'
@@ -183,9 +193,29 @@ export default function App() {
       return <NewEventPage session={session} />
     }
 
+    if (route === '/venues') {
+      return <VenuesPage session={session} />
+    }
+
+    if (route === '/venues/new') {
+      return <VenueFormPage venueId={null} session={session} />
+    }
+
     const eventId = matchEventDetail(route)
     if (eventId) {
       return <EventDetailPage eventId={eventId} session={session} />
+    }
+
+    // Before the detail route, which would otherwise match "/venues/7/edit"
+    // as nothing at all and fall through to the not-found page.
+    const editingVenueId = matchVenueEdit(route)
+    if (editingVenueId) {
+      return <VenueFormPage venueId={editingVenueId} session={session} />
+    }
+
+    const venueId = matchVenueDetail(route)
+    if (venueId) {
+      return <VenueDetailPage venueId={venueId} session={session} />
     }
 
     return (

@@ -26,7 +26,22 @@ class EventStatus(StrEnum):
 
 #: What Sprint 1 can actually produce. The rest of the label set is displayable
 #: but not yet reachable; it becomes reachable with the Review and Booking epics.
+#: US7.3 added the first of those — a Coordinator asking for clarification moves
+#: an event to Under Review — so that value is now reachable too.
 SPRINT_1_REACHABLE: tuple[EventStatus, ...] = (EventStatus.DRAFT, EventStatus.SUBMITTED)
+
+#: Statuses a Coordinator may ask for clarification on (US7.3).
+#:
+#: Submitted is the case the story describes. Under Review is included because a
+#: first answer often raises a second question, and refusing a follow-up would
+#: mean a Coordinator had one chance to ask. A Draft is not here — a Coordinator
+#: cannot see one — and neither is a decided event: once it is Approved or
+#: Rejected, asking for changes is no longer a review, it is a reopening, and
+#: that is a different story.
+CLARIFIABLE: tuple[EventStatus, ...] = (
+    EventStatus.SUBMITTED,
+    EventStatus.UNDER_REVIEW,
+)
 
 
 class SubmitRefusal(StrEnum):
@@ -66,3 +81,41 @@ def check_submit(
 
 def refusal_message(reason: SubmitRefusal) -> str:
     return REFUSAL_MESSAGES[reason]
+
+
+class ClarificationRefusal(StrEnum):
+    """Why a request for clarification was refused (US7.3)."""
+
+    NOT_YET_SUBMITTED = "not-yet-submitted"
+    ALREADY_DECIDED = "already-decided"
+
+
+CLARIFICATION_REFUSAL_MESSAGES: dict[ClarificationRefusal, str] = {
+    ClarificationRefusal.NOT_YET_SUBMITTED: (
+        "This event has not been submitted yet, so there is nothing to review."
+    ),
+    ClarificationRefusal.ALREADY_DECIDED: (
+        "This event has already been decided, so it is no longer under review."
+    ),
+}
+
+
+def check_clarification(*, status: EventStatus) -> ClarificationRefusal | None:
+    """US7.3: a Coordinator may ask for clarification on an event under review.
+
+    Returns the reason it was refused, or None when it is allowed. There is no
+    ownership or assignment check on purpose: the story says any Coordinator can
+    do this for now, and narrowing it to the assigned one waits for US8.1.
+
+    A Draft reads as "not submitted yet" rather than as a missing event, because
+    the caller reached this check through an event they were allowed to fetch.
+    """
+    if status is EventStatus.DRAFT:
+        return ClarificationRefusal.NOT_YET_SUBMITTED
+    if status not in CLARIFIABLE:
+        return ClarificationRefusal.ALREADY_DECIDED
+    return None
+
+
+def clarification_refusal_message(reason: ClarificationRefusal) -> str:
+    return CLARIFICATION_REFUSAL_MESSAGES[reason]

@@ -1,0 +1,116 @@
+.venue-back {
+  display: inline-block;
+  margin-bottom: 1rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.venue-back:hover {
+  color: var(--ink-strong);
+}
+
+.venue-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Says plainly that the page does not edit, so the absence of a save button
+   reads as deliberate rather than as something still to be built. */
+.venue-readonly-tag {
+  flex: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--bg-soft);
+  white-space: nowrap;
+}
+
+.venue-detail-card {
+  padding: 1.5rem;
+}
+
+.venue-section-title {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-soft);
+  margin-bottom: 1.1rem;
+}
+
+/* Two columns on a roomy screen, label above value when narrow — the values
+   here are prose (a facilities list runs long), so they get the wider half. */
+.venue-readonly {
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) 1fr;
+  gap: 0.75rem 1.5rem;
+  margin: 0;
+}
+
+.venue-readonly dt {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.venue-readonly dd {
+  margin: 0;
+  color: var(--ink-strong);
+  /* A facilities list arrives as one string; honour any line breaks in it
+     rather than collapsing them into a run-on line. */
+  white-space: pre-line;
+}
+
+.venue-detail-note {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.8rem;
+  color: var(--muted-soft);
+}
+
+@media (max-width: 640px) {
+  .venue-detail-head {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .venue-readonly {
+    grid-template-columns: 1fr;
+    gap: 0.25rem 0;
+  }
+
+  .venue-readonly dd {
+    margin-bottom: 0.85rem;
+  }
+}
+
+/* US9.1b/c live in their own card below the details, so maintaining a record
+   is visibly a separate act from reading one. Coordinators never see it. */
+.venue-actions {
+  padding: 1.35rem 1.5rem;
+  margin-top: 1rem;
+}
+
+.venue-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+
+.venue-confirm-text {
+  margin-bottom: 0.9rem;
+  color: var(--ink-strong);
+}
+
+@media (max-width: 640px) {
+  .venue-action-row .btn {
+    flex: 1 1 auto;
+  }
+}

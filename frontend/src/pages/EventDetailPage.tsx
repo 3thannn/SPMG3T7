@@ -7,14 +7,22 @@ import {
   attendanceField,
   getEvent,
   parseAttendance,
+  requestClarification,
   saveEvent,
   submitEvent,
   type EventRecord,
 } from '../eventsStore'
 import { DRAFT_CONTENT_ERROR, displayEventTitle, hasDraftContent } from '../draftRules'
 import { navigate } from '../router'
-import { canViewStatus, checkSubmit, formatTimestamp, submitRefusalMessage } from '../status'
-import type { Session } from '../api'
+import {
+  canViewStatus,
+  checkClarification,
+  checkSubmit,
+  clarificationRefusalMessage,
+  formatTimestamp,
+  submitRefusalMessage,
+} from '../status'
+import { unexpectedFailureMessage, type Session } from '../api'
 import { can } from '../permissions'
 
 type EventDetailPageProps = {
@@ -47,6 +55,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   })
   const [banner, setBanner] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  //: US7.3. Kept apart from `draft` because asking a question is not an edit
+  //: to the event, and a half-typed request must not read as unsaved changes.
+  const [clarification, setClarification] = useState('')
+  const [asking, setAsking] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -122,6 +134,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const isOwner = event.organiserId === session.id
   const canEdit = can(session, 'events:edit')
   const submitCheck = checkSubmit(event, session.id)
+  // US7.3: any Coordinator may ask, not only an assigned one — assignment
+  // arrives with US8.1. `events:review` is the whole of the check.
+  const mayReview = can(session, 'events:review')
+  const clarificationCheck = checkClarification(event)
   // US5.2: Coordinators can edit submitted events (not drafts), owners can edit their own drafts
   const editable = (canEdit && event.status !== 'Draft') || (isOwner && event.status === 'Draft')
   const dirty =
@@ -131,6 +147,38 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     draft.startsAt !== event.startsAt ||
     draft.endsAt !== (event.endsAt ?? '') ||
     draft.expectedAttendance !== attendanceField(event.expectedAttendance)
+
+  /** US7.3: attach the message and move the event to Under Review. */
+  async function handleRequestClarification() {
+    const message = clarification.trim()
+    if (!message) {
+      setBanner({ kind: 'error', text: 'Say what you need from the Organiser.' })
+      return
+    }
+    setAsking(true)
+    setBanner(null)
+    try {
+      const updated = await requestClarification(event.id, message, session)
+      setPage({ state: 'loaded', event: updated })
+      // Cleared only on success, so a refused request does not lose what was
+      // typed and leave the Coordinator to write it again.
+      setClarification('')
+      setBanner({
+        kind: 'ok',
+        text: `Request sent. The event is now ${updated.status} and the Organiser can see your message.`,
+      })
+    } catch (error) {
+      setBanner({
+        kind: 'error',
+        text:
+          error instanceof EventRuleError
+            ? error.message
+            : unexpectedFailureMessage(error, 'send the request'),
+      })
+    } finally {
+      setAsking(false)
+    }
+  }
 
   async function handleSave() {
     if (!hasDraftContent(draft)) {
@@ -435,6 +483,48 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             <h2 className="detail-section-title">Status history</h2>
             <p className="detail-side-lede">Who changed it, and when.</p>
             <StatusTimeline history={event.history} />
+
+            {/* US7.3. In the history panel rather than beside the form, because
+                a request is an entry in this trail and the Organiser reads it
+                here. A Coordinator who cannot ask yet is told why instead of
+                being shown a control that would be refused. */}
+            {mayReview && (
+              <div className="detail-clarify">
+                <h3 className="detail-clarify-title">Request clarification</h3>
+                {clarificationCheck.allowed ? (
+                  <>
+                    <p className="detail-clarify-lede">
+                      Ask the Organiser for information or changes. This moves the event to
+                      Under Review, and they will see your message here.
+                    </p>
+                    <label className="detail-clarify-field">
+                      <span className="detail-clarify-label">
+                        What do you need from them?
+                      </span>
+                      <textarea
+                        rows={4}
+                        maxLength={2000}
+                        value={clarification}
+                        disabled={asking}
+                        onChange={(changeEvent) => setClarification(changeEvent.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={asking || clarification.trim() === ''}
+                      onClick={handleRequestClarification}
+                    >
+                      {asking ? 'Sending…' : 'Send request'}
+                    </button>
+                  </>
+                ) : (
+                  <p className="detail-clarify-lede">
+                    {clarificationRefusalMessage(clarificationCheck.reason)}
+                  </p>
+                )}
+              </div>
+            )}
           </aside>
         </div>
       </div>

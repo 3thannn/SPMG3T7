@@ -1,6 +1,6 @@
 import './StatusTimeline.css'
 import StatusBadge from './StatusBadge'
-import { formatTimestamp, type StatusChange } from '../status'
+import { formatTimestamp, isClarificationRequest, type StatusChange } from '../status'
 
 type StatusTimelineProps = {
   history: readonly StatusChange[]
@@ -10,6 +10,11 @@ type StatusTimelineProps = {
  * US4.2: "Every status change is timestamped and attributable (who/when) for
  * audit." This renders that trail, newest first, so the most recent change is
  * the one you read without scrolling.
+ *
+ * US7.3 gave some entries a message: a Coordinator's request for clarification
+ * travels on the status change that caused it. So the trail is also where the
+ * Organiser reads what was asked of them, which is why the note is rendered as
+ * quoted prose rather than as metadata alongside the timestamp.
  */
 export default function StatusTimeline({ history }: StatusTimelineProps) {
   if (history.length === 0) {
@@ -40,6 +45,12 @@ export default function StatusTimeline({ history }: StatusTimelineProps) {
             <p className="timeline-meta">
               {change.byName} · <time dateTime={change.at}>{formatTimestamp(change.at)}</time>
             </p>
+            {isClarificationRequest(change) && (
+              <blockquote className="timeline-note">
+                <p className="timeline-note-label">Requested by Coordinator</p>
+                {change.notes}
+              </blockquote>
+            )}
           </div>
         </li>
       ))}

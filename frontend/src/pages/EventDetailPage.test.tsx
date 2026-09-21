@@ -154,15 +154,18 @@ it('does not render a Draft if an invalid API response returns one to a Coordina
   expect(screen.queryByText('Faculty Welcome Night')).not.toBeInTheDocument()
 })
 
-it('offers no inputs or edit actions to a Coordinator, who does not own the event', async () => {
+it('offers no edit actions to a Coordinator, who does not own the event', async () => {
+  // Narrowed by US7.3: a Coordinator does now get one input on this page, the
+  // clarification box. What they still cannot do is edit or submit the event.
   getEventMock.mockResolvedValue(submittedEvent)
 
   render(<EventDetailPage eventId="101" session={coordinator} />)
 
   await screen.findByText('Faculty Welcome Night')
-  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /save draft/i })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /submit event/i })).not.toBeInTheDocument()
+  expect(screen.queryByLabelText(/^title$/i)).not.toBeInTheDocument()
+  expect(screen.queryByLabelText(/^purpose$/i)).not.toBeInTheDocument()
   expect(
     screen.getByText(/only the owning Organiser can edit or submit it/i),
   ).toBeInTheDocument()

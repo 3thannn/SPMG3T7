@@ -12,12 +12,21 @@ import type { Role } from '../status'
 
 const PERMISSIONS: Record<Role, Permission[]> = {
   'Event Organiser': ['events:create', 'events:read:own', 'events:submit'],
-  'Event Coordinator': ['events:read:submitted', 'events:review', 'users:read'],
+  'Event Coordinator': [
+    'events:read:submitted',
+    'events:review',
+    'users:read',
+    'venues:read',
+  ],
+  // US9.1a-c: Venue Staff maintain the catalogue and hold nothing else.
+  'Venue Staff': ['venues:read', 'venues:create', 'venues:edit', 'venues:delete'],
 }
 
 const HOME: Record<Role, string> = {
   'Event Organiser': '/events',
   'Event Coordinator': '/events',
+  // The events list is no use to a role that cannot open an event.
+  'Venue Staff': '/venues',
 }
 
 export function buildSession(overrides: Partial<Session> = {}): Session {

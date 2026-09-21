@@ -45,6 +45,8 @@ CREATE TABLE venues (
     facilities TEXT,
     accessibility_features TEXT,
     operating_hours VARCHAR(255),
+    -- US9.1a names supported layouts as an optional field on a venue record.
+    supported_layouts TEXT,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMP DEFAULT NOW() NOT NULL
 );

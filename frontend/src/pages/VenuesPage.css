@@ -1,0 +1,145 @@
+/* US9.3's filter panel. A card rather than a row of loose chips, because
+   three text inputs and two buttons need a boundary to read as one control. */
+.venue-filters {
+  padding: 1.15rem 1.35rem;
+  margin-bottom: 1.25rem;
+}
+
+.venue-filters-title {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-soft);
+  margin-bottom: 0.9rem;
+}
+
+/* Three across when there is room, stacking one per line when there is not.
+   `minmax(0, 1fr)` rather than `1fr` so a long placeholder cannot push the
+   column wider than its share. */
+.venue-filter-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.venue-filter {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.venue-filter-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.venue-filter input {
+  font: inherit;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--ink-strong);
+}
+
+.venue-filter input:focus-visible {
+  outline: none;
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px var(--navy-ring);
+}
+
+.venue-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+  margin-top: 1rem;
+}
+
+.venue-filter-note {
+  font-size: 0.78rem;
+  color: var(--muted-soft);
+}
+
+/* How many rows are below, and whether they are the whole catalogue. Sits
+   above the list rather than in the page header, because it describes the list
+   and changes with it. */
+.venue-summary {
+  font-size: 0.86rem;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+.venue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.venue-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.15rem 1.35rem;
+  text-decoration: none;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.venue-row:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+.venue-row:focus-visible {
+  outline: none;
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px var(--navy-ring);
+}
+
+.venue-row-main {
+  min-width: 0;
+}
+
+.venue-row-title {
+  color: var(--ink-strong);
+  margin-bottom: 0.25rem;
+}
+
+.venue-row-meta {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.venue-row-end {
+  flex: none;
+}
+
+/* Capacity is the number a Coordinator scans the list for, so it is set apart
+   from the location rather than run together with it. */
+.venue-capacity {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .venue-filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .venue-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+}

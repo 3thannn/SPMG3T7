@@ -30,13 +30,13 @@ export const SPRINT_1_REACHABLE: readonly EventStatus[] = ['Draft', 'Submitted']
 /**
  * The roles the system knows about.
  *
- * Scoped to the two that have features: an Organiser proposes events, a
- * Coordinator reviews them. Venue Staff, Technical Support and Attendee are
- * part of the wider plan and are deliberately not modelled yet — the server
- * agrees, and this type is what makes a stray role name a build error rather
- * than a runtime surprise.
+ * The three that have features: an Organiser proposes events, a Coordinator
+ * reviews them and reads the venue catalogue, and Venue Staff maintain that
+ * catalogue (US9.1a-c). Technical Support and Attendee are still deliberately
+ * absent — the server agrees, and this type is what makes a stray role name a
+ * build error rather than a runtime surprise.
  */
-export type Role = 'Event Organiser' | 'Event Coordinator'
+export type Role = 'Event Organiser' | 'Event Coordinator' | 'Venue Staff'
 
 /**
  * US4.1: status is visible to the Organiser who owns the event. Coordinators
@@ -50,8 +50,9 @@ export function canViewStatus(
 ): boolean {
   if (role === 'Event Coordinator') return event.status !== 'Draft'
   if (role === 'Event Organiser') return event.organiserId === viewerId
-  // Unreachable for the roles above, and deliberately the safe answer for any
-  // role added later that has not been considered here.
+  // Venue Staff hold no event permission, so this is their answer, and it
+  // stays the safe one for any role added later that has not been considered
+  // here — which is how it already covered Venue Staff before US9.1a-c.
   return false
 }
 
@@ -97,6 +98,58 @@ export type StatusChange = {
   at: string // ISO-8601
   byId: string
   byName: string
+  /**
+   * A Coordinator's clarification request (US7.3), or empty on an automatic
+   * entry. Optional so fixtures and older payloads still type-check.
+   */
+  notes?: string
+}
+
+/**
+ * US7.3: the statuses a Coordinator may ask for clarification on.
+ *
+ * Submitted is the case the story describes; Under Review is included because a
+ * first answer often raises a second question. A Draft is not here — a
+ * Coordinator cannot see one — and neither is a decided event.
+ */
+export const CLARIFIABLE: readonly EventStatus[] = ['Submitted', 'Under Review']
+
+/** Why a clarification request was refused, so the UI can explain rather than deny. */
+export type ClarificationRefusal = 'not-yet-submitted' | 'already-decided'
+
+export type ClarificationCheck =
+  | { allowed: true }
+  | { allowed: false; reason: ClarificationRefusal }
+
+/**
+ * US7.3: a Coordinator may ask for clarification on an event under review.
+ *
+ * There is deliberately no check on *which* Coordinator: the story says any of
+ * them can for now, and narrowing it to the assigned one waits for US8.1.
+ *
+ * This mirrors the server rule so the page can hide the form and say why. It is
+ * not the enforcement point — the server re-checks, and that refusal is the rule.
+ */
+export function checkClarification(event: { status: EventStatus }): ClarificationCheck {
+  if (event.status === 'Draft') return { allowed: false, reason: 'not-yet-submitted' }
+  if (!CLARIFIABLE.includes(event.status)) {
+    return { allowed: false, reason: 'already-decided' }
+  }
+  return { allowed: true }
+}
+
+export function clarificationRefusalMessage(reason: ClarificationRefusal): string {
+  switch (reason) {
+    case 'not-yet-submitted':
+      return 'This event has not been submitted yet, so there is nothing to review.'
+    case 'already-decided':
+      return 'This event has already been decided, so it is no longer under review.'
+  }
+}
+
+/** Whether an audit entry carries a message a person wrote, rather than being automatic. */
+export function isClarificationRequest(change: StatusChange): boolean {
+  return (change.notes ?? '').trim() !== ''
 }
 
 export function formatTimestamp(iso: string): string {

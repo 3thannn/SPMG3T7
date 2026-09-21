@@ -10,6 +10,7 @@ import {
   fetchMe,
   login,
   logout,
+  unexpectedFailureMessage,
 } from './api'
 
 afterEach(() => {
@@ -256,5 +257,43 @@ describe('authorizedFetch', () => {
     await expect(authorizedFetch('/auth/me', 'test-token')).rejects.toThrow(
       'Request failed with status 502.',
     )
+  })
+})
+
+describe('unexpectedFailureMessage', () => {
+  it('points at the backend log when the API answered and failed', () => {
+    // The case that sent a real person looking in the wrong place: the API was
+    // running and answering 500, and the message told them to check it was
+    // running. The status is what makes the difference legible.
+    const message = unexpectedFailureMessage(
+      new ApiError('Request failed with status 500.', 'unknown', 500),
+      'save this venue',
+    )
+
+    expect(message).toContain('HTTP 500')
+    expect(message).toContain('backend log')
+    expect(message).not.toContain('could not be reached')
+  })
+
+  it('says the API is unreachable when the request never landed', () => {
+    const message = unexpectedFailureMessage(new TypeError('fetch failed'), 'save this venue')
+
+    expect(message).toContain('could not be reached')
+    expect(message).not.toContain('HTTP')
+  })
+
+  it('completes the sentence with what was being attempted', () => {
+    expect(unexpectedFailureMessage(new Error('x'), 'delete this venue')).toContain(
+      'Could not delete this venue',
+    )
+  })
+
+  it('reports a 403 as an answer rather than as unreachable', () => {
+    const message = unexpectedFailureMessage(
+      new ForbiddenError('Not your role.'),
+      'send the request',
+    )
+
+    expect(message).toContain('HTTP 403')
   })
 })

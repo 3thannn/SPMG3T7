@@ -11,9 +11,17 @@ type TopNavProps = {
 
 type NavLink = { label: string; path: string }
 
-const EVENT_LINKS: NavLink[] = [
+/**
+ * Every section the app has, in the order they are offered. `linksFor` drops the
+ * ones this role cannot open, so a link appearing here does not mean everyone
+ * sees it — Create is an Organiser's, Venues a Coordinator's and Venue Staff's
+ * (US9.2), and Add venue only Venue Staff's (US9.1a).
+ */
+const NAV_LINKS: NavLink[] = [
   { label: 'Events', path: '/events' },
   { label: 'Create', path: '/events/new' },
+  { label: 'Venues', path: '/venues' },
+  { label: 'Add venue', path: '/venues/new' },
 ]
 
 /**
@@ -24,7 +32,7 @@ const EVENT_LINKS: NavLink[] = [
  * them away is a poor way to tell them what their role is for.
  */
 function linksFor(session: Session): NavLink[] {
-  return EVENT_LINKS.filter((link) => canOpen(session, link.path))
+  return NAV_LINKS.filter((link) => canOpen(session, link.path))
 }
 
 function initial(name: string): string {

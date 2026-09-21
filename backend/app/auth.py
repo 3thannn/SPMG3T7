@@ -216,7 +216,9 @@ def directory(
 
     The first route to sit behind `require_permission`, and the one that makes
     US1.3 demonstrable end to end: sign in as Venue Staff, call this, get a 403
-    that explains itself. Coordinator Assignment will be its real consumer.
+    that explains itself. That demonstration is a real one now rather than a
+    thought experiment — Venue Staff can sign in since US9.1a-c, and holds no
+    `users:read`. Coordinator Assignment will be its real consumer.
     """
     return [
         DirectoryEntry(id=str(user.id), name=user.name, email=user.email, role=user.role)

@@ -47,9 +47,22 @@ const GUARDED: Record<string, GuardedRoute> = {
     what: 'creating an event',
     who: 'Organisers',
   },
+  '/venues': {
+    anyOf: ['venues:read'],
+    what: 'the venue catalogue',
+    who: 'Event Coordinators and Venue Staff',
+  },
+  '/venues/new': {
+    anyOf: ['venues:create'],
+    what: 'adding a venue',
+    who: 'Venue Staff',
+  },
 }
 
-/** The rule for a route, treating every /events/:id page as the detail route. */
+/**
+ * The rule for a route, treating every /events/:id and /venues/:id page as its
+ * detail route.
+ */
 export function guardFor(route: string): GuardedRoute | null {
   if (GUARDED[route]) return GUARDED[route]
   if (/^\/events\/[^/]+$/.test(route)) {
@@ -57,6 +70,22 @@ export function guardFor(route: string): GuardedRoute | null {
       anyOf: ['events:read:own', 'events:read:submitted'],
       what: 'event details',
       who: 'Organisers and Event Coordinators',
+    }
+  }
+  // Checked before the detail route, which would otherwise match the id and
+  // let anyone who can read a venue open the form that edits one.
+  if (/^\/venues\/[^/]+\/edit$/.test(route)) {
+    return {
+      anyOf: ['venues:edit'],
+      what: 'editing a venue',
+      who: 'Venue Staff',
+    }
+  }
+  if (/^\/venues\/[^/]+$/.test(route)) {
+    return {
+      anyOf: ['venues:read'],
+      what: 'venue details',
+      who: 'Event Coordinators and Venue Staff',
     }
   }
   return null

@@ -11,7 +11,15 @@ import { can, canAny, canOpen, denialMessage, guardFor } from './permissions'
 import { buildSession } from './test/sessions'
 import type { Role } from './status'
 
-const ROLES: Role[] = ['Event Organiser', 'Event Coordinator']
+/** Every role the app models. */
+const ROLES: Role[] = ['Event Organiser', 'Event Coordinator', 'Venue Staff']
+
+/**
+ * The roles with event permissions. Venue Staff is deliberately absent: it
+ * maintains the venue catalogue and holds nothing on events, so asserting it
+ * could open the events list would assert the opposite of the rule.
+ */
+const EVENT_ROLES: Role[] = ['Event Organiser', 'Event Coordinator']
 
 describe('can', () => {
   it('reads the permissions the server issued', () => {
@@ -51,7 +59,7 @@ describe('canOpen', () => {
     expect(canOpen(coordinator, '/events/new')).toBe(false)
   })
 
-  it.each(ROLES)('lets %s open the events list', (role) => {
+  it.each(EVENT_ROLES)('lets %s open the events list', (role) => {
     expect(canOpen(buildSession({ role }), '/events')).toBe(true)
   })
 
@@ -102,5 +110,86 @@ describe('denialMessage', () => {
     expect(denialMessage(buildSession({ role: 'Event Coordinator' }), '/nowhere')).toContain(
       'Event Coordinator',
     )
+  })
+})
+
+describe('the venue catalogue (US9.2)', () => {
+  const coordinator = buildSession({ role: 'Event Coordinator' })
+  const organiser = buildSession({ role: 'Event Organiser' })
+
+  it('lets a Coordinator into the catalogue and any record in it', () => {
+    expect(canOpen(coordinator, '/venues')).toBe(true)
+    expect(canOpen(coordinator, '/venues/1')).toBe(true)
+  })
+
+  it('keeps an Organiser out of both', () => {
+    // US9.2 is a Coordinator's story, and the server agrees — an Organiser's
+    // session carries no venues:read for this to read.
+    expect(canOpen(organiser, '/venues')).toBe(false)
+    expect(canOpen(organiser, '/venues/1')).toBe(false)
+  })
+
+  it('guards a venue record on venues:read', () => {
+    expect(guardFor('/venues/1')?.anyOf).toEqual(['venues:read'])
+  })
+
+  it('explains the refusal rather than only denying it', () => {
+    expect(denialMessage(organiser, '/venues')).toBe(
+      'The Event Organiser role cannot open the venue catalogue. That is available to Event Coordinators and Venue Staff.',
+    )
+    expect(denialMessage(organiser, '/venues/1')).toContain('venue details')
+  })
+
+  it('needs a session like every other guarded route', () => {
+    expect(canOpen(null, '/venues')).toBe(false)
+    expect(canOpen(null, '/venues/1')).toBe(false)
+  })
+})
+
+describe('maintaining the catalogue (US9.1a-c)', () => {
+  const venueStaff = buildSession({ role: 'Venue Staff' })
+  const coordinator = buildSession({ role: 'Event Coordinator' })
+  const organiser = buildSession({ role: 'Event Organiser' })
+
+  it('lets Venue Staff add and edit a venue', () => {
+    expect(canOpen(venueStaff, '/venues/new')).toBe(true)
+    expect(canOpen(venueStaff, '/venues/1/edit')).toBe(true)
+  })
+
+  it('lets Venue Staff read the catalogue they maintain', () => {
+    expect(canOpen(venueStaff, '/venues')).toBe(true)
+    expect(canOpen(venueStaff, '/venues/1')).toBe(true)
+  })
+
+  it('keeps a Coordinator out of the write screens', () => {
+    // A Coordinator reads the catalogue; maintaining it is a different job.
+    expect(canOpen(coordinator, '/venues/new')).toBe(false)
+    expect(canOpen(coordinator, '/venues/1/edit')).toBe(false)
+  })
+
+  it('keeps an Organiser out of all of it', () => {
+    expect(canOpen(organiser, '/venues')).toBe(false)
+    expect(canOpen(organiser, '/venues/new')).toBe(false)
+    expect(canOpen(organiser, '/venues/1/edit')).toBe(false)
+  })
+
+  it('keeps Venue Staff out of the events screens', () => {
+    // The permission goes one way: the catalogue is not a door into events.
+    expect(canOpen(venueStaff, '/events')).toBe(false)
+    expect(canOpen(venueStaff, '/events/new')).toBe(false)
+    expect(canOpen(venueStaff, '/events/1')).toBe(false)
+  })
+
+  it('reads the edit route as editing rather than as a venue id', () => {
+    // Checked before the detail route, which would otherwise match "1" and let
+    // anyone who can read a venue open the form that changes one.
+    expect(guardFor('/venues/1/edit')?.anyOf).toEqual(['venues:edit'])
+  })
+
+  it('explains each refusal rather than only denying it', () => {
+    expect(denialMessage(coordinator, '/venues/new')).toBe(
+      'The Event Coordinator role cannot open adding a venue. That is available to Venue Staff.',
+    )
+    expect(denialMessage(coordinator, '/venues/1/edit')).toContain('editing a venue')
   })
 })

@@ -22,6 +22,10 @@ export type Permission =
   | 'events:review'
   | 'events:edit'
   | 'users:read'
+  | 'venues:read'
+  | 'venues:create'
+  | 'venues:edit'
+  | 'venues:delete'
 
 /**
  * The signed-in user, exactly as the server issued it.
@@ -224,6 +228,24 @@ export async function authorizedFetch(
     throw toApiError(response.status, code, message)
   }
   return response
+}
+
+/**
+ * A message for a failure the page could not handle as a business rule.
+ *
+ * Distinguishes the two cases that call for opposite responses from whoever
+ * reads it: the API answered and failed (a server fault — the status and the
+ * backend log are where the cause is), versus the API could not be reached at
+ * all. Telling someone to check the API is running when it is running and
+ * answering 500 sends them looking in exactly the wrong place.
+ *
+ * `doing` completes the sentence "Could not ..." — e.g. "save this venue".
+ */
+export function unexpectedFailureMessage(error: unknown, doing: string): string {
+  if (error instanceof ApiError) {
+    return `Could not ${doing}. The API answered HTTP ${error.status} — check the backend log for the cause.`
+  }
+  return `Could not ${doing}. The API could not be reached; check it is running and try again.`
 }
 
 export async function fetchHealth(): Promise<Health> {

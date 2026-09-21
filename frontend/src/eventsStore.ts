@@ -145,6 +145,29 @@ export async function saveEvent(
   }
 }
 
+/**
+ * US7.3: attach a message asking the Organiser for information or changes.
+ *
+ * Moves the event to Under Review and adds the message to its history, which is
+ * where the Organiser reads it. Their reply is US11.1 and is not modelled here.
+ */
+export async function requestClarification(
+  id: string,
+  message: string,
+  session: Session,
+): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/clarification`, session.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
 /** US4.2: Draft -> Submitted, once. A second submit comes back as a refusal. */
 export async function submitEvent(id: string, session: Session): Promise<EventRecord> {
   try {

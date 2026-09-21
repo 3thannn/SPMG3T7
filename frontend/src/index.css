@@ -216,6 +216,20 @@ a {
   background: var(--danger-bg);
 }
 
+/* The filled counterpart to .btn-danger, for the second step of a destructive
+   action. The outlined one opens the confirmation; this one carries it out, and
+   the weight difference is what distinguishes them at a glance. */
+.btn-danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+
+.btn-danger-solid:hover:not(:disabled) {
+  background: #8f1e18;
+  border-color: #8f1e18;
+}
+
 .btn-lg {
   padding: 0.92rem 1.7rem;
   font-size: 1.02rem;

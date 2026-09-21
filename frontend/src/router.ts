@@ -36,14 +36,34 @@ export function useScrollToTopOnRouteChange(route: string): void {
 }
 
 /**
- * Matches `/events/:id` and returns the id, or null. Kept deliberately narrow —
- * it is the only parameterised route in Sprint 1.
+ * Matches `/events/:id` and returns the id, or null. `new` is excluded because
+ * `/events/new` is the create form, not an event with the id "new".
  */
 export function matchEventDetail(route: string): string | null {
   const match = /^\/events\/([^/]+)$/.exec(route)
   if (!match) return null
   const id = match[1]
   return id === 'new' ? null : id
+}
+
+/**
+ * Matches `/venues/:id` and returns the id, or null — US9.2's detail route.
+ *
+ * `new` is excluded for the same reason it is on the events route: since
+ * US9.1a there is a `/venues/new` create form, and it is not a venue whose id
+ * happens to be the word "new".
+ */
+export function matchVenueDetail(route: string): string | null {
+  const match = /^\/venues\/([^/]+)$/.exec(route)
+  if (!match) return null
+  const id = match[1]
+  return id === 'new' ? null : id
+}
+
+/** Matches `/venues/:id/edit` and returns the id, or null — US9.1b. */
+export function matchVenueEdit(route: string): string | null {
+  const match = /^\/venues\/([^/]+)\/edit$/.exec(route)
+  return match ? match[1] : null
 }
 
 /** An anchor that routes without a full page load. */

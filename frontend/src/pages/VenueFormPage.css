@@ -1,0 +1,89 @@
+.venue-form-shell {
+  max-width: 44rem;
+}
+
+.venue-form {
+  padding: 1.5rem;
+  display: grid;
+  gap: 1.5rem;
+}
+
+/* A fieldset rather than a heading, so "Required" and "Optional" are announced
+   with the fields they govern instead of just sitting above them. Disabling the
+   set while a save is in flight is also what stops a second submit. */
+.venue-fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.venue-fieldset:disabled {
+  opacity: 0.6;
+}
+
+.venue-form-legend {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-soft);
+  padding: 0;
+  margin-bottom: 0.25rem;
+}
+
+.venue-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.venue-field-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.venue-field-hint {
+  font-size: 0.78rem;
+  color: var(--muted-soft);
+}
+
+.venue-field input,
+.venue-field textarea {
+  font: inherit;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--ink-strong);
+}
+
+.venue-field textarea {
+  resize: vertical;
+}
+
+.venue-field input:focus-visible,
+.venue-field textarea:focus-visible {
+  outline: none;
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px var(--navy-ring);
+}
+
+.venue-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 640px) {
+  .venue-form {
+    padding: 1.15rem;
+  }
+
+  .venue-form-actions .btn {
+    flex: 1 1 auto;
+  }
+}

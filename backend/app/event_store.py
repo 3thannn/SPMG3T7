@@ -35,20 +35,26 @@ EVENT_COLUMNS = (
     "id, name, purpose, description, proposed_date, end_date, expected_attendance, "
     "status, organiser_id, created_at, updated_at, submitted_at, users(name)"
 )
-CHANGE_COLUMNS = (
-    "id, old_status, new_status, changed_at, notes, changed_by_id, users(name)"
-)
+CHANGE_COLUMNS = "id, old_status, new_status, changed_at, notes, changed_by_id, users(name)"
 
 
 @dataclass(frozen=True)
 class StatusChange:
-    """One entry in an event's audit trail — US4.2 requires who and when."""
+    """One entry in an event's audit trail — US4.2 requires who and when.
+
+    `notes` is the `status_changes.notes` column, which the schema has always
+    had and nothing wrote until US7.3. A Coordinator asking for clarification
+    attaches the message here, so the request travels with the status change
+    that caused it rather than in a table of its own.
+    """
 
     from_status: EventStatus | None
     to_status: EventStatus
     at: str
     by_id: int
     by_name: str
+    #: Empty for an automatic entry; the Coordinator's message for US7.3.
+    notes: str = ""
 
 
 @dataclass(frozen=True)
@@ -91,6 +97,7 @@ def to_change(row: dict) -> StatusChange:
         at=str(row["changed_at"]),
         by_id=row["changed_by_id"],
         by_name=_embedded_name(row),
+        notes=row.get("notes") or "",
     )
 
 
@@ -128,9 +135,7 @@ def to_event(row: dict, changes: list[dict] | None = None) -> Event:
 
 
 class Repository(Protocol):
-    def list_events(
-        self, *, organiser_id: int | None, include_drafts: bool
-    ) -> list[Event]: ...
+    def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]: ...
 
     def get_event(self, event_id: int) -> Event | None: ...
 
@@ -184,8 +189,10 @@ class Repository(Protocol):
         organiser_id: int,
     ) -> Event: ...
 
-    def submit_event(
-        self, event_id: int, *, actor_id: int, from_status: EventStatus
+    def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event: ...
+
+    def request_clarification(
+        self, event_id: int, *, actor_id: int, from_status: EventStatus, message: str
     ) -> Event: ...
 
 
@@ -208,9 +215,7 @@ class SupabaseEvents:
             grouped.setdefault(row["event_id"], []).append(row)
         return grouped
 
-    def list_events(
-        self, *, organiser_id: int | None, include_drafts: bool
-    ) -> list[Event]:
+    def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]:
         """Filter visibility in the database before event data leaves it."""
         query = supabase_client.admin().table(EVENTS_TABLE).select(EVENT_COLUMNS)
         if organiser_id is not None:
@@ -320,68 +325,76 @@ class SupabaseEvents:
 
         # Important changes: proposed_date, expected_attendance
         if starts_at != previous_event.starts_at:
-            changes_to_log.append({
-                "event_id": event_id,
-                "changed_field": "proposed_date",
-                "old_value": previous_event.starts_at,
-                "new_value": starts_at,
-                "change_type": "important",
-                "changed_by_user_id": editor_id,
-                "changed_at": at,
-            })
+            changes_to_log.append(
+                {
+                    "event_id": event_id,
+                    "changed_field": "proposed_date",
+                    "old_value": previous_event.starts_at,
+                    "new_value": starts_at,
+                    "change_type": "important",
+                    "changed_by_user_id": editor_id,
+                    "changed_at": at,
+                }
+            )
 
         if expected_attendance != previous_event.expected_attendance:
-            changes_to_log.append({
-                "event_id": event_id,
-                "changed_field": "expected_attendance",
-                "old_value": (
-                    str(previous_event.expected_attendance)
-                    if previous_event.expected_attendance is not None
-                    else None
-                ),
-                "new_value": (
-                    str(expected_attendance)
-                    if expected_attendance is not None
-                    else None
-                ),
-                "change_type": "important",
-                "changed_by_user_id": editor_id,
-                "changed_at": at,
-            })
+            changes_to_log.append(
+                {
+                    "event_id": event_id,
+                    "changed_field": "expected_attendance",
+                    "old_value": (
+                        str(previous_event.expected_attendance)
+                        if previous_event.expected_attendance is not None
+                        else None
+                    ),
+                    "new_value": (
+                        str(expected_attendance) if expected_attendance is not None else None
+                    ),
+                    "change_type": "important",
+                    "changed_by_user_id": editor_id,
+                    "changed_at": at,
+                }
+            )
 
         # Routine changes: name (title), purpose, description
         if title != previous_event.title:
-            changes_to_log.append({
-                "event_id": event_id,
-                "changed_field": "name",
-                "old_value": previous_event.title,
-                "new_value": title,
-                "change_type": "routine",
-                "changed_by_user_id": editor_id,
-                "changed_at": at,
-            })
+            changes_to_log.append(
+                {
+                    "event_id": event_id,
+                    "changed_field": "name",
+                    "old_value": previous_event.title,
+                    "new_value": title,
+                    "change_type": "routine",
+                    "changed_by_user_id": editor_id,
+                    "changed_at": at,
+                }
+            )
 
         if purpose != previous_event.purpose:
-            changes_to_log.append({
-                "event_id": event_id,
-                "changed_field": "purpose",
-                "old_value": previous_event.purpose,
-                "new_value": purpose,
-                "change_type": "routine",
-                "changed_by_user_id": editor_id,
-                "changed_at": at,
-            })
+            changes_to_log.append(
+                {
+                    "event_id": event_id,
+                    "changed_field": "purpose",
+                    "old_value": previous_event.purpose,
+                    "new_value": purpose,
+                    "change_type": "routine",
+                    "changed_by_user_id": editor_id,
+                    "changed_at": at,
+                }
+            )
 
         if description != previous_event.description:
-            changes_to_log.append({
-                "event_id": event_id,
-                "changed_field": "description",
-                "old_value": previous_event.description,
-                "new_value": description,
-                "change_type": "routine",
-                "changed_by_user_id": editor_id,
-                "changed_at": at,
-            })
+            changes_to_log.append(
+                {
+                    "event_id": event_id,
+                    "changed_field": "description",
+                    "old_value": previous_event.description,
+                    "new_value": description,
+                    "change_type": "routine",
+                    "changed_by_user_id": editor_id,
+                    "changed_at": at,
+                }
+            )
 
         # Update the event
         supabase_client.admin().table(EVENTS_TABLE).update(
@@ -461,9 +474,7 @@ class SupabaseEvents:
         assert event is not None  # noqa: S101 — the row was just inserted
         return event
 
-    def submit_event(
-        self, event_id: int, *, actor_id: int, from_status: EventStatus
-    ) -> Event:
+    def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
         """Move the event and write the audit entry US4.2 requires."""
         at = _now()
         supabase_client.admin().table(EVENTS_TABLE).update(
@@ -482,6 +493,39 @@ class SupabaseEvents:
         assert submitted is not None  # noqa: S101 — the row was just updated
         return submitted
 
+    def request_clarification(
+        self, event_id: int, *, actor_id: int, from_status: EventStatus, message: str
+    ) -> Event:
+        """US7.3: attach a Coordinator's message and move the event under review.
+
+        The message goes in `status_changes.notes`, on the row that records the
+        move. That is why there is no new table: the request and the status
+        change it caused are one event in the event's history, and storing them
+        apart would let them disagree about when it happened or who asked.
+
+        The status is written even when it is already Under Review — a second
+        question is still a question — so the audit trail gains an entry either
+        way and `updated_at` moves, which is what puts the event back at the top
+        of the Organiser's list.
+        """
+        at = _now()
+        supabase_client.admin().table(EVENTS_TABLE).update(
+            {"status": str(EventStatus.UNDER_REVIEW), "updated_at": at}
+        ).eq("id", event_id).execute()
+        supabase_client.admin().table(CHANGES_TABLE).insert(
+            {
+                "event_id": event_id,
+                "old_status": str(from_status),
+                "new_status": str(EventStatus.UNDER_REVIEW),
+                "changed_by_id": actor_id,
+                "changed_at": at,
+                "notes": message,
+            }
+        ).execute()
+        reviewed = self.get_event(event_id)
+        assert reviewed is not None  # noqa: S101 — the row was just updated
+        return reviewed
+
 
 @dataclass
 class InMemoryEvents:
@@ -496,9 +540,7 @@ class InMemoryEvents:
         self.events = [event if item.id == event.id else item for item in self.events]
         return event
 
-    def list_events(
-        self, *, organiser_id: int | None, include_drafts: bool
-    ) -> list[Event]:
+    def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]:
         visible = [
             event
             for event in self.events
@@ -630,9 +672,7 @@ class InMemoryEvents:
         self.events.insert(0, event)
         return event
 
-    def submit_event(
-        self, event_id: int, *, actor_id: int, from_status: EventStatus
-    ) -> Event:
+    def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 — the caller checked it exists
         at = _now()
@@ -647,6 +687,29 @@ class InMemoryEvents:
             replace(
                 existing,
                 status=EventStatus.SUBMITTED,
+                updated_at=at,
+                history=(*existing.history, entry),
+            )
+        )
+
+    def request_clarification(
+        self, event_id: int, *, actor_id: int, from_status: EventStatus, message: str
+    ) -> Event:
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 — the caller checked it exists
+        at = _now()
+        entry = StatusChange(
+            from_status=from_status,
+            to_status=EventStatus.UNDER_REVIEW,
+            at=at,
+            by_id=actor_id,
+            by_name=self.names.get(actor_id, ""),
+            notes=message,
+        )
+        return self._replace(
+            replace(
+                existing,
+                status=EventStatus.UNDER_REVIEW,
                 updated_at=at,
                 history=(*existing.history, entry),
             )

@@ -138,6 +138,7 @@ button is a courtesy and a refused request is the rule.
 | `POST /events`               | Organiser                     | Create — always lands in Draft (US4.2)     |
 | `PUT /events/{id}`           | the owning Organiser          | Save edits; the status does not move       |
 | `POST /events/{id}/submit`   | the owning Organiser          | Draft → Submitted, once (US4.2)            |
+| `POST /events/{id}/clarification` | any Coordinator          | Ask for info or changes; → Under Review (US7.3) |
 
 An event that belongs to another Organiser answers `404`, not `403`. Telling
 someone an event exists but is not theirs tells them something about another
@@ -173,6 +174,155 @@ This matches the product flow in the current frontend: the organiser creates a
 Draft first, then submits it when ready. The event still carries the same audit
 trail, with the first status change recorded as `Draft -> Submitted`.
 
+### Requesting clarification (US7.3)
+
+A Coordinator asks the Organiser for information or a change, and the event moves
+to Under Review.
+
+```bash
+curl -X POST http://localhost:8000/events/12/clarification \
+  -H "Authorization: Bearer <coordinator token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Please confirm the catering budget."}'
+```
+
+**There is no new table.** The message goes in `status_changes.notes`, a column
+the schema has always had and nothing wrote until now, on the row that records
+the move to Under Review. The request and the status change it caused are one
+event in the event's history, and storing them apart would let them disagree
+about when it happened or who asked.
+
+That is also how "visible to the Organiser" is satisfied without any delivery
+mechanism: the owning Organiser already reads the event's history, so the message
+arrives there. `StatusChangeOut.notes` is empty on every automatic entry, which
+is what lets a client tell a request apart from a plain status change.
+
+**Any Coordinator may ask, not only an assigned one.** That is the story's own
+wording. `events:review` is the whole of the check — there is no assignment to
+test against yet, so a narrower rule would refuse everybody. Narrowing it waits
+for US8.1.
+
+Allowed from `Submitted` and from `Under Review`; a second question is still a
+question, and refusing a follow-up would mean a Coordinator had one chance to
+ask. A decided event answers `409` with `already-decided`. A `Draft` answers
+`404` before the rule is reached, because a Coordinator cannot see one — the
+`not-yet-submitted` refusal exists for completeness and is unreachable through
+the route.
+
+The Organiser's reply is **US11.1** and is deliberately not modelled here.
+
+## Venues
+
+Four stories over one table, and they do not share a role. A Coordinator reads
+the catalogue (US9.2) and narrows it (US9.3); Venue Staff create, update and
+delete the records in it (US9.1a-c).
+
+| Route                 | Who              | Purpose                                          |
+| --------------------- | ---------------- | ------------------------------------------------ |
+| `GET /venues`         | Coordinator, Venue Staff | The catalogue, by name; filtered (US9.2, US9.3) |
+| `GET /venues/{id}`    | Coordinator, Venue Staff | One venue record                         |
+| `POST /venues`        | Venue Staff only | Add a venue (US9.1a)                             |
+| `PUT /venues/{id}`    | Venue Staff only | Update a venue (US9.1b)                          |
+| `DELETE /venues/{id}` | Venue Staff only | Remove a venue — a hard delete (US9.1c)          |
+
+Reading and writing are separate permissions held by different roles, so this is
+not a hierarchy with Venue Staff at the top: they hold no event permission at
+all, and a Coordinator's `POST /venues` is refused. Neither is a superset of the
+other, which is why there are four venue permissions rather than one.
+
+Unlike `events`, there is no per-record rule. Every venue is visible to every
+Coordinator and writable by any Venue Staff member, so the role is the whole of
+the guard and `require_permission` is the whole of the check. A venue that is not
+in the catalogue answers `404` with `venue_not_found`.
+
+### Filtering (US9.3)
+
+Query parameters on the list route. No new table and no new endpoint — a bare
+`GET /venues` is still the request US9.2 made.
+
+| Parameter       | Matches                                                      |
+| --------------- | ------------------------------------------------------------ |
+| `minCapacity`   | `capacity >= value`. A whole number; `0` and up              |
+| `location`      | Case-insensitive substring of `venues.location`              |
+| `accessibility` | Case-insensitive substring of `venues.accessibility_features` |
+
+```bash
+# Venues holding at least 200 that are in the Library and have step-free access
+curl 'http://localhost:8000/venues?minCapacity=200&location=Library&accessibility=step-free' \
+  -H "Authorization: Bearer <token>"
+```
+
+Three things about how they behave:
+
+- **They AND.** Every supplied criterion has to match. A Coordinator asking for
+  200 seats *and* step-free access wants both, and returning the union would
+  hand back exactly the rows they ruled out.
+- **An empty parameter is not a filter.** `?location=` and `?location=%20` both
+  return the whole catalogue, so a form that submits its untouched boxes does
+  not accidentally narrow anything.
+- **The text is literal.** `%` and `_` are escaped before the pattern reaches
+  Postgres, so typing `100%` looks for a per-cent sign rather than matching
+  everything.
+
+Filtering happens in the database rather than in Python, for the reason
+`list_events` gives: a catalogue narrowed before it leaves Postgres is one this
+process cannot forget to narrow. A filter that cannot be read — `minCapacity=abc`,
+a negative, a 300-character location — answers `400` with `invalid_filter` and a
+sentence, rather than FastAPI's `422`, so a bad filter reads like every other
+refusal this API sends.
+
+### Writing a record (US9.1a-c)
+
+`name`, `location` and a positive `capacity` are required. `facilities`,
+`accessibilityFeatures`, `supportedLayouts` and `operatingHours` are optional and
+may be left empty.
+
+`id` and `created_at` are system-generated and are not in `VenueInput`, so there
+is no field for them to arrive in and no path through the store that could move
+them. That is US9.1b's rule kept by construction rather than by a check someone
+has to remember; a request carrying an `id` changes nothing instead of being
+refused. `updated_at` is the system's too, and the store stamps it.
+
+`venues.name` is `UNIQUE`, so a clash answers `409` with `venue_name_taken` and
+the name in the message — a rule, not a constraint violation leaking out. A venue
+keeps its own name, so saving one unrenamed is not a clash.
+
+The delete is a hard delete with no referential check, because nothing books a
+venue yet and so no row can be orphaned by it. That check becomes necessary with
+Sprint 3's booking feature and belongs in `venue_store.delete_venue` when it
+does. Deleting a venue that is already gone answers `404` rather than a quiet
+`204`: the caller is usually working from a stale list, and saying so is more use
+than pretending it worked.
+
+### Nullable columns
+
+`venues.facilities`, `accessibility_features`, `operating_hours` and
+`supported_layouts` are all nullable. An empty field is stored as `NULL` and read
+back as `""`, and the page shows "Not recorded" — a venue nobody has filled in is
+worth telling a Coordinator about, so the field is never silently dropped.
+`venues.capacity` is `NOT NULL`.
+
+### Schema and seed data
+
+Two SQL scripts, both idempotent and both run once in the Supabase SQL Editor:
+
+- [`SUPABASE_ADD_VENUE_LAYOUTS.sql`](SUPABASE_ADD_VENUE_LAYOUTS.sql) — **required
+  before any venue route works, reads included.** US9.1a names supported layouts
+  as a field and there was no column for it, so this adds
+  `venues.supported_layouts`. Every venue route selects the column and both
+  write routes send it, so a database without it answers `500` to all five —
+  the backend log shows `PGRST204` naming the column. No restart is needed
+  afterwards; PostgREST picks the column up on its own.
+- [`SUPABASE_SEED_VENUES.sql`](SUPABASE_SEED_VENUES.sql) — six demonstration
+  venues, for a catalogue that would otherwise render its empty state. Optional:
+  Venue Staff can add records through the app instead. `venues.name` is `UNIQUE`
+  and the insert is `ON CONFLICT DO NOTHING`, so it will not overwrite a row that
+  is already there.
+
+One seeded venue (Bertha Room) deliberately leaves all four nullable columns
+unset, because a half-filled record is the case the catalogue has to render
+without looking broken.
+
 ### Refusals
 
 Every refusal carries a `code` as well as a message, so a client can tell them
@@ -205,10 +355,11 @@ password (Authentication → Users → Add user, with **Auto Confirm User** on, 
 it cannot sign in), and a `public.users` row holding the name and role. They are
 joined on email, so both must use the same address. One account per role:
 
-| Email                     | Role              |
-| ------------------------- | ----------------- |
-| `organiser@spmg3t7.edu`   | Event Organiser   |
-| `coordinator@spmg3t7.edu` | Event Coordinator |
+| Email                      | Role              |
+| -------------------------- | ----------------- |
+| `organiser@spmg3t7.edu`    | Event Organiser   |
+| `coordinator@spmg3t7.edu`  | Event Coordinator |
+| `venuestaff@spmg3t7.edu`   | Venue Staff       |
 
 These are development credentials, not secrets, and they must not survive into a
 deployed environment. Creating them by hand is deliberate: nothing in the app
@@ -240,13 +391,14 @@ server put on the session.
 | Role              | May                                                   |
 | ----------------- | ----------------------------------------------------- |
 | Event Organiser   | create, read own, and submit events                   |
-| Event Coordinator | read submitted events, review them, read the user directory |
+| Event Coordinator | read submitted events, review and edit them, read the user directory, read the venue catalogue |
+| Venue Staff       | read the venue catalogue, and add, update and delete the records in it |
 
-Venue Staff, Technical Support and Attendee are part of the wider plan and are
-deliberately not modelled yet: a role that can sign in but can do nothing is a
-dead end for whoever holds it. They come back with the epics that give them
-something to do, and adding one means a row in `ROLE_PERMISSIONS`, a landing
-route, and nothing else. The database already declares all five in `user_role`;
+Technical Support and Attendee are part of the wider plan and are deliberately
+not modelled yet: a role that can sign in but can do nothing is a dead end for
+whoever holds it. They come back with the epics that give them something to do,
+and adding one means a row in `ROLE_PERMISSIONS`, a landing route, and nothing
+else — which is exactly how Venue Staff arrived with US9.1a-c. The database already declares all five in `user_role`;
 a row holding one of the other three is skipped by the directory and refused at
 sign-in rather than being forced into a role it does not have.
 
@@ -327,7 +479,9 @@ app/
   supabase_client.py  the admin, anonymous and per-user Supabase clients
   events.py         /events routes — US4.1 and US4.2
   event_store.py    event data access, over the events and status_changes tables
-  event_status.py   the status label set and the submit rule
+  event_status.py   the status label set, the submit rule and the US7.3 review rule
+  venues.py         /venues routes — US9.1a-c, US9.2 and US9.3
+  venue_store.py    venue data access, over the venues table
 tests/
   conftest.py                 shared client and sign-in fixtures
   test_health.py
@@ -340,4 +494,7 @@ tests/
   test_auth_logout.py         US1.2
   test_access_enforcement.py  US1.3
   test_events.py              US4.1 and US4.2
+  test_event_clarification.py US7.3, and the rule on its own
+  test_venues.py              US9.1a-c, US9.2 and US9.3, through the routes
+  test_venue_store.py         the Supabase venue queries, against a fake client
 ```

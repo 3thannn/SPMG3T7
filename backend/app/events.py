@@ -24,7 +24,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app import event_store
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
-from app.event_status import EventStatus, check_submit, refusal_message
+from app.event_status import (
+    EventStatus,
+    check_clarification,
+    check_submit,
+    clarification_refusal_message,
+    refusal_message,
+)
 from app.event_store import Event
 from app.permissions import Permission, has_permission
 from app.users import User
@@ -41,13 +47,20 @@ class EventError:
 
 
 class StatusChangeOut(BaseModel):
-    """One audit entry. `from` is null on the entry that records creation."""
+    """One audit entry. `from` is null on the entry that records creation.
+
+    `notes` carries a Coordinator's clarification request (US7.3) and is empty
+    on every automatic entry. It is how the message reaches the Organiser: the
+    history is already something they read, so the request travels with the
+    status change that caused it.
+    """
 
     from_status: EventStatus | None = Field(serialization_alias="from")
     to: EventStatus
     at: str
     by_id: str = Field(serialization_alias="byId")
     by_name: str = Field(serialization_alias="byName")
+    notes: str = ""
 
 
 class EventOut(BaseModel):
@@ -113,6 +126,7 @@ def _to_out(event: Event) -> EventOut:
                 at=change.at,
                 by_id=str(change.by_id),
                 by_name=change.by_name,
+                notes=change.notes,
             )
             for change in event.history
         ],
@@ -306,7 +320,7 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
         )
 
     clean = _validated(draft)
-    
+
     # If coordinator is editing (not the owner), use change tracking
     if is_coordinator and not is_owner:
         saved = event_store.repository().save_event_with_tracking(
@@ -344,9 +358,7 @@ def submit_event(
     A second submit is refused with the reason, not silently ignored.
     """
     event = _readable(_as_id(event_id), user)
-    refusal = check_submit(
-        status=event.status, organiser_id=event.organiser_id, actor_id=user.id
-    )
+    refusal = check_submit(status=event.status, organiser_id=event.organiser_id, actor_id=user.id)
     if refusal is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -361,3 +373,55 @@ def submit_event(
         event.id, actor_id=user.id, from_status=event.status
     )
     return _to_out(submitted)
+
+
+class ClarificationRequest(BaseModel):
+    """The message a Coordinator attaches when asking for changes (US7.3)."""
+
+    message: str = ""
+
+
+#: `status_changes.notes` is unbounded TEXT, so this cap is about keeping a
+#: request readable rather than about fitting the column.
+CLARIFICATION_MAX = 2000
+
+
+@router.post("/{event_id}/clarification", response_model=EventOut)
+def request_clarification(
+    event_id: str,
+    payload: ClarificationRequest,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
+) -> EventOut:
+    """US7.3: ask the Organiser for information or changes, and move to Under Review.
+
+    Any Coordinator may do this, not only the one an event is assigned to. That
+    is the story's own wording — narrowing it to the assigned Coordinator waits
+    for US8.1, and until assignment exists a check would refuse everybody.
+
+    The message lands in the event's history, which the owning Organiser already
+    reads, so "visible to the Organiser" needs no separate delivery. Their reply
+    is US11.1 and is deliberately not modelled here.
+    """
+    event = _readable(_as_id(event_id), user)
+
+    message = payload.message.strip()
+    if not message:
+        raise _invalid("Say what you need from the Organiser.")
+    if len(message) > CLARIFICATION_MAX:
+        raise _invalid(f"Keep the request to {CLARIFICATION_MAX} characters or fewer.")
+
+    refusal = check_clarification(status=event.status)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": clarification_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+
+    reviewed = event_store.repository().request_clarification(
+        event.id, actor_id=user.id, from_status=event.status, message=message
+    )
+    return _to_out(reviewed)

@@ -44,9 +44,6 @@ The keys go in `backend/.env`, which is gitignored. Only the backend holds them
 — the browser talks to the API and never to Supabase directly, so the service
 role key never leaves the server.
 
-For an existing project, apply the small SQL scripts documented in the
-[backend README](backend/README.md). Partial drafts require
-`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`, which makes the proposed date nullable.
 Passwords are held by Supabase Auth, in the `auth.users` table it manages, and
 joined to the project's own `users` row by email.
 
@@ -56,6 +53,64 @@ Frontend:
 cd frontend
 npm install
 ```
+
+### Required SQL migrations
+
+The schema in `SUPABASE_SETUP.sql` covers a fresh project. An **existing**
+project needs the scripts below applied once each, in the Supabase SQL Editor
+(Dashboard → SQL Editor → New Query → paste → Run). All of them are idempotent,
+so running one twice is a no-op.
+
+| Script | Needed for | If you skip it |
+| ------ | ---------- | -------------- |
+| [`SUPABASE_ADD_VENUE_LAYOUTS.sql`](backend/SUPABASE_ADD_VENUE_LAYOUTS.sql) | US9.1a-c, US9.2, US9.3 — every venue route | **All five `/venues` routes return 500.** Reads included, not just writes |
+| [`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`](backend/SUPABASE_ALLOW_PARTIAL_DRAFTS.sql) | US4.2 partial drafts | Saving a draft with no date fails |
+| [`SUPABASE_HARDENING.sql`](backend/SUPABASE_HARDENING.sql) | Row Level Security, indexes | Supabase advisor warnings; the app still works |
+| [`SUPABASE_SEED_VENUES.sql`](backend/SUPABASE_SEED_VENUES.sql) | Optional | The catalogue shows its empty state until Venue Staff add records |
+
+#### Known issue: venue routes fail with HTTP 500
+
+**Symptom.** Any venue page shows an error; adding a venue reports *"Could not
+save this venue."* The backend log carries:
+
+```
+postgrest.exceptions.APIError: {'message': "Could not find the
+'supported_layouts' column of 'venues' in the schema cache", 'code': 'PGRST204'}
+```
+
+**Cause.** US9.1a lists supported layouts as a venue field and the original
+schema had no column for it. Every venue route selects `supported_layouts`, and
+`POST`/`PUT` send it, so a database without the column fails on the first venue
+request — which is why reads break too, not only writes.
+
+**Fix.** Run the one statement in
+[`SUPABASE_ADD_VENUE_LAYOUTS.sql`](backend/SUPABASE_ADD_VENUE_LAYOUTS.sql):
+
+```sql
+ALTER TABLE public.venues ADD COLUMN IF NOT EXISTS supported_layouts TEXT;
+```
+
+No restart is needed — PostgREST picks the column up on its own, and the next
+request succeeds. This cannot be applied from the app: the backend goes through
+PostgREST, which does not run DDL.
+
+### Development accounts
+
+Nothing in the app creates an account, so these are made by hand and one is
+needed per role. Each needs **two** records joined on email: an Auth user
+holding the password (Authentication → Users → Add user, with **Auto Confirm
+User** on) and a `public.users` row holding the name and role.
+
+| Email | Role | Can |
+| ----- | ---- | --- |
+| `organiser@spmg3t7.edu` | Event Organiser | create, read own and submit events |
+| `coordinator@spmg3t7.edu` | Event Coordinator | review and edit submitted events, read the venue catalogue |
+| `venuestaff@spmg3t7.edu` | Venue Staff | read the venue catalogue and maintain the records in it |
+
+The role strings are `user_role` enum values, so Postgres rejects a typo rather
+than creating a user nobody has permissions for. These are development
+credentials, not secrets, and must not survive into a deployed environment.
+
 
 ## Run both halves
 
@@ -161,7 +216,9 @@ backend/
     supabase_client.py the Supabase clients, and which key each one uses
     events.py          /events routes — US4.1 and US4.2
     event_store.py     event data access, over events and status_changes
-    event_status.py    the status label set and the submit rule
+    event_status.py    the status label set, the submit rule and the US7.3 review rule
+    venues.py          /venues routes — US9.1a-c, US9.2 and US9.3
+    venue_store.py     venue data access, over the venues table
   tests/               one file per story, plus unit tests for each module
   pyproject.toml       ruff and pytest configuration
   requirements.txt     runtime dependencies
@@ -176,8 +233,10 @@ frontend/
     permissions.ts     which route needs which permission
     useIdleSignOut.ts  signs out after the server's idle window
     eventsStore.ts     the /events client
+    venuesStore.ts     the /venues client, and the venue form rules
     status.ts          event status model and roles
-    pages/             sign-in, landing, events, event detail, access denied
+    pages/             sign-in, landing, events, event detail, venues, venue
+                       detail, venue form, access denied
     components/        top nav, status badge, status timeline
   index.html
   package.json

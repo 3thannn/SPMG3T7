@@ -22,12 +22,20 @@ class TestReadingARow:
         assert Permission.EVENTS_CREATE in user.permissions
 
     def test_a_role_this_build_does_not_model_is_skipped_not_raised(self):
-        """The enum has five values; this build has features for two of them."""
-        for role in ("Venue Staff", "Technical Support", "Attendee"):
+        """The enum has five values; this build has features for three of them."""
+        for role in ("Technical Support", "Attendee"):
             assert to_user({**ROW, "role": role}) is None
 
+    def test_venue_staff_became_a_modelled_role_with_us9_1(self):
+        """It was skipped until there were venue records to maintain."""
+        user = to_user({**ROW, "role": "Venue Staff"})
+
+        assert user is not None
+        assert user.role is Role.VENUE_STAFF
+        assert Permission.VENUES_CREATE in user.permissions
+
     def test_one_unusable_row_does_not_take_the_directory_with_it(self):
-        rows = [ROW, {**ROW, "id": 2, "email": "v@spmg3t7.edu", "role": "Venue Staff"}]
+        rows = [ROW, {**ROW, "id": 2, "email": "a@spmg3t7.edu", "role": "Attendee"}]
 
         usable = [user for user in (to_user(row) for row in rows) if user is not None]
 

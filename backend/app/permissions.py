@@ -13,15 +13,20 @@ from enum import StrEnum
 class Role(StrEnum):
     """The roles the system knows about. The values are the wire format.
 
-    Scoped to the two roles that have features: an Organiser proposes events, a
-    Coordinator reviews them. Venue Staff, Technical Support and Attendee are
-    part of the wider plan and are deliberately not modelled yet — a role that
+    The three roles that have features: an Organiser proposes events, a
+    Coordinator reviews them and reads the venue catalogue, and Venue Staff
+    maintain that catalogue (US9.1a-c).
+
+    Technical Support and Attendee are still deliberately absent — a role that
     can sign in but can do nothing is a dead end for whoever holds it. They come
-    back with the epics that give them something to do.
+    back with the epics that give them something to do, which is exactly how
+    Venue Staff arrived: it was unmodelled until there were venue records to
+    create, update and delete.
     """
 
     ORGANISER = "Event Organiser"
     COORDINATOR = "Event Coordinator"
+    VENUE_STAFF = "Venue Staff"
 
 
 class Permission(StrEnum):
@@ -30,6 +35,11 @@ class Permission(StrEnum):
     Only permissions some role actually holds are listed. Declaring the ones for
     venue booking or registration now would put names in the catalogue that
     nothing grants and nothing checks; they arrive with their own roles.
+
+    Note that reading the catalogue and maintaining it are separate permissions
+    held by different roles: a Coordinator reads (US9.2) and Venue Staff write
+    (US9.1a-c). Neither is a superset of the other, which is why there are four
+    venue permissions rather than one.
     """
 
     EVENTS_CREATE = "events:create"
@@ -39,6 +49,10 @@ class Permission(StrEnum):
     EVENTS_REVIEW = "events:review"
     EVENTS_EDIT = "events:edit"
     USERS_READ = "users:read"
+    VENUES_READ = "venues:read"
+    VENUES_CREATE = "venues:create"
+    VENUES_EDIT = "venues:edit"
+    VENUES_DELETE = "venues:delete"
 
 
 #: Said in the first person, to be dropped into a denial message.
@@ -50,6 +64,10 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.EVENTS_REVIEW: "review submitted events",
     Permission.EVENTS_EDIT: "edit events",
     Permission.USERS_READ: "view the user directory",
+    Permission.VENUES_READ: "view the venue catalogue",
+    Permission.VENUES_CREATE: "add a venue to the catalogue",
+    Permission.VENUES_EDIT: "update a venue record",
+    Permission.VENUES_DELETE: "remove a venue from the catalogue",
 }
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -66,18 +84,30 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.EVENTS_REVIEW,
             Permission.EVENTS_EDIT,
             Permission.USERS_READ,
+            Permission.VENUES_READ,
+        }
+    ),
+    # US9.1a-c: Venue Staff own the catalogue and nothing else. They read it
+    # because maintaining a record means finding it first; they hold no event
+    # permission, so the events screens are not theirs.
+    Role.VENUE_STAFF: frozenset(
+        {
+            Permission.VENUES_READ,
+            Permission.VENUES_CREATE,
+            Permission.VENUES_EDIT,
+            Permission.VENUES_DELETE,
         }
     ),
 }
 
 #: Where each role lands after signing in — the "role-appropriate view" of
-#: US1.1. Both roles work from the events list today, so both point at it. The
-#: lookup stays because the answer stops being the same as soon as a role with
-#: its own workspace arrives, and the client already reads its landing from here
-#: rather than deciding for itself.
+#: US1.1. Venue Staff are the role that made this lookup earn its keep: the
+#: events list is no use to someone who cannot open an event, so they land on
+#: the catalogue they maintain instead.
 HOME_ROUTE: dict[Role, str] = {
     Role.ORGANISER: "/events",
     Role.COORDINATOR: "/events",
+    Role.VENUE_STAFF: "/venues",
 }
 
 
