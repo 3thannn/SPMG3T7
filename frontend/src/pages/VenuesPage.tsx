@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import './VenuesPage.css'
 import {
   NO_FILTERS,
+  VenueRuleError,
   formatCapacity,
   hasFilters,
   listVenues,
@@ -10,7 +11,7 @@ import {
 } from '../venuesStore'
 import { navigate } from '../router'
 import { can } from '../permissions'
-import type { Session } from '../api'
+import { unexpectedFailureMessage, type Session } from '../api'
 
 type VenuesPageProps = {
   session: Session
@@ -62,15 +63,20 @@ export default function VenuesPage({ session }: VenuesPageProps) {
       .then((loaded) => {
         if (!cancelled) setResult({ filters: applied, venues: loaded, error: '' })
       })
-      .catch(() => {
-        // An empty catalogue and an unreachable API look identical if both show
+      .catch((error: unknown) => {
+        // An empty catalogue and a failed request look identical if both show
         // "no venues", and they call for opposite responses from the reader.
+        // So do the failures from each other: a filter the server would not
+        // read is fixed in the box above, and says so, while everything else
+        // sends the reader to the API or the backend log.
         if (cancelled) return
         setResult({
           filters: applied,
           venues: [],
           error:
-            'Could not load the venue catalogue. Check the API is running and try again.',
+            error instanceof VenueRuleError
+              ? error.message
+              : unexpectedFailureMessage(error, 'load the venue catalogue'),
         })
       })
     return () => {

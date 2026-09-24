@@ -12,8 +12,9 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import VenuesPage from './VenuesPage'
-import { NO_FILTERS, listVenues, type VenueRecord } from '../venuesStore'
+import { NO_FILTERS, VenueRuleError, listVenues, type VenueRecord } from '../venuesStore'
 import { buildSession } from '../test/sessions'
+import { ApiError } from '../api'
 
 vi.mock('../venuesStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../venuesStore')>()),
@@ -133,9 +134,35 @@ it('distinguishes an unreachable API from an empty catalogue', async () => {
   render(<VenuesPage session={coordinator} />)
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    /Could not load the venue catalogue/,
+    /Could not load the venue catalogue.*could not be reached/,
   )
   expect(screen.queryByText('No venues yet')).not.toBeInTheDocument()
+})
+
+it('sends a server fault to the backend log rather than to the API switch', async () => {
+  // The API answered, so telling the reader to check it is running would send
+  // them looking in exactly the wrong place.
+  listVenuesMock.mockRejectedValue(new ApiError('Request failed.', 'unknown', 500))
+
+  render(<VenuesPage session={coordinator} />)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(/HTTP 500/)
+  expect(screen.getByRole('alert')).not.toHaveTextContent(/could not be reached/)
+})
+
+it('says what was wrong with a filter instead of blaming the API', async () => {
+  // A capacity of "abcdef" is refused by the server with a sentence naming the
+  // field. The reader fixes it in the box above, not by restarting anything.
+  listVenuesMock.mockRejectedValue(
+    new VenueRuleError('Give a whole number of people for the minimum capacity.'),
+  )
+
+  render(<VenuesPage session={coordinator} />)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Give a whole number of people for the minimum capacity.',
+  )
+  expect(screen.getByRole('alert')).not.toHaveTextContent(/Check the API is running/)
 })
 
 // --- US9.3: the filters ------------------------------------------------------

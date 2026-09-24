@@ -130,13 +130,27 @@ function asRuleError(error: unknown): never {
   throw error
 }
 
-/** US9.2 and US9.3: the catalogue, narrowed by whatever was asked for. */
+/**
+ * US9.2 and US9.3: the catalogue, narrowed by whatever was asked for.
+ *
+ * A filter the server cannot read comes back 400, and it is the one failure
+ * here the reader can fix themselves — so it reaches the page as its own
+ * sentence, the way a refused write does. Everything else stays an `ApiError`
+ * for the page to describe as the unexpected failure it is.
+ */
 export async function listVenues(
   session: Session,
   filters: VenueFilters = NO_FILTERS,
 ): Promise<VenueRecord[]> {
-  const response = await authorizedFetch(`/venues${venueQuery(filters)}`, session.token)
-  return (await response.json()) as VenueRecord[]
+  try {
+    const response = await authorizedFetch(`/venues${venueQuery(filters)}`, session.token)
+    return (await response.json()) as VenueRecord[]
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 400) {
+      throw new VenueRuleError(error.message)
+    }
+    throw error
+  }
 }
 
 /** The venue, or null when there is no such record. */
