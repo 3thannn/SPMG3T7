@@ -31,9 +31,10 @@ CHANGES_TABLE = "status_changes"
 EVENT_CHANGES_TABLE = "event_changes"
 
 # `users(name)` resolves through the one foreign key each table has to users.
+# US8.1: coordinator_id added for automatic assignment
 EVENT_COLUMNS = (
     "id, name, purpose, description, proposed_date, end_date, expected_attendance, "
-    "status, organiser_id, created_at, updated_at, submitted_at, users(name)"
+    "status, organiser_id, coordinator_id, created_at, updated_at, submitted_at, users(name)"
 )
 CHANGE_COLUMNS = "id, old_status, new_status, changed_at, notes, changed_by_id, users(name)"
 
@@ -201,6 +202,19 @@ class Repository(Protocol):
 
 class SupabaseEvents:
     """The real store. Goes through the service role client, like the user store."""
+
+    def _pick_coordinator(self) -> int | None:
+        """US8.1 AC2/AC5: Use database function to pick next coordinator via round-robin.
+
+        The assignment logic lives in the database so backfill and live assignment
+        use the same mechanism. If the function doesn't exist yet (pre-migration),
+        this returns None and events remain unassigned."""
+        try:
+            result = supabase_client.admin().rpc("pick_next_coordinator").execute()
+            return result.data if result.data else None
+        except Exception:
+            # Function doesn't exist yet (pre-migration) or no coordinators exist
+            return None
 
     def _changes_for(self, event_ids: list[int]) -> dict[int, list[dict]]:
         """Every audit row for a page of events, in one query rather than one each."""
@@ -439,8 +453,11 @@ class SupabaseEvents:
         Draft -> Submitted at the creation timestamp keeps the trail honest
         about what happened — the event did exist as a draft, for no time at
         all — and keeps the derived creation entry meaning what it always meant.
+
+        US8.1: Events created already Submitted get assigned a Coordinator.
         """
         at = _now()
+        coordinator_id = self._pick_coordinator()
         created = (
             supabase_client.admin()
             .table(EVENTS_TABLE)
@@ -454,6 +471,7 @@ class SupabaseEvents:
                     "expected_attendance": expected_attendance,
                     "status": str(EventStatus.SUBMITTED),
                     "organiser_id": organiser_id,
+                    "coordinator_id": coordinator_id,
                     "created_at": at,
                     "updated_at": at,
                     "submitted_at": at,
@@ -478,10 +496,18 @@ class SupabaseEvents:
         return event
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
-        """Move the event and write the audit entry US4.2 requires."""
+        """Move the event and write the audit entry US4.2 requires.
+
+        US8.1: Assign a Coordinator when moving to Submitted."""
         at = _now()
+        coordinator_id = self._pick_coordinator()
         supabase_client.admin().table(EVENTS_TABLE).update(
-            {"status": str(EventStatus.SUBMITTED), "submitted_at": at, "updated_at": at}
+            {
+                "status": str(EventStatus.SUBMITTED),
+                "submitted_at": at,
+                "updated_at": at,
+                "coordinator_id": coordinator_id,
+            }
         ).eq("id", event_id).execute()
         supabase_client.admin().table(CHANGES_TABLE).insert(
             {
