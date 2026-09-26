@@ -538,28 +538,48 @@ class InMemoryEvents:
     #: user id -> display name, standing in for the joined `users(name)`.
     names: dict[int, str] = field(default_factory=dict)
     next_id: int = 100
+    #: US8.1 AC2: Track the last assigned coordinator ID for round-robin.
+    last_assigned_coordinator_id: int | None = None
 
     def _replace(self, event: Event) -> Event:
         self.events = [event if item.id == event.id else item for item in self.events]
         return event
 
     def _pick_coordinator(self) -> int | None:
-        """US8.1: Select a Coordinator to assign. Returns None if none exist.
-
-        For AC1, this is a simple implementation that picks the first coordinator.
-        AC2 will enhance this to use round-robin."""
+        """US8.1 AC2: Select a Coordinator via round-robin. Returns None if none exist."""
         from app import users
         from app.permissions import Role
 
-        # Get all coordinators from the user store
+        # Get all coordinators from the user store, sorted by ID for consistency
         all_users = users.list_users()
-        coordinators = [u for u in all_users if u.role == Role.COORDINATOR]
+        coordinators = sorted(
+            [u for u in all_users if u.role == Role.COORDINATOR],
+            key=lambda u: u.id
+        )
 
         if not coordinators:
             return None
 
-        # For AC1: just pick the first one (will be enhanced in AC2 for round-robin)
-        return coordinators[0].id
+        # Round-robin: find the next coordinator after the last assigned one
+        if self.last_assigned_coordinator_id is None:
+            # First assignment: pick the first coordinator
+            next_coordinator = coordinators[0]
+        else:
+            # Find the last assigned coordinator's index
+            try:
+                last_index = next(
+                    i for i, c in enumerate(coordinators)
+                    if c.id == self.last_assigned_coordinator_id
+                )
+                # Pick the next one, wrapping around if needed
+                next_coordinator = coordinators[(last_index + 1) % len(coordinators)]
+            except StopIteration:
+                # Last assigned coordinator no longer exists, start from beginning
+                next_coordinator = coordinators[0]
+
+        # Remember this assignment for next time
+        self.last_assigned_coordinator_id = next_coordinator.id
+        return next_coordinator.id
 
     def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]:
         visible = [
