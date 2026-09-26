@@ -10,13 +10,12 @@ This narrows the US4.1/US5.1/US5.2/US7.3 visibility from "any Coordinator" to
 promised would arrive here.
 """
 
-import pytest
 
 from app.event_status import EventStatus
 from app.event_store import Event
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID, VENUE_STAFF_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID
 
 DRAFT = {
     "title": "Team Building Workshop",
@@ -88,7 +87,9 @@ class TestAC1AutomaticAssignment:
         assert updated.status_code == 200
         assert updated.json()["coordinatorId"] is None
 
-    def test_event_already_submitted_does_not_reassign(self, client, auth_headers, event_repository):
+    def test_event_already_submitted_does_not_reassign(
+        self, client, auth_headers, event_repository
+    ):
         """An event that already has a Coordinator is not reassigned on subsequent updates."""
         # Seed an event that's already submitted with a coordinator
         seed_event(
@@ -123,11 +124,12 @@ class TestAC2RoundRobinAssignment:
     ):
         """Three Coordinators, six submissions → each gets 2 events in order A,B,C,A,B,C."""
         from app.permissions import Role
-        from app.users import User
 
         # Add two more coordinators to the user store
         coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
-        coordinator_3 = User(id=11, email="coord3@spmg3t7.edu", name="Jordan", role=Role.COORDINATOR)
+        coordinator_3 = User(
+            id=11, email="coord3@spmg3t7.edu", name="Jordan", role=Role.COORDINATOR
+        )
         user_store.users.extend([coordinator_2, coordinator_3])
 
         # Submit 6 events
@@ -149,7 +151,6 @@ class TestAC2RoundRobinAssignment:
     def test_round_robin_wraps_around(self, client, auth_headers, user_store):
         """After the last Coordinator, assignment wraps back to the first."""
         from app.permissions import Role
-        from app.users import User
 
         # Add one more coordinator
         coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
@@ -197,7 +198,6 @@ class TestAC4VisibilityNarrowing:
     def test_assigned_coordinator_can_view_event(self, client, auth_headers, user_store):
         """The assigned Coordinator can GET their assigned event."""
         from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
@@ -216,7 +216,6 @@ class TestAC4VisibilityNarrowing:
     def test_non_assigned_coordinator_cannot_view_event(self, client, auth_headers, user_store):
         """A Coordinator who is NOT assigned to an event gets 404."""
         from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
@@ -245,7 +244,6 @@ class TestAC4VisibilityNarrowing:
     def test_assigned_coordinator_can_edit_event(self, client, auth_headers, user_store):
         """The assigned Coordinator can PUT changes to their assigned event."""
         from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
@@ -269,7 +267,6 @@ class TestAC4VisibilityNarrowing:
     def test_non_assigned_coordinator_cannot_edit_event(self, client, auth_headers, user_store):
         """A non-assigned Coordinator cannot PUT changes to the event."""
         from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
@@ -297,10 +294,11 @@ class TestAC4VisibilityNarrowing:
         # Should be 404 or 403
         assert response.status_code in [403, 404]
 
-    def test_non_assigned_coordinator_cannot_request_clarification(self, client, auth_headers, user_store):
+    def test_non_assigned_coordinator_cannot_request_clarification(
+        self, client, auth_headers, user_store
+    ):
         """A non-assigned Coordinator cannot POST a clarification request."""
         from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
@@ -330,7 +328,6 @@ class TestAC4VisibilityNarrowing:
     def test_organiser_can_still_view_own_event(self, client, auth_headers, user_store):
         """The Organiser (creator) can always see their event regardless of assignment."""
         from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
@@ -348,7 +345,6 @@ class TestAC4VisibilityNarrowing:
     def test_coordinator_list_only_shows_assigned_events(self, client, auth_headers, user_store):
         """When a Coordinator lists events, they only see events assigned to them."""
         from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
