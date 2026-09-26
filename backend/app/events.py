@@ -226,14 +226,20 @@ def _validate_submission(event: Event) -> None:
 
 
 def _readable(event_id: int, user: User) -> Event:
-    """Fetch an event the caller is allowed to see, or 404."""
+    """Fetch an event the caller is allowed to see, or 404.
+
+    US8.1: Coordinators can only see events assigned to them."""
     event = event_store.repository().get_event(event_id)
     if event is None:
         raise _not_found()
     sees_own = has_permission(user.role, Permission.EVENTS_READ_OWN)
     owns_event = sees_own and event.organiser_id == user.id
     sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
-    if not owns_event and not (sees_submitted and event.status != EventStatus.DRAFT):
+
+    # US8.1: Coordinators can only see events assigned to them
+    is_assigned_coordinator = sees_submitted and event.coordinator_id == user.id
+
+    if not owns_event and not (is_assigned_coordinator and event.status != EventStatus.DRAFT):
         raise _not_found()
     return event
 
@@ -250,15 +256,20 @@ def _as_id(raw: str) -> int:
 def list_events(
     user: Annotated[User, Depends(require_any_permission(*READ_ANY))],
 ) -> list[EventOut]:
-    """US4.1: an Organiser sees their events; a Coordinator sees non-Drafts."""
+    """US4.1: an Organiser sees their events; a Coordinator sees assigned non-Drafts.
+
+    US8.1: Coordinators now only see events assigned to them."""
     sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
-    return [
-        _to_out(event)
-        for event in event_store.repository().list_events(
-            organiser_id=None if sees_submitted else user.id,
-            include_drafts=not sees_submitted,
-        )
-    ]
+    all_events = event_store.repository().list_events(
+        organiser_id=None if sees_submitted else user.id,
+        include_drafts=not sees_submitted,
+    )
+
+    # US8.1: Filter by coordinator assignment
+    if sees_submitted:
+        all_events = [e for e in all_events if e.coordinator_id == user.id]
+
+    return [_to_out(event) for event in all_events]
 
 
 @router.get("/{event_id}", response_model=EventOut)

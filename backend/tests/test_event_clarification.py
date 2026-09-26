@@ -310,7 +310,8 @@ class TestWhenItIsRefused:
     def test_a_decided_event_is_no_longer_under_review(
         self, client, auth_headers, event_repository
     ):
-        seed(event_repository)
+        # US8.1: Event must be assigned to the coordinator for them to see it
+        seed(event_repository, coordinator_id=COORDINATOR_ID)
 
         response = request_clarification(client, auth_headers("Event Coordinator"), "500")
 
@@ -320,7 +321,8 @@ class TestWhenItIsRefused:
         assert "already been decided" in detail["message"]
 
     def test_a_rejected_event_is_refused_too(self, client, auth_headers, event_repository):
-        seed(event_repository, status=EventStatus.REJECTED)
+        # US8.1: Event must be assigned to the coordinator for them to see it
+        seed(event_repository, status=EventStatus.REJECTED, coordinator_id=COORDINATOR_ID)
 
         response = request_clarification(client, auth_headers("Event Coordinator"), "500")
 
