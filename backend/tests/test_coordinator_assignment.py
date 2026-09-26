@@ -69,7 +69,8 @@ class TestAC1AutomaticAssignment:
 
         assert "coordinatorId" in event
         assert event["coordinatorId"] is not None
-        assert isinstance(event["coordinatorId"], int)
+        # IDs are strings in the API (following existing pattern)
+        assert event["coordinatorId"] == str(COORDINATOR_ID)
 
     def test_update_without_status_change_does_not_assign(self, client, auth_headers):
         """Updating event fields without changing status should not trigger assignment."""

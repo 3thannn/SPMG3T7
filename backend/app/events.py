@@ -78,6 +78,8 @@ class EventOut(BaseModel):
     organiser_name: str = Field(serialization_alias="organiserName")
     created_at: str = Field(serialization_alias="createdAt")
     updated_at: str = Field(serialization_alias="updatedAt")
+    #: US8.1: The assigned Event Coordinator's ID, or None if unassigned.
+    coordinator_id: str | None = Field(default=None, serialization_alias="coordinatorId")
     history: list[StatusChangeOut]
 
 
@@ -119,6 +121,7 @@ def _to_out(event: Event) -> EventOut:
         organiser_name=event.organiser_name,
         created_at=event.created_at,
         updated_at=event.updated_at,
+        coordinator_id=str(event.coordinator_id) if event.coordinator_id is not None else None,
         history=[
             StatusChangeOut(
                 from_status=change.from_status,

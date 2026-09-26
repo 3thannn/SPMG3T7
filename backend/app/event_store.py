@@ -74,6 +74,8 @@ class Event:
     organiser_name: str
     created_at: str
     updated_at: str
+    #: US8.1: The assigned Event Coordinator's ID, or None if unassigned.
+    coordinator_id: int | None = None
     history: tuple[StatusChange, ...] = ()
 
 
@@ -126,6 +128,7 @@ def to_event(row: dict, changes: list[dict] | None = None) -> Event:
         organiser_name=_embedded_name(row),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
+        coordinator_id=row.get("coordinator_id"),
     )
     stored = sorted(
         (to_change(change) for change in changes or []),
@@ -540,6 +543,24 @@ class InMemoryEvents:
         self.events = [event if item.id == event.id else item for item in self.events]
         return event
 
+    def _pick_coordinator(self) -> int | None:
+        """US8.1: Select a Coordinator to assign. Returns None if none exist.
+
+        For AC1, this is a simple implementation that picks the first coordinator.
+        AC2 will enhance this to use round-robin."""
+        from app import users
+        from app.permissions import Role
+
+        # Get all coordinators from the user store
+        all_users = users.list_users()
+        coordinators = [u for u in all_users if u.role == Role.COORDINATOR]
+
+        if not coordinators:
+            return None
+
+        # For AC1: just pick the first one (will be enhanced in AC2 for round-robin)
+        return coordinators[0].id
+
     def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]:
         visible = [
             event
@@ -644,9 +665,12 @@ class InMemoryEvents:
         expected_attendance: int,
         organiser_id: int,
     ) -> Event:
-        """The same two writes as the Supabase store, and the same history."""
+        """The same two writes as the Supabase store, and the same history.
+
+        US8.1: Events created already Submitted get assigned a Coordinator."""
         at = _now()
         self.next_id += 1
+        coordinator_id = self._pick_coordinator()
         event = Event(
             id=self.next_id,
             title=name,
@@ -660,6 +684,7 @@ class InMemoryEvents:
             organiser_name=self.names.get(organiser_id, ""),
             created_at=at,
             updated_at=at,
+            coordinator_id=coordinator_id,
         )
         submission = StatusChange(
             from_status=EventStatus.DRAFT,
@@ -673,9 +698,14 @@ class InMemoryEvents:
         return event
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
+        """US8.1: Moving to Submitted assigns a Coordinator."""
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 — the caller checked it exists
         at = _now()
+
+        # US8.1: Assign a Coordinator when transitioning to Submitted
+        coordinator_id = self._pick_coordinator()
+
         entry = StatusChange(
             from_status=from_status,
             to_status=EventStatus.SUBMITTED,
@@ -688,6 +718,7 @@ class InMemoryEvents:
                 existing,
                 status=EventStatus.SUBMITTED,
                 updated_at=at,
+                coordinator_id=coordinator_id,
                 history=(*existing.history, entry),
             )
         )
