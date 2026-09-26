@@ -188,3 +188,201 @@ class TestAC2RoundRobinAssignment:
 
         # All should be assigned to the same coordinator (ID 2)
         assert coordinator_ids == ["2", "2", "2"]
+
+
+class TestAC4VisibilityNarrowing:
+    """AC4: Once an event has an assigned Coordinator, US4.1/US5.1/US5.2 visibility
+    narrows to that Coordinator only."""
+
+    def test_assigned_coordinator_can_view_event(self, client, auth_headers, user_store):
+        """The assigned Coordinator can GET their assigned event."""
+        from app.permissions import Role
+        from app.users import User
+
+        # Add a second coordinator
+        coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
+        user_store.users.append(coordinator_2)
+        user_store.passwords["coord2@spmg3t7.edu"] = "Sprint1!demo"
+
+        # Submit an event (will be assigned to first coordinator ID=2)
+        event = submitted_event(client, auth_headers)
+        assert event["coordinatorId"] == "2"
+
+        # The assigned coordinator (ID=2) can view it
+        response = client.get(f"/events/{event['id']}", headers=auth_headers("Event Coordinator"))
+        assert response.status_code == 200
+        assert response.json()["id"] == event["id"]
+
+    def test_non_assigned_coordinator_cannot_view_event(self, client, auth_headers, user_store):
+        """A Coordinator who is NOT assigned to an event gets 404."""
+        from app.permissions import Role
+        from app.users import User
+
+        # Add a second coordinator
+        coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
+        user_store.users.append(coordinator_2)
+        user_store.passwords["coord2@spmg3t7.edu"] = "Sprint1!demo"
+
+        # Submit an event (will be assigned to first coordinator ID=2)
+        event = submitted_event(client, auth_headers)
+        assert event["coordinatorId"] == "2"
+
+        # Try to view it as the non-assigned coordinator (ID=10)
+        sign_in_response = client.post(
+            "/auth/login",
+            json={"email": "coord2@spmg3t7.edu", "password": "Sprint1!demo"}
+        )
+        coordinator_2_token = sign_in_response.json()["token"]
+
+        response = client.get(
+            f"/events/{event['id']}",
+            headers={"Authorization": f"Bearer {coordinator_2_token}"}
+        )
+
+        # Should be 404 (not found / not visible)
+        assert response.status_code == 404
+
+    def test_assigned_coordinator_can_edit_event(self, client, auth_headers, user_store):
+        """The assigned Coordinator can PUT changes to their assigned event."""
+        from app.permissions import Role
+        from app.users import User
+
+        # Add a second coordinator
+        coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
+        user_store.users.append(coordinator_2)
+
+        # Submit an event (assigned to first coordinator ID=2)
+        event = submitted_event(client, auth_headers)
+        assert event["coordinatorId"] == "2"
+
+        # The assigned coordinator can edit it
+        updated_draft = {**DRAFT, "title": "Updated by assigned coordinator"}
+        response = client.put(
+            f"/events/{event['id']}",
+            json=updated_draft,
+            headers=auth_headers("Event Coordinator")
+        )
+
+        assert response.status_code == 200
+        assert response.json()["title"] == "Updated by assigned coordinator"
+
+    def test_non_assigned_coordinator_cannot_edit_event(self, client, auth_headers, user_store):
+        """A non-assigned Coordinator cannot PUT changes to the event."""
+        from app.permissions import Role
+        from app.users import User
+
+        # Add a second coordinator
+        coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
+        user_store.users.append(coordinator_2)
+        user_store.passwords["coord2@spmg3t7.edu"] = "Sprint1!demo"
+
+        # Submit an event (assigned to first coordinator ID=2)
+        event = submitted_event(client, auth_headers)
+        assert event["coordinatorId"] == "2"
+
+        # Try to edit as non-assigned coordinator
+        sign_in_response = client.post(
+            "/auth/login",
+            json={"email": "coord2@spmg3t7.edu", "password": "Sprint1!demo"}
+        )
+        coordinator_2_token = sign_in_response.json()["token"]
+
+        updated_draft = {**DRAFT, "title": "Attempted update by non-assigned"}
+        response = client.put(
+            f"/events/{event['id']}",
+            json=updated_draft,
+            headers={"Authorization": f"Bearer {coordinator_2_token}"}
+        )
+
+        # Should be 404 or 403
+        assert response.status_code in [403, 404]
+
+    def test_non_assigned_coordinator_cannot_request_clarification(self, client, auth_headers, user_store):
+        """A non-assigned Coordinator cannot POST a clarification request."""
+        from app.permissions import Role
+        from app.users import User
+
+        # Add a second coordinator
+        coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
+        user_store.users.append(coordinator_2)
+        user_store.passwords["coord2@spmg3t7.edu"] = "Sprint1!demo"
+
+        # Submit an event (assigned to first coordinator ID=2)
+        event = submitted_event(client, auth_headers)
+        assert event["coordinatorId"] == "2"
+
+        # Try to request clarification as non-assigned coordinator
+        sign_in_response = client.post(
+            "/auth/login",
+            json={"email": "coord2@spmg3t7.edu", "password": "Sprint1!demo"}
+        )
+        coordinator_2_token = sign_in_response.json()["token"]
+
+        response = client.post(
+            f"/events/{event['id']}/clarification",
+            json={"message": "Question from non-assigned coordinator"},
+            headers={"Authorization": f"Bearer {coordinator_2_token}"}
+        )
+
+        # Should be 404 (not found / not visible)
+        assert response.status_code == 404
+
+    def test_organiser_can_still_view_own_event(self, client, auth_headers, user_store):
+        """The Organiser (creator) can always see their event regardless of assignment."""
+        from app.permissions import Role
+        from app.users import User
+
+        # Add a second coordinator
+        coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
+        user_store.users.append(coordinator_2)
+
+        # Submit an event (assigned to first coordinator ID=2)
+        event = submitted_event(client, auth_headers)
+        assert event["coordinatorId"] == "2"
+
+        # Organiser can still view their own event
+        response = client.get(f"/events/{event['id']}", headers=auth_headers("Event Organiser"))
+        assert response.status_code == 200
+        assert response.json()["id"] == event["id"]
+
+    def test_coordinator_list_only_shows_assigned_events(self, client, auth_headers, user_store):
+        """When a Coordinator lists events, they only see events assigned to them."""
+        from app.permissions import Role
+        from app.users import User
+
+        # Add a second coordinator
+        coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
+        user_store.users.append(coordinator_2)
+        user_store.passwords["coord2@spmg3t7.edu"] = "Sprint1!demo"
+
+        # Submit 3 events (will be assigned round-robin: 2, 10, 2)
+        organiser = auth_headers("Event Organiser")
+        event_ids = []
+        for i in range(3):
+            created = client.post(
+                "/events",
+                json={**DRAFT, "title": f"Event {i+1}"},
+                headers=organiser
+            )
+            event_id = created.json()["id"]
+            submitted = client.post(f"/events/{event_id}/submit", headers=organiser)
+            event_ids.append(submitted.json()["id"])
+
+        # Coordinator 1 (ID=2) should see events 0 and 2
+        coord1_list = client.get("/events", headers=auth_headers("Event Coordinator")).json()
+        coord1_event_ids = [e["id"] for e in coord1_list]
+        assert set(coord1_event_ids) == {event_ids[0], event_ids[2]}
+
+        # Coordinator 2 (ID=10) should see only event 1
+        sign_in_response = client.post(
+            "/auth/login",
+            json={"email": "coord2@spmg3t7.edu", "password": "Sprint1!demo"}
+        )
+        coordinator_2_token = sign_in_response.json()["token"]
+
+        coord2_list = client.get(
+            "/events",
+            headers={"Authorization": f"Bearer {coordinator_2_token}"}
+        ).json()
+        coord2_event_ids = [e["id"] for e in coord2_list]
+        assert coord2_event_ids == [event_ids[1]]
