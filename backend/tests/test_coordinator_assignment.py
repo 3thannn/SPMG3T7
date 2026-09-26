@@ -113,3 +113,78 @@ class TestAC1AutomaticAssignment:
 
         assert event["status"] == "Submitted"
         assert event["coordinatorId"] is None
+
+
+class TestAC2RoundRobinAssignment:
+    """AC2: Assignment is round-robin across all Coordinator accounts."""
+
+    def test_multiple_submissions_rotate_through_coordinators(
+        self, client, auth_headers, user_store
+    ):
+        """Three Coordinators, six submissions → each gets 2 events in order A,B,C,A,B,C."""
+        from app.permissions import Role
+        from app.users import User
+
+        # Add two more coordinators to the user store
+        coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
+        coordinator_3 = User(id=11, email="coord3@spmg3t7.edu", name="Jordan", role=Role.COORDINATOR)
+        user_store.users.extend([coordinator_2, coordinator_3])
+
+        # Submit 6 events
+        organiser = auth_headers("Event Organiser")
+        coordinator_ids = []
+        for i in range(6):
+            created = client.post(
+                "/events",
+                json={**DRAFT, "title": f"Event {i+1}"},
+                headers=organiser,
+            )
+            event_id = created.json()["id"]
+            submitted = client.post(f"/events/{event_id}/submit", headers=organiser)
+            coordinator_ids.append(submitted.json()["coordinatorId"])
+
+        # Should rotate: 2, 10, 11, 2, 10, 11 (Priya, Alex, Jordan, repeat)
+        assert coordinator_ids == ["2", "10", "11", "2", "10", "11"]
+
+    def test_round_robin_wraps_around(self, client, auth_headers, user_store):
+        """After the last Coordinator, assignment wraps back to the first."""
+        from app.permissions import Role
+        from app.users import User
+
+        # Add one more coordinator
+        coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
+        user_store.users.append(coordinator_2)
+
+        # Submit 5 events (should cycle: 2, 10, 2, 10, 2)
+        organiser = auth_headers("Event Organiser")
+        coordinator_ids = []
+        for i in range(5):
+            created = client.post(
+                "/events",
+                json={**DRAFT, "title": f"Event {i+1}"},
+                headers=organiser,
+            )
+            event_id = created.json()["id"]
+            submitted = client.post(f"/events/{event_id}/submit", headers=organiser)
+            coordinator_ids.append(submitted.json()["coordinatorId"])
+
+        assert coordinator_ids == ["2", "10", "2", "10", "2"]
+
+    def test_single_coordinator_always_assigned(self, client, auth_headers):
+        """Only 1 Coordinator exists → they get every event."""
+        organiser = auth_headers("Event Organiser")
+
+        # Submit 3 events
+        coordinator_ids = []
+        for i in range(3):
+            created = client.post(
+                "/events",
+                json={**DRAFT, "title": f"Event {i+1}"},
+                headers=organiser,
+            )
+            event_id = created.json()["id"]
+            submitted = client.post(f"/events/{event_id}/submit", headers=organiser)
+            coordinator_ids.append(submitted.json()["coordinatorId"])
+
+        # All should be assigned to the same coordinator (ID 2)
+        assert coordinator_ids == ["2", "2", "2"]
