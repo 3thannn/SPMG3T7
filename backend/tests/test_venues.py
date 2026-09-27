@@ -277,6 +277,17 @@ class TestCreating:
         assert response.status_code == 400
         assert "location" in response.json()["detail"]["message"]
 
+    # --- Added: extra edge-case coverage for US9.1a/US9.1b ---
+    def test_a_location_of_only_spaces_is_no_location(self, client, auth_headers):
+        response = client.post(
+            "/venues",
+            json={**NEW_VENUE, "location": "   "},
+            headers=auth_headers("Venue Staff"),
+        )
+
+        assert response.status_code == 400
+        assert "location" in response.json()["detail"]["message"]
+
     def test_a_capacity_is_required(self, client, auth_headers):
         response = client.post(
             "/venues",
@@ -317,6 +328,30 @@ class TestCreating:
 
         assert response.status_code == 400
         assert "255" in response.json()["detail"]["message"]
+
+    # --- Added: extra edge-case coverage for US9.1a/US9.1b ---
+    def test_an_overlong_location_is_refused_with_a_sentence(self, client, auth_headers):
+        """`venues.location` is VARCHAR(500) — the same story as an overlong name."""
+        response = client.post(
+            "/venues",
+            json={**NEW_VENUE, "location": "x" * 501},
+            headers=auth_headers("Venue Staff"),
+        )
+
+        assert response.status_code == 400
+        assert "500" in response.json()["detail"]["message"]
+
+    # --- Added: extra edge-case coverage for US9.1a/US9.1b ---
+    def test_a_capacity_beyond_what_postgres_can_store_is_refused(self, client, auth_headers):
+        """CAPACITY_MAX exists so this is a sentence, not a raw 500 from the driver."""
+        response = client.post(
+            "/venues",
+            json={**NEW_VENUE, "capacity": 2_147_483_648},
+            headers=auth_headers("Venue Staff"),
+        )
+
+        assert response.status_code == 400
+        assert "larger than any venue" in response.json()["detail"]["message"]
 
     def test_a_duplicate_name_is_a_conflict_not_a_crash(self, client, auth_headers):
         """The name column is UNIQUE, so the second one is refused by a rule."""
