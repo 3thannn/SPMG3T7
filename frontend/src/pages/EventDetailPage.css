@@ -105,10 +105,15 @@
 /* US7.3: the Coordinator's request form, under the status history it becomes
    part of. Separated by a rule so it reads as an action rather than as another
    entry in the trail above it. */
-.detail-clarify {
+.detail-clarify,
+.detail-decision {
   margin-top: 1.5rem;
   padding-top: 1.25rem;
   border-top: 1px solid var(--line);
+}
+
+.detail-decision-reason {
+  margin-top: 1rem;
 }
 
 .detail-clarify-title {

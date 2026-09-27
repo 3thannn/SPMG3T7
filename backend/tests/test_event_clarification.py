@@ -297,6 +297,49 @@ class TestTheMessageIsRequired:
 
 
 class TestWhenItIsRefused:
+    def test_a_concurrent_decision_cannot_be_undone_by_a_stale_clarification(
+        self, client, auth_headers, event_repository, monkeypatch
+    ):
+        event = submitted_event(client, auth_headers)
+        headers = auth_headers("Event Coordinator")
+        reviewed = request_clarification(client, headers, event["id"], "First question.")
+        assert reviewed.status_code == 200, reviewed.text
+
+        original_request = event_repository.request_clarification
+
+        def approve_before_clarification(
+            event_id: int,
+            *,
+            actor_id: int,
+            from_status: EventStatus,
+            message: str,
+        ) -> Event:
+            event_repository.decide_event(
+                event_id,
+                actor_id=actor_id,
+                from_status=EventStatus.UNDER_REVIEW,
+                to_status=EventStatus.APPROVED,
+                reason="",
+            )
+            return original_request(
+                event_id,
+                actor_id=actor_id,
+                from_status=from_status,
+                message=message,
+            )
+
+        monkeypatch.setattr(event_repository, "request_clarification", approve_before_clarification)
+
+        response = request_clarification(client, headers, event["id"], "Stale follow-up.")
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["reason"] == "invalid-transition"
+        current = event_repository.get_event(int(event["id"]))
+        assert current is not None
+        assert current.status is EventStatus.APPROVED
+        assert current.history[-1].to_status is EventStatus.APPROVED
+        assert "Stale follow-up." not in [entry.notes for entry in current.history]
+
     def test_a_draft_is_not_reviewable(self, client, auth_headers):
         """A Coordinator cannot see a Draft, so this is a 404 before it is a rule."""
         created = client.post("/events", json=DRAFT, headers=auth_headers("Event Organiser"))

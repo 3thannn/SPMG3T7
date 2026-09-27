@@ -103,6 +103,70 @@ CREATE INDEX ix_status_changes_id ON status_changes(id);
 CREATE INDEX ix_status_changes_event_id ON status_changes(event_id);
 CREATE INDEX ix_status_changes_changed_by_id ON status_changes(changed_by_id);
 
+-- US7.1: keep a Coordinator decision and its US4.2 audit row in one transaction.
+-- Transition validation remains in Python; this is not a status trigger.
+CREATE OR REPLACE FUNCTION public.decide_event_status(
+    p_event_id INTEGER,
+    p_expected_status public.event_status,
+    p_new_status public.event_status,
+    p_changed_by_id INTEGER,
+    p_notes TEXT DEFAULT NULL
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    decision_at TIMESTAMP := NOW();
+BEGIN
+    UPDATE public.events
+    SET status = p_new_status,
+        updated_at = decision_at
+    WHERE id = p_event_id
+      AND status = p_expected_status;
+
+    IF NOT FOUND THEN
+        RETURN FALSE;
+    END IF;
+
+    INSERT INTO public.status_changes (
+        event_id,
+        old_status,
+        new_status,
+        changed_by_id,
+        changed_at,
+        notes
+    )
+    VALUES (
+        p_event_id,
+        p_expected_status,
+        p_new_status,
+        p_changed_by_id,
+        decision_at,
+        p_notes
+    );
+
+    RETURN TRUE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.decide_event_status(
+    INTEGER,
+    public.event_status,
+    public.event_status,
+    INTEGER,
+    TEXT
+) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.decide_event_status(
+    INTEGER,
+    public.event_status,
+    public.event_status,
+    INTEGER,
+    TEXT
+) TO service_role;
+
 -- Create trigger to auto-update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

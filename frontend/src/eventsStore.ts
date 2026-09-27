@@ -168,6 +168,36 @@ export async function requestClarification(
   }
 }
 
+/** US7.1: approve an assigned event that is currently Under Review. */
+export async function approveEvent(id: string, session: Session): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/approve`, session.token, {
+      method: 'POST',
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/** US7.1: reject an assigned event and make the reason visible in its history. */
+export async function rejectEvent(
+  id: string,
+  reason: string,
+  session: Session,
+): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/reject`, session.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
 /** US4.2: Draft -> Submitted, once. A second submit comes back as a refusal. */
 export async function submitEvent(id: string, session: Session): Promise<EventRecord> {
   try {

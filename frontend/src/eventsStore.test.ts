@@ -10,9 +10,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   EventRuleError,
+  approveEvent,
   createEvent,
   getEvent,
   listEvents,
+  rejectEvent,
   saveEvent,
   submitEvent,
 } from './eventsStore'
@@ -195,5 +197,34 @@ describe('submitEvent', () => {
     stubFetch(failure(401, 'session_expired', 'Your session expired.'))
 
     await expect(submitEvent('101', session)).rejects.not.toBeInstanceOf(EventRuleError)
+  })
+})
+
+describe('event decisions', () => {
+  it('posts approval to the dedicated action route', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Approved' }))
+
+    const approved = await approveEvent('101', session)
+
+    expect(approved.status).toBe('Approved')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/approve')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+  })
+
+  it('posts a rejection reason to the dedicated action route', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Rejected' }))
+
+    const rejected = await rejectEvent('101', 'No capacity.', session)
+
+    expect(rejected.status).toBe('Rejected')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/reject')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({ reason: 'No capacity.' })
+  })
+
+  it('surfaces an invalid transition as a rule error', async () => {
+    stubFetch(failure(409, 'rule_refused', 'Only an event that is Under Review can be decided.'))
+
+    await expect(approveEvent('101', session)).rejects.toBeInstanceOf(EventRuleError)
   })
 })

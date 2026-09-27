@@ -30,8 +30,10 @@ from app.event_status import (
     check_submit,
     clarification_refusal_message,
     refusal_message,
+    transition_allowed,
+    transition_refusal_message,
 )
-from app.event_store import Event
+from app.event_store import Event, StaleEventStatus
 from app.permissions import Permission, has_permission
 from app.users import User
 
@@ -49,10 +51,10 @@ class EventError:
 class StatusChangeOut(BaseModel):
     """One audit entry. `from` is null on the entry that records creation.
 
-    `notes` carries a Coordinator's clarification request (US7.3) and is empty
-    on every automatic entry. It is how the message reaches the Organiser: the
-    history is already something they read, so the request travels with the
-    status change that caused it.
+    `notes` carries a Coordinator's clarification request (US7.3) or rejection
+    reason (US7.1), and is empty on automatic entries. The history is already
+    something the Organiser reads, so each message travels with the status
+    change that caused it.
     """
 
     from_status: EventStatus | None = Field(serialization_alias="from")
@@ -140,6 +142,22 @@ def _invalid(message: str) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail={"code": EventError.INVALID, "message": message},
+    )
+
+
+def _require_transition(from_status: EventStatus, to_status: EventStatus) -> None:
+    """US4.3: reject every status move outside the workflow allowlist."""
+    if transition_allowed(from_status=from_status, to_status=to_status):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": transition_refusal_message(
+                from_status=from_status, to_status=to_status
+            ),
+            "reason": "invalid-transition",
+        },
     )
 
 
@@ -382,6 +400,7 @@ def submit_event(
                 "reason": str(refusal),
             },
         )
+    _require_transition(event.status, EventStatus.SUBMITTED)
     _validate_submission(event)
     submitted = event_store.repository().submit_event(
         event.id, actor_id=user.id, from_status=event.status
@@ -408,9 +427,8 @@ def request_clarification(
 ) -> EventOut:
     """US7.3: ask the Organiser for information or changes, and move to Under Review.
 
-    Any Coordinator may do this, not only the one an event is assigned to. That
-    is the story's own wording — narrowing it to the assigned Coordinator waits
-    for US8.1, and until assignment exists a check would refuse everybody.
+    US8.1's readable-event check restricts this action to the assigned
+    Coordinator; the status rule here remains independent of assignment.
 
     The message lands in the event's history, which the owning Organiser already
     reads, so "visible to the Organiser" needs no separate delivery. Their reply
@@ -435,7 +453,93 @@ def request_clarification(
             },
         )
 
-    reviewed = event_store.repository().request_clarification(
-        event.id, actor_id=user.id, from_status=event.status, message=message
-    )
+    _require_transition(event.status, EventStatus.UNDER_REVIEW)
+
+    try:
+        reviewed = event_store.repository().request_clarification(
+            event.id, actor_id=user.id, from_status=event.status, message=message
+        )
+    except StaleEventStatus:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": (
+                    "This event changed while you were reviewing it. "
+                    "Refresh it and try again."
+                ),
+                "reason": "invalid-transition",
+            },
+        ) from None
     return _to_out(reviewed)
+
+
+class RejectionRequest(BaseModel):
+    """Why an Event Coordinator rejected an event (US7.1)."""
+
+    reason: str = ""
+
+
+DECISION_REASON_MAX = 2000
+
+
+def _decide_event(
+    event_id: str,
+    user: User,
+    to_status: EventStatus,
+    *,
+    reason: str = "",
+) -> EventOut:
+    event = _readable(_as_id(event_id), user)
+    if event.status is not EventStatus.UNDER_REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": "Only an event that is Under Review can be decided.",
+                "reason": "invalid-transition",
+            },
+        )
+    _require_transition(event.status, to_status)
+    try:
+        decided = event_store.repository().decide_event(
+            event.id,
+            actor_id=user.id,
+            from_status=event.status,
+            to_status=to_status,
+            reason=reason,
+        )
+    except StaleEventStatus:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": "This event was already decided. Refresh it and try again.",
+                "reason": "invalid-transition",
+            },
+        ) from None
+    return _to_out(decided)
+
+
+@router.post("/{event_id}/approve", response_model=EventOut)
+def approve_event(
+    event_id: str,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
+) -> EventOut:
+    """US7.1: move an assigned Under Review event to Approved."""
+    return _decide_event(event_id, user, EventStatus.APPROVED)
+
+
+@router.post("/{event_id}/reject", response_model=EventOut)
+def reject_event(
+    event_id: str,
+    payload: RejectionRequest,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
+) -> EventOut:
+    """US7.1: reject an assigned Under Review event with an organiser-visible reason."""
+    reason = payload.reason.strip()
+    if not reason:
+        raise _invalid("Give the Organiser a reason for rejecting this event.")
+    if len(reason) > DECISION_REASON_MAX:
+        raise _invalid(f"Keep the reason to {DECISION_REASON_MAX} characters or fewer.")
+    return _decide_event(event_id, user, EventStatus.REJECTED, reason=reason)

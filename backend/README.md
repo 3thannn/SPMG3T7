@@ -133,12 +133,14 @@ button is a courtesy and a refused request is the rule.
 
 | Route                        | Who                           | Purpose                                    |
 | ---------------------------- | ----------------------------- | ------------------------------------------ |
-| `GET /events`                | Organiser (own), Coordinator (all) | The events list (US4.1)               |
+| `GET /events`                | Organiser (own), Coordinator (assigned) | The events list (US4.1/US8.1)     |
 | `GET /events/{id}`           | as above                      | One event, with its audit trail            |
 | `POST /events`               | Organiser                     | Create — always lands in Draft (US4.2)     |
 | `PUT /events/{id}`           | the owning Organiser          | Save edits; the status does not move       |
 | `POST /events/{id}/submit`   | the owning Organiser          | Draft → Submitted, once (US4.2)            |
-| `POST /events/{id}/clarification` | any Coordinator          | Ask for info or changes; → Under Review (US7.3) |
+| `POST /events/{id}/clarification` | assigned Coordinator     | Ask for info or changes; → Under Review (US7.3) |
+| `POST /events/{id}/approve`  | assigned Coordinator        | Under Review → Approved (US7.1)       |
+| `POST /events/{id}/reject`   | assigned Coordinator        | Under Review → Rejected with a reason (US7.1) |
 
 An event that belongs to another Organiser answers `404`, not `403`. Telling
 someone an event exists but is not theirs tells them something about another
@@ -197,10 +199,8 @@ mechanism: the owning Organiser already reads the event's history, so the messag
 arrives there. `StatusChangeOut.notes` is empty on every automatic entry, which
 is what lets a client tell a request apart from a plain status change.
 
-**Any Coordinator may ask, not only an assigned one.** That is the story's own
-wording. `events:review` is the whole of the check — there is no assignment to
-test against yet, so a narrower rule would refuse everybody. Narrowing it waits
-for US8.1.
+Only the assigned Coordinator may ask. US8.1's shared event visibility check
+applies before the clarification status rule.
 
 Allowed from `Submitted` and from `Under Review`; a second question is still a
 question, and refusing a follow-up would mean a Coordinator had one chance to
@@ -210,6 +210,22 @@ ask. A decided event answers `409` with `already-decided`. A `Draft` answers
 the route.
 
 The Organiser's reply is **US11.1** and is deliberately not modelled here.
+
+### Approving and rejecting (US7.1/US4.3)
+
+Only an assigned Coordinator can decide an event, and only while it is Under
+Review. Approval moves it to Approved. Rejection moves it to Rejected and needs
+a non-empty reason of at most 2,000 characters. The reason reuses
+`status_changes.notes`, so it appears in the Organiser's existing audit trail.
+
+The workflow allowlist lives in `app/event_status.py`, alongside US4.2's submit
+rule: Draft -> Submitted, Submitted -> Under Review, and Under Review -> either
+Approved or Rejected. Routes return `409` with `invalid-transition` for other
+moves. Status validation remains in Python; there is no status SQL trigger and
+US8.1's coordinator assignment is unchanged. Existing Supabase projects must run
+[`SUPABASE_ATOMIC_EVENT_DECISIONS.sql`](SUPABASE_ATOMIC_EVENT_DECISIONS.sql)
+before deploying this story. Its RPC only makes the conditional decision update
+and audit insert atomic; it does not decide which transitions are valid.
 
 ## Venues
 

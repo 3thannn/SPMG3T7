@@ -55,7 +55,7 @@ class StatusChange:
     at: str
     by_id: int
     by_name: str
-    #: Empty for an automatic entry; the Coordinator's message for US7.3.
+    #: Empty for an automatic entry; a US7.3 request or US7.1 rejection reason.
     notes: str = ""
 
 
@@ -79,6 +79,10 @@ class Event:
     #: US8.1: The assigned Event Coordinator's ID, or None if unassigned.
     coordinator_id: int | None = None
     history: tuple[StatusChange, ...] = ()
+
+
+class StaleEventStatus(RuntimeError):
+    """The event changed after the route checked its current status."""
 
 
 def _now() -> str:
@@ -198,6 +202,16 @@ class Repository(Protocol):
 
     def request_clarification(
         self, event_id: int, *, actor_id: int, from_status: EventStatus, message: str
+    ) -> Event: ...
+
+    def decide_event(
+        self,
+        event_id: int,
+        *,
+        actor_id: int,
+        from_status: EventStatus,
+        to_status: EventStatus,
+        reason: str,
     ) -> Event: ...
 
 
@@ -539,9 +553,16 @@ class SupabaseEvents:
         of the Organiser's list.
         """
         at = _now()
-        supabase_client.admin().table(EVENTS_TABLE).update(
-            {"status": str(EventStatus.UNDER_REVIEW), "updated_at": at}
-        ).eq("id", event_id).execute()
+        updated = (
+            supabase_client.admin()
+            .table(EVENTS_TABLE)
+            .update({"status": str(EventStatus.UNDER_REVIEW), "updated_at": at})
+            .eq("id", event_id)
+            .eq("status", str(from_status))
+            .execute()
+        )
+        if not updated.data:
+            raise StaleEventStatus
         supabase_client.admin().table(CHANGES_TABLE).insert(
             {
                 "event_id": event_id,
@@ -555,6 +576,37 @@ class SupabaseEvents:
         reviewed = self.get_event(event_id)
         assert reviewed is not None  # noqa: S101 — the row was just updated
         return reviewed
+
+    def decide_event(
+        self,
+        event_id: int,
+        *,
+        actor_id: int,
+        from_status: EventStatus,
+        to_status: EventStatus,
+        reason: str,
+    ) -> Event:
+        """US7.1: atomically record one Coordinator decision and its audit entry.
+
+        Transition validation remains in Python. The RPC is only the transaction
+        boundary needed to prevent a final status without its required US4.2
+        audit row.
+        """
+        result = supabase_client.admin().rpc(
+            "decide_event_status",
+            {
+                "p_event_id": event_id,
+                "p_expected_status": str(from_status),
+                "p_new_status": str(to_status),
+                "p_changed_by_id": actor_id,
+                "p_notes": reason or None,
+            },
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
+        decided = self.get_event(event_id)
+        assert decided is not None  # noqa: S101 - the row was just updated
+        return decided
 
 
 @dataclass
@@ -775,6 +827,8 @@ class InMemoryEvents:
     ) -> Event:
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 — the caller checked it exists
+        if existing.status is not from_status:
+            raise StaleEventStatus
         at = _now()
         entry = StatusChange(
             from_status=from_status,
@@ -788,6 +842,37 @@ class InMemoryEvents:
             replace(
                 existing,
                 status=EventStatus.UNDER_REVIEW,
+                updated_at=at,
+                history=(*existing.history, entry),
+            )
+        )
+
+    def decide_event(
+        self,
+        event_id: int,
+        *,
+        actor_id: int,
+        from_status: EventStatus,
+        to_status: EventStatus,
+        reason: str,
+    ) -> Event:
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        if existing.status is not from_status:
+            raise StaleEventStatus
+        at = _now()
+        entry = StatusChange(
+            from_status=from_status,
+            to_status=to_status,
+            at=at,
+            by_id=actor_id,
+            by_name=self.names.get(actor_id, ""),
+            notes=reason,
+        )
+        return self._replace(
+            replace(
+                existing,
+                status=to_status,
                 updated_at=at,
                 history=(*existing.history, entry),
             )
