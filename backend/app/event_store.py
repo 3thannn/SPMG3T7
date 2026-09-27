@@ -30,11 +30,12 @@ EVENTS_TABLE = "events"
 CHANGES_TABLE = "status_changes"
 EVENT_CHANGES_TABLE = "event_changes"
 
-# `users(name)` resolves through the one foreign key each table has to users.
-# US8.1: coordinator_id added for automatic assignment
+# US8.1: Two foreign keys to users now exist (organiser_id, coordinator_id),
+# so PostgREST requires explicit relationship qualification via constraint name.
 EVENT_COLUMNS = (
     "id, name, purpose, description, proposed_date, end_date, expected_attendance, "
-    "status, organiser_id, coordinator_id, created_at, updated_at, submitted_at, users(name)"
+    "status, organiser_id, coordinator_id, created_at, updated_at, submitted_at, "
+    "users!events_organiser_id_fkey(name)"
 )
 CHANGE_COLUMNS = "id, old_status, new_status, changed_at, notes, changed_by_id, users(name)"
 
