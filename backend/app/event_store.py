@@ -31,9 +31,10 @@ CHANGES_TABLE = "status_changes"
 EVENT_CHANGES_TABLE = "event_changes"
 
 # `users(name)` resolves through the one foreign key each table has to users.
+# US8.1: coordinator_id added for automatic assignment
 EVENT_COLUMNS = (
     "id, name, purpose, description, proposed_date, end_date, expected_attendance, "
-    "status, organiser_id, created_at, updated_at, submitted_at, users(name)"
+    "status, organiser_id, coordinator_id, created_at, updated_at, submitted_at, users(name)"
 )
 CHANGE_COLUMNS = "id, old_status, new_status, changed_at, notes, changed_by_id, users(name)"
 
@@ -74,6 +75,8 @@ class Event:
     organiser_name: str
     created_at: str
     updated_at: str
+    #: US8.1: The assigned Event Coordinator's ID, or None if unassigned.
+    coordinator_id: int | None = None
     history: tuple[StatusChange, ...] = ()
 
 
@@ -126,6 +129,7 @@ def to_event(row: dict, changes: list[dict] | None = None) -> Event:
         organiser_name=_embedded_name(row),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
+        coordinator_id=row.get("coordinator_id"),
     )
     stored = sorted(
         (to_change(change) for change in changes or []),
@@ -198,6 +202,19 @@ class Repository(Protocol):
 
 class SupabaseEvents:
     """The real store. Goes through the service role client, like the user store."""
+
+    def _pick_coordinator(self) -> int | None:
+        """US8.1 AC2/AC5: Use database function to pick next coordinator via round-robin.
+
+        The assignment logic lives in the database so backfill and live assignment
+        use the same mechanism. If the function doesn't exist yet (pre-migration),
+        this returns None and events remain unassigned."""
+        try:
+            result = supabase_client.admin().rpc("pick_next_coordinator").execute()
+            return result.data if result.data else None
+        except Exception:
+            # Function doesn't exist yet (pre-migration) or no coordinators exist
+            return None
 
     def _changes_for(self, event_ids: list[int]) -> dict[int, list[dict]]:
         """Every audit row for a page of events, in one query rather than one each."""
@@ -436,8 +453,11 @@ class SupabaseEvents:
         Draft -> Submitted at the creation timestamp keeps the trail honest
         about what happened — the event did exist as a draft, for no time at
         all — and keeps the derived creation entry meaning what it always meant.
+
+        US8.1: Events created already Submitted get assigned a Coordinator.
         """
         at = _now()
+        coordinator_id = self._pick_coordinator()
         created = (
             supabase_client.admin()
             .table(EVENTS_TABLE)
@@ -451,6 +471,7 @@ class SupabaseEvents:
                     "expected_attendance": expected_attendance,
                     "status": str(EventStatus.SUBMITTED),
                     "organiser_id": organiser_id,
+                    "coordinator_id": coordinator_id,
                     "created_at": at,
                     "updated_at": at,
                     "submitted_at": at,
@@ -475,10 +496,18 @@ class SupabaseEvents:
         return event
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
-        """Move the event and write the audit entry US4.2 requires."""
+        """Move the event and write the audit entry US4.2 requires.
+
+        US8.1: Assign a Coordinator when moving to Submitted."""
         at = _now()
+        coordinator_id = self._pick_coordinator()
         supabase_client.admin().table(EVENTS_TABLE).update(
-            {"status": str(EventStatus.SUBMITTED), "submitted_at": at, "updated_at": at}
+            {
+                "status": str(EventStatus.SUBMITTED),
+                "submitted_at": at,
+                "updated_at": at,
+                "coordinator_id": coordinator_id,
+            }
         ).eq("id", event_id).execute()
         supabase_client.admin().table(CHANGES_TABLE).insert(
             {
@@ -535,10 +564,48 @@ class InMemoryEvents:
     #: user id -> display name, standing in for the joined `users(name)`.
     names: dict[int, str] = field(default_factory=dict)
     next_id: int = 100
+    #: US8.1 AC2: Track the last assigned coordinator ID for round-robin.
+    last_assigned_coordinator_id: int | None = None
 
     def _replace(self, event: Event) -> Event:
         self.events = [event if item.id == event.id else item for item in self.events]
         return event
+
+    def _pick_coordinator(self) -> int | None:
+        """US8.1 AC2: Select a Coordinator via round-robin. Returns None if none exist."""
+        from app import users
+        from app.permissions import Role
+
+        # Get all coordinators from the user store, sorted by ID for consistency
+        all_users = users.list_users()
+        coordinators = sorted(
+            [u for u in all_users if u.role == Role.COORDINATOR],
+            key=lambda u: u.id
+        )
+
+        if not coordinators:
+            return None
+
+        # Round-robin: find the next coordinator after the last assigned one
+        if self.last_assigned_coordinator_id is None:
+            # First assignment: pick the first coordinator
+            next_coordinator = coordinators[0]
+        else:
+            # Find the last assigned coordinator's index
+            try:
+                last_index = next(
+                    i for i, c in enumerate(coordinators)
+                    if c.id == self.last_assigned_coordinator_id
+                )
+                # Pick the next one, wrapping around if needed
+                next_coordinator = coordinators[(last_index + 1) % len(coordinators)]
+            except StopIteration:
+                # Last assigned coordinator no longer exists, start from beginning
+                next_coordinator = coordinators[0]
+
+        # Remember this assignment for next time
+        self.last_assigned_coordinator_id = next_coordinator.id
+        return next_coordinator.id
 
     def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]:
         visible = [
@@ -644,9 +711,12 @@ class InMemoryEvents:
         expected_attendance: int,
         organiser_id: int,
     ) -> Event:
-        """The same two writes as the Supabase store, and the same history."""
+        """The same two writes as the Supabase store, and the same history.
+
+        US8.1: Events created already Submitted get assigned a Coordinator."""
         at = _now()
         self.next_id += 1
+        coordinator_id = self._pick_coordinator()
         event = Event(
             id=self.next_id,
             title=name,
@@ -660,6 +730,7 @@ class InMemoryEvents:
             organiser_name=self.names.get(organiser_id, ""),
             created_at=at,
             updated_at=at,
+            coordinator_id=coordinator_id,
         )
         submission = StatusChange(
             from_status=EventStatus.DRAFT,
@@ -673,9 +744,14 @@ class InMemoryEvents:
         return event
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
+        """US8.1: Moving to Submitted assigns a Coordinator."""
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 — the caller checked it exists
         at = _now()
+
+        # US8.1: Assign a Coordinator when transitioning to Submitted
+        coordinator_id = self._pick_coordinator()
+
         entry = StatusChange(
             from_status=from_status,
             to_status=EventStatus.SUBMITTED,
@@ -688,6 +764,7 @@ class InMemoryEvents:
                 existing,
                 status=EventStatus.SUBMITTED,
                 updated_at=at,
+                coordinator_id=coordinator_id,
                 history=(*existing.history, entry),
             )
         )
