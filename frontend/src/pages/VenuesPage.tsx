@@ -4,6 +4,8 @@ import {
   NO_FILTERS,
   VenueRuleError,
   formatCapacity,
+  describeDates,
+  hasDates,
   hasFilters,
   listVenues,
   type VenueFilters,
@@ -32,7 +34,8 @@ type Result = {
 }
 
 /**
- * The venue catalogue — US9.2 to look at, US9.3 to narrow.
+ * The venue catalogue — US9.2 to look at, US9.3 to narrow, and US12.1 to leave
+ * out the venues marked unavailable on the dates a Coordinator is planning for.
  *
  * The filters are a form with an Apply button rather than live-as-you-type.
  * Each apply is a request, and a debounce would have meant either a request per
@@ -53,6 +56,7 @@ export default function VenuesPage({ session }: VenuesPageProps) {
 
   const mayAdd = can(session, 'venues:create')
   const narrowed = hasFilters(applied)
+  const datesApplied = hasDates(applied)
   const loading = result === null || result.filters !== applied
   const venues = loading ? null : result.venues
   const loadError = loading ? '' : result.error
@@ -150,6 +154,36 @@ export default function VenuesPage({ session }: VenuesPageProps) {
             </label>
           </div>
 
+          {/* US12.1: a venue closed on any of these days is left out, so it is
+              not considered for them. One date alone means that one day. */}
+          <fieldset className="venue-filter-dates">
+            <legend className="venue-filter-label">Dates you are planning for</legend>
+            <div className="venue-filter-row venue-filter-row-dates">
+              <label className="venue-filter">
+                <span className="venue-filter-label">Available from</span>
+                <input
+                  type="date"
+                  value={fields.availableFrom}
+                  onChange={(changeEvent) => set('availableFrom', changeEvent.target.value)}
+                />
+              </label>
+
+              <label className="venue-filter">
+                <span className="venue-filter-label">Available to</span>
+                <input
+                  type="date"
+                  min={fields.availableFrom || undefined}
+                  value={fields.availableTo}
+                  onChange={(changeEvent) => set('availableTo', changeEvent.target.value)}
+                />
+              </label>
+            </div>
+            <p className="venue-filter-note venue-filter-dates-note">
+              Venues marked unavailable on any of these dates are left out. One date alone
+              means that day.
+            </p>
+          </fieldset>
+
           <div className="venue-filter-actions">
             <button type="submit" className="btn btn-primary btn-sm">
               Apply filters
@@ -182,6 +216,7 @@ export default function VenuesPage({ session }: VenuesPageProps) {
           <p className="venue-summary" role="status">
             {venues.length} {venues.length === 1 ? 'venue' : 'venues'}
             {narrowed && ' matching your filters'}
+            {datesApplied && `, available ${describeDates(applied)}`}
           </p>
         )}
 
@@ -192,7 +227,9 @@ export default function VenuesPage({ session }: VenuesPageProps) {
             <h3>{narrowed ? 'Nothing matches those filters' : 'No venues yet'}</h3>
             <p>
               {narrowed
-                ? 'Every filter has to match. Try a lower capacity or fewer criteria.'
+                ? datesApplied
+                  ? 'Every filter has to match, and venues unavailable on any of those dates are left out. Try other dates or fewer criteria.'
+                  : 'Every filter has to match. Try a lower capacity or fewer criteria.'
                 : mayAdd
                   ? 'Add the first venue and Coordinators can start planning around it.'
                   : 'Once venues are added to ConnectSphere, they appear here.'}

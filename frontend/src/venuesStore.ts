@@ -1,5 +1,5 @@
 /**
- * Venue data access — US9.1a-c, US9.2 and US9.3.
+ * Venue data access — US9.1a-c, US9.2, US9.3 and US12.1.
  *
  * A thin layer over `/venues`, the same shape `eventsStore` settled into. Four
  * stories share this module and they do not share a role: a Coordinator reads
@@ -75,12 +75,21 @@ export type VenueFilters = {
   minCapacity: string
   location: string
   accessibility: string
+  /**
+   * US12.1: the dates being planned for, as YYYY-MM-DD from a date input. A
+   * venue marked unavailable on any of them is left out. Either alone means
+   * that one day; both empty means no dates were asked about.
+   */
+  availableFrom: string
+  availableTo: string
 }
 
 export const NO_FILTERS: VenueFilters = {
   minCapacity: '',
   location: '',
   accessibility: '',
+  availableFrom: '',
+  availableTo: '',
 }
 
 /** Whether anything was actually asked for — a blank box is not a filter. */
@@ -88,8 +97,26 @@ export function hasFilters(filters: VenueFilters): boolean {
   return (
     filters.minCapacity.trim() !== '' ||
     filters.location.trim() !== '' ||
-    filters.accessibility.trim() !== ''
+    filters.accessibility.trim() !== '' ||
+    hasDates(filters)
   )
+}
+
+/**
+ * The planning dates as the list's summary says them: "on 4 Nov 2026" for one
+ * day, "2 Nov 2026 – 6 Nov 2026" for a range. Either box alone is one day,
+ * which is how the server reads it too.
+ */
+export function describeDates(filters: VenueFilters): string {
+  const from = filters.availableFrom.trim()
+  const to = filters.availableTo.trim()
+  if (from && to && from !== to) return formatDateRange(from, to)
+  return `on ${formatDate(from || to)}`
+}
+
+/** Whether the list is narrowed to the venues free on some dates (US12.1). */
+export function hasDates(filters: VenueFilters): boolean {
+  return filters.availableFrom.trim() !== '' || filters.availableTo.trim() !== ''
 }
 
 /**
@@ -104,10 +131,14 @@ export function venueQuery(filters: VenueFilters): string {
   const minCapacity = filters.minCapacity.trim()
   const location = filters.location.trim()
   const accessibility = filters.accessibility.trim()
+  const availableFrom = filters.availableFrom.trim()
+  const availableTo = filters.availableTo.trim()
 
   if (minCapacity) params.set('minCapacity', minCapacity)
   if (location) params.set('location', location)
   if (accessibility) params.set('accessibility', accessibility)
+  if (availableFrom) params.set('availableFrom', availableFrom)
+  if (availableTo) params.set('availableTo', availableTo)
 
   const query = params.toString()
   return query ? `?${query}` : ''
@@ -260,4 +291,127 @@ export function validateVenue(input: VenueInput): string {
     return 'Capacity must be a positive whole number of people.'
   }
   return ''
+}
+
+// --- US12.1: blackout periods -------------------------------------------------
+
+/**
+ * A date range a venue cannot be used — maintenance, a closure. Both dates are
+ * YYYY-MM-DD and inclusive, so a one-day closure has the same start and end.
+ */
+export type UnavailabilityRecord = {
+  id: string
+  venueId: string
+  startDate: string
+  endDate: string
+  /** Empty when Venue Staff gave none. */
+  reason: string
+  createdAt: string
+}
+
+/** What the Venue Staff form sends. */
+export type UnavailabilityInput = {
+  startDate: string
+  endDate: string
+  reason: string
+}
+
+export const EMPTY_UNAVAILABILITY: UnavailabilityInput = {
+  startDate: '',
+  endDate: '',
+  reason: '',
+}
+
+/** The server's cap on a reason. Mirrored so the form can say so before sending. */
+export const REASON_MAX = 500
+
+/** A venue's blackout periods, soonest first — the server's order. */
+export async function listUnavailability(
+  venueId: string,
+  session: Session,
+): Promise<UnavailabilityRecord[]> {
+  const response = await authorizedFetch(`/venues/${venueId}/unavailability`, session.token)
+  return (await response.json()) as UnavailabilityRecord[]
+}
+
+/** US12.1: Venue Staff mark a venue unavailable for a date range. */
+export async function markUnavailable(
+  venueId: string,
+  input: UnavailabilityInput,
+  session: Session,
+): Promise<UnavailabilityRecord> {
+  try {
+    const response = await authorizedFetch(`/venues/${venueId}/unavailability`, session.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    return (await response.json()) as UnavailabilityRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/**
+ * US12.1: both dates are required and the end may not be before the start.
+ *
+ * Returns the first problem as a sentence, or '' when the range is complete.
+ * The server checks again; this is so the form can say what is wrong without a
+ * round trip. Dates from a date input are YYYY-MM-DD, which sort as text in the
+ * same order as on the calendar, so they are compared as strings.
+ */
+export function validateUnavailability(input: UnavailabilityInput): string {
+  if (!input.startDate.trim()) return 'Give the start date.'
+  if (!input.endDate.trim()) return 'Give the end date.'
+  if (input.endDate < input.startDate) return 'The end date cannot be earlier than the start date.'
+  if (input.reason.trim().length > REASON_MAX) {
+    return `Keep the reason to ${REASON_MAX} characters or fewer.`
+  }
+  return ''
+}
+
+/**
+ * Today as YYYY-MM-DD in the viewer's own time zone.
+ *
+ * Not `toISOString`, which is UTC: in Singapore that would still be yesterday
+ * until 8am, and a closure starting today would read as upcoming all morning.
+ */
+export function todayIso(now: Date = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
+export type RangeTiming = 'current' | 'upcoming' | 'past'
+
+/** Where a range sits relative to `today`, both ends included. */
+export function rangeTiming(
+  range: { startDate: string; endDate: string },
+  today: string,
+): RangeTiming {
+  if (range.endDate < today) return 'past'
+  if (range.startDate > today) return 'upcoming'
+  return 'current'
+}
+
+/**
+ * "2 Nov 2026". Read as a local calendar day rather than through `new Date(iso)`,
+ * which takes a bare date as UTC midnight and can show the day before.
+ */
+export function formatDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (!match) return iso
+  const [, year, month, day] = match
+  return new Date(Number(year), Number(month) - 1, Number(day)).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+/** "2 Nov 2026 – 6 Nov 2026", or just the day when the range is one day. */
+export function formatDateRange(startDate: string, endDate: string): string {
+  if (!endDate || startDate === endDate) return formatDate(startDate)
+  if (!startDate) return formatDate(endDate)
+  return `${formatDate(startDate)} – ${formatDate(endDate)}`
 }

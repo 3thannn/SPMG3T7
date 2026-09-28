@@ -18,16 +18,20 @@ Ids go out as strings, as they do everywhere else in this API; the client only
 ever compares them.
 """
 
+import re
+from collections.abc import Callable
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import venue_store
+from app import venue_store, venue_unavailability_store
 from app.auth import require_permission
 from app.permissions import Permission
 from app.users import User
 from app.venue_store import DuplicateVenueName, Venue, VenueFilters
+from app.venue_unavailability_store import Unavailability
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 
@@ -37,6 +41,7 @@ class VenueError:
     INVALID_FILTER = "invalid_filter"
     INVALID = "invalid_venue"
     NAME_TAKEN = "venue_name_taken"
+    INVALID_UNAVAILABILITY = "invalid_unavailability"
 
 
 class VenueOut(BaseModel):
@@ -147,17 +152,41 @@ def list_venues(
         str,
         Query(description=("Case-insensitive substring of the venue's accessibility features.")),
     ] = "",
+    available_from: Annotated[
+        str,
+        Query(
+            alias="availableFrom",
+            description="YYYY-MM-DD. Leave out venues with a blackout on any day from here.",
+        ),
+    ] = "",
+    available_to: Annotated[
+        str,
+        Query(
+            alias="availableTo",
+            description="YYYY-MM-DD, inclusive. Either date alone means that one day.",
+        ),
+    ] = "",
 ) -> list[VenueOut]:
     """US9.2 the catalogue, US9.3 narrowed: capacity, location, accessibility.
 
     No parameters returns the whole catalogue, which is what US9.2 asked for and
     still the behaviour of a bare `GET /venues`. Every parameter supplied has to
     match — see `VenueFilters` for why AND is the only sensible reading.
+    
+    US12.1 adds the dates being planned for: a venue marked unavailable on any
+    of them is left out, so a Coordinator is not offered it in the first place.
     """
+    window = _availability_window(available_from, available_to)
+    excluded = (
+        venue_unavailability_store.repository().venues_unavailable_between(*window)
+        if window
+        else frozenset()
+    )
     filters = VenueFilters(
         min_capacity=_min_capacity(min_capacity),
         location=_filter_text(location, field="location"),
         accessibility=_filter_text(accessibility, field="accessibility"),
+        excluded_ids=excluded,
     )
     return [_to_out(venue) for venue in venue_store.repository().list_venues(filters)]
 
@@ -333,3 +362,183 @@ def delete_venue(
         raise _not_found()
     venue_store.repository().delete_venue(existing.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# -- US12.1: blackout periods --------------------------------------------------
+#
+# Venue Staff mark the days a venue cannot be used; Coordinators see them when
+# they open the venue. Recording a blackout is maintaining the venue record, so
+# it takes the same `venues:edit` that US9.1b does rather than a permission of
+# its own — the same role holds both, and a second name for the same grant
+# would be one more thing for the frontend's copy of the catalogue to drift on.
+#
+# This only records and displays. Nothing here checks a range against events
+# or against other ranges: venue bookings do not exist until Sprint 3.
+
+
+class UnavailabilityOut(BaseModel):
+    id: str
+    venue_id: str = Field(serialization_alias="venueId")
+    #: "YYYY-MM-DD", inclusive at both ends.
+    start_date: str = Field(serialization_alias="startDate")
+    end_date: str = Field(serialization_alias="endDate")
+    reason: str
+    created_at: str = Field(serialization_alias="createdAt")
+
+
+def _unavailability_out(entry: Unavailability) -> UnavailabilityOut:
+    return UnavailabilityOut(
+        id=str(entry.id),
+        venue_id=str(entry.venue_id),
+        start_date=entry.start_date.isoformat(),
+        end_date=entry.end_date.isoformat(),
+        reason=entry.reason,
+        created_at=entry.created_at,
+    )
+
+
+class UnavailabilityInput(BaseModel):
+    """What Venue Staff send to mark a venue unavailable.
+
+    The dates are text rather than `date` so that a missing, malformed or
+    impossible date is a sentence from `_validated_range` with this module's
+    400, not Pydantic's 422 — the same reason `VenueInput.capacity` is optional.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    start_date: str | None = Field(default=None, alias="startDate")
+    end_date: str | None = Field(default=None, alias="endDate")
+    #: Optional: "maintenance", "closure", or whatever Venue Staff want to say.
+    reason: str | None = None
+
+
+#: The column is TEXT. The cap is about a note staying a note, not a width.
+REASON_MAX = 500
+
+#: Exactly YYYY-MM-DD in ASCII digits. `date.fromisoformat` alone is looser
+#: than that — it takes "20261001" — and a date the form did not mean to send
+#: should be refused, not reinterpreted. `[0-9]` rather than `\d`, which would
+#: pass other scripts' digits on to be misreported as an impossible date.
+_ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+
+def _invalid_range(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={"code": VenueError.INVALID_UNAVAILABILITY, "message": message},
+    )
+
+
+def _iso_date(text: str, *, which: str, refuse: Callable[[str], HTTPException]) -> date:
+    """One reading of a date for the form and the filter, refused in the caller's terms."""
+    if not _ISO_DATE.fullmatch(text):
+        raise refuse(f"Give the {which} date as YYYY-MM-DD.")
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        # Well-formed but not on any calendar: 2026-02-30, month 13, year 0000.
+        raise refuse(f"The {which} date {text} is not a real calendar date.") from None
+
+
+def _parse_date(raw: str | None, *, which: str) -> date:
+    text = (raw or "").strip()
+    if not text:
+        raise _invalid_range(f"Give the {which} date.")
+    return _iso_date(text, which=which, refuse=_invalid_range)
+
+
+def _filter_date(text: str, *, which: str) -> date:
+    return _iso_date(text, which=which, refuse=_invalid_filter)
+
+
+def _availability_window(raw_from: str, raw_to: str) -> tuple[date, date] | None:
+    """The catalogue's planning dates, or None when none were asked for.
+
+    Either date alone is that single day. Reading "from the 2nd" as "the 2nd
+    onwards" would rule out every venue with any closure in its future, which
+    is not a question anyone planning one event is asking.
+    """
+    from_text, to_text = raw_from.strip(), raw_to.strip()
+    if not from_text and not to_text:
+        return None
+    # Each box is read under its own name, so a bad date is blamed on the box
+    # it was typed in even when the other one is empty.
+    if from_text and to_text:
+        start = _filter_date(from_text, which="available-from")
+        end = _filter_date(to_text, which="available-to")
+    elif from_text:
+        start = end = _filter_date(from_text, which="available-from")
+    else:
+        start = end = _filter_date(to_text, which="available-to")
+    if end < start:
+        raise _invalid_filter(
+            "The available-to date cannot be earlier than the available-from date."
+        )
+    return start, end
+
+
+def _validated_range(payload: UnavailabilityInput) -> tuple[date, date, str]:
+    """US12.1: a start, an end no earlier than it, and an optional reason.
+
+    Equal dates are a one-day closure and are accepted. One problem is named at
+    a time, start first, which is the order the form shows the fields in.
+    """
+    start = _parse_date(payload.start_date, which="start")
+    end = _parse_date(payload.end_date, which="end")
+    if end < start:
+        raise _invalid_range("The end date cannot be earlier than the start date.")
+    reason = (payload.reason or "").strip()
+    if len(reason) > REASON_MAX:
+        raise _invalid_range(f"Keep the reason to {REASON_MAX} characters or fewer.")
+    return start, end, reason
+
+
+def _existing_venue(venue_id: str) -> Venue:
+    venue = venue_store.repository().get_venue(_as_id(venue_id))
+    if venue is None:
+        raise _not_found()
+    return venue
+
+
+@router.get("/{venue_id}/unavailability", response_model=list[UnavailabilityOut])
+def list_unavailability(
+    venue_id: str,
+    _: Annotated[User, Depends(require_permission(Permission.VENUES_READ))],
+) -> list[UnavailabilityOut]:
+    """US12.1: a venue's blackout periods, soonest first.
+
+    Read with the catalogue's own permission, so anyone who can open a venue can
+    see when it is closed. Past ranges are included: the story asks for the
+    record, and trimming it to the future is a filter nobody has asked for yet.
+    """
+    venue = _existing_venue(venue_id)
+    entries = venue_unavailability_store.repository().list_for_venue(venue.id)
+    return [_unavailability_out(entry) for entry in entries]
+
+
+@router.post(
+    "/{venue_id}/unavailability",
+    response_model=UnavailabilityOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def mark_unavailable(
+    venue_id: str,
+    payload: UnavailabilityInput,
+    user: Annotated[User, Depends(require_permission(Permission.VENUES_EDIT))],
+) -> UnavailabilityOut:
+    """US12.1: Venue Staff record a date range the venue cannot be used.
+
+    404 before 400, as `save_venue` does: a range for a venue that is not there
+    is wrong however well-formed its dates are.
+    """
+    venue = _existing_venue(venue_id)
+    start, end, reason = _validated_range(payload)
+    created = venue_unavailability_store.repository().create(
+        venue_id=venue.id,
+        start_date=start,
+        end_date=end,
+        reason=reason,
+        created_by_id=user.id,
+    )
+    return _unavailability_out(created)

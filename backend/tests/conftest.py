@@ -16,12 +16,13 @@ password is a column on the user.
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, event_store, venue_store
+from app import auth, event_store, venue_store, venue_unavailability_store
 from app.event_store import InMemoryEvents
 from app.main import app
 from app.permissions import Role
 from app.users import InMemoryUsers, User, use_repository
 from app.venue_store import InMemoryVenues, Venue
+from app.venue_unavailability_store import InMemoryUnavailability
 
 #: The password every fixture account signs in with. The suite owns it;
 #: nothing outside the tests depends on the value.
@@ -143,6 +144,15 @@ def venue_repository():
     previous = venue_store.use_repository(store)
     yield store
     venue_store.use_repository(previous)
+
+
+@pytest.fixture(autouse=True)
+def unavailability_repository():
+    """US12.1: no blackout periods recorded until a test records one."""
+    store = InMemoryUnavailability()
+    previous = venue_unavailability_store.use_repository(store)
+    yield store
+    venue_unavailability_store.use_repository(previous)
 
 
 @pytest.fixture

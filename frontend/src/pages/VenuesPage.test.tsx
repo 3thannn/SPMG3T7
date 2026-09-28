@@ -1,5 +1,6 @@
 /**
- * What the catalogue page renders — US9.2, US9.3 and the US9.1a entry point.
+ * What the catalogue page renders — US9.2, US9.3, US12.1's planning dates and
+ * the US9.1a entry point.
  *
  * Who may reach the page, and what the filters actually match, are the server's
  * call and are tested in backend/tests/test_venues.py. What is this page's job
@@ -12,7 +13,14 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import VenuesPage from './VenuesPage'
-import { NO_FILTERS, VenueRuleError, listVenues, type VenueRecord } from '../venuesStore'
+import {
+  NO_FILTERS,
+  VenueRuleError,
+  formatDate,
+  formatDateRange,
+  listVenues,
+  type VenueRecord,
+} from '../venuesStore'
 import { buildSession } from '../test/sessions'
 import { ApiError } from '../api'
 
@@ -210,6 +218,7 @@ it('sends all three filters together', async () => {
 
   await waitFor(() => {
     expect(lastFilters()).toEqual({
+      ...NO_FILTERS,
       minCapacity: '200',
       location: 'Library',
       accessibility: 'Step-free',
@@ -314,4 +323,136 @@ it('tells a Coordinator an empty catalogue is not theirs to fill', async () => {
   render(<VenuesPage session={coordinator} />)
 
   expect(await screen.findByText(/Once venues are added to ConnectSphere/)).toBeInTheDocument()
+})
+
+// --- US12.1: leave out venues unavailable on the planning dates ---------------
+
+it('asks which dates are being planned for', async () => {
+  listVenuesMock.mockResolvedValue([buildVenue()])
+
+  render(<VenuesPage session={coordinator} />)
+  await screen.findByText('Great Hall')
+
+  expect(screen.getByRole('group', { name: 'Dates you are planning for' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Available from')).toHaveAttribute('type', 'date')
+  expect(screen.getByLabelText('Available to')).toHaveAttribute('type', 'date')
+  expect(
+    screen.getByText(/Venues marked unavailable on any of these dates are left out/),
+  ).toBeInTheDocument()
+})
+
+it('sends the planning dates with the other filters once applied', async () => {
+  listVenuesMock.mockResolvedValue([buildVenue()])
+
+  render(<VenuesPage session={coordinator} />)
+  await screen.findByText('Great Hall')
+
+  await userEvent.type(screen.getByLabelText('Minimum capacity'), '50')
+  await userEvent.type(screen.getByLabelText('Available from'), '2026-11-02')
+  await userEvent.type(screen.getByLabelText('Available to'), '2026-11-06')
+  expect(lastFilters()).toEqual(NO_FILTERS)
+
+  await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+
+  await waitFor(() => {
+    expect(lastFilters()).toEqual({
+      ...NO_FILTERS,
+      minCapacity: '50',
+      availableFrom: '2026-11-02',
+      availableTo: '2026-11-06',
+    })
+  })
+})
+
+it('will not let the end of the window be picked before its start', async () => {
+  listVenuesMock.mockResolvedValue([buildVenue()])
+
+  render(<VenuesPage session={coordinator} />)
+  await screen.findByText('Great Hall')
+
+  await userEvent.type(screen.getByLabelText('Available from'), '2026-11-02')
+
+  expect(screen.getByLabelText('Available to')).toHaveAttribute('min', '2026-11-02')
+})
+
+it('says which dates the list is for', async () => {
+  listVenuesMock.mockResolvedValue([buildVenue()])
+
+  render(<VenuesPage session={coordinator} />)
+  await screen.findByText('Great Hall')
+
+  await userEvent.type(screen.getByLabelText('Available from'), '2026-11-02')
+  await userEvent.type(screen.getByLabelText('Available to'), '2026-11-06')
+  await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    `, available ${formatDateRange('2026-11-02', '2026-11-06')}`,
+  )
+})
+
+it('says "on" a day when only one date is given', async () => {
+  listVenuesMock.mockResolvedValue([buildVenue()])
+
+  render(<VenuesPage session={coordinator} />)
+  await screen.findByText('Great Hall')
+
+  await userEvent.type(screen.getByLabelText('Available to'), '2026-11-04')
+  await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    `available on ${formatDate('2026-11-04')}`,
+  )
+})
+
+it('explains an empty result in terms of the dates when dates were given', async () => {
+  listVenuesMock.mockResolvedValue([buildVenue()])
+
+  render(<VenuesPage session={coordinator} />)
+  await screen.findByText('Great Hall')
+
+  listVenuesMock.mockResolvedValue([])
+  await userEvent.type(screen.getByLabelText('Available from'), '2026-11-04')
+  await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+
+  expect(await screen.findByText('Nothing matches those filters')).toBeInTheDocument()
+  expect(screen.getByText(/unavailable on any of those dates are left out/)).toBeInTheDocument()
+})
+
+it('shows the server’s reason when it will not read the dates', async () => {
+  listVenuesMock.mockResolvedValue([buildVenue()])
+
+  render(<VenuesPage session={coordinator} />)
+  await screen.findByText('Great Hall')
+
+  listVenuesMock.mockRejectedValue(
+    new VenueRuleError('The available-to date cannot be earlier than the available-from date.'),
+  )
+  await userEvent.type(screen.getByLabelText('Available from'), '2026-11-04')
+  await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('cannot be earlier')
+})
+
+it('clears the planning dates with the rest', async () => {
+  listVenuesMock.mockResolvedValue([buildVenue()])
+
+  render(<VenuesPage session={coordinator} />)
+  await screen.findByText('Great Hall')
+
+  await userEvent.type(screen.getByLabelText('Available from'), '2026-11-04')
+  await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+  await waitFor(() => expect(lastFilters()?.availableFrom).toBe('2026-11-04'))
+
+  await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+
+  await waitFor(() => expect(lastFilters()).toEqual(NO_FILTERS))
+  expect(screen.getByLabelText('Available from')).toHaveValue('')
+})
+
+it('says nothing about dates when none were given', async () => {
+  listVenuesMock.mockResolvedValue([buildVenue()])
+
+  render(<VenuesPage session={coordinator} />)
+
+  expect(await screen.findByRole('status')).not.toHaveTextContent('available')
 })

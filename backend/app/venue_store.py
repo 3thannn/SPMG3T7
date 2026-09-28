@@ -111,6 +111,11 @@ class VenueFilters:
     #: A venue with nothing recorded therefore never matches, which is the
     #: honest answer — an unfilled field is not evidence of a feature.
     accessibility: str = ""
+    #: US12.1: venues to leave out — those with a blackout period over the
+    #: dates a Coordinator is planning for. Ids rather than dates, so this store
+    #: needs to know nothing about blackouts; the route works out which venues
+    #: they rule out and hands the answer over.
+    excluded_ids: frozenset[int] = frozenset()
 
     @property
     def applied(self) -> bool:
@@ -119,6 +124,7 @@ class VenueFilters:
             self.min_capacity is not None
             or bool(self.location.strip())
             or bool(self.accessibility.strip())
+            or bool(self.excluded_ids)
         )
 
 
@@ -214,6 +220,10 @@ class SupabaseVenues:
         accessibility = filters.accessibility.strip()
         if accessibility:
             query = query.ilike("accessibility_features", _contains_pattern(accessibility))
+
+        if filters.excluded_ids:
+            # Sorted so the same exclusions always make the same request.
+            query = query.not_.in_("id", sorted(filters.excluded_ids))
 
         # Chained filters are ANDed by PostgREST, which is the rule US9.3 asks
         # for: a venue has to satisfy every criterion, not any one of them.
@@ -346,6 +356,9 @@ class SupabaseVenues:
 
 def _matches(venue: Venue, filters: VenueFilters) -> bool:
     """Every applied filter, ANDed — the shared definition of a match."""
+    if venue.id in filters.excluded_ids:
+        return False
+
     if filters.min_capacity is not None and venue.capacity < filters.min_capacity:
         return False
 

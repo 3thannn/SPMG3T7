@@ -103,6 +103,24 @@ CREATE INDEX ix_status_changes_id ON status_changes(id);
 CREATE INDEX ix_status_changes_event_id ON status_changes(event_id);
 CREATE INDEX ix_status_changes_changed_by_id ON status_changes(changed_by_id);
 
+-- US12.1: date ranges a venue cannot be used. Inclusive at both ends; see
+-- SUPABASE_ADD_VENUE_UNAVAILABILITY.sql for why each constraint is what it is.
+CREATE TABLE venue_unavailability (
+    id SERIAL PRIMARY KEY,
+    venue_id INTEGER NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    reason TEXT,
+    created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    CONSTRAINT venue_unavailability_end_not_before_start CHECK (end_date >= start_date)
+);
+
+CREATE INDEX ix_venue_unavailability_venue_start
+    ON venue_unavailability(venue_id, start_date);
+CREATE INDEX ix_venue_unavailability_created_by_id
+    ON venue_unavailability(created_by_id);
+
 -- US7.1: keep a Coordinator decision and its US4.2 audit row in one transaction.
 -- Transition validation remains in Python; this is not a status trigger.
 CREATE OR REPLACE FUNCTION public.decide_event_status(
@@ -196,9 +214,10 @@ ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE status_changes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE venues ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE venue_unavailability ENABLE ROW LEVEL SECURITY;
 
-REVOKE ALL ON TABLE users, events, status_changes, venues, equipment
-FROM anon, authenticated;
+REVOKE ALL ON TABLE users, events, status_changes, venues, equipment,
+    venue_unavailability
 
 -- Verify tables were created
 SELECT table_name FROM information_schema.tables
