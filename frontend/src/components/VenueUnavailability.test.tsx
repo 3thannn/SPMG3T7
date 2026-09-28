@@ -371,6 +371,14 @@ it('trims the reason before sending it', async () => {
   )
 })
 
+it('will not let past dates be picked', async () => {
+  renderForStaff()
+  await screen.findByLabelText('Start date')
+
+  expect(screen.getByLabelText('Start date')).toHaveAttribute('min', TODAY)
+  expect(screen.getByLabelText('End date')).toHaveAttribute('min', TODAY)
+})
+
 it('will not let the end date be picked before the start', async () => {
   renderForStaff()
   await screen.findByLabelText('Start date')

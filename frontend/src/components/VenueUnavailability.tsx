@@ -213,6 +213,7 @@ export default function VenueUnavailability({
             <input
               id="unavailable-start"
               type="date"
+              min={today}
               value={fields.startDate}
               onChange={(changeEvent) => set('startDate', changeEvent.target.value)}
             />
@@ -223,7 +224,7 @@ export default function VenueUnavailability({
             <input
               id="unavailable-end"
               type="date"
-              min={fields.startDate || undefined}
+              min={fields.startDate || today}
               value={fields.endDate}
               onChange={(changeEvent) => set('endDate', changeEvent.target.value)}
             />
