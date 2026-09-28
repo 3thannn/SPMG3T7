@@ -1,6 +1,6 @@
 import './StatusTimeline.css'
 import StatusBadge from './StatusBadge'
-import { formatTimestamp, isClarificationRequest, type StatusChange } from '../status'
+import { formatTimestamp, statusNoteKind, type StatusChange } from '../status'
 
 type StatusTimelineProps = {
   history: readonly StatusChange[]
@@ -11,10 +11,9 @@ type StatusTimelineProps = {
  * audit." This renders that trail, newest first, so the most recent change is
  * the one you read without scrolling.
  *
- * US7.3 gave some entries a message: a Coordinator's request for clarification
- * travels on the status change that caused it. So the trail is also where the
- * Organiser reads what was asked of them, which is why the note is rendered as
- * quoted prose rather than as metadata alongside the timestamp.
+ * US7.3 clarification requests and US7.1 rejection reasons travel on the
+ * status change that caused them. The trail is where the Organiser reads those
+ * messages, so notes render as quoted prose rather than timestamp metadata.
  */
 export default function StatusTimeline({ history }: StatusTimelineProps) {
   if (history.length === 0) {
@@ -25,8 +24,10 @@ export default function StatusTimeline({ history }: StatusTimelineProps) {
 
   return (
     <ol className="timeline">
-      {newestFirst.map((change, index) => (
-        <li className="timeline-item" key={`${change.at}-${index}`}>
+      {newestFirst.map((change, index) => {
+        const noteKind = statusNoteKind(change)
+        return (
+          <li className="timeline-item" key={`${change.at}-${index}`}>
           <span className="timeline-marker" aria-hidden="true" />
           <div className="timeline-body">
             <div className="timeline-change">
@@ -45,15 +46,18 @@ export default function StatusTimeline({ history }: StatusTimelineProps) {
             <p className="timeline-meta">
               {change.byName} · <time dateTime={change.at}>{formatTimestamp(change.at)}</time>
             </p>
-            {isClarificationRequest(change) && (
+            {noteKind && (
               <blockquote className="timeline-note">
-                <p className="timeline-note-label">Requested by Coordinator</p>
+                <p className="timeline-note-label">
+                  {noteKind === 'rejection' ? 'Rejection reason' : 'Requested by Coordinator'}
+                </p>
                 {change.notes}
               </blockquote>
             )}
           </div>
-        </li>
-      ))}
+          </li>
+        )
+      })}
     </ol>
   )
 }

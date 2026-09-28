@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { EVENT_STATUSES, canViewStatus, checkSubmit, type EventStatus } from './status'
+import {
+  EVENT_STATUSES,
+  canViewStatus,
+  checkSubmit,
+  statusNoteKind,
+  type EventStatus,
+} from './status'
 
 const owned = { status: 'Draft' as EventStatus, organiserId: 'user_1' }
 
@@ -16,6 +22,17 @@ describe('US4.1 — the fixed label set', () => {
       'Cancelled',
       'Rejected',
     ])
+  })
+})
+
+describe('status audit notes', () => {
+  it('distinguishes rejection reasons from clarification requests', () => {
+    const base = { from: 'Under Review' as EventStatus, at: 'now', byId: '2', byName: 'Priya' }
+    expect(statusNoteKind({ ...base, to: 'Rejected', notes: 'No capacity.' })).toBe('rejection')
+    expect(statusNoteKind({ ...base, to: 'Under Review', notes: 'Please clarify.' })).toBe(
+      'clarification',
+    )
+    expect(statusNoteKind({ ...base, to: 'Approved', notes: '' })).toBeNull()
   })
 })
 

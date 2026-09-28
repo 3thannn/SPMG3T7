@@ -79,6 +79,11 @@ actually enforces the rule — anything the client checks, a user can edit.
 The active event flow is the draft-based one: create a draft with `/events`, edit
 it, and submit it via `/events/{id}/submit` once it is ready.
 
+An assigned Event Coordinator can request clarification to move a Submitted
+event to Under Review, then approve it or reject it with a required reason from
+the event detail page. The Organiser sees both the resulting status and the
+timestamped, attributable decision in the existing status history.
+
 ## Available scripts
 
 | Command              | What it does                                |

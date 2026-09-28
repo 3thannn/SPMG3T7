@@ -4,9 +4,11 @@ import StatusBadge from '../components/StatusBadge'
 import StatusTimeline from '../components/StatusTimeline'
 import {
   EventRuleError,
+  approveEvent,
   attendanceField,
   getEvent,
   parseAttendance,
+  rejectEvent,
   requestClarification,
   saveEvent,
   submitEvent,
@@ -59,6 +61,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   //: to the event, and a half-typed request must not read as unsaved changes.
   const [clarification, setClarification] = useState('')
   const [asking, setAsking] = useState(false)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [deciding, setDeciding] = useState<'approve' | 'reject' | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -134,10 +138,12 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const isOwner = event.organiserId === session.id
   const canEdit = can(session, 'events:edit')
   const submitCheck = checkSubmit(event, session.id)
-  // US7.3: any Coordinator may ask, not only an assigned one — assignment
-  // arrives with US8.1. `events:review` is the whole of the check.
+  // US8.1 enforces assignment when the API loads this event; the permission
+  // determines whether this review UI belongs to the signed-in role.
   const mayReview = can(session, 'events:review')
   const clarificationCheck = checkClarification(event)
+  const canDecide = mayReview && event.status === 'Under Review'
+  const writePending = busy || asking || deciding !== null
   // US5.2: Coordinators can edit submitted events (not drafts), owners can edit their own drafts
   const editable = (canEdit && event.status !== 'Draft') || (isOwner && event.status === 'Draft')
   const dirty =
@@ -177,6 +183,52 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
       })
     } finally {
       setAsking(false)
+    }
+  }
+
+  async function handleApprove() {
+    setDeciding('approve')
+    setBanner(null)
+    try {
+      const updated = await approveEvent(event.id, session)
+      setPage({ state: 'loaded', event: updated })
+      setBanner({ kind: 'ok', text: 'Approved. The status change has been recorded.' })
+    } catch (error) {
+      setBanner({
+        kind: 'error',
+        text:
+          error instanceof EventRuleError
+            ? error.message
+            : unexpectedFailureMessage(error, 'approve the event'),
+      })
+    } finally {
+      setDeciding(null)
+    }
+  }
+
+  async function handleReject() {
+    const reason = rejectionReason.trim()
+    if (!reason) {
+      setBanner({ kind: 'error', text: 'Give the Organiser a reason for rejecting this event.' })
+      return
+    }
+    setDeciding('reject')
+    setBanner(null)
+    try {
+      const updated = await rejectEvent(event.id, reason, session)
+      setPage({ state: 'loaded', event: updated })
+      setRejectionReason('')
+      setBanner({ kind: 'ok', text: 'Rejected. The Organiser can see your reason.' })
+    } catch (error) {
+      setBanner({
+        kind: 'error',
+        text:
+          error instanceof EventRuleError
+            ? error.message
+            : unexpectedFailureMessage(error, 'reject the event'),
+      })
+    } finally {
+      setDeciding(null)
     }
   }
 
@@ -343,7 +395,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                       setDraft({ ...draft, title: e.target.value })
                       setBanner(null)
                     }}
-                    disabled={busy}
+                    disabled={writePending}
                   />
                 </div>
                 <div className="field">
@@ -356,7 +408,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                       setDraft({ ...draft, startsAt: e.target.value })
                       setBanner(null)
                     }}
-                    disabled={busy}
+                    disabled={writePending}
                   />
                 </div>
                 <div className="field">
@@ -369,7 +421,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                       setDraft({ ...draft, purpose: e.target.value })
                       setBanner(null)
                     }}
-                    disabled={busy}
+                    disabled={writePending}
                   />
                 </div>
                 <div className="field">
@@ -382,7 +434,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                       setDraft({ ...draft, endsAt: e.target.value })
                       setBanner(null)
                     }}
-                    disabled={busy}
+                    disabled={writePending}
                   />
                 </div>
                 <div className="field">
@@ -398,7 +450,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                       setDraft({ ...draft, expectedAttendance: e.target.value })
                       setBanner(null)
                     }}
-                    disabled={busy}
+                    disabled={writePending}
                   />
                   <span className="field-hint">
                     Optional. Leave blank if you do not have an estimate yet.
@@ -413,7 +465,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                       setDraft({ ...draft, description: e.target.value })
                       setBanner(null)
                     }}
-                    disabled={busy}
+                    disabled={writePending}
                   />
                 </div>
               </div>
@@ -443,7 +495,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     type="button"
                     className="btn btn-secondary"
                     onClick={handleSave}
-                    disabled={busy || !dirty}
+                    disabled={writePending || !dirty}
                   >
                     {busy ? 'Saving…' : canEdit && !isOwner ? 'Save changes' : 'Save draft'}
                   </button>
@@ -453,7 +505,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     type="button"
                     className="btn btn-primary"
                     onClick={handleSubmit}
-                    disabled={busy || !submitCheck.allowed}
+                    disabled={writePending || !submitCheck.allowed}
                     title={submitCheck.allowed ? undefined : submitRefusalMessage(submitCheck.reason)}
                   >
                     {busy ? 'Working…' : 'Submit event'}
@@ -484,6 +536,42 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             <p className="detail-side-lede">Who changed it, and when.</p>
             <StatusTimeline history={event.history} />
 
+            {canDecide && (
+              <div className="detail-decision">
+                <h3 className="detail-clarify-title">Review decision</h3>
+                <p className="detail-clarify-lede">
+                  Approve this event to move it forward, or reject it with a reason the
+                  Organiser can see.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={writePending}
+                  onClick={handleApprove}
+                >
+                  {deciding === 'approve' ? 'Approvingâ€¦' : 'Approve event'}
+                </button>
+                <label className="detail-clarify-field detail-decision-reason">
+                  <span className="detail-clarify-label">Reason for rejection</span>
+                  <textarea
+                    rows={4}
+                    maxLength={2000}
+                    value={rejectionReason}
+                    disabled={writePending}
+                    onChange={(changeEvent) => setRejectionReason(changeEvent.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-danger-solid btn-sm"
+                  disabled={writePending || rejectionReason.trim() === ''}
+                  onClick={handleReject}
+                >
+                  {deciding === 'reject' ? 'Rejectingâ€¦' : 'Reject event'}
+                </button>
+              </div>
+            )}
+
             {/* US7.3. In the history panel rather than beside the form, because
                 a request is an entry in this trail and the Organiser reads it
                 here. A Coordinator who cannot ask yet is told why instead of
@@ -505,14 +593,14 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                         rows={4}
                         maxLength={2000}
                         value={clarification}
-                        disabled={asking}
+                        disabled={writePending}
                         onChange={(changeEvent) => setClarification(changeEvent.target.value)}
                       />
                     </label>
                     <button
                       type="button"
                       className="btn btn-primary btn-sm"
-                      disabled={asking || clarification.trim() === ''}
+                      disabled={writePending || clarification.trim() === ''}
                       onClick={handleRequestClarification}
                     >
                       {asking ? 'Sending…' : 'Send request'}

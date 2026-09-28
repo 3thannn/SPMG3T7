@@ -43,6 +43,34 @@ CLARIFIABLE: tuple[EventStatus, ...] = (
     EventStatus.UNDER_REVIEW,
 )
 
+#: US4.3: every status change the current workflow may make. Keeping US4.2's
+#: Draft -> Submitted transition here means the older submission flow and the
+#: new review decisions share one source of truth.
+VALID_TRANSITIONS: frozenset[tuple[EventStatus, EventStatus]] = frozenset(
+    {
+        (EventStatus.DRAFT, EventStatus.SUBMITTED),
+        (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW),
+        (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
+        (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
+    }
+)
+
+
+def transition_allowed(*, from_status: EventStatus, to_status: EventStatus) -> bool:
+    """Whether US4.3 permits this status update.
+
+    Writing the same status is not a transition. US7.3 deliberately does that
+    when a Coordinator asks a follow-up question on an event already Under
+    Review, so no-op updates remain valid while every real move is allowlisted.
+    """
+    return from_status == to_status or (from_status, to_status) in VALID_TRANSITIONS
+
+
+def transition_refusal_message(
+    *, from_status: EventStatus, to_status: EventStatus
+) -> str:
+    return f"An event cannot move from {from_status} to {to_status}."
+
 
 class SubmitRefusal(StrEnum):
     """Why a submit was refused, so the client can explain rather than just deny."""
@@ -103,9 +131,9 @@ CLARIFICATION_REFUSAL_MESSAGES: dict[ClarificationRefusal, str] = {
 def check_clarification(*, status: EventStatus) -> ClarificationRefusal | None:
     """US7.3: a Coordinator may ask for clarification on an event under review.
 
-    Returns the reason it was refused, or None when it is allowed. There is no
-    ownership or assignment check on purpose: the story says any Coordinator can
-    do this for now, and narrowing it to the assigned one waits for US8.1.
+    Returns the reason it was refused, or None when it is allowed. Assignment
+    is enforced by the route's readable-event check; this function decides only
+    whether the current status can be reviewed.
 
     A Draft reads as "not submitted yet" rather than as a missing event, because
     the caller reached this check through an event they were allowed to fetch.

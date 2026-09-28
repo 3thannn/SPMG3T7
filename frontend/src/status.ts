@@ -99,8 +99,9 @@ export type StatusChange = {
   byId: string
   byName: string
   /**
-   * A Coordinator's clarification request (US7.3), or empty on an automatic
-   * entry. Optional so fixtures and older payloads still type-check.
+   * A Coordinator's clarification request (US7.3) or rejection reason
+   * (US7.1), and empty on an automatic entry. Optional so older payloads and
+   * fixtures still type-check.
    */
   notes?: string
 }
@@ -124,8 +125,8 @@ export type ClarificationCheck =
 /**
  * US7.3: a Coordinator may ask for clarification on an event under review.
  *
- * There is deliberately no check on *which* Coordinator: the story says any of
- * them can for now, and narrowing it to the assigned one waits for US8.1.
+ * Assignment is enforced by the API before this page receives an event. This
+ * client-side check mirrors only the status rule.
  *
  * This mirrors the server rule so the page can hide the form and say why. It is
  * not the enforcement point — the server re-checks, and that refusal is the rule.
@@ -147,9 +148,18 @@ export function clarificationRefusalMessage(reason: ClarificationRefusal): strin
   }
 }
 
-/** Whether an audit entry carries a message a person wrote, rather than being automatic. */
+/** What kind of person-written note an audit entry carries. */
+export function statusNoteKind(
+  change: StatusChange,
+): 'clarification' | 'rejection' | null {
+  if (!(change.notes ?? '').trim()) return null
+  if (change.to === 'Rejected') return 'rejection'
+  return 'clarification'
+}
+
+/** Whether an entry specifically contains a US7.3 clarification request. */
 export function isClarificationRequest(change: StatusChange): boolean {
-  return (change.notes ?? '').trim() !== ''
+  return statusNoteKind(change) === 'clarification'
 }
 
 export function formatTimestamp(iso: string): string {
