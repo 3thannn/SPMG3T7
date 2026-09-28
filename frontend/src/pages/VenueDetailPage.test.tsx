@@ -7,23 +7,41 @@
  * with the delete confirmed first, because US9.1c is a hard delete.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import VenueDetailPage from './VenueDetailPage'
-import { VenueRuleError, deleteVenue, getVenue, type VenueRecord } from '../venuesStore'
+import {
+  VenueRuleError,
+  deleteVenue,
+  getVenue,
+  listUnavailability,
+  type VenueRecord,
+} from '../venuesStore'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../venuesStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../venuesStore')>()),
   getVenue: vi.fn(),
   deleteVenue: vi.fn(),
+  listUnavailability: vi.fn(),
 }))
 
 const getVenueMock = vi.mocked(getVenue)
 const deleteVenueMock = vi.mocked(deleteVenue)
+const listUnavailabilityMock = vi.mocked(listUnavailability)
+
+// US12.1's card fetches on its own; its behaviour is covered in
+// VenueUnavailability.test.tsx. Here it only needs to answer.
+beforeEach(() => {
+  listUnavailabilityMock.mockResolvedValue([])
+})
 
 afterEach(() => {
+  // Unmount first: a test can end while the venue is still loading, and a
+  // page that finished loading after its mocks were reset would call one that
+  // no longer answers.
+  cleanup()
   vi.resetAllMocks()
 })
 
@@ -175,13 +193,48 @@ it('offers Venue Staff the edit form for this venue', async () => {
   expect(screen.getByRole('button', { name: 'Edit venue' })).toBeInTheDocument()
 })
 
-it('never edits in place — the detail page has no inputs for anyone', async () => {
+it('never edits the details in place — they have no inputs for anyone', async () => {
+  // US12.1 put a form on this page for Venue Staff, so the page as a whole now
+  // has inputs. The rule this guards is narrower: the venue's own details are
+  // edited on the edit page, never in the card that shows them.
   getVenueMock.mockResolvedValue(buildVenue())
 
   render(<VenueDetailPage venueId="1" session={venueStaff} />)
-  await screen.findByRole('heading', { name: 'Great Hall' })
+  const details = (await screen.findByRole('heading', { name: 'Venue details' })).closest(
+    'section',
+  )
 
-  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  expect(details).not.toBeNull()
+  expect(within(details as HTMLElement).queryByRole('textbox')).not.toBeInTheDocument()
+})
+
+// --- US12.1: unavailable dates on the record ---------------------------------
+
+it('shows a Coordinator the unavailable dates, with nothing to add them', async () => {
+  getVenueMock.mockResolvedValue(buildVenue())
+
+  render(<VenueDetailPage venueId="1" session={coordinator} />)
+
+  expect(await screen.findByRole('heading', { name: 'Unavailable dates' })).toBeInTheDocument()
+  expect(listUnavailabilityMock).toHaveBeenCalledWith('1', coordinator)
+  expect(screen.queryByRole('button', { name: 'Mark unavailable' })).not.toBeInTheDocument()
+})
+
+it('offers Venue Staff the form to mark dates unavailable', async () => {
+  getVenueMock.mockResolvedValue(buildVenue())
+
+  render(<VenueDetailPage venueId="1" session={venueStaff} />)
+
+  expect(await screen.findByRole('button', { name: 'Mark unavailable' })).toBeInTheDocument()
+})
+
+it('does not ask for unavailable dates of a venue that is not there', async () => {
+  getVenueMock.mockResolvedValue(null)
+
+  render(<VenueDetailPage venueId="404" session={coordinator} />)
+  await screen.findByText('Venue not found')
+
+  expect(listUnavailabilityMock).not.toHaveBeenCalled()
 })
 
 // --- US9.1c: deleting -------------------------------------------------------

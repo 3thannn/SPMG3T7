@@ -12,6 +12,7 @@ import { navigate } from '../router'
 import { formatTimestamp } from '../status'
 import { can } from '../permissions'
 import { unexpectedFailureMessage, type Session } from '../api'
+import VenueUnavailability from '../components/VenueUnavailability'
 
 type VenueDetailPageProps = {
   venueId: string
@@ -25,7 +26,8 @@ type PageState =
   | { state: 'error' }
 
 /**
- * One venue record — US9.2 to read, US9.1b and US9.1c to act on.
+ * One venue record — US9.2 to read, US9.1b and US9.1c to act on, and US12.1's
+ * unavailable dates for everyone to see and Venue Staff to add to.
  *
  * A description list rather than a form, even for Venue Staff: editing happens
  * on its own page, so this one never has inputs and a Coordinator's view of it
@@ -175,6 +177,8 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
             </p>
           )}
         </section>
+
+        <VenueUnavailability venueId={venue.id} session={session} mayMark={mayEdit} />
 
         {(mayEdit || mayDelete) && (
           <section className="card venue-actions">

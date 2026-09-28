@@ -50,6 +50,28 @@
   box-shadow: 0 0 0 3px var(--navy-ring);
 }
 
+/* US12.1: the planning dates, a second row under the three text filters. A
+   fieldset so the pair is announced as one question, not two loose boxes. */
+.venue-filter-dates {
+  border: 0;
+  margin: 1rem 0 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.venue-filter-dates legend {
+  margin-bottom: 0.5rem;
+}
+
+.venue-filter-row-dates {
+  grid-template-columns: repeat(2, minmax(0, 14rem));
+}
+
+.venue-filter-dates-note {
+  display: block;
+  margin-top: 0.5rem;
+}
+
 .venue-filter-actions {
   display: flex;
   flex-wrap: wrap;
@@ -133,7 +155,8 @@
 }
 
 @media (max-width: 640px) {
-  .venue-filter-row {
+  .venue-filter-row,
+  .venue-filter-row-dates {
     grid-template-columns: 1fr;
   }
 

@@ -78,6 +78,15 @@ class FakeQuery:
         self.calls.append(("ilike", column, pattern))
         return self
 
+    @property
+    def not_(self):
+        self.calls.append(("not",))
+        return self
+
+    def in_(self, column: str, values: list):
+        self.calls.append(("in", column, values))
+        return self
+
     def order(self, column: str, desc: bool = False):
         self.calls.append(("order", column, desc))
         return self
@@ -180,6 +189,24 @@ class TestFilteringHappensInThePostgresQuery:
 
         assert query.named("gte") == []
         assert query.named("ilike") == []
+
+    def test_excluded_venues_become_a_not_in_on_id(self, query):
+        """US12.1: venues closed on the planning dates are left out by Postgres."""
+        SupabaseVenues().list_venues(VenueFilters(excluded_ids=frozenset({3, 1})))
+
+        assert query.named("not") == [("not",)]
+        assert query.named("in") == [("in", "id", [1, 3])]
+
+    def test_no_exclusions_sends_no_not_in(self, query):
+        """Nothing to leave out sends no clause, rather than an empty `not.in.()`."""
+        SupabaseVenues().list_venues(VenueFilters(excluded_ids=frozenset()))
+
+        assert query.named("not") == []
+        assert query.named("in") == []
+
+    def test_exclusions_count_as_a_filter(self):
+        assert VenueFilters(excluded_ids=frozenset({1})).applied
+        assert not VenueFilters().applied
 
     def test_a_filter_is_trimmed_before_it_is_sent(self, query):
         SupabaseVenues().list_venues(VenueFilters(location="  Library  "))
