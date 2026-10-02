@@ -6,6 +6,7 @@ import EventDetailPage from './pages/EventDetailPage'
 import EventsPage from './pages/EventsPage'
 import LandingPage from './pages/LandingPage'
 import NewEventPage from './pages/NewEventPage'
+import NotificationsPage from './pages/NotificationsPage'
 import SignInPage from './pages/SignInPage'
 import VenueDetailPage from './pages/VenueDetailPage'
 import VenueFormPage from './pages/VenueFormPage'
@@ -191,6 +192,10 @@ export default function App() {
 
     if (route === '/events/new') {
       return <NewEventPage session={session} />
+    }
+
+    if (route === '/notifications') {
+      return <NotificationsPage session={session} />
     }
 
     if (route === '/venues') {

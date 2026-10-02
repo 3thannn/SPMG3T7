@@ -1,0 +1,82 @@
+.notification-group {
+  margin-top: 1.75rem;
+}
+
+.notification-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 0.75rem;
+}
+
+.notification-count {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 0.05rem 0.55rem;
+}
+
+.notification-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.notification-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+}
+
+/* Unread rows carry an accent rule on the left, so the state does not rely on
+   the group heading alone. */
+.notification-row.is-unread {
+  border-left: 3px solid var(--accent);
+}
+
+.notification-main {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.notification-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--muted-soft);
+}
+
+.notification-message {
+  margin: 0;
+  color: var(--ink-strong);
+  overflow-wrap: anywhere;
+}
+
+.notification-event {
+  font-size: 0.85rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.notification-event:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+  .notification-row {
+    flex-direction: column;
+  }
+}

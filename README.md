@@ -65,6 +65,7 @@ so running one twice is a no-op.
 | ------ | ---------- | -------------- |
 | [`SUPABASE_ADD_VENUE_LAYOUTS.sql`](backend/SUPABASE_ADD_VENUE_LAYOUTS.sql) | US9.1a-c, US9.2, US9.3 — every venue route | **All five `/venues` routes return 500.** Reads included, not just writes |
 | [`SUPABASE_ADD_VENUE_UNAVAILABILITY.sql`](backend/SUPABASE_ADD_VENUE_UNAVAILABILITY.sql) | US12.1 venue blackout periods | Both `/venues/{id}/unavailability` routes return 500. The other venue routes are unaffected |
+| [`SUPABASE_ADD_NOTIFICATIONS.sql`](backend/SUPABASE_ADD_NOTIFICATIONS.sql) | US10.1 Organiser notifications | `/notifications` returns 500 and no notices are written. Event decisions still succeed; the failure is only logged |
 | [`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`](backend/SUPABASE_ALLOW_PARTIAL_DRAFTS.sql) | US4.2 partial drafts | Saving a draft with no date fails |
 | [`SUPABASE_HARDENING.sql`](backend/SUPABASE_HARDENING.sql) | Row Level Security, indexes | Supabase advisor warnings; the app still works |
 | [`SUPABASE_SEED_VENUES.sql`](backend/SUPABASE_SEED_VENUES.sql) | Optional | The catalogue shows its empty state until Venue Staff add records |

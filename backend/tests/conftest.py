@@ -16,9 +16,10 @@ password is a column on the user.
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, event_store, venue_store, venue_unavailability_store
+from app import auth, event_store, notification_store, venue_store, venue_unavailability_store
 from app.event_store import InMemoryEvents
 from app.main import app
+from app.notification_store import InMemoryNotifications
 from app.permissions import Role
 from app.users import InMemoryUsers, User, use_repository
 from app.venue_store import InMemoryVenues, Venue
@@ -153,6 +154,15 @@ def unavailability_repository():
     previous = venue_unavailability_store.use_repository(store)
     yield store
     venue_unavailability_store.use_repository(previous)
+
+
+@pytest.fixture(autouse=True)
+def notification_repository():
+    """US10.1: no notifications until a transition writes one."""
+    store = InMemoryNotifications()
+    previous = notification_store.use_repository(store)
+    yield store
+    notification_store.use_repository(previous)
 
 
 @pytest.fixture

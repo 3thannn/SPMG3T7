@@ -26,6 +26,7 @@ export type Permission =
   | 'venues:create'
   | 'venues:edit'
   | 'venues:delete'
+  | 'notifications:read'
 
 /**
  * The signed-in user, exactly as the server issued it.

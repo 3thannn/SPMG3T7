@@ -53,6 +53,7 @@ class Permission(StrEnum):
     VENUES_CREATE = "venues:create"
     VENUES_EDIT = "venues:edit"
     VENUES_DELETE = "venues:delete"
+    NOTIFICATIONS_READ = "notifications:read"
 
 
 #: Said in the first person, to be dropped into a denial message.
@@ -68,6 +69,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.VENUES_CREATE: "add a venue to the catalogue",
     Permission.VENUES_EDIT: "update a venue record",
     Permission.VENUES_DELETE: "remove a venue from the catalogue",
+    Permission.NOTIFICATIONS_READ: "view and manage your notifications",
 }
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -76,6 +78,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.EVENTS_CREATE,
             Permission.EVENTS_READ_OWN,
             Permission.EVENTS_SUBMIT,
+            # US10.1: told when a Coordinator moves one of their events.
+            Permission.NOTIFICATIONS_READ,
         }
     ),
     Role.COORDINATOR: frozenset(
