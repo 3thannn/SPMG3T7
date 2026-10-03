@@ -154,6 +154,10 @@ export default function EventsPage({ session }: EventsPageProps) {
                     </p>
                   </div>
                   <div className="event-row-end">
+                    {/* US11.1: what puts a request in the Coordinator's queue. */}
+                    {event.changeRequested && (
+                      <span className="event-row-flag">Change requested</span>
+                    )}
                     <StatusBadge status={event.status} />
                     <span className="event-row-updated">
                       Updated {formatTimestamp(event.updatedAt)}

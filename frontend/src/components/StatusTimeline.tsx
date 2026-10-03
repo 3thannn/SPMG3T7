@@ -1,6 +1,11 @@
 import './StatusTimeline.css'
 import StatusBadge from './StatusBadge'
-import { formatTimestamp, statusNoteKind, type StatusChange } from '../status'
+import {
+  formatTimestamp,
+  statusNoteKind,
+  statusNoteLabel,
+  type StatusChange,
+} from '../status'
 
 type StatusTimelineProps = {
   history: readonly StatusChange[]
@@ -11,8 +16,9 @@ type StatusTimelineProps = {
  * audit." This renders that trail, newest first, so the most recent change is
  * the one you read without scrolling.
  *
- * US7.3 clarification requests and US7.1 rejection reasons travel on the
- * status change that caused them. The trail is where the Organiser reads those
+ * US7.3 clarification requests, US7.1 rejection reasons and US11.1 change
+ * requests (and the Coordinator's answers to them) travel on the status change
+ * that caused them. The trail is where the Organiser reads those
  * messages, so notes render as quoted prose rather than timestamp metadata.
  */
 export default function StatusTimeline({ history }: StatusTimelineProps) {
@@ -48,9 +54,7 @@ export default function StatusTimeline({ history }: StatusTimelineProps) {
             </p>
             {noteKind && (
               <blockquote className="timeline-note">
-                <p className="timeline-note-label">
-                  {noteKind === 'rejection' ? 'Rejection reason' : 'Requested by Coordinator'}
-                </p>
+                <p className="timeline-note-label">{statusNoteLabel(noteKind)}</p>
                 {change.notes}
               </blockquote>
             )}

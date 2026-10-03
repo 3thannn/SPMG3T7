@@ -136,11 +136,14 @@ button is a courtesy and a refused request is the rule.
 | `GET /events`                | Organiser (own), Coordinator (assigned) | The events list (US4.1/US8.1)     |
 | `GET /events/{id}`           | as above                      | One event, with its audit trail            |
 | `POST /events`               | Organiser                     | Create — always lands in Draft (US4.2)     |
-| `PUT /events/{id}`           | the owning Organiser          | Save edits; the status does not move       |
+| `PUT /events/{id}`           | the owning Organiser (Draft only); assigned Coordinator | Save edits; the status does not move |
 | `POST /events/{id}/submit`   | the owning Organiser          | Draft → Submitted, once (US4.2)            |
 | `POST /events/{id}/clarification` | assigned Coordinator     | Ask for info or changes; → Under Review (US7.3) |
 | `POST /events/{id}/approve`  | assigned Coordinator        | Under Review → Approved (US7.1)       |
 | `POST /events/{id}/reject`   | assigned Coordinator        | Under Review → Rejected with a reason (US7.1) |
+| `POST /events/{id}/change-request` | the owning Organiser  | Propose changes to a submitted event; → Under Review (US11.1) |
+| `POST /events/{id}/change-request/approve` | assigned Coordinator | Apply the proposed changes (US11.1) |
+| `POST /events/{id}/change-request/reject` | assigned Coordinator | Keep the current details, with a reason (US11.1) |
 
 An event that belongs to another Organiser answers `404`, not `403`. Telling
 someone an event exists but is not theirs tells them something about another
@@ -209,7 +212,7 @@ ask. A decided event answers `409` with `already-decided`. A `Draft` answers
 `not-yet-submitted` refusal exists for completeness and is unreachable through
 the route.
 
-The Organiser's reply is **US11.1** and is deliberately not modelled here.
+The Organiser's reply is a change request — see **US11.1** below.
 
 ### Approving and rejecting (US7.1/US4.3)
 
@@ -226,6 +229,98 @@ US8.1's coordinator assignment is unchanged. Existing Supabase projects must run
 [`SUPABASE_ATOMIC_EVENT_DECISIONS.sql`](SUPABASE_ATOMIC_EVENT_DECISIONS.sql)
 before deploying this story. Its RPC only makes the conditional decision update
 and audit insert atomic; it does not decide which transitions are valid.
+
+While a change request is waiting (US11.1, below), approving or rejecting the
+event answers `409` with `change-pending`: the Coordinator reviews the proposed
+changes before deciding.
+
+### Requesting changes to a submitted event (US11.1)
+
+Once an event is submitted, its Organiser no longer edits it directly — a
+`PUT` on a non-Draft answers `409` with `change-request-required`. They fill in
+the same edit form instead, and what they send becomes a proposal for the
+assigned Coordinator to review. The event keeps its current details until the
+Coordinator approves.
+
+```bash
+# Organiser: the edit form's values, plus an optional note (up to 2,000 characters)
+curl -X POST http://localhost:8000/events/12/change-request \
+  -H "Authorization: Bearer <organiser token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Welcome Night","purpose":"Welcome the new intake.","description":"Talks.",
+       "startsAt":"2027-11-02T19:00","endsAt":"2027-11-02T22:00","expectedAttendance":150,
+       "note":"Moved to 19:00 as you asked."}'
+
+# Coordinator: apply them, or keep the current details with a reason
+curl -X POST http://localhost:8000/events/12/change-request/approve \
+  -H "Authorization: Bearer <coordinator token>"
+curl -X POST http://localhost:8000/events/12/change-request/reject \
+  -H "Authorization: Bearer <coordinator token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"The hall is booked at 19:00."}'
+```
+
+**What a request does.** The server compares the form's values with the
+event's and records one row per field that differs. Text is compared exactly;
+dates are compared as moments, so `18:00` and `18:00:00` are not a change. The
+event moves to Under Review — from `Submitted`, or staying there when the
+request answers a US7.3 question — which puts it in the Coordinator's queue.
+The response carries:
+
+- `changeRequested` — the "change requested" flag, true while a request waits;
+- `pendingChanges` — each field's label, current and proposed value, and
+  whether it is `important`;
+- `lastChangeReview` — the Coordinator's answer to the most recent request:
+  `approved` or `rejected`, when, and the reason.
+
+**Important changes** follow US5.2's logging rule: date/time (`proposed_date`,
+`end_date`), attendance, venue and equipment. Venue and equipment are in the
+rule but are not columns on `events` yet, so no request can contain them until
+the booking work adds them.
+
+**Validation.** A request is checked as a submission, not as a draft, because a
+submitted event has to stay complete: title, purpose, a date that is not in the
+past, attendance of at least 1, and an end after the start. A request that
+changes nothing answers `400`.
+
+**Refusals** answer `409` with a `reason`:
+
+| Reason | When |
+| ------ | ---- |
+| `not-submitted` | The event is still a Draft — edit it directly instead |
+| `already-decided` | The event is Approved, Rejected or later |
+| `already-pending` | A request is already waiting; one at a time |
+| `nothing-pending` | Approve or reject was called with no request waiting |
+| `invalid-transition` | Someone else acted on the event first; refresh and retry |
+
+Another Organiser's event answers `404`, as everywhere else in this API.
+
+**Storage.** Everything about a request lives in its own table,
+`event_change_requests`: one row per proposed field, with `status`
+(`pending` → `approved` or `rejected`), who asked and when, and who answered,
+when and why. No other table's columns change:
+
+- `events` gets the approved values, and the move to Under Review.
+- `status_changes` gets one ordinary row for the move to Under Review, like
+  every other status change (US4.2); the Organiser's note travels in `notes`.
+  Answering a request does not move the status, so it adds no row there.
+- `event_changes` stays a log of changes that were actually applied. An
+  approved request writes its fields there when it is applied, with the same
+  `important`/`routine` `change_type` as a US5.2 edit; the approving
+  Coordinator is recorded as `changed_by_user_id`. A pending or rejected
+  request never writes there.
+
+"Change requested" is worked out rather than stored: an event has a request
+waiting exactly when it has `pending` rows. The history labels the Organiser's
+entry the same way — the Organiser moves their own event to Under Review only
+by requesting a change.
+
+Existing Supabase projects must run
+[`SUPABASE_ADD_CHANGE_REQUESTS.sql`](SUPABASE_ADD_CHANGE_REQUESTS.sql) before
+deploying this story; every events route reads the new table. Its two RPCs make
+each request and each answer atomic, and lock the event row so two requests or
+two answers cannot slip past each other. Validation stays in Python, in
+`app/change_requests.py` and `app/events.py`.
 
 ## Venues
 

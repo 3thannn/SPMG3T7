@@ -116,3 +116,17 @@ it('says the list could not be loaded rather than showing "no events"', async ()
   expect(await screen.findByRole('alert')).toHaveTextContent(/could not load your events/i)
   expect(screen.queryByText('No events yet')).not.toBeInTheDocument()
 })
+
+it('flags an event with a change request awaiting review (US11.1)', async () => {
+  listEventsMock.mockResolvedValue([
+    buildEvent({ id: '1', title: 'Asked', status: 'Under Review', changeRequested: true }),
+    buildEvent({ id: '2', title: 'Quiet', status: 'Submitted', changeRequested: false }),
+    buildEvent({ id: '3', title: 'Older payload', status: 'Submitted' }),
+  ])
+
+  render(<EventsPage session={coordinator} />)
+
+  const flagged = await screen.findByText('Change requested')
+  expect(flagged.closest('a')).toHaveTextContent('Asked')
+  expect(screen.getAllByText('Change requested')).toHaveLength(1)
+})

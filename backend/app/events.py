@@ -16,13 +16,14 @@ Ids go out as strings for the same reason they do in `auth.Identity`: the client
 only ever compares them.
 """
 
+from dataclasses import replace
 from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import event_store
+from app import change_requests, event_store
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
 from app.event_status import (
     EventStatus,
@@ -63,6 +64,30 @@ class StatusChangeOut(BaseModel):
     by_id: str = Field(serialization_alias="byId")
     by_name: str = Field(serialization_alias="byName")
     notes: str = ""
+    #: US11.1: "change-request" on the entry an Organiser's change request
+    #: wrote, so the history can label its note. Worked out, not stored; empty
+    #: on every other entry.
+    kind: str = ""
+
+
+class ProposedChangeOut(BaseModel):
+    """One field of a pending US11.1 change request, as the Coordinator reviews it."""
+
+    field: str
+    label: str
+    old_value: str = Field(serialization_alias="oldValue")
+    new_value: str = Field(serialization_alias="newValue")
+    #: US5.2's rule: date/time, attendance, venue and equipment are important.
+    important: bool
+
+
+class ChangeReviewOut(BaseModel):
+    """US11.1: the Coordinator's answer to the most recent change request."""
+
+    outcome: str
+    at: str
+    #: The rejection reason. Empty for an approval.
+    note: str = ""
 
 
 class EventOut(BaseModel):
@@ -83,6 +108,15 @@ class EventOut(BaseModel):
     #: US8.1: The assigned Event Coordinator's ID, or None if unassigned.
     coordinator_id: str | None = Field(default=None, serialization_alias="coordinatorId")
     history: list[StatusChangeOut]
+    #: US11.1: set while an Organiser's change request awaits review, which is
+    #: what puts the event in the Coordinator's review queue.
+    change_requested: bool = Field(default=False, serialization_alias="changeRequested")
+    pending_changes: list[ProposedChangeOut] = Field(
+        default_factory=list, serialization_alias="pendingChanges"
+    )
+    last_change_review: ChangeReviewOut | None = Field(
+        default=None, serialization_alias="lastChangeReview"
+    )
 
 
 class EventDraft(BaseModel):
@@ -132,9 +166,34 @@ def _to_out(event: Event) -> EventOut:
                 by_id=str(change.by_id),
                 by_name=change.by_name,
                 notes=change.notes,
+                kind=change_requests.history_kind(
+                    by_id=change.by_id,
+                    organiser_id=event.organiser_id,
+                    to_status=change.to_status,
+                ),
             )
             for change in event.history
         ],
+        change_requested=event.change_requested,
+        pending_changes=[
+            ProposedChangeOut(
+                field=change.field,
+                label=change_requests.label_for(change.field),
+                old_value=change.old_value,
+                new_value=change.new_value,
+                important=change.important,
+            )
+            for change in event.pending_changes
+        ],
+        last_change_review=(
+            ChangeReviewOut(
+                outcome=event.last_change_review.outcome,
+                at=event.last_change_review.at,
+                note=event.last_change_review.note,
+            )
+            if event.last_change_review is not None
+            else None
+        ),
     )
 
 
@@ -317,6 +376,12 @@ def create_event(
     return _to_out(created)
 
 
+SUBMITTED_EDIT_MESSAGE = (
+    "This event has been submitted, so it can no longer be edited directly. "
+    "Request a change instead and the Coordinator will review it."
+)
+
+
 @router.put("/{event_id}", response_model=EventOut)
 def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
     """US4.2 & US5.2: saving edits content and never moves the status.
@@ -348,6 +413,18 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             detail={
                 "code": ErrorCode.FORBIDDEN,
                 "message": "Only the Organiser who owns this event or a Coordinator can edit it.",
+            },
+        )
+
+    # US11.1: once submitted, the event is the Coordinator's to review. The
+    # Organiser proposes changes instead, so they are reviewed, not applied.
+    if is_owner and not is_coordinator and event.status is not EventStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": SUBMITTED_EDIT_MESSAGE,
+                "reason": "change-request-required",
             },
         )
 
@@ -500,6 +577,19 @@ def _decide_event(
                 "reason": "invalid-transition",
             },
         )
+    if event.change_requested:
+        # US11.1: the Coordinator reviews the proposed changes before deciding,
+        # so a decision cannot overtake a request it has not answered.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": (
+                    "Approve or reject the Organiser's change request before deciding this event."
+                ),
+                "reason": "change-pending",
+            },
+        )
     _require_transition(event.status, to_status)
     try:
         decided = event_store.repository().decide_event(
@@ -543,3 +633,145 @@ def reject_event(
     if len(reason) > DECISION_REASON_MAX:
         raise _invalid(f"Keep the reason to {DECISION_REASON_MAX} characters or fewer.")
     return _decide_event(event_id, user, EventStatus.REJECTED, reason=reason)
+
+
+class ChangeRequestIn(EventDraft):
+    """US11.1: the edit form's values, proposed rather than saved, plus a note.
+
+    It is the same shape as `EventDraft` because it is the same form. The note
+    is optional — the changes usually speak for themselves — but it is where an
+    Organiser answers a US7.3 question in words.
+    """
+
+    note: str = ""
+
+
+#: Same reasoning as `CLARIFICATION_MAX`: a cap for readability, not the column.
+CHANGE_NOTE_MAX = 2000
+
+
+def _stale_request() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": "This event changed while you were working on it. Refresh it and try again.",
+            "reason": "invalid-transition",
+        },
+    )
+
+
+@router.post("/{event_id}/change-request", response_model=EventOut)
+def request_change(
+    event_id: str,
+    payload: ChangeRequestIn,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_SUBMIT))],
+) -> EventOut:
+    """US11.1: propose changes to a submitted event for the Coordinator to review.
+
+    The event's own values do not move. What moves is the "change requested"
+    flag, the status (to Under Review, which puts the event in the assigned
+    Coordinator's queue), and one pending `event_change_requests` row per field
+    that differs, each marked important or routine by US5.2's rule. Nothing is
+    written to `event_changes` until a Coordinator approves.
+
+    The proposal is validated as a submission, not as a draft: a submitted event
+    has to stay complete, so a change cannot be asked for that would leave it
+    with no date or no attendance.
+    """
+    event = _readable(_as_id(event_id), user)
+
+    refusal = change_requests.check_change_request(
+        status=event.status,
+        organiser_id=event.organiser_id,
+        actor_id=user.id,
+        change_requested=event.change_requested,
+    )
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": change_requests.change_request_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+
+    note = payload.note.strip()
+    if len(note) > CHANGE_NOTE_MAX:
+        raise _invalid(f"Keep the note to {CHANGE_NOTE_MAX} characters or fewer.")
+
+    clean = _validated(payload)
+    proposed = replace(
+        event,
+        title=clean.title,
+        purpose=clean.purpose,
+        description=clean.description,
+        starts_at=clean.starts_at,
+        ends_at=clean.ends_at or "",
+        expected_attendance=clean.expected_attendance,
+    )
+    _validate_submission(proposed)
+
+    changes = change_requests.diff(event, proposed)
+    if not changes:
+        raise _invalid("Change at least one detail before requesting a change.")
+
+    _require_transition(event.status, EventStatus.UNDER_REVIEW)
+    try:
+        requested = event_store.repository().submit_change_request(
+            event.id,
+            actor_id=user.id,
+            from_status=event.status,
+            changes=changes,
+            note=note,
+        )
+    except StaleEventStatus:
+        raise _stale_request() from None
+    return _to_out(requested)
+
+
+def _resolve_change(event_id: str, user: User, *, approve: bool, note: str) -> EventOut:
+    event = _readable(_as_id(event_id), user)
+    if not change_requests.has_pending_request(
+        status=event.status, change_requested=event.change_requested
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": change_requests.NOTHING_PENDING_MESSAGE,
+                "reason": "nothing-pending",
+            },
+        )
+    try:
+        resolved = event_store.repository().resolve_change_request(
+            event.id, actor_id=user.id, approve=approve, note=note
+        )
+    except StaleEventStatus:
+        raise _stale_request() from None
+    return _to_out(resolved)
+
+
+@router.post("/{event_id}/change-request/approve", response_model=EventOut)
+def approve_change(
+    event_id: str,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
+) -> EventOut:
+    """US11.1: apply the proposed changes. The event stays Under Review for US7.1."""
+    return _resolve_change(event_id, user, approve=True, note="")
+
+
+@router.post("/{event_id}/change-request/reject", response_model=EventOut)
+def reject_change(
+    event_id: str,
+    payload: RejectionRequest,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
+) -> EventOut:
+    """US11.1: decline the proposed changes, with a reason the Organiser can read."""
+    reason = payload.reason.strip()
+    if not reason:
+        raise _invalid("Tell the Organiser why their requested changes were rejected.")
+    if len(reason) > DECISION_REASON_MAX:
+        raise _invalid(f"Keep the reason to {DECISION_REASON_MAX} characters or fewer.")
+    return _resolve_change(event_id, user, approve=False, note=reason)

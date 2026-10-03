@@ -104,6 +104,11 @@ export type StatusChange = {
    * fixtures still type-check.
    */
   notes?: string
+  /**
+   * US11.1: 'change-request' on the entry an Organiser's change request wrote,
+   * so its note is labelled as theirs. Empty otherwise.
+   */
+  kind?: '' | 'change-request'
 }
 
 /**
@@ -148,13 +153,73 @@ export function clarificationRefusalMessage(reason: ClarificationRefusal): strin
   }
 }
 
+export type StatusNoteKind = 'clarification' | 'rejection' | 'change-request'
+
 /** What kind of person-written note an audit entry carries. */
-export function statusNoteKind(
-  change: StatusChange,
-): 'clarification' | 'rejection' | null {
+export function statusNoteKind(change: StatusChange): StatusNoteKind | null {
   if (!(change.notes ?? '').trim()) return null
+  if (change.kind) return change.kind
   if (change.to === 'Rejected') return 'rejection'
   return 'clarification'
+}
+
+/** The heading the history shows above each kind of note. */
+export function statusNoteLabel(kind: StatusNoteKind): string {
+  switch (kind) {
+    case 'clarification':
+      return 'Requested by Coordinator'
+    case 'rejection':
+      return 'Rejection reason'
+    case 'change-request':
+      return 'Change requested by Organiser'
+  }
+}
+
+/**
+ * US11.1: where an Organiser may request changes. A Draft is still theirs to
+ * edit directly; a decided event is no longer under review.
+ */
+export const REQUESTABLE: readonly EventStatus[] = ['Submitted', 'Under Review']
+
+/** Why a change request is not available, so the page can say rather than hide. */
+export type ChangeRequestRefusal =
+  | 'not-owner'
+  | 'not-submitted'
+  | 'already-decided'
+  | 'already-pending'
+
+export type ChangeRequestCheck =
+  | { allowed: true }
+  | { allowed: false; reason: ChangeRequestRefusal }
+
+/**
+ * US11.1: may this Organiser propose changes to this event now?
+ *
+ * Mirrors the server's `check_change_request`, in the same order, so the page
+ * explains the same refusal the server would give. The server re-checks.
+ */
+export function checkChangeRequest(
+  event: { status: EventStatus; organiserId: string; changeRequested?: boolean },
+  actorId: string,
+): ChangeRequestCheck {
+  if (event.organiserId !== actorId) return { allowed: false, reason: 'not-owner' }
+  if (event.status === 'Draft') return { allowed: false, reason: 'not-submitted' }
+  if (!REQUESTABLE.includes(event.status)) return { allowed: false, reason: 'already-decided' }
+  if (event.changeRequested) return { allowed: false, reason: 'already-pending' }
+  return { allowed: true }
+}
+
+export function changeRequestRefusalMessage(reason: ChangeRequestRefusal): string {
+  switch (reason) {
+    case 'not-owner':
+      return 'Only the Organiser who owns this event can request changes to it.'
+    case 'not-submitted':
+      return 'This event is still a Draft. Edit it directly, then submit it.'
+    case 'already-decided':
+      return 'This event has already been decided, so changes can no longer be requested.'
+    case 'already-pending':
+      return "A change request for this event is already awaiting the Coordinator's review."
+  }
 }
 
 /** Whether an entry specifically contains a US7.3 clarification request. */

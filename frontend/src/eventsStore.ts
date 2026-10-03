@@ -40,6 +40,37 @@ export type EventRecord = {
   createdAt: string
   updatedAt: string
   history: StatusChange[]
+  /**
+   * US11.1: the "change requested" flag — set while the Organiser's proposed
+   * changes await the Coordinator's review. Optional so older payloads and
+   * fixtures still type-check; absent means no request.
+   */
+  changeRequested?: boolean
+  /** US11.1: what the Organiser has asked for, in form order. */
+  pendingChanges?: ProposedChange[]
+  /** US11.1: the Coordinator's answer to the most recent request, if any. */
+  lastChangeReview?: ChangeReview | null
+}
+
+/** US11.1: how a Coordinator answered a change request. */
+export type ChangeReview = {
+  outcome: 'approved' | 'rejected'
+  at: string
+  /** The rejection reason. Empty for an approval. */
+  note: string
+}
+
+/** One field of a US11.1 change request, as the server describes it. */
+export type ProposedChange = {
+  /** The `events` column, e.g. `proposed_date`. */
+  field: string
+  /** The edit form's label for it, e.g. "Starts". */
+  label: string
+  /** Text as stored; empty means "not set". */
+  oldValue: string
+  newValue: string
+  /** US5.2's rule: date/time, attendance, venue and equipment are important. */
+  important: boolean
 }
 
 export type EventDraft = {
@@ -203,6 +234,63 @@ export async function submitEvent(id: string, session: Session): Promise<EventRe
   try {
     const response = await authorizedFetch(`/events/${id}/submit`, session.token, {
       method: 'POST',
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/**
+ * US11.1: propose changes to a submitted event instead of saving them.
+ *
+ * Sends the edit form's values; the server works out which fields differ,
+ * flags the event and moves it to Under Review. The event's own values do not
+ * change until a Coordinator approves.
+ */
+export async function requestEventChange(
+  id: string,
+  draft: EventDraft,
+  note: string,
+  session: Session,
+): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/change-request`, session.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...draft, note }),
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/** US11.1: apply the Organiser's proposed changes. The event stays Under Review. */
+export async function approveEventChange(id: string, session: Session): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(
+      `/events/${id}/change-request/approve`,
+      session.token,
+      { method: 'POST' },
+    )
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/** US11.1: decline the proposed changes with a reason the Organiser can read. */
+export async function rejectEventChange(
+  id: string,
+  reason: string,
+  session: Session,
+): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/change-request/reject`, session.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
     })
     return (await response.json()) as EventRecord
   } catch (error) {
