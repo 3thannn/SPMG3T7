@@ -17,6 +17,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'events:review',
     'users:read',
     'venues:read',
+    // US14.1: request venues for the events assigned to them.
+    'bookings:request',
   ],
   // US9.1a-c: Venue Staff maintain the catalogue and hold nothing else.
   'Venue Staff': ['venues:read', 'venues:create', 'venues:edit', 'venues:delete'],

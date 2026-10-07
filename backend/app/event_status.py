@@ -147,3 +147,54 @@ def check_clarification(*, status: EventStatus) -> ClarificationRefusal | None:
 
 def clarification_refusal_message(reason: ClarificationRefusal) -> str:
     return CLARIFICATION_REFUSAL_MESSAGES[reason]
+
+
+#: Statuses an event may have venues requested for (US14.1).
+#:
+#: Every status a Coordinator can see, except the ones that end an event. A
+#: booking is only a request until Venue Staff approve it, so asking for the hall
+#: while the event is still under review costs nothing and saves a round trip
+#: once it is approved. A Rejected, Cancelled or Completed event will not use a
+#: venue again, and a request for one would be work for Venue Staff to refuse.
+BOOKABLE: tuple[EventStatus, ...] = (
+    EventStatus.SUBMITTED,
+    EventStatus.UNDER_REVIEW,
+    EventStatus.APPROVED,
+    EventStatus.PLANNING,
+    EventStatus.CONFIRMED,
+)
+
+
+class BookingRefusal(StrEnum):
+    """Why venues cannot be requested for an event (US14.1)."""
+
+    NOT_YET_SUBMITTED = "not-yet-submitted"
+    EVENT_CLOSED = "event-closed"
+
+
+BOOKING_REFUSAL_MESSAGES: dict[BookingRefusal, str] = {
+    BookingRefusal.NOT_YET_SUBMITTED: (
+        "This event has not been submitted yet, so no venues can be requested for it."
+    ),
+    BookingRefusal.EVENT_CLOSED: (
+        "This event is closed, so no more venues can be requested for it."
+    ),
+}
+
+
+def check_booking(*, status: EventStatus) -> BookingRefusal | None:
+    """US14.1: whether venues may be requested for an event at this status.
+
+    Returns the reason it was refused, or None when it is allowed. As with
+    `check_clarification`, the assignment rule (US8.6) is the route's
+    readable-event check; this decides only whether the status allows it.
+    """
+    if status is EventStatus.DRAFT:
+        return BookingRefusal.NOT_YET_SUBMITTED
+    if status not in BOOKABLE:
+        return BookingRefusal.EVENT_CLOSED
+    return None
+
+
+def booking_refusal_message(reason: BookingRefusal) -> str:
+    return BOOKING_REFUSAL_MESSAGES[reason]

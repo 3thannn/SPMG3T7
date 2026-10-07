@@ -33,13 +33,16 @@ class Permission(StrEnum):
     """A single thing a role may do, named `resource:action`.
 
     Only permissions some role actually holds are listed. Declaring the ones for
-    venue booking or registration now would put names in the catalogue that
-    nothing grants and nothing checks; they arrive with their own roles.
+    booking approval or registration now would put names in the catalogue that
+    nothing grants and nothing checks; they arrive with their own stories.
 
     Note that reading the catalogue and maintaining it are separate permissions
     held by different roles: a Coordinator reads (US9.2) and Venue Staff write
     (US9.1a-c). Neither is a superset of the other, which is why there are four
     venue permissions rather than one.
+
+    Requesting a venue for an event (US14.1) is a fifth, and not one of them:
+    it does not change the catalogue, it asks Venue Staff for part of it.
     """
 
     EVENTS_CREATE = "events:create"
@@ -53,6 +56,7 @@ class Permission(StrEnum):
     VENUES_CREATE = "venues:create"
     VENUES_EDIT = "venues:edit"
     VENUES_DELETE = "venues:delete"
+    BOOKINGS_REQUEST = "bookings:request"
 
 
 #: Said in the first person, to be dropped into a denial message.
@@ -68,6 +72,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.VENUES_CREATE: "add a venue to the catalogue",
     Permission.VENUES_EDIT: "update a venue record",
     Permission.VENUES_DELETE: "remove a venue from the catalogue",
+    Permission.BOOKINGS_REQUEST: "request venue bookings",
 }
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -85,6 +90,9 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.EVENTS_EDIT,
             Permission.USERS_READ,
             Permission.VENUES_READ,
+            # US14.1. The role is the first half of US8.6's rule; the event
+            # being assigned to them is the second, checked per event.
+            Permission.BOOKINGS_REQUEST,
         }
     ),
     # US9.1a-c: Venue Staff own the catalogue and nothing else. They read it

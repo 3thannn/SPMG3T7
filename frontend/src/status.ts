@@ -148,6 +148,48 @@ export function clarificationRefusalMessage(reason: ClarificationRefusal): strin
   }
 }
 
+/**
+ * US14.1: the statuses an event may have venues requested for.
+ *
+ * Every status a Coordinator can see except the ones that end an event. A
+ * booking is only a request until Venue Staff approve it, so asking while the
+ * event is under review costs nothing.
+ */
+export const BOOKABLE: readonly EventStatus[] = [
+  'Submitted',
+  'Under Review',
+  'Approved',
+  'Planning',
+  'Confirmed',
+]
+
+/** Why venues cannot be requested, so the UI can explain rather than deny. */
+export type BookingRefusal = 'not-yet-submitted' | 'event-closed'
+
+export type BookingCheck = { allowed: true } | { allowed: false; reason: BookingRefusal }
+
+/**
+ * US14.1: whether venues may be requested for an event at this status.
+ *
+ * Mirrors the server so the page can hide the form and say why. Assignment
+ * (US8.6) is enforced by the API before this page receives an event; the server
+ * re-checks both, and that refusal is the rule.
+ */
+export function checkBooking(event: { status: EventStatus }): BookingCheck {
+  if (event.status === 'Draft') return { allowed: false, reason: 'not-yet-submitted' }
+  if (!BOOKABLE.includes(event.status)) return { allowed: false, reason: 'event-closed' }
+  return { allowed: true }
+}
+
+export function bookingRefusalMessage(reason: BookingRefusal): string {
+  switch (reason) {
+    case 'not-yet-submitted':
+      return 'This event has not been submitted yet, so no venues can be requested for it.'
+    case 'event-closed':
+      return 'This event is closed, so no more venues can be requested for it.'
+  }
+}
+
 /** What kind of person-written note an audit entry carries. */
 export function statusNoteKind(
   change: StatusChange,

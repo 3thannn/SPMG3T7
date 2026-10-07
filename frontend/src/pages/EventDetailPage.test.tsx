@@ -2,14 +2,25 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import EventDetailPage from './EventDetailPage'
-import { getEvent, saveEvent, submitEvent, type EventRecord } from '../eventsStore'
+import { getEvent, listBookings, saveEvent, submitEvent, type EventRecord } from '../eventsStore'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../eventsStore')>()),
+  listBookings: vi.fn(async () => []),
   getEvent: vi.fn(),
   saveEvent: vi.fn(),
   submitEvent: vi.fn(),
+}))
+
+// US14.1: the venue bookings card loads its own data. These tests are not about
+// it, so it gets no bookings and an empty catalogue. The empty answers are the
+// mocks' own implementations rather than a beforeEach, because the card mounts
+// only once the event has loaded and its effect can run after this file's
+// resetAllMocks; a reset restores an implementation given to vi.fn.
+vi.mock('../venuesStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../venuesStore')>()),
+  listVenues: vi.fn(async () => []),
 }))
 
 const getEventMock = vi.mocked(getEvent)
@@ -179,4 +190,23 @@ it('shows the full status history, not just the current status', async () => {
   await screen.findByText('Faculty Welcome Night')
   expect(screen.getByText('Created as')).toBeInTheDocument()
   expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0)
+})
+
+it('shows the venue bookings for a submitted event under its details (US14.1)', async () => {
+  getEventMock.mockResolvedValue(submittedEvent)
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  expect(await screen.findByRole('heading', { name: 'Venue bookings' })).toBeInTheDocument()
+  await waitFor(() => expect(vi.mocked(listBookings)).toHaveBeenCalledWith('101', coordinator))
+})
+
+it('shows no venue bookings card on a Draft, which cannot have any', async () => {
+  getEventMock.mockResolvedValue(event)
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  await screen.findByLabelText('Title')
+  expect(screen.queryByRole('heading', { name: 'Venue bookings' })).not.toBeInTheDocument()
+  expect(vi.mocked(listBookings)).not.toHaveBeenCalled()
 })

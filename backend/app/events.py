@@ -16,16 +16,20 @@ Ids go out as strings for the same reason they do in `auth.Identity`: the client
 only ever compares them.
 """
 
+import re
 from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import event_store
+from app import booking_store, event_store, venue_store
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
+from app.booking_store import Booking, BookingStatus
 from app.event_status import (
     EventStatus,
+    booking_refusal_message,
+    check_booking,
     check_clarification,
     check_submit,
     clarification_refusal_message,
@@ -46,6 +50,7 @@ class EventError:
     NOT_FOUND = "event_not_found"
     INVALID = "invalid_event"
     REFUSED = "rule_refused"
+    INVALID_BOOKING = "invalid_booking"
 
 
 class StatusChangeOut(BaseModel):
@@ -543,3 +548,179 @@ def reject_event(
     if len(reason) > DECISION_REASON_MAX:
         raise _invalid(f"Keep the reason to {DECISION_REASON_MAX} characters or fewer.")
     return _decide_event(event_id, user, EventStatus.REJECTED, reason=reason)
+
+
+# -- US14.1: venue bookings ----------------------------------------------------
+#
+# A Coordinator asks for one or more venues for an event, such as a main hall
+# and its breakout rooms (Week 7 change #3). Each request is its own record and
+# its own call, so a venue that is refused never holds up another: the main hall
+# is stored before the breakout room is even sent. US15.1 (availability) and
+# US18.1 (suitability) add their checks per booking, in `request_booking`.
+#
+# These routes live here rather than in a module of their own because a booking
+# is reached through its event, and the event's visibility rule is what decides
+# who may see or request one.
+
+
+class BookingOut(BaseModel):
+    id: str
+    event_id: str = Field(serialization_alias="eventId")
+    venue_id: str = Field(serialization_alias="venueId")
+    venue_name: str = Field(serialization_alias="venueName")
+    #: As sent, "YYYY-MM-DDTHH:MM", or with seconds once read back from Postgres.
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+    status: BookingStatus
+    requested_at: str = Field(serialization_alias="requestedAt")
+
+
+def _booking_out(booking: Booking) -> BookingOut:
+    return BookingOut(
+        id=str(booking.id),
+        event_id=str(booking.event_id),
+        venue_id=str(booking.venue_id),
+        venue_name=booking.venue_name,
+        starts_at=booking.starts_at,
+        ends_at=booking.ends_at,
+        status=booking.status,
+        requested_at=booking.requested_at,
+    )
+
+
+class BookingInput(BaseModel):
+    """What a Coordinator sends to request a venue for an event.
+
+    Every field is optional here so that a missing or malformed one is a
+    sentence from `_validated_booking` with this module's 400 rather than
+    Pydantic's 422, which is the same reason `UnavailabilityInput` takes its
+    dates as text. The venue id may come as a string, the way ids go out, or
+    as a number.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    venue_id: str | int | None = Field(default=None, alias="venueId")
+    starts_at: str | None = Field(default=None, alias="startsAt")
+    ends_at: str | None = Field(default=None, alias="endsAt")
+
+
+#: What a datetime-local input sends, with or without seconds, in ASCII digits.
+#: `datetime.fromisoformat` alone is looser than this, and a time the form did
+#: not mean to send should be refused rather than reinterpreted.
+_ISO_DATETIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?")
+_VENUE_ID = re.compile(r"[0-9]+")
+
+
+def _invalid_booking(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={"code": EventError.INVALID_BOOKING, "message": message},
+    )
+
+
+def _venue_missing() -> HTTPException:
+    """400 rather than 404: the event in the path exists; the venue in the body does not."""
+    return _invalid_booking("That venue is not in the catalogue.")
+
+
+def _booking_time(raw: str | None, *, which: str) -> tuple[str, datetime]:
+    """The time as it will be stored, and as a datetime to compare with."""
+    text = (raw or "").strip()
+    if not text:
+        article = "an" if which == "end" else "a"
+        raise _invalid_booking(f"Give the booking {article} {which} time.")
+    if not _ISO_DATETIME.fullmatch(text):
+        raise _invalid_booking(f"Give the {which} time as YYYY-MM-DDTHH:MM.")
+    try:
+        return text, datetime.fromisoformat(text)
+    except ValueError:
+        # Well-formed but not on any calendar or clock: 2027-02-30, 25:00.
+        raise _invalid_booking(f"The {which} time {text} is not a real date and time.") from None
+
+
+def _validated_booking(payload: BookingInput) -> tuple[int, str, str]:
+    """US14.1: a venue, a start, and an end after it.
+
+    One problem is named at a time, in the order the form shows the fields. The
+    past is judged by date, as `_validate_submission` judges an event's start:
+    the times are naive and local to whoever typed them, so the server's clock
+    cannot say whether 09:00 today has passed for them.
+    """
+    raw_venue = "" if payload.venue_id is None else str(payload.venue_id).strip()
+    if not raw_venue:
+        raise _invalid_booking("Choose a venue.")
+    if not _VENUE_ID.fullmatch(raw_venue):
+        raise _venue_missing()
+
+    starts_at, start = _booking_time(payload.starts_at, which="start")
+    ends_at, end = _booking_time(payload.ends_at, which="end")
+    if end <= start:
+        raise _invalid_booking("The booking must end after it starts.")
+    if start.date() < date.today():
+        raise _invalid_booking("A booking cannot start in the past.")
+    return int(raw_venue), starts_at, ends_at
+
+
+@router.get("/{event_id}/bookings", response_model=list[BookingOut])
+def list_bookings(
+    event_id: str,
+    user: Annotated[User, Depends(require_any_permission(*READ_ANY))],
+) -> list[BookingOut]:
+    """US14.1: every venue booking for the event, together, soonest first.
+
+    Whoever may open the event may see its bookings (the owning Organiser and
+    the assigned Coordinator) and nobody else, because this goes through the
+    same `_readable` check as the event itself.
+    """
+    event = _readable(_as_id(event_id), user)
+    bookings = booking_store.repository().list_for_event(event.id)
+    return [_booking_out(booking) for booking in bookings]
+
+
+@router.post(
+    "/{event_id}/bookings",
+    response_model=BookingOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def request_booking(
+    event_id: str,
+    payload: BookingInput,
+    user: Annotated[User, Depends(require_permission(Permission.BOOKINGS_REQUEST))],
+) -> BookingOut:
+    """US14.1: ask for one venue for the event. It starts as Requested.
+
+    Only the assigned Coordinator gets this far (US8.6). The permission above
+    admits the role, and `_readable` admits the assignment: it answers 404 to a
+    Coordinator the event is not assigned to, as US8.1 does for the event itself.
+
+    404, then 409, then 400. A request for an event the caller cannot see is
+    wrong whatever it says, and one for a closed event is refused however
+    well-formed it is.
+    """
+    event = _readable(_as_id(event_id), user)
+
+    refusal = check_booking(status=event.status)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": booking_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+
+    venue_id, starts_at, ends_at = _validated_booking(payload)
+    venue = venue_store.repository().get_venue(venue_id)
+    if venue is None:
+        raise _venue_missing()
+
+    created = booking_store.repository().create(
+        event_id=event.id,
+        venue_id=venue.id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        requested_by_id=user.id,
+    )
+    return _booking_out(created)

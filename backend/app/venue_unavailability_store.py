@@ -10,9 +10,9 @@ Three choices worth knowing:
   `end_date` are Postgres DATE columns, so a one-day closure is a range whose
   start and end are the same day — not a zero-length range to be refused.
 * Nothing here compares a range with anything else. Ranges may overlap one
-  another, and nothing checks them against events, because there are no venue
-  bookings to conflict with until Sprint 3. That check belongs next to the
-  booking feature when it arrives, not here ahead of it.
+  another, and nothing checks them against venue bookings (US14.1) here. That
+  is US15.1's availability check, and it belongs with the booking request, not
+  in this store.
 * The table has its own `CHECK (end_date >= start_date)`. The route validates
   first and says why in a sentence; the constraint is there so a row that slips
   past the API cannot exist either.

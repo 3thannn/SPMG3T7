@@ -23,6 +23,12 @@ CREATE TYPE event_status AS ENUM (
     'Rejected'
 );
 
+-- US14.1: only the status a new booking takes. The Venue Booking Approval epic
+-- adds the rest.
+CREATE TYPE booking_status AS ENUM (
+    'Requested'
+);
+
 -- Create users table
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -121,6 +127,24 @@ CREATE INDEX ix_venue_unavailability_venue_start
 CREATE INDEX ix_venue_unavailability_created_by_id
     ON venue_unavailability(created_by_id);
 
+-- US14.1: one row per venue an event asks for. See
+-- SUPABASE_ADD_VENUE_BOOKINGS.sql for why each constraint is what it is.
+CREATE TABLE venue_bookings (
+    id SERIAL PRIMARY KEY,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    venue_id INTEGER NOT NULL REFERENCES venues(id),
+    start_at TIMESTAMP NOT NULL,
+    end_at TIMESTAMP NOT NULL,
+    status booking_status NOT NULL DEFAULT 'Requested',
+    requested_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    CONSTRAINT venue_bookings_end_after_start CHECK (end_at > start_at)
+);
+
+CREATE INDEX ix_venue_bookings_event_start ON venue_bookings(event_id, start_at);
+CREATE INDEX ix_venue_bookings_venue_id ON venue_bookings(venue_id);
+CREATE INDEX ix_venue_bookings_requested_by_id ON venue_bookings(requested_by_id);
+
 -- US7.1: keep a Coordinator decision and its US4.2 audit row in one transaction.
 -- Transition validation remains in Python; this is not a status trigger.
 CREATE OR REPLACE FUNCTION public.decide_event_status(
@@ -215,9 +239,10 @@ ALTER TABLE status_changes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE venues ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
 ALTER TABLE venue_unavailability ENABLE ROW LEVEL SECURITY;
+ALTER TABLE venue_bookings ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON TABLE users, events, status_changes, venues, equipment,
-    venue_unavailability
+    venue_unavailability, venue_bookings FROM anon, authenticated;
 
 -- Verify tables were created
 SELECT table_name FROM information_schema.tables

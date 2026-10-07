@@ -16,7 +16,8 @@ password is a column on the user.
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, event_store, venue_store, venue_unavailability_store
+from app import auth, booking_store, event_store, venue_store, venue_unavailability_store
+from app.booking_store import InMemoryBookings
 from app.event_store import InMemoryEvents
 from app.main import app
 from app.permissions import Role
@@ -153,6 +154,15 @@ def unavailability_repository():
     previous = venue_unavailability_store.use_repository(store)
     yield store
     venue_unavailability_store.use_repository(previous)
+
+
+@pytest.fixture(autouse=True)
+def booking_repository():
+    """US14.1: no venue bookings until a test requests one."""
+    store = InMemoryBookings()
+    previous = booking_store.use_repository(store)
+    yield store
+    booking_store.use_repository(previous)
 
 
 @pytest.fixture
