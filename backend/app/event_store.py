@@ -513,15 +513,13 @@ class SupabaseEvents:
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
         """Move the event and write the audit entry US4.2 requires.
 
-        US8.1: Assign a Coordinator when moving to Submitted."""
+        US8.2: Auto-assignment is now OFF. Events remain unassigned on submit."""
         at = _now()
-        coordinator_id = self._pick_coordinator()
         supabase_client.admin().table(EVENTS_TABLE).update(
             {
                 "status": str(EventStatus.SUBMITTED),
                 "submitted_at": at,
                 "updated_at": at,
-                "coordinator_id": coordinator_id,
             }
         ).eq("id", event_id).execute()
         supabase_client.admin().table(CHANGES_TABLE).insert(
@@ -797,13 +795,10 @@ class InMemoryEvents:
         return event
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
-        """US8.1: Moving to Submitted assigns a Coordinator."""
+        """US8.2: Moving to Submitted leaves coordinator_id as NULL (auto-assignment OFF)."""
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 — the caller checked it exists
         at = _now()
-
-        # US8.1: Assign a Coordinator when transitioning to Submitted
-        coordinator_id = self._pick_coordinator()
 
         entry = StatusChange(
             from_status=from_status,
@@ -817,7 +812,6 @@ class InMemoryEvents:
                 existing,
                 status=EventStatus.SUBMITTED,
                 updated_at=at,
-                coordinator_id=coordinator_id,
                 history=(*existing.history, entry),
             )
         )
