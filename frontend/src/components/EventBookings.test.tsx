@@ -1,10 +1,11 @@
 /**
- * The venue bookings card on an event — US14.1.
+ * The venue bookings card on an event — US14.1 and US14.2.
  *
- * Who may request, and for which events, is the server's call and is tested in
- * backend/tests/test_venue_bookings.py. This card's job is showing every booking
- * for the event together, offering the form to the assigned Coordinator, and
- * keeping each request on its own so one refusal does not undo another.
+ * Who may request or cancel, and for which events, is the server's call and is
+ * tested in backend/tests/test_venue_bookings.py and
+ * test_venue_booking_cancellation.py. This card's job is showing every booking
+ * for the event together, offering the forms to the assigned Coordinator, and
+ * keeping each request and each cancellation to the one booking it is about.
  */
 
 import { render, screen, waitFor, within } from '@testing-library/react'
@@ -13,12 +14,14 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import EventBookings from './EventBookings'
 import {
   EventRuleError,
+  cancelBooking,
   formatBookingTimes,
   listBookings,
   requestBooking,
   type BookingRecord,
   type EventRecord,
 } from '../eventsStore'
+import { formatTimestamp } from '../status'
 import { listVenues, type VenueRecord } from '../venuesStore'
 import { ApiError } from '../api'
 import { buildSession } from '../test/sessions'
@@ -27,6 +30,7 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../eventsStore')>()),
   listBookings: vi.fn(async () => []),
   requestBooking: vi.fn(),
+  cancelBooking: vi.fn(),
 }))
 
 vi.mock('../venuesStore', async (importOriginal) => ({
@@ -36,6 +40,7 @@ vi.mock('../venuesStore', async (importOriginal) => ({
 
 const listBookingsMock = vi.mocked(listBookings)
 const requestBookingMock = vi.mocked(requestBooking)
+const cancelBookingMock = vi.mocked(cancelBooking)
 const listVenuesMock = vi.mocked(listVenues)
 
 const organiser = buildSession({ role: 'Event Organiser', id: '1', name: 'Dylan' })
@@ -68,9 +73,33 @@ function booking(overrides: Partial<BookingRecord> = {}): BookingRecord {
     endsAt: '2027-11-02T17:00:00',
     status: 'Requested',
     requestedAt: '2026-10-07T09:00:00',
+    cancellation: null,
     ...overrides,
   }
 }
+
+const REASON = 'Numbers dropped, so the hall is too big.'
+
+function cancelled(overrides: Partial<BookingRecord> = {}): BookingRecord {
+  return booking({
+    status: 'Cancelled',
+    cancellation: {
+      at: '2026-10-08T10:00:00',
+      byId: '2',
+      byName: 'Priya',
+      reason: REASON,
+    },
+    ...overrides,
+  })
+}
+
+const BREAKOUT = booking({
+  id: '102',
+  venueId: '3',
+  venueName: 'Seminar Room 4',
+  startsAt: '2027-11-02T13:00:00',
+  endsAt: '2027-11-02T15:00:00',
+})
 
 function event(overrides: Partial<EventRecord> = {}): EventRecord {
   return {
@@ -364,4 +393,190 @@ it('shows both dates in full when a booking runs past midnight', () => {
   const text = formatBookingTimes('2027-11-02T20:00:00', '2027-11-03T02:00:00')
 
   expect(text.split(' – ')[1]).toMatch(/2027/)
+})
+
+// -- US14.2: cancelling one booking -----------------------------------------------
+
+function rowFor(venueName: string) {
+  const row = within(bookingList())
+    .getAllByRole('listitem')
+    .find((item) => item.textContent?.includes(venueName))
+  if (!row) throw new Error(`No booking row for ${venueName}`)
+  return row
+}
+
+async function openCancel(venueName = 'Great Hall') {
+  const user = userEvent.setup()
+  await user.click(
+    await screen.findByRole('button', { name: `Cancel the ${venueName} booking` }),
+  )
+  return user
+}
+
+it('offers the Coordinator a cancel for each Requested booking', async () => {
+  listBookingsMock.mockResolvedValue([booking(), BREAKOUT])
+
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  expect(
+    await screen.findByRole('button', { name: 'Cancel the Great Hall booking' }),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'Cancel the Seminar Room 4 booking' }),
+  ).toBeInTheDocument()
+})
+
+it('offers the Organiser no cancel', async () => {
+  listBookingsMock.mockResolvedValue([booking()])
+
+  render(<EventBookings event={event()} session={organiser} />)
+
+  await screen.findByRole('list')
+  expect(screen.queryByRole('button', { name: /^Cancel the/ })).not.toBeInTheDocument()
+})
+
+it('offers no cancel on a booking that is already cancelled', async () => {
+  listBookingsMock.mockResolvedValue([cancelled()])
+
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  await screen.findByRole('list')
+  expect(screen.queryByRole('button', { name: /^Cancel the/ })).not.toBeInTheDocument()
+})
+
+it('still offers a cancel on a closed event, to give the venue back', async () => {
+  listBookingsMock.mockResolvedValue([booking()])
+
+  render(<EventBookings event={event({ status: 'Rejected' })} session={coordinator} />)
+
+  expect(
+    await screen.findByRole('button', { name: 'Cancel the Great Hall booking' }),
+  ).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Request venue' })).not.toBeInTheDocument()
+})
+
+it('asks for a reason under the booking being cancelled', async () => {
+  listBookingsMock.mockResolvedValue([booking(), BREAKOUT])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  await openCancel('Seminar Room 4')
+
+  const row = rowFor('Seminar Room 4')
+  expect(within(row).getByLabelText('Why are you cancelling this booking?')).toBeInTheDocument()
+  expect(within(row).getByRole('button', { name: 'Cancel booking' })).toBeDisabled()
+  expect(
+    within(rowFor('Great Hall')).queryByLabelText('Why are you cancelling this booking?'),
+  ).not.toBeInTheDocument()
+})
+
+it('cancels the one booking with the reason, and shows who, when and why', async () => {
+  listBookingsMock.mockResolvedValue([booking(), BREAKOUT])
+  cancelBookingMock.mockResolvedValue(cancelled())
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const user = await openCancel()
+  await user.type(screen.getByLabelText('Why are you cancelling this booking?'), `  ${REASON}  `)
+  await user.click(screen.getByRole('button', { name: 'Cancel booking' }))
+
+  await waitFor(() =>
+    expect(cancelBookingMock).toHaveBeenCalledWith('900', '101', REASON, coordinator),
+  )
+  expect(
+    await screen.findByText(
+      'Cancelled Great Hall. The event and its other bookings are unchanged.',
+    ),
+  ).toBeInTheDocument()
+  const row = rowFor('Great Hall')
+  expect(row).toHaveTextContent('Cancelled')
+  expect(row).toHaveTextContent(
+    `Cancelled by Priya, ${formatTimestamp('2026-10-08T10:00:00')}: ${REASON}`,
+  )
+  expect(screen.queryByLabelText('Why are you cancelling this booking?')).not.toBeInTheDocument()
+})
+
+it('leaves the other bookings exactly as they were', async () => {
+  listBookingsMock.mockResolvedValue([booking(), BREAKOUT])
+  cancelBookingMock.mockResolvedValue(cancelled())
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const user = await openCancel()
+  await user.type(screen.getByLabelText('Why are you cancelling this booking?'), REASON)
+  await user.click(screen.getByRole('button', { name: 'Cancel booking' }))
+
+  await screen.findByText(/Cancelled Great Hall\./)
+  const breakout = rowFor('Seminar Room 4')
+  expect(within(breakout).getByText('Requested')).toBeInTheDocument()
+  expect(
+    within(breakout).getByRole('button', { name: 'Cancel the Seminar Room 4 booking' }),
+  ).toBeInTheDocument()
+  expect(within(bookingList()).getAllByRole('listitem')).toHaveLength(2)
+})
+
+it('keeps the box open with the reason when the cancel is refused', async () => {
+  listBookingsMock.mockResolvedValue([booking()])
+  cancelBookingMock.mockRejectedValue(
+    new EventRuleError('This booking has already been cancelled.'),
+  )
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const user = await openCancel()
+  await user.type(screen.getByLabelText('Why are you cancelling this booking?'), REASON)
+  await user.click(screen.getByRole('button', { name: 'Cancel booking' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'This booking has already been cancelled.',
+  )
+  expect(screen.getByLabelText('Why are you cancelling this booking?')).toHaveValue(REASON)
+  expect(within(rowFor('Great Hall')).getByText('Requested')).toBeInTheDocument()
+})
+
+it('explains an unexpected failure to cancel', async () => {
+  listBookingsMock.mockResolvedValue([booking()])
+  cancelBookingMock.mockRejectedValue(new ApiError('Server error', 'unknown', 500))
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const user = await openCancel()
+  await user.type(screen.getByLabelText('Why are you cancelling this booking?'), REASON)
+  await user.click(screen.getByRole('button', { name: 'Cancel booking' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('cancel this booking')
+})
+
+it('keeps the booking when the Coordinator changes their mind', async () => {
+  listBookingsMock.mockResolvedValue([booking()])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const user = await openCancel()
+  await user.type(screen.getByLabelText('Why are you cancelling this booking?'), REASON)
+  await user.click(screen.getByRole('button', { name: 'Keep booking' }))
+
+  expect(screen.queryByLabelText('Why are you cancelling this booking?')).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'Cancel the Great Hall booking' }),
+  ).toBeInTheDocument()
+  expect(cancelBookingMock).not.toHaveBeenCalled()
+})
+
+it('shows a cancelled booking from the server with who, when and why', async () => {
+  listBookingsMock.mockResolvedValue([cancelled()])
+
+  render(<EventBookings event={event()} session={organiser} />)
+
+  const row = await screen.findByRole('listitem')
+  expect(row).toHaveTextContent('Cancelled by Priya')
+  expect(row).toHaveTextContent(REASON)
+})
+
+it('still shows the reason when the user who cancelled has been removed', async () => {
+  listBookingsMock.mockResolvedValue([
+    cancelled({
+      cancellation: { at: '2026-10-08T10:00:00', byId: null, byName: '', reason: REASON },
+    }),
+  ])
+
+  render(<EventBookings event={event()} session={organiser} />)
+
+  expect(await screen.findByRole('listitem')).toHaveTextContent(
+    `Cancelled by a former user, ${formatTimestamp('2026-10-08T10:00:00')}: ${REASON}`,
+  )
 })

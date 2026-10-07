@@ -17,7 +17,9 @@ from app.booking_store import (
     TABLE,
     Booking,
     BookingStatus,
+    Cancellation,
     InMemoryBookings,
+    StaleBookingStatus,
     SupabaseBookings,
     to_booking,
 )
@@ -65,6 +67,10 @@ class FakeQuery:
 
     def insert(self, row: dict):
         self.calls.append(("insert", row))
+        return self
+
+    def update(self, changes: dict):
+        self.calls.append(("update", changes))
         return self
 
     def eq(self, column: str, value):
@@ -216,6 +222,94 @@ class TestToBooking:
             to_booking({**ROW, "status": "Approved"})
 
 
+CANCELLED_ROW = {
+    **ROW,
+    "status": "Cancelled",
+    "cancelled_at": "2026-10-08T10:00:00",
+    "cancelled_by_id": 2,
+    "cancellation_reason": "Numbers dropped.",
+    "cancelled_by": {"name": "Priya"},
+}
+
+
+class TestSupabaseCancel:
+    """US14.2: one conditional update, then the row read back."""
+
+    def test_it_writes_the_status_who_when_and_why(self, query):
+        query.rows = [dict(CANCELLED_ROW)]
+
+        SupabaseBookings().cancel(7, actor_id=2, reason="Numbers dropped.")
+
+        [(_, changes)] = query.named("update")
+        assert changes["status"] == "Cancelled"
+        assert changes["cancelled_by_id"] == 2
+        assert changes["cancellation_reason"] == "Numbers dropped."
+        assert changes["cancelled_at"]
+        assert set(changes) == {"status", "cancelled_at", "cancelled_by_id", "cancellation_reason"}
+
+    def test_it_only_updates_the_one_booking_while_it_is_requested(self, query):
+        query.rows = [dict(CANCELLED_ROW)]
+
+        SupabaseBookings().cancel(7, actor_id=2, reason="Numbers dropped.")
+
+        eqs = query.named("eq")
+        assert ("eq", "id", 7) in eqs
+        assert ("eq", "status", "Requested") in eqs
+        verbs = [call[0] for call in query.calls]
+        assert verbs.index("update") < verbs.index("execute")
+
+    def test_it_never_touches_another_table(self, query):
+        query.rows = [dict(CANCELLED_ROW)]
+
+        SupabaseBookings().cancel(7, actor_id=2, reason="Numbers dropped.")
+
+        assert {call[1] for call in query.named("table")} == {TABLE}
+
+    def test_it_returns_the_cancelled_booking(self, query):
+        query.rows = [dict(CANCELLED_ROW)]
+
+        booking = SupabaseBookings().cancel(7, actor_id=2, reason="Numbers dropped.")
+
+        assert booking.status is BookingStatus.CANCELLED
+        assert booking.cancellation == Cancellation(
+            at="2026-10-08T10:00:00", by_id=2, by_name="Priya", reason="Numbers dropped."
+        )
+
+    def test_no_row_updated_means_it_was_no_longer_requested(self, query):
+        query.rows = []
+
+        with pytest.raises(StaleBookingStatus):
+            SupabaseBookings().cancel(7, actor_id=2, reason="Numbers dropped.")
+
+
+class TestCancellationColumns:
+    def test_the_canceller_is_embedded_by_constraint_name(self):
+        """Two foreign keys to users, so an unqualified users(name) would be ambiguous."""
+        assert "cancelled_by:users!venue_bookings_cancelled_by_id_fkey(name)" in COLUMNS
+
+    def test_a_requested_row_has_no_cancellation(self):
+        assert to_booking(ROW).cancellation is None
+
+    def test_a_cancelled_row_reads_back_who_when_and_why(self):
+        assert to_booking(CANCELLED_ROW).cancellation == Cancellation(
+            at="2026-10-08T10:00:00", by_id=2, by_name="Priya", reason="Numbers dropped."
+        )
+
+    def test_a_removed_canceller_keeps_the_cancellation(self):
+        row = {**CANCELLED_ROW, "cancelled_by_id": None, "cancelled_by": None}
+
+        cancellation = to_booking(row).cancellation
+
+        assert cancellation is not None
+        assert cancellation.by_id is None
+        assert cancellation.by_name == ""
+        assert cancellation.reason == "Numbers dropped."
+
+    def test_holds_venue_follows_the_status(self):
+        assert to_booking(ROW).holds_venue
+        assert not to_booking(CANCELLED_ROW).holds_venue
+
+
 class TestInMemory:
     def test_it_keeps_the_real_stores_order(self):
         store = InMemoryBookings()
@@ -246,3 +340,49 @@ class TestInMemory:
         )
 
         assert booking.venue_name == "Seminar Room 4"
+
+    def test_cancel_names_the_canceller_from_the_user_directory(self):
+        store = InMemoryBookings()
+        booking = store.create(
+            event_id=900,
+            venue_id=1,
+            starts_at="2027-11-02T09:00",
+            ends_at="2027-11-02T17:00",
+            requested_by_id=2,
+        )
+
+        cancelled = store.cancel(booking.id, actor_id=2, reason="Numbers dropped.")
+
+        assert cancelled.cancellation is not None
+        assert cancelled.cancellation.by_name == "Priya"
+
+    def test_cancel_twice_is_stale_like_the_real_store(self):
+        store = InMemoryBookings()
+        booking = store.create(
+            event_id=900,
+            venue_id=1,
+            starts_at="2027-11-02T09:00",
+            ends_at="2027-11-02T17:00",
+            requested_by_id=2,
+        )
+        store.cancel(booking.id, actor_id=2, reason="Numbers dropped.")
+
+        with pytest.raises(StaleBookingStatus):
+            store.cancel(booking.id, actor_id=2, reason="Again.")
+
+    def test_cancel_leaves_the_other_bookings_alone(self):
+        store = InMemoryBookings()
+        kept, cancelled = (
+            store.create(
+                event_id=900,
+                venue_id=venue_id,
+                starts_at="2027-11-02T09:00",
+                ends_at="2027-11-02T17:00",
+                requested_by_id=2,
+            )
+            for venue_id in (1, 3)
+        )
+
+        store.cancel(cancelled.id, actor_id=2, reason="Numbers dropped.")
+
+        assert store.get_booking(kept.id) == kept

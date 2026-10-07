@@ -210,10 +210,26 @@ export type BookingRecord = {
   /** Naive local times, "YYYY-MM-DDTHH:MM" or with seconds once stored. */
   startsAt: string
   endsAt: string
-  /** Every new booking waits on Venue Staff; their approval is a later epic. */
-  status: 'Requested'
+  /**
+   * Every new booking waits on Venue Staff, whose approval is a later epic. A
+   * Coordinator may cancel one (US14.2), which is final.
+   */
+  status: 'Requested' | 'Cancelled'
   requestedAt: string
+  /** US14.2: who cancelled, when and why. null unless the status is Cancelled. */
+  cancellation: BookingCancellation | null
 }
+
+export type BookingCancellation = {
+  at: string
+  /** null once the user who cancelled has been removed; the record stays. */
+  byId: string | null
+  byName: string
+  reason: string
+}
+
+/** The server's cap on a cancellation reason, mirrored so the form can say so. */
+export const CANCELLATION_REASON_MAX = 2000
 
 /** What the Coordinator's form sends — the values of its three inputs. */
 export type BookingInput = {
@@ -272,6 +288,32 @@ export async function requestBooking(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     })
+    return (await response.json()) as BookingRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/**
+ * US14.2: cancel one booking, with a reason. Only that booking changes; the
+ * event and its other bookings are left as they were.
+ */
+export async function cancelBooking(
+  eventId: string,
+  bookingId: string,
+  reason: string,
+  session: Session,
+): Promise<BookingRecord> {
+  try {
+    const response = await authorizedFetch(
+      `/events/${eventId}/bookings/${bookingId}/cancel`,
+      session.token,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      },
+    )
     return (await response.json()) as BookingRecord
   } catch (error) {
     return asRuleError(error)

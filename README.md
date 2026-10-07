@@ -65,7 +65,8 @@ so running one twice is a no-op.
 | ------ | ---------- | -------------- |
 | [`SUPABASE_ADD_VENUE_LAYOUTS.sql`](backend/SUPABASE_ADD_VENUE_LAYOUTS.sql) | US9.1a-c, US9.2, US9.3 — every venue route | **All five `/venues` routes return 500.** Reads included, not just writes |
 | [`SUPABASE_ADD_VENUE_UNAVAILABILITY.sql`](backend/SUPABASE_ADD_VENUE_UNAVAILABILITY.sql) | US12.1 venue blackout periods | Both `/venues/{id}/unavailability` routes return 500. The other venue routes are unaffected |
-| [`SUPABASE_ADD_VENUE_BOOKINGS.sql`](backend/SUPABASE_ADD_VENUE_BOOKINGS.sql) | US14.1 venue bookings | Both `/events/{id}/bookings` routes return 500, so the bookings card on an event shows an error. `DELETE /venues/{id}` also returns 500, because it checks for bookings first |
+| [`SUPABASE_ADD_VENUE_BOOKINGS.sql`](backend/SUPABASE_ADD_VENUE_BOOKINGS.sql) | US14.1 venue bookings | Every `/events/{id}/bookings` route returns 500, so the bookings card on an event shows an error. `DELETE /venues/{id}` also returns 500, because it checks for bookings first |
+| [`SUPABASE_CANCEL_VENUE_BOOKINGS.sql`](backend/SUPABASE_CANCEL_VENUE_BOOKINGS.sql) | US14.2 cancelling a booking. Run after the US14.1 script | Every `/events/{id}/bookings` route returns 500, not only cancel: each booking read selects the cancellation columns. `DELETE /venues/{id}` is unaffected |
 | [`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`](backend/SUPABASE_ALLOW_PARTIAL_DRAFTS.sql) | US4.2 partial drafts | Saving a draft with no date fails |
 | [`SUPABASE_HARDENING.sql`](backend/SUPABASE_HARDENING.sql) | Row Level Security, indexes | Supabase advisor warnings; the app still works |
 | [`SUPABASE_SEED_VENUES.sql`](backend/SUPABASE_SEED_VENUES.sql) | Optional | The catalogue shows its empty state until Venue Staff add records |

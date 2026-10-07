@@ -143,6 +143,7 @@ button is a courtesy and a refused request is the rule.
 | `POST /events/{id}/reject`   | assigned Coordinator        | Under Review → Rejected with a reason (US7.1) |
 | `GET /events/{id}/bookings`  | owning Organiser, assigned Coordinator | The event's venue bookings, soonest first (US14.1) |
 | `POST /events/{id}/bookings` | assigned Coordinator        | Request one venue; it starts Requested (US14.1) |
+| `POST /events/{id}/bookings/{bookingId}/cancel` | assigned Coordinator | Cancel one booking with a reason (US14.2) |
 
 An event that belongs to another Organiser answers `404`, not `403`. Telling
 someone an event exists but is not theirs tells them something about another
@@ -268,6 +269,39 @@ none ever did, so there was nothing to move.
   before. Two bookings of the same venue are allowed; whether they clash is
   US15.1's to judge.
 
+### Cancelling a booking (US14.2)
+
+The assigned Coordinator cancels one booking, with a reason, without touching
+anything else.
+
+```bash
+curl -X POST http://localhost:8000/events/12/bookings/31/cancel \
+  -H "Authorization: Bearer <coordinator token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"Numbers dropped, so the hall is too big."}'
+```
+
+- **What changes.** Only that booking's row: `Requested` → `Cancelled`, with
+  `cancelled_at`, `cancelled_by_id` and `cancellation_reason` set on it, and
+  `cancellation` (`at`, `byId`, `byName`, `reason`) in the response. The event's
+  status, its history and its other bookings are not written. A cancelled booking
+  stays on the event's list, so the Organiser can see what was dropped and why.
+  Existing Supabase projects must run
+  [`SUPABASE_CANCEL_VENUE_BOOKINGS.sql`](SUPABASE_CANCEL_VENUE_BOOKINGS.sql)
+  after the US14.1 script.
+- **The venue is freed.** `HOLDS_VENUE` in `app/booking_store.py` is the set of
+  statuses that hold a venue for their slot, and `Cancelled` is not in it, so
+  US15.1's conflict check will not count a cancelled booking. Requesting the same
+  venue for the same slot again is a new booking.
+- **Who and when.** The same rule as requesting (US8.6), under the same
+  `bookings:request` permission. Allowed whatever the event's status: cancelling
+  the hall for a Rejected event is how it is given back.
+- **Refusals.** A booking that is missing, or on another event, answers `404`
+  with `booking_not_found`. An already cancelled booking answers `409` with
+  `already-cancelled`, including when two cancels race: the update only matches
+  a booking that is still Requested. A blank reason, or one over 2,000
+  characters, answers `400` with `invalid_booking`.
+
 ## Venues
 
 Four stories over one table, and they do not share a role. A Coordinator reads
@@ -347,7 +381,8 @@ keeps its own name, so saving one unrenamed is not a clash.
 The delete is a hard delete. A venue that any event has booked (US14.1) is in
 use and answers `409` with `venue_in_use` instead: deleting it would either take
 the event's booking with it or, since `venue_bookings.venue_id` has no cascade,
-fail in the database. Deleting a venue that is already gone answers `404` rather
+fail in the database. A cancelled booking (US14.2) still counts. It frees the
+venue's slot, but it is still the event's record of what was asked for. Deleting a venue that is already gone answers `404` rather
 than a quiet `204`: the caller is usually working from a stale list, and saying
 so is more use than pretending it worked.
 
@@ -448,7 +483,7 @@ server put on the session.
 | Role              | May                                                   |
 | ----------------- | ----------------------------------------------------- |
 | Event Organiser   | create, read own, and submit events                   |
-| Event Coordinator | read submitted events, review and edit them, read the user directory, read the venue catalogue, request venue bookings for their events |
+| Event Coordinator | read submitted events, review and edit them, read the user directory, read the venue catalogue, request and cancel venue bookings for their events |
 | Venue Staff       | read the venue catalogue, and add, update and delete the records in it |
 
 Technical Support and Attendee are part of the wider plan and are deliberately
@@ -556,5 +591,6 @@ tests/
   test_venues.py              US9.1a-c, US9.2 and US9.3, through the routes
   test_venue_store.py         the Supabase venue queries, against a fake client
   test_venue_bookings.py      US14.1, through the routes
+  test_venue_booking_cancellation.py  US14.2, through the routes
   test_booking_store.py       the Supabase booking queries, against a fake client
 ```

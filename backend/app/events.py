@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app import booking_store, event_store, venue_store
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
-from app.booking_store import Booking, BookingStatus
+from app.booking_store import Booking, BookingStatus, StaleBookingStatus
 from app.event_status import (
     EventStatus,
     booking_refusal_message,
@@ -51,6 +51,7 @@ class EventError:
     INVALID = "invalid_event"
     REFUSED = "rule_refused"
     INVALID_BOOKING = "invalid_booking"
+    BOOKING_NOT_FOUND = "booking_not_found"
 
 
 class StatusChangeOut(BaseModel):
@@ -563,6 +564,16 @@ def reject_event(
 # who may see or request one.
 
 
+class CancellationOut(BaseModel):
+    """Who cancelled a booking, when, and why (US14.2)."""
+
+    at: str
+    #: Null once the user who cancelled has been removed; the record stays.
+    by_id: str | None = Field(serialization_alias="byId")
+    by_name: str = Field(serialization_alias="byName")
+    reason: str
+
+
 class BookingOut(BaseModel):
     id: str
     event_id: str = Field(serialization_alias="eventId")
@@ -573,9 +584,13 @@ class BookingOut(BaseModel):
     ends_at: str = Field(serialization_alias="endsAt")
     status: BookingStatus
     requested_at: str = Field(serialization_alias="requestedAt")
+    #: Null unless the booking is Cancelled, so "not cancelled" is one state
+    #: rather than three empty fields.
+    cancellation: CancellationOut | None = None
 
 
 def _booking_out(booking: Booking) -> BookingOut:
+    cancellation = booking.cancellation
     return BookingOut(
         id=str(booking.id),
         event_id=str(booking.event_id),
@@ -585,6 +600,16 @@ def _booking_out(booking: Booking) -> BookingOut:
         ends_at=booking.ends_at,
         status=booking.status,
         requested_at=booking.requested_at,
+        cancellation=(
+            CancellationOut(
+                at=cancellation.at,
+                by_id=str(cancellation.by_id) if cancellation.by_id is not None else None,
+                by_name=cancellation.by_name,
+                reason=cancellation.reason,
+            )
+            if cancellation
+            else None
+        ),
     )
 
 
@@ -724,3 +749,87 @@ def request_booking(
         requested_by_id=user.id,
     )
     return _booking_out(created)
+
+
+# -- US14.2: cancelling one booking ----------------------------------------------
+
+
+class BookingCancellation(BaseModel):
+    """Why a Coordinator is cancelling a venue booking (US14.2)."""
+
+    reason: str = ""
+
+
+#: `venue_bookings.cancellation_reason` is TEXT. The cap is about a reason
+#: staying readable, as US7.1's is.
+CANCELLATION_REASON_MAX = 2000
+
+
+def _booking_not_found() -> HTTPException:
+    """The same answer for a booking that is missing and one on another event."""
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "code": EventError.BOOKING_NOT_FOUND,
+            "message": "That booking is not on this event.",
+        },
+    )
+
+
+def _already_cancelled() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": "This booking has already been cancelled.",
+            "reason": "already-cancelled",
+        },
+    )
+
+
+@router.post("/{event_id}/bookings/{booking_id}/cancel", response_model=BookingOut)
+def cancel_booking(
+    event_id: str,
+    booking_id: str,
+    payload: BookingCancellation,
+    user: Annotated[User, Depends(require_permission(Permission.BOOKINGS_REQUEST))],
+) -> BookingOut:
+    """US14.2: cancel one venue booking, with a reason, and change nothing else.
+
+    Only this booking's row is written. The event's status and its other
+    bookings are not touched at all, so changing one room never means redoing
+    the plan. The cancelled booking stays on the event's list with who, when
+    and why, and stops holding its venue for the slot (`HOLDS_VENUE`).
+
+    The same Coordinator who may request may cancel (US8.6), and on an event at
+    any status they can see: cancelling the hall for a Rejected event is how
+    the venue is given back.
+
+    404, then 409, then 400, as for a request. A booking on another event is
+    404 rather than 403, for the reason `_not_found` gives for events.
+    """
+    event = _readable(_as_id(event_id), user)
+    try:
+        booking = booking_store.repository().get_booking(int(booking_id))
+    except ValueError:
+        booking = None
+    if booking is None or booking.event_id != event.id:
+        raise _booking_not_found()
+
+    if booking.status is BookingStatus.CANCELLED:
+        raise _already_cancelled()
+
+    reason = payload.reason.strip()
+    if not reason:
+        raise _invalid_booking("Give a reason for cancelling this booking.")
+    if len(reason) > CANCELLATION_REASON_MAX:
+        raise _invalid_booking(
+            f"Keep the reason to {CANCELLATION_REASON_MAX} characters or fewer."
+        )
+
+    try:
+        cancelled = booking_store.repository().cancel(booking.id, actor_id=user.id, reason=reason)
+    except StaleBookingStatus:
+        # Someone else cancelled it between the read above and this write.
+        raise _already_cancelled() from None
+    return _booking_out(cancelled)

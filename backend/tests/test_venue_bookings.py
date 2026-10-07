@@ -128,8 +128,11 @@ class TestRequestingABooking:
             "endsAt",
             "status",
             "requestedAt",
+            "cancellation",
         }
         assert isinstance(body["id"], str)
+        # US14.2: only a cancelled booking says who cancelled it.
+        assert body["cancellation"] is None
 
     def test_the_booking_is_stored_against_the_event_and_the_venue(
         self, client, coordinator, event, booking_repository

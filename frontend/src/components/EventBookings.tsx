@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import './EventBookings.css'
 import {
+  CANCELLATION_REASON_MAX,
   EventRuleError,
+  cancelBooking,
   formatBookingTimes,
   listBookings,
   requestBooking,
@@ -11,7 +13,7 @@ import {
   type EventRecord,
 } from '../eventsStore'
 import { listVenues, type VenueRecord } from '../venuesStore'
-import { bookingRefusalMessage, checkBooking } from '../status'
+import { bookingRefusalMessage, checkBooking, formatTimestamp } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 import { can } from '../permissions'
 
@@ -41,12 +43,18 @@ function asInputValue(iso: string | undefined): string {
 }
 
 /**
- * The venue bookings for an event — US14.1.
+ * The venue bookings for an event — US14.1 and US14.2.
  *
  * Every booking shows here together, for the Organiser who owns the event and
  * the Coordinator assigned to it. The Coordinator also gets the form that
  * requests one, and uses it once per venue: a main hall and two breakout rooms
  * are three requests, and a refused one leaves the others where they are.
+ *
+ * The Coordinator can cancel any one Requested booking with a reason (US14.2).
+ * The cancelled booking stays in the list with who, when and why, and nothing
+ * else on the card or the event changes. Cancelling is offered whatever the
+ * event's status, because giving back the hall for an event that will not run
+ * is the point of it.
  *
  * Its own card and its own request, as US12.1's blackout card is, so a failure
  * to load the bookings says so here and leaves the event above it readable.
@@ -67,6 +75,13 @@ export default function EventBookings({ event, session }: EventBookingsProps) {
   const [formError, setFormError] = useState('')
   const [saved, setSaved] = useState('')
   const [busy, setBusy] = useState(false)
+  // US14.2: the one booking whose cancel box is open, and what has been typed.
+  const [cancelling, setCancelling] = useState<{ bookingId: string; reason: string } | null>(
+    null,
+  )
+  const [cancelError, setCancelError] = useState('')
+  const [cancelBusy, setCancelBusy] = useState(false)
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -124,6 +139,7 @@ export default function EventBookings({ event, session }: EventBookingsProps) {
     setBusy(true)
     setFormError('')
     setSaved('')
+    setNotice('')
     requestBooking(event.id, fields, session)
       .then((created) => {
         setBookings((current) =>
@@ -146,6 +162,54 @@ export default function EventBookings({ event, session }: EventBookingsProps) {
         )
       })
       .finally(() => setBusy(false))
+  }
+
+  function openCancel(bookingId: string) {
+    setCancelling({ bookingId, reason: '' })
+    setCancelError('')
+    setNotice('')
+  }
+
+  function closeCancel() {
+    setCancelling(null)
+    setCancelError('')
+  }
+
+  /** US14.2: cancel this one booking, then swap it in place in the list. */
+  function confirmCancel(booking: BookingRecord) {
+    const reason = cancelling?.reason.trim() ?? ''
+    if (!reason) {
+      setCancelError('Give a reason for cancelling this booking.')
+      return
+    }
+    setCancelBusy(true)
+    setCancelError('')
+    cancelBooking(event.id, booking.id, reason, session)
+      .then((cancelled) => {
+        setBookings((current) =>
+          current.state === 'loaded'
+            ? {
+                state: 'loaded',
+                bookings: current.bookings.map((item) =>
+                  item.id === cancelled.id ? cancelled : item,
+                ),
+              }
+            : current,
+        )
+        setCancelling(null)
+        setNotice(
+          `Cancelled ${cancelled.venueName}. The event and its other bookings are unchanged.`,
+        )
+      })
+      .catch((error: unknown) => {
+        // The box stays open with what was typed, so a retry is one click.
+        setCancelError(
+          error instanceof EventRuleError
+            ? error.message
+            : unexpectedFailureMessage(error, 'cancel this booking'),
+        )
+      })
+      .finally(() => setCancelBusy(false))
   }
 
   return (
@@ -179,17 +243,102 @@ export default function EventBookings({ event, session }: EventBookingsProps) {
       return <p className="muted booking-none">No venues have been requested for this event yet.</p>
     }
     return (
-      <ul className="booking-list" aria-label="Venue bookings for this event">
-        {bookings.bookings.map((booking) => (
-          <li key={booking.id} className="booking-row">
-            <span className="booking-venue">{booking.venueName || 'Unnamed venue'}</span>
-            <span className="booking-times">
-              {formatBookingTimes(booking.startsAt, booking.endsAt)}
-            </span>
-            <span className="booking-status">{booking.status}</span>
-          </li>
-        ))}
-      </ul>
+      <>
+        {notice && (
+          <p className="booking-saved booking-notice" role="status">
+            {notice}
+          </p>
+        )}
+        <ul className="booking-list" aria-label="Venue bookings for this event">
+          {bookings.bookings.map((booking) => renderBooking(booking))}
+        </ul>
+      </>
+    )
+  }
+
+  function renderBooking(booking: BookingRecord) {
+    const isCancelled = booking.status === 'Cancelled'
+    const venueName = booking.venueName || 'Unnamed venue'
+    const cancelOpen = cancelling?.bookingId === booking.id
+    return (
+      <li key={booking.id} className={`booking-row${isCancelled ? ' is-cancelled' : ''}`}>
+        <div className="booking-summary">
+          <span className="booking-venue">{venueName}</span>
+          <span className="booking-times">
+            {formatBookingTimes(booking.startsAt, booking.endsAt)}
+          </span>
+          <span className={`booking-status is-${booking.status.toLowerCase()}`}>
+            {booking.status}
+          </span>
+          {mayRequest && !isCancelled && !cancelOpen && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm booking-cancel"
+              aria-label={`Cancel the ${venueName} booking`}
+              onClick={() => openCancel(booking.id)}
+              disabled={cancelBusy}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+        {booking.cancellation && (
+          <p className="booking-cancellation">
+            Cancelled by {booking.cancellation.byName || 'a former user'},{' '}
+            {formatTimestamp(booking.cancellation.at)}: {booking.cancellation.reason}
+          </p>
+        )}
+        {cancelOpen && renderCancelForm(booking)}
+      </li>
+    )
+  }
+
+  function renderCancelForm(booking: BookingRecord) {
+    const reasonId = `booking-cancel-reason-${booking.id}`
+    const reason = cancelling?.reason ?? ''
+    return (
+      <div className="booking-cancel-form">
+        <div className="field">
+          <label htmlFor={reasonId}>Why are you cancelling this booking?</label>
+          <textarea
+            id={reasonId}
+            rows={3}
+            maxLength={CANCELLATION_REASON_MAX}
+            value={reason}
+            disabled={cancelBusy}
+            onChange={(changeEvent) => {
+              setCancelling({ bookingId: booking.id, reason: changeEvent.target.value })
+              setCancelError('')
+            }}
+          />
+          <span className="field-hint">
+            Only this booking is cancelled. The event and its other bookings stay as they are.
+          </span>
+        </div>
+        {cancelError && (
+          <p className="form-error" role="alert">
+            {cancelError}
+          </p>
+        )}
+        <div className="booking-cancel-actions">
+          <button
+            type="button"
+            className="btn btn-danger-solid btn-sm"
+            disabled={cancelBusy || !reason.trim()}
+            onClick={() => confirmCancel(booking)}
+          >
+            {cancelBusy ? 'Cancelling…' : 'Cancel booking'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={cancelBusy}
+            onClick={closeCancel}
+          >
+            Keep booking
+          </button>
+        </div>
+      </div>
     )
   }
 

@@ -15,29 +15,53 @@ Three choices worth knowing:
   booking by the server's offset.
 * Every booking starts Requested. Venue Staff approval is its own epic, and the
   statuses it moves a booking to arrive with it.
+* A cancelled booking (US14.2) is kept, not deleted. It stays on the event with
+  who cancelled it, when and why, and it stops holding the venue for its slot.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Protocol
 
-from app import supabase_client, venue_store
+from app import supabase_client, users, venue_store
 from app.venue_store import _now
 
 TABLE = "venue_bookings"
 #: `venues(name)` is embedded so the event page can say which venue without a
 #: second request per booking. There is one foreign key to `venues`, so
-#: PostgREST needs no constraint name to resolve it.
+#: PostgREST needs no constraint name to resolve it. There are two to `users`
+#: (who requested, who cancelled), so the canceller's name is embedded by
+#: constraint name, as US8.1 had to for an event's two users.
 COLUMNS = (
     "id, event_id, venue_id, start_at, end_at, status, requested_by_id, created_at, "
-    "venues(name)"
+    "cancelled_at, cancelled_by_id, cancellation_reason, venues(name), "
+    "cancelled_by:users!venue_bookings_cancelled_by_id_fkey(name)"
 )
 
 
 class BookingStatus(StrEnum):
-    """Matches the `booking_status` enum in Postgres, which holds only this so far."""
+    """Matches the `booking_status` enum in Postgres."""
 
     REQUESTED = "Requested"
+    #: US14.2. Final: nothing moves a cancelled booking on.
+    CANCELLED = "Cancelled"
+
+
+#: The statuses that hold a venue for their slot. A cancelled booking does not
+#: (US14.2), which is what frees the venue: US15.1's conflict check counts only
+#: bookings in these statuses.
+HOLDS_VENUE: frozenset[BookingStatus] = frozenset({BookingStatus.REQUESTED})
+
+
+@dataclass(frozen=True)
+class Cancellation:
+    """Who cancelled a booking, when, and why — US14.2."""
+
+    at: str
+    #: Nullable so removing a user keeps the cancellation on record.
+    by_id: int | None
+    by_name: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -52,14 +76,35 @@ class Booking:
     #: Who asked. Nullable so removing a user does not remove their bookings.
     requested_by_id: int | None
     requested_at: str
+    #: Set exactly when the status is Cancelled; the table's CHECK holds that.
+    cancellation: Cancellation | None = None
+
+    @property
+    def holds_venue(self) -> bool:
+        return self.status in HOLDS_VENUE
 
 
-def _venue_name(row: dict) -> str:
-    """The joined `venues(name)`, which PostgREST returns as an object or a list."""
-    joined = row.get("venues")
+class StaleBookingStatus(RuntimeError):
+    """The booking changed after the route checked it, e.g. cancelled twice at once."""
+
+
+def _embedded_name(row: dict, key: str) -> str:
+    """A joined `name`, which PostgREST returns as an object or a list."""
+    joined = row.get(key)
     if isinstance(joined, list):
         joined = joined[0] if joined else None
     return joined.get("name", "") if isinstance(joined, dict) else ""
+
+
+def _cancellation(row: dict) -> Cancellation | None:
+    if not row.get("cancelled_at"):
+        return None
+    return Cancellation(
+        at=str(row["cancelled_at"]),
+        by_id=row.get("cancelled_by_id"),
+        by_name=_embedded_name(row, "cancelled_by"),
+        reason=row.get("cancellation_reason") or "",
+    )
 
 
 def to_booking(row: dict) -> Booking:
@@ -67,12 +112,13 @@ def to_booking(row: dict) -> Booking:
         id=row["id"],
         event_id=row["event_id"],
         venue_id=row["venue_id"],
-        venue_name=_venue_name(row),
+        venue_name=_embedded_name(row, "venues"),
         starts_at=str(row["start_at"]),
         ends_at=str(row["end_at"]),
         status=BookingStatus(row["status"]),
         requested_by_id=row.get("requested_by_id"),
         requested_at=str(row["created_at"]) if row.get("created_at") else "",
+        cancellation=_cancellation(row),
     )
 
 
@@ -80,6 +126,8 @@ class Repository(Protocol):
     """What the routes need from a booking store."""
 
     def list_for_event(self, event_id: int) -> list[Booking]: ...
+
+    def get_booking(self, booking_id: int) -> Booking | None: ...
 
     def create(
         self,
@@ -91,13 +139,15 @@ class Repository(Protocol):
         requested_by_id: int,
     ) -> Booking: ...
 
+    def cancel(self, booking_id: int, *, actor_id: int, reason: str) -> Booking: ...
+
     def venue_has_bookings(self, venue_id: int) -> bool: ...
 
 
 class SupabaseBookings:
     """The real store. Goes through the service role client, like the others."""
 
-    def _get(self, booking_id: int) -> Booking | None:
+    def get_booking(self, booking_id: int) -> Booking | None:
         rows = (
             supabase_client.admin()
             .table(TABLE)
@@ -155,12 +205,47 @@ class SupabaseBookings:
             "created_at": _now(),
         }
         created = supabase_client.admin().table(TABLE).insert(row).execute()
-        booking = self._get(created.data[0]["id"])
+        booking = self.get_booking(created.data[0]["id"])
         assert booking is not None  # noqa: S101 — the row was just inserted
         return booking
 
+    def cancel(self, booking_id: int, *, actor_id: int, reason: str) -> Booking:
+        """US14.2: Requested -> Cancelled, with who, when and why on the row.
+
+        The update only matches a booking that is still Requested, so two
+        cancels racing each other cannot both succeed. The second finds no row
+        and raises, as `event_store.request_clarification` does for an event
+        that moved. Nothing else is written: the event and its other bookings
+        are left exactly as they were.
+        """
+        updated = (
+            supabase_client.admin()
+            .table(TABLE)
+            .update(
+                {
+                    "status": str(BookingStatus.CANCELLED),
+                    "cancelled_at": _now(),
+                    "cancelled_by_id": actor_id,
+                    "cancellation_reason": reason,
+                }
+            )
+            .eq("id", booking_id)
+            .eq("status", str(BookingStatus.REQUESTED))
+            .execute()
+        )
+        if not updated.data:
+            raise StaleBookingStatus
+        booking = self.get_booking(booking_id)
+        assert booking is not None  # noqa: S101 — the row was just updated
+        return booking
+
     def venue_has_bookings(self, venue_id: int) -> bool:
-        """Whether anything books this venue — asked before US9.1c deletes it."""
+        """Whether anything books this venue — asked before US9.1c deletes it.
+
+        Cancelled bookings count. They free the venue's slot, but they are
+        still the event's record of what was asked for, and the row cannot
+        outlive its venue.
+        """
         rows = (
             supabase_client.admin()
             .table(TABLE)
@@ -181,8 +266,8 @@ def _sort_key(booking: Booking) -> tuple[str, str, int]:
 class InMemoryBookings:
     """A stand-in for tests, ordered the way the real query is.
 
-    The venue name is read from the venue store at the time of the request,
-    standing in for the join the real query makes.
+    The venue and canceller names are read from their stores at the time of
+    the write, standing in for the joins the real query makes.
     """
 
     bookings: list[Booking] = field(default_factory=list)
@@ -191,6 +276,27 @@ class InMemoryBookings:
 
     def list_for_event(self, event_id: int) -> list[Booking]:
         return sorted((b for b in self.bookings if b.event_id == event_id), key=_sort_key)
+
+    def get_booking(self, booking_id: int) -> Booking | None:
+        return next((b for b in self.bookings if b.id == booking_id), None)
+
+    def cancel(self, booking_id: int, *, actor_id: int, reason: str) -> Booking:
+        existing = self.get_booking(booking_id)
+        if existing is None or existing.status is not BookingStatus.REQUESTED:
+            raise StaleBookingStatus
+        actor = users.get_by_id(actor_id)
+        cancelled = replace(
+            existing,
+            status=BookingStatus.CANCELLED,
+            cancellation=Cancellation(
+                at=_now(),
+                by_id=actor_id,
+                by_name=actor.name if actor else "",
+                reason=reason,
+            ),
+        )
+        self.bookings = [cancelled if b.id == booking_id else b for b in self.bookings]
+        return cancelled
 
     def create(
         self,

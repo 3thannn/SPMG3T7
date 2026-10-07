@@ -43,6 +43,10 @@ class Permission(StrEnum):
 
     Requesting a venue for an event (US14.1) is a fifth, and not one of them:
     it does not change the catalogue, it asks Venue Staff for part of it.
+    Cancelling one of those requests (US14.2) is the same grant rather than a
+    sixth, as US12.1's blackouts are `venues:edit`: the same role holds both,
+    under the same assignment rule, and a second name would only be one more
+    thing for the frontend's copy to drift on.
     """
 
     EVENTS_CREATE = "events:create"
@@ -72,7 +76,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.VENUES_CREATE: "add a venue to the catalogue",
     Permission.VENUES_EDIT: "update a venue record",
     Permission.VENUES_DELETE: "remove a venue from the catalogue",
-    Permission.BOOKINGS_REQUEST: "request venue bookings",
+    Permission.BOOKINGS_REQUEST: "request and cancel venue bookings",
 }
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {

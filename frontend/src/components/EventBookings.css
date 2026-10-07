@@ -23,16 +23,26 @@
   gap: 0.5rem;
 }
 
-/* Venue, then when, then where it stands — the order a Coordinator scans for. */
 .booking-row {
-  display: grid;
-  grid-template-columns: minmax(10rem, 16rem) 1fr auto;
-  align-items: center;
-  gap: 0.9rem;
   padding: 0.65rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--bg-soft);
+}
+
+/* US14.2: a cancelled booking stays on the record but steps back from it. */
+.booking-row.is-cancelled {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+/* Venue, then when, then where it stands — the order a Coordinator scans for —
+   then the one thing they can do about it. */
+.booking-summary {
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) 1fr auto auto;
+  align-items: center;
+  gap: 0.9rem;
 }
 
 .booking-venue {
@@ -59,6 +69,50 @@
   border: 1px solid var(--accent-soft);
   background: var(--accent-soft);
   white-space: nowrap;
+}
+
+.booking-row.is-cancelled .booking-venue {
+  color: var(--muted);
+  font-weight: 500;
+  text-decoration: line-through;
+}
+
+.booking-status.is-cancelled {
+  color: var(--muted);
+  border-color: var(--line-strong);
+  background: var(--bg);
+}
+
+/* Who, when and why, under the booking it explains. */
+.booking-cancellation {
+  margin-top: 0.45rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.booking-notice {
+  margin-bottom: 0.75rem;
+}
+
+/* The reason box opens under the one booking it would cancel, so it is never
+   in doubt which room is going. */
+.booking-cancel-form {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.6rem;
+}
+
+.booking-cancel-form .form-error {
+  margin-bottom: 0;
+}
+
+.booking-cancel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 /* The Coordinator's form, ruled off from the list it adds to. */
@@ -108,13 +162,18 @@
 }
 
 @media (max-width: 720px) {
-  .booking-row {
+  .booking-summary {
     grid-template-columns: 1fr auto;
   }
 
   .booking-times {
     grid-column: 1 / -1;
     grid-row: 2;
+  }
+
+  .booking-cancel {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 
   .booking-fields {
