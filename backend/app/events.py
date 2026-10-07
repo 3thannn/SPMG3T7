@@ -46,7 +46,7 @@ from app.venue_store import Venue
 
 router = APIRouter(prefix="/events", tags=["events"])
 
-READ_ANY = (Permission.EVENTS_READ_OWN, Permission.EVENTS_READ_SUBMITTED)
+READ_ANY = (Permission.EVENTS_READ_OWN, Permission.EVENTS_READ_SUBMITTED, Permission.EVENTS_READ_ALL)
 
 
 class EventError:
@@ -255,16 +255,22 @@ def _validate_submission(event: Event) -> None:
 def _readable(event_id: int, user: User) -> Event:
     """Fetch an event the caller is allowed to see, or 404.
 
-    US8.1: Coordinators can only see events assigned to them."""
+    US8.1: Coordinators can only see events assigned to them.
+    US8.6: Lead can see all events (not just assigned ones)."""
     event = event_store.repository().get_event(event_id)
     if event is None:
         raise _not_found()
     sees_own = has_permission(user.role, Permission.EVENTS_READ_OWN)
     owns_event = sees_own and event.organiser_id == user.id
     sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
+    sees_all = has_permission(user.role, Permission.EVENTS_READ_ALL)
 
     # US8.1: Coordinators can only see events assigned to them
     is_assigned_coordinator = sees_submitted and event.coordinator_id == user.id
+
+    # US8.6: Lead can see all events
+    if sees_all and event.status != EventStatus.DRAFT:
+        return event
 
     if not owns_event and not (is_assigned_coordinator and event.status != EventStatus.DRAFT):
         raise _not_found()
@@ -285,15 +291,18 @@ def list_events(
 ) -> list[EventOut]:
     """US4.1: an Organiser sees their events; a Coordinator sees assigned non-Drafts.
 
-    US8.1: Coordinators now only see events assigned to them."""
+    US8.1: Coordinators now only see events assigned to them.
+    US8.6: Lead sees all events (unassigned and assigned)."""
     sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
+    sees_all = has_permission(user.role, Permission.EVENTS_READ_ALL)
+
     all_events = event_store.repository().list_events(
-        organiser_id=None if sees_submitted else user.id,
-        include_drafts=not sees_submitted,
+        organiser_id=None if (sees_submitted or sees_all) else user.id,
+        include_drafts=not (sees_submitted or sees_all),
     )
 
-    # US8.1: Filter by coordinator assignment
-    if sees_submitted:
+    # US8.1: Filter by coordinator assignment (but not for Lead who sees all)
+    if sees_submitted and not sees_all:
         all_events = [e for e in all_events if e.coordinator_id == user.id]
 
     return [_to_out(event) for event in all_events]
