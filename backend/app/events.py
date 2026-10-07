@@ -299,6 +299,17 @@ def list_events(
     return [_to_out(event) for event in all_events]
 
 
+@router.get("/unassigned", response_model=list[EventOut])
+def list_unassigned(
+    user: Annotated[User, Depends(require_permission(Permission.QUEUE_VIEW_UNASSIGNED))],
+) -> list[EventOut]:
+    """US8.2: List Submitted events with no assigned Coordinator (oldest first).
+
+    Only Coordinator Lead can access this queue."""
+    events = event_store.repository().list_unassigned()
+    return [_to_out(event) for event in events]
+
+
 @router.get("/{event_id}", response_model=EventOut)
 def get_event(
     event_id: str,

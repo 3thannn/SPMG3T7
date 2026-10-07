@@ -146,6 +146,8 @@ def to_event(row: dict, changes: list[dict] | None = None) -> Event:
 class Repository(Protocol):
     def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]: ...
 
+    def list_unassigned(self) -> list[Event]: ...
+
     def get_event(self, event_id: int) -> Event | None: ...
 
     def create_event(
@@ -255,6 +257,21 @@ class SupabaseEvents:
         if not include_drafts:
             query = query.neq("status", str(EventStatus.DRAFT))
         rows = query.order("updated_at", desc=True).execute().data or []
+        changes = self._changes_for([row["id"] for row in rows])
+        return [to_event(row, changes.get(row["id"])) for row in rows]
+
+    def list_unassigned(self) -> list[Event]:
+        """US8.2: List events that are Submitted but have no assigned Coordinator."""
+        rows = (
+            supabase_client.admin()
+            .table(EVENTS_TABLE)
+            .select(EVENT_COLUMNS)
+            .eq("status", str(EventStatus.SUBMITTED))
+            .is_("coordinator_id", "null")
+            .order("submitted_at", desc=False)  # oldest first
+            .execute()
+            .data or []
+        )
         changes = self._changes_for([row["id"] for row in rows])
         return [to_event(row, changes.get(row["id"])) for row in rows]
 
@@ -666,6 +683,16 @@ class InMemoryEvents:
             and (include_drafts or event.status != EventStatus.DRAFT)
         ]
         return sorted(visible, key=lambda event: event.updated_at, reverse=True)
+
+    def list_unassigned(self) -> list[Event]:
+        """US8.2: List events that are Submitted but have no assigned Coordinator."""
+        unassigned = [
+            event
+            for event in self.events
+            if event.status == EventStatus.SUBMITTED and event.coordinator_id is None
+        ]
+        # Sort by created_at oldest first (in-memory doesn't have submitted_at tracked separately)
+        return sorted(unassigned, key=lambda event: event.created_at)
 
     def get_event(self, event_id: int) -> Event | None:
         return next((event for event in self.events if event.id == event_id), None)
