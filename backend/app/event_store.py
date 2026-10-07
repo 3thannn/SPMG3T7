@@ -216,6 +216,8 @@ class Repository(Protocol):
         reason: str,
     ) -> Event: ...
 
+    def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event: ...
+
 
 class SupabaseEvents:
     """The real store. Goes through the service role client, like the user store."""
@@ -623,6 +625,22 @@ class SupabaseEvents:
         assert decided is not None  # noqa: S101 - the row was just updated
         return decided
 
+    def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
+        """US8.3: Manually assign a Coordinator to an event.
+
+        The assignment is permanent (no reassignment) and updates the event's
+        coordinator_id. No status change occurs (event stays Submitted)."""
+        at = _now()
+        supabase_client.admin().table(EVENTS_TABLE).update(
+            {
+                "coordinator_id": coordinator_id,
+                "updated_at": at,
+            }
+        ).eq("id", event_id).execute()
+        assigned = self.get_event(event_id)
+        assert assigned is not None  # noqa: S101 — the row was just updated
+        return assigned
+
 
 @dataclass
 class InMemoryEvents:
@@ -896,6 +914,18 @@ class InMemoryEvents:
                 status=to_status,
                 updated_at=at,
                 history=(*existing.history, entry),
+            )
+        )
+
+    def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
+        """US8.3: Manually assign a Coordinator to an event."""
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        return self._replace(
+            replace(
+                existing,
+                coordinator_id=coordinator_id,
+                updated_at=_now(),
             )
         )
 
