@@ -415,3 +415,42 @@ export function formatDateRange(startDate: string, endDate: string): string {
   if (!startDate) return formatDate(endDate)
   return `${formatDate(startDate)} – ${formatDate(endDate)}`
 }
+
+/**
+ * The items a venue lists in one of its free-text fields, as written.
+ *
+ * The catalogue holds these two ways: plain lists ("Theatre, standing") and
+ * Postgres array literals ('{stage,"AV system"}'), left by a seed script that
+ * wrote arrays into TEXT columns. The server reads both the same way for
+ * US18.1's suitability check (`listed_items`); this copy only offers the
+ * booking form its suggestions.
+ */
+export function listedItems(text: string): string[] {
+  const trimmed = text.trim()
+  let raw: string[]
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    raw = []
+    let current = ''
+    let quoted = false
+    let escaped = false
+    for (const character of trimmed.slice(1, -1)) {
+      if (escaped) {
+        current += character
+        escaped = false
+      } else if (character === '\\' && quoted) {
+        escaped = true
+      } else if (character === '"') {
+        quoted = !quoted
+      } else if (character === ',' && !quoted) {
+        raw.push(current)
+        current = ''
+      } else {
+        current += character
+      }
+    }
+    raw.push(current)
+  } else {
+    raw = trimmed.split(/[,;\n]/)
+  }
+  return raw.map((item) => item.trim()).filter(Boolean)
+}

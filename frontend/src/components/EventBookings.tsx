@@ -3,7 +3,9 @@ import './EventBookings.css'
 import {
   CANCELLATION_REASON_MAX,
   EventRuleError,
+  attendanceField,
   cancelBooking,
+  checkSuitability,
   formatBookingTimes,
   listBookings,
   requestBooking,
@@ -11,8 +13,9 @@ import {
   type BookingInput,
   type BookingRecord,
   type EventRecord,
+  type Suitability,
 } from '../eventsStore'
-import { listVenues, type VenueRecord } from '../venuesStore'
+import { listVenues, listedItems, type VenueRecord } from '../venuesStore'
 import { bookingRefusalMessage, checkBooking, formatTimestamp } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 import { can } from '../permissions'
@@ -42,6 +45,44 @@ function asInputValue(iso: string | undefined): string {
   return (iso ?? '').slice(0, 16)
 }
 
+/** US18.1: the verdict for one exact set of form values. */
+type Check = { key: string } & (
+  | { state: 'done'; result: Suitability }
+  | { state: 'error'; message: string }
+)
+
+/**
+ * How long the form waits after the last change before checking. Long enough
+ * that typing a headcount of 120 is one check rather than three.
+ */
+const CHECK_DELAY_MS = 300
+
+/** Every layout the catalogue lists, once each, for the layout box to suggest. */
+function layoutSuggestions(venues: VenueRecord[]): string[] {
+  const byKey = new Map<string, string>()
+  for (const venue of venues) {
+    for (const layout of listedItems(venue.supportedLayouts)) {
+      const key = layout.toLowerCase()
+      if (!byKey.has(key)) byKey.set(key, layout)
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b))
+}
+
+/** "For 120 people · Theatre layout · Needs projector · Access: hearing loop". */
+function describeNeeds(booking: BookingRecord): string {
+  const parts: string[] = []
+  if (booking.headcount !== null) parts.push(`For ${booking.headcount} people`)
+  if (booking.requiredLayout) parts.push(`${booking.requiredLayout} layout`)
+  if (booking.requiredFacilities.length) {
+    parts.push(`Needs ${booking.requiredFacilities.join(', ')}`)
+  }
+  if (booking.accessibilityNeeds.length) {
+    parts.push(`Access: ${booking.accessibilityNeeds.join(', ')}`)
+  }
+  return parts.join(' · ')
+}
+
 /**
  * The venue bookings for an event — US14.1 and US14.2.
  *
@@ -49,6 +90,12 @@ function asInputValue(iso: string | undefined): string {
  * the Coordinator assigned to it. The Coordinator also gets the form that
  * requests one, and uses it once per venue: a main hall and two breakout rooms
  * are three requests, and a refused one leaves the others where they are.
+ *
+ * Picking a venue shows whether it suits the booking (US18.1): Suitable, or
+ * Not suitable with every reason, from the server's own check. The booking
+ * carries its own headcount, starting from the event's attendance, so a
+ * breakout room is judged on the people in it. A venue that is not suitable
+ * cannot be requested; the button says so and the server refuses it anyway.
  *
  * The Coordinator can cancel any one Requested booking with a reason (US14.2).
  * The cancelled booking stays in the list with who, when and why, and nothing
@@ -71,6 +118,10 @@ export default function EventBookings({ event, session }: EventBookingsProps) {
     venueId: '',
     startsAt: asInputValue(event.startsAt),
     endsAt: asInputValue(event.endsAt),
+    headcount: attendanceField(event.expectedAttendance),
+    layout: '',
+    facilities: '',
+    accessibilityNeeds: '',
   })
   const [formError, setFormError] = useState('')
   const [saved, setSaved] = useState('')
@@ -82,6 +133,14 @@ export default function EventBookings({ event, session }: EventBookingsProps) {
   const [cancelError, setCancelError] = useState('')
   const [cancelBusy, setCancelBusy] = useState(false)
   const [notice, setNotice] = useState('')
+  const [check, setCheck] = useState<Check | null>(null)
+
+  // US18.1: check once a venue is picked and the form would pass, keyed on the
+  // exact values so a verdict is never shown for inputs it was not given.
+  const checkKey =
+    showForm && fields.venueId && !validateBooking(fields) ? JSON.stringify(fields) : ''
+  const verdict = check !== null && check.key === checkKey ? check : null
+  const notSuitable = verdict?.state === 'done' && !verdict.result.suitable
 
   useEffect(() => {
     let cancelled = false
@@ -121,6 +180,33 @@ export default function EventBookings({ event, session }: EventBookingsProps) {
       cancelled = true
     }
   }, [showForm, session])
+
+  useEffect(() => {
+    if (!checkKey) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      checkSuitability(event.id, JSON.parse(checkKey) as BookingInput, session)
+        .then((result) => {
+          if (!cancelled) setCheck({ key: checkKey, state: 'done', result })
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setCheck({
+              key: checkKey,
+              state: 'error',
+              message:
+                error instanceof EventRuleError
+                  ? error.message
+                  : unexpectedFailureMessage(error, 'check this venue'),
+            })
+          }
+        })
+    }, CHECK_DELAY_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [checkKey, event.id, session])
 
   function set<K extends keyof BookingInput>(field: K, value: string) {
     setFields((current) => ({ ...current, [field]: value }))
@@ -282,6 +368,7 @@ export default function EventBookings({ event, session }: EventBookingsProps) {
             </button>
           )}
         </div>
+        {describeNeeds(booking) && <p className="booking-needs">{describeNeeds(booking)}</p>}
         {booking.cancellation && (
           <p className="booking-cancellation">
             Cancelled by {booking.cancellation.byName || 'a former user'},{' '}
@@ -408,12 +495,113 @@ export default function EventBookings({ event, session }: EventBookingsProps) {
               onChange={(changeEvent) => set('endsAt', changeEvent.target.value)}
             />
           </div>
+
+          <div className="field">
+            <label htmlFor="booking-headcount">Headcount</label>
+            <input
+              id="booking-headcount"
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              value={fields.headcount}
+              onChange={(changeEvent) => set('headcount', changeEvent.target.value)}
+            />
+            <span className="field-hint">People in this space. Starts at the event's total.</span>
+          </div>
+
+          <div className="field">
+            <label htmlFor="booking-layout">Layout (optional)</label>
+            <input
+              id="booking-layout"
+              list="booking-layouts"
+              maxLength={100}
+              placeholder="Theatre, classroom…"
+              value={fields.layout}
+              onChange={(changeEvent) => set('layout', changeEvent.target.value)}
+            />
+            <datalist id="booking-layouts">
+              {venuesReady &&
+                layoutSuggestions(venues.venues).map((layout) => (
+                  <option key={layout} value={layout} />
+                ))}
+            </datalist>
+          </div>
+
+          <div className="field">
+            <label htmlFor="booking-facilities">Facilities needed (optional)</label>
+            <input
+              id="booking-facilities"
+              placeholder="projector, PA system"
+              value={fields.facilities}
+              onChange={(changeEvent) => set('facilities', changeEvent.target.value)}
+            />
+            <span className="field-hint">Separate with commas.</span>
+          </div>
+
+          <div className="field booking-access-field">
+            <label htmlFor="booking-access">Accessibility needs (optional)</label>
+            <input
+              id="booking-access"
+              placeholder="wheelchair access, hearing loop"
+              value={fields.accessibilityNeeds}
+              onChange={(changeEvent) => set('accessibilityNeeds', changeEvent.target.value)}
+            />
+            <span className="field-hint">Separate with commas.</span>
+          </div>
         </fieldset>
 
-        <button type="submit" className="btn btn-primary" disabled={busy || !venuesReady}>
+        {renderVerdict()}
+
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={busy || !venuesReady || notSuitable}
+          title={notSuitable ? 'This venue is not suitable for this booking.' : undefined}
+        >
           {busy ? 'Requesting…' : 'Request venue'}
         </button>
       </form>
+    )
+  }
+
+  /** US18.1: Suitable or Not suitable, with the reasons, for the venue picked. */
+  function renderVerdict() {
+    if (!checkKey) return null
+    if (verdict === null) {
+      return (
+        <p className="booking-verdict is-checking" role="status">
+          Checking whether this venue suits the booking…
+        </p>
+      )
+    }
+    if (verdict.state === 'error') {
+      return (
+        <p className="booking-verdict is-error" role="status">
+          {verdict.message}
+        </p>
+      )
+    }
+    const { suitable, reasons, notes } = verdict.result
+    return (
+      <div
+        className={`booking-verdict ${suitable ? 'is-suitable' : 'is-unsuitable'}`}
+        role="status"
+      >
+        <p className="booking-verdict-title">{suitable ? 'Suitable' : 'Not suitable'}</p>
+        {reasons.length > 0 && (
+          <ul className="booking-verdict-reasons">
+            {reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        )}
+        {notes.map((note) => (
+          <p key={note} className="booking-verdict-note">
+            {note}
+          </p>
+        ))}
+      </div>
     )
   }
 }

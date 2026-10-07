@@ -258,6 +258,7 @@ class TestWhoMayCancel:
             starts_at="2027-11-02T09:00",
             ends_at="2027-11-02T17:00",
             requested_by_id=COORDINATOR_ID,
+            headcount=30,
         )
 
         response = cancel(client, coordinator, str(booking.id))

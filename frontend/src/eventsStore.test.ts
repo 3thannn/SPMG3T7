@@ -10,6 +10,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   EventRuleError,
+  bookingPayload,
+  splitNeeds,
+  validateBooking,
   approveEvent,
   createEvent,
   getEvent,
@@ -226,5 +229,43 @@ describe('event decisions', () => {
     stubFetch(failure(409, 'rule_refused', 'Only an event that is Under Review can be decided.'))
 
     await expect(approveEvent('101', session)).rejects.toBeInstanceOf(EventRuleError)
+  })
+})
+
+describe('US18.1: the booking form as the API reads it', () => {
+  const form = {
+    venueId: '1',
+    startsAt: '2027-11-02T09:00',
+    endsAt: '2027-11-02T17:00',
+    headcount: ' 120 ',
+    layout: '  Theatre ',
+    facilities: 'projector, , PA system ,',
+    accessibilityNeeds: '',
+  }
+
+  it('sends the headcount as a number and the needs as lists', () => {
+    expect(bookingPayload(form)).toEqual({
+      venueId: '1',
+      startsAt: '2027-11-02T09:00',
+      endsAt: '2027-11-02T17:00',
+      headcount: 120,
+      layout: 'Theatre',
+      facilities: ['projector', 'PA system'],
+      accessibilityNeeds: [],
+    })
+  })
+
+  it('splits a comma-separated field and drops the blanks', () => {
+    expect(splitNeeds(' a ,b,, c ')).toEqual(['a', 'b', 'c'])
+    expect(splitNeeds('   ')).toEqual([])
+  })
+
+  it('wants a whole-number headcount of at least one', () => {
+    expect(validateBooking({ ...form, headcount: '' })).toBe('Give the headcount for this booking.')
+    expect(validateBooking({ ...form, headcount: '1.5' })).toBe(
+      'Give the headcount as a whole number of people.',
+    )
+    expect(validateBooking({ ...form, headcount: '0' })).toBe('The headcount must be at least 1.')
+    expect(validateBooking(form)).toBe('')
   })
 })

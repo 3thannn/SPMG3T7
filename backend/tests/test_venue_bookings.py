@@ -40,6 +40,9 @@ def seed_event(
     status: EventStatus = EventStatus.APPROVED,
     coordinator_id: int | None = COORDINATOR_ID,
     organiser_id: int = ORGANISER_ID,
+    # Small enough for every fixture venue (Bertha Room holds 40), so the US14.1
+    # tests are about booking, not about US18.1's suitability check.
+    expected_attendance: int | None = 30,
 ) -> Event:
     """An event straight into the store, at whatever status the test needs."""
     event = Event(
@@ -49,7 +52,7 @@ def seed_event(
         description="",
         starts_at="2027-11-02T09:00",
         ends_at="2027-11-02T17:00",
-        expected_attendance=300,
+        expected_attendance=expected_attendance,
         status=status,
         organiser_id=organiser_id,
         organiser_name="Dylan",
@@ -128,6 +131,10 @@ class TestRequestingABooking:
             "endsAt",
             "status",
             "requestedAt",
+            "headcount",
+            "requiredLayout",
+            "requiredFacilities",
+            "accessibilityNeeds",
             "cancellation",
         }
         assert isinstance(body["id"], str)
@@ -404,6 +411,7 @@ class TestEventStatus:
             starts_at="2027-11-02T09:00",
             ends_at="2027-11-02T17:00",
             requested_by_id=COORDINATOR_ID,
+            headcount=30,
         )
 
         assert len(client.get(path(), headers=coordinator).json()) == 1
@@ -517,14 +525,14 @@ class TestRefusals:
 
 
 def test_a_booking_starting_today_is_accepted(client, auth_headers, event):
-    """The past is judged by date, so later today is never refused for being past."""
+    """The past is judged by date, so a time earlier today is not refused as past."""
     today = date.today().isoformat()
 
     response = request(
         client,
         auth_headers("Event Coordinator"),
-        startsAt=f"{today}T23:58",
-        endsAt=f"{today}T23:59",
+        startsAt=f"{today}T09:00",
+        endsAt=f"{today}T10:00",
     )
 
     assert response.status_code == 201, response.text
@@ -577,16 +585,23 @@ def test_the_whole_journey_through_the_routes(client, organiser, coordinator):
     hall = client.post(
         f"/events/{created['id']}/bookings", json=BOOKING, headers=coordinator
     )
+    # US18.1: the breakout room has its own headcount. Checked against the
+    # event's 300 it would not fit Seminar Room 4, which holds 60.
     breakout = client.post(
         f"/events/{created['id']}/bookings",
-        json={**BOOKING, "venueId": SEMINAR_ROOM, "startsAt": "2027-11-02T13:00"},
+        json={
+            **BOOKING,
+            "venueId": SEMINAR_ROOM,
+            "startsAt": "2027-11-02T13:00",
+            "headcount": 40,
+        },
         headers=coordinator,
     )
     assert hall.status_code == 201, hall.text
     assert breakout.status_code == 201, breakout.text
 
     seen = client.get(f"/events/{created['id']}/bookings", headers=organiser).json()
-    assert [(b["venueName"], b["status"]) for b in seen] == [
-        ("Great Hall", "Requested"),
-        ("Seminar Room 4", "Requested"),
+    assert [(b["venueName"], b["status"], b["headcount"]) for b in seen] == [
+        ("Great Hall", "Requested", 300),
+        ("Seminar Room 4", "Requested", 40),
     ]

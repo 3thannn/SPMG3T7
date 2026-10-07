@@ -10,6 +10,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   EMPTY_UNAVAILABILITY,
+  listedItems,
   NOT_RECORDED,
   NO_FILTERS,
   REASON_MAX,
@@ -419,5 +420,24 @@ describe('the unavailability requests', () => {
     respond(404, { detail: { code: 'venue_not_found', message: 'Gone.' } })
 
     await expect(listUnavailability('999', session)).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('listedItems: what a venue lists, in either of the catalogue\'s formats', () => {
+  it('reads a plain list', () => {
+    expect(listedItems('Theatre, standing;  cabaret ')).toEqual(['Theatre', 'standing', 'cabaret'])
+  })
+
+  it('reads a Postgres array literal, quotes and all', () => {
+    expect(listedItems('{stage,"AV system","the \\"big\\" room, upstairs"}')).toEqual([
+      'stage',
+      'AV system',
+      'the "big" room, upstairs',
+    ])
+  })
+
+  it('lists nothing for an empty field or an empty array', () => {
+    expect(listedItems('')).toEqual([])
+    expect(listedItems('{}')).toEqual([])
   })
 })

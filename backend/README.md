@@ -144,6 +144,7 @@ button is a courtesy and a refused request is the rule.
 | `GET /events/{id}/bookings`  | owning Organiser, assigned Coordinator | The event's venue bookings, soonest first (US14.1) |
 | `POST /events/{id}/bookings` | assigned Coordinator        | Request one venue; it starts Requested (US14.1) |
 | `POST /events/{id}/bookings/{bookingId}/cancel` | assigned Coordinator | Cancel one booking with a reason (US14.2) |
+| `POST /events/{id}/bookings/suitability` | assigned Coordinator | Whether a venue suits a booking; stores nothing (US18.1) |
 
 An event that belongs to another Organiser answers `404`, not `403`. Telling
 someone an event exists but is not theirs tells them something about another
@@ -301,6 +302,52 @@ curl -X POST http://localhost:8000/events/12/bookings/31/cancel \
   `already-cancelled`, including when two cancels race: the update only matches
   a booking that is still Requested. A blank reason, or one over 2,000
   characters, answers `400` with `invalid_booking`.
+
+### Venue suitability (US18.1)
+
+Before a venue is requested, the system says whether it suits the booking:
+Suitable, or Not suitable with every reason. A venue that is not suitable cannot
+be requested.
+
+```bash
+curl -X POST http://localhost:8000/events/12/bookings/suitability \
+  -H "Authorization: Bearer <coordinator token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"venueId":"3","startsAt":"2027-11-02T13:00","endsAt":"2027-11-02T15:00",
+       "headcount":40,"layout":"Classroom","facilities":["projector"],
+       "accessibilityNeeds":["step-free access"]}'
+# {"venueId":"3","suitable":true,"reasons":[],"notes":[]}
+```
+
+- **What a booking needs** is on the booking, not the event: its own
+  `headcount`, and an optional `layout`, `facilities` and `accessibilityNeeds`.
+  The headcount defaults to the event's expected attendance when left out, so a
+  breakout room in a multi-venue event (Week 7 change #3) is checked against the
+  people in that room, not the whole event. All four are stored with the booking
+  and returned on it. Existing Supabase projects must run
+  [`SUPABASE_ADD_BOOKING_NEEDS.sql`](SUPABASE_ADD_BOOKING_NEEDS.sql), which also
+  copies each existing booking's headcount from its event.
+- **The rule** is [`app/suitability.py`](app/suitability.py), and it is pure: a
+  venue and a booking's needs in, a verdict out. Not suitable if the headcount is
+  more than the capacity (equal is suitable), the layout is not one the venue
+  supports, a facility or accessibility need is not listed, or the booking runs
+  outside the venue's operating hours on any day it touches.
+- **Matching.** Layouts match whole, ignoring case and spacing. Facilities and
+  accessibility needs match as a case-insensitive substring of a listed item, as
+  US9.3's filter does, so "projector" is met by "twin projectors". Venue fields
+  are read both as plain lists and as Postgres array literals (`{stage,"AV
+  system"}`), which is how the seeded catalogue holds them.
+- **Missing data.** A need is only met if the venue lists it, so a venue with no
+  layouts recorded supports none. Operating hours are a limit rather than a
+  feature, so hours that are not recorded, or that cannot be read, are not held
+  against the venue: the verdict carries a `note` saying the time was not
+  checked. Hours read as clauses like `08:00-22:00`, `Mon-Sat 08:00-22:00` or
+  `Weekdays 09:00-17:00`, comma-separated; a closing time of `23:59` means
+  midnight. Overnight hours (`22:00-02:00`) are not read.
+- **Enforced, not just shown.** `POST /events/{id}/bookings` runs the same
+  `assess` and answers `409` with `not-suitable` and the same `reasons` list
+  when it fails. The check takes exactly the request's body and is refused the
+  same ways (`404`, then `409`, then `400`), so the form and the rule agree.
 
 ## Venues
 
@@ -572,6 +619,7 @@ app/
   events.py         /events routes — US4.1, US4.2, and US14.1's /events/{id}/bookings
   event_store.py    event data access, over the events and status_changes tables
   booking_store.py  venue booking data access, over the venue_bookings table
+  suitability.py    whether a venue suits one booking — US18.1, no I/O
   event_status.py   the status label set, the submit rule and the US7.3 review rule
   venues.py         /venues routes — US9.1a-c, US9.2 and US9.3
   venue_store.py    venue data access, over the venues table
@@ -592,5 +640,7 @@ tests/
   test_venue_store.py         the Supabase venue queries, against a fake client
   test_venue_bookings.py      US14.1, through the routes
   test_venue_booking_cancellation.py  US14.2, through the routes
+  test_venue_suitability.py   US18.1, through the routes
+  test_suitability.py         the US18.1 rule on its own
   test_booking_store.py       the Supabase booking queries, against a fake client
 ```

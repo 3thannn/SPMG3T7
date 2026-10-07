@@ -1,11 +1,12 @@
 /**
- * The venue bookings card on an event — US14.1 and US14.2.
+ * The venue bookings card on an event — US14.1, US14.2 and US18.1.
  *
- * Who may request or cancel, and for which events, is the server's call and is
- * tested in backend/tests/test_venue_bookings.py and
- * test_venue_booking_cancellation.py. This card's job is showing every booking
- * for the event together, offering the forms to the assigned Coordinator, and
- * keeping each request and each cancellation to the one booking it is about.
+ * Who may request or cancel, for which events, and whether a venue suits a
+ * booking, are the server's calls, tested in backend/tests. This card's job is
+ * showing every booking for the event together, offering the forms to the
+ * assigned Coordinator, showing the server's suitability verdict as a venue is
+ * picked, and keeping each request and cancellation to the one booking it is
+ * about.
  */
 
 import { render, screen, waitFor, within } from '@testing-library/react'
@@ -15,11 +16,13 @@ import EventBookings from './EventBookings'
 import {
   EventRuleError,
   cancelBooking,
+  checkSuitability,
   formatBookingTimes,
   listBookings,
   requestBooking,
   type BookingRecord,
   type EventRecord,
+  type Suitability,
 } from '../eventsStore'
 import { formatTimestamp } from '../status'
 import { listVenues, type VenueRecord } from '../venuesStore'
@@ -31,6 +34,11 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   listBookings: vi.fn(async () => []),
   requestBooking: vi.fn(),
   cancelBooking: vi.fn(),
+  // US18.1: Suitable unless a test says otherwise, so the US14.1 tests below
+  // are about requesting rather than about the check.
+  checkSuitability: vi.fn(
+    async (): Promise<Suitability> => ({ venueId: '1', suitable: true, reasons: [], notes: [] }),
+  ),
 }))
 
 vi.mock('../venuesStore', async (importOriginal) => ({
@@ -41,6 +49,7 @@ vi.mock('../venuesStore', async (importOriginal) => ({
 const listBookingsMock = vi.mocked(listBookings)
 const requestBookingMock = vi.mocked(requestBooking)
 const cancelBookingMock = vi.mocked(cancelBooking)
+const checkSuitabilityMock = vi.mocked(checkSuitability)
 const listVenuesMock = vi.mocked(listVenues)
 
 const organiser = buildSession({ role: 'Event Organiser', id: '1', name: 'Dylan' })
@@ -73,6 +82,10 @@ function booking(overrides: Partial<BookingRecord> = {}): BookingRecord {
     endsAt: '2027-11-02T17:00:00',
     status: 'Requested',
     requestedAt: '2026-10-07T09:00:00',
+    headcount: 300,
+    requiredLayout: '',
+    requiredFacilities: [],
+    accessibilityNeeds: [],
     cancellation: null,
     ...overrides,
   }
@@ -211,13 +224,21 @@ it('requests the chosen venue and adds it to the list as Requested', async () =>
   await waitFor(() =>
     expect(requestBookingMock).toHaveBeenCalledWith(
       '900',
-      { venueId: '1', startsAt: '2027-11-02T09:00', endsAt: '2027-11-02T17:00' },
+      {
+        venueId: '1',
+        startsAt: '2027-11-02T09:00',
+        endsAt: '2027-11-02T17:00',
+        headcount: '300',
+        layout: '',
+        facilities: '',
+        accessibilityNeeds: '',
+      },
       coordinator,
     ),
   )
-  expect(await screen.findByRole('status')).toHaveTextContent(
-    'Requested Great Hall. It is waiting for Venue Staff to approve it.',
-  )
+  expect(
+    await screen.findByText('Requested Great Hall. It is waiting for Venue Staff to approve it.'),
+  ).toBeInTheDocument()
   expect(within(bookingList()).getByText('Great Hall')).toBeInTheDocument()
   expect(within(bookingList()).getByText('Requested')).toBeInTheDocument()
 })
@@ -231,7 +252,7 @@ it('clears the venue after a request but keeps the times for the next one', asyn
   await user.selectOptions(screen.getByLabelText('Venue'), '1')
   await user.click(screen.getByRole('button', { name: 'Request venue' }))
 
-  await screen.findByRole('status')
+  await screen.findByText(/Requested Great Hall/)
   expect(screen.getByLabelText('Venue')).toHaveValue('')
   expect(screen.getByLabelText('Starts')).toHaveValue('2027-11-02T09:00')
 })
@@ -579,4 +600,239 @@ it('still shows the reason when the user who cancelled has been removed', async 
   expect(await screen.findByRole('listitem')).toHaveTextContent(
     `Cancelled by a former user, ${formatTimestamp('2026-10-08T10:00:00')}: ${REASON}`,
   )
+})
+
+// -- US18.1: suitability per booking ------------------------------------------------
+
+function verdictOf(overrides: Partial<Suitability> = {}): Suitability {
+  return { venueId: '1', suitable: true, reasons: [], notes: [], ...overrides }
+}
+
+const NOT_SUITABLE = verdictOf({
+  venueId: '3',
+  suitable: false,
+  reasons: ['It holds 60 people, and this booking is for 300.'],
+})
+
+it('starts the headcount at the event attendance', async () => {
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  await formReady()
+  expect(screen.getByLabelText('Headcount')).toHaveValue(300)
+})
+
+it('leaves the headcount for the Coordinator when the event has no attendance', async () => {
+  render(<EventBookings event={event({ expectedAttendance: null })} session={coordinator} />)
+
+  await formReady()
+  expect(screen.getByLabelText('Headcount')).toHaveValue(null)
+})
+
+it('checks a venue as soon as it is picked, and says Suitable', async () => {
+  const user = userEvent.setup()
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+  expect(checkSuitabilityMock).not.toHaveBeenCalled()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+
+  expect(await screen.findByText('Suitable')).toBeInTheDocument()
+  expect(checkSuitabilityMock).toHaveBeenCalledWith(
+    '900',
+    {
+      venueId: '1',
+      startsAt: '2027-11-02T09:00',
+      endsAt: '2027-11-02T17:00',
+      headcount: '300',
+      layout: '',
+      facilities: '',
+      accessibilityNeeds: '',
+    },
+    coordinator,
+  )
+  expect(screen.getByRole('button', { name: 'Request venue' })).toBeEnabled()
+})
+
+it('says Not suitable with the reasons, and will not request it', async () => {
+  const user = userEvent.setup()
+  checkSuitabilityMock.mockResolvedValue(NOT_SUITABLE)
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '3')
+
+  expect(await screen.findByText('Not suitable')).toBeInTheDocument()
+  expect(
+    screen.getByText('It holds 60 people, and this booking is for 300.'),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Request venue' })).toBeDisabled()
+  await user.click(screen.getByRole('button', { name: 'Request venue' }))
+  expect(requestBookingMock).not.toHaveBeenCalled()
+})
+
+it('checks again with the booking\'s own headcount', async () => {
+  const user = userEvent.setup()
+  checkSuitabilityMock.mockImplementation(async (_eventId, input) =>
+    Number(input.headcount) > 60 ? NOT_SUITABLE : verdictOf({ venueId: '3' }),
+  )
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+  await user.selectOptions(screen.getByLabelText('Venue'), '3')
+  await screen.findByText('Not suitable')
+
+  await user.clear(screen.getByLabelText('Headcount'))
+  await user.type(screen.getByLabelText('Headcount'), '40')
+
+  expect(await screen.findByText('Suitable')).toBeInTheDocument()
+  expect(screen.queryByText('Not suitable')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Request venue' })).toBeEnabled()
+  expect(checkSuitabilityMock).toHaveBeenLastCalledWith(
+    '900',
+    expect.objectContaining({ venueId: '3', headcount: '40' }),
+    coordinator,
+  )
+})
+
+it('shows what could not be checked alongside the verdict', async () => {
+  const user = userEvent.setup()
+  checkSuitabilityMock.mockResolvedValue(
+    verdictOf({
+      notes: ['Its operating hours are not recorded, so the booking time was not checked.'],
+    }),
+  )
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+
+  expect(
+    await screen.findByText(
+      'Its operating hours are not recorded, so the booking time was not checked.',
+    ),
+  ).toBeInTheDocument()
+})
+
+it('shows a check the server refuses in place of a verdict', async () => {
+  const user = userEvent.setup()
+  checkSuitabilityMock.mockRejectedValue(new EventRuleError('A booking cannot start in the past.'))
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+
+  expect(await screen.findByText('A booking cannot start in the past.')).toBeInTheDocument()
+  expect(screen.queryByText('Suitable')).not.toBeInTheDocument()
+})
+
+it('does not check while the form would be refused anyway', async () => {
+  const user = userEvent.setup()
+  render(<EventBookings event={event({ expectedAttendance: null })} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  expect(checkSuitabilityMock).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'Request venue' }))
+  expect(screen.getByRole('alert')).toHaveTextContent('Give the headcount for this booking.')
+})
+
+it('refuses a headcount of nobody before sending anything', async () => {
+  const user = userEvent.setup()
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+  await user.clear(screen.getByLabelText('Headcount'))
+  await user.type(screen.getByLabelText('Headcount'), '0')
+  await user.click(screen.getByRole('button', { name: 'Request venue' }))
+
+  expect(screen.getByRole('alert')).toHaveTextContent('The headcount must be at least 1.')
+  expect(requestBookingMock).not.toHaveBeenCalled()
+})
+
+it('sends what the booking needs with the request', async () => {
+  const user = userEvent.setup()
+  requestBookingMock.mockResolvedValue(booking())
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+  await user.clear(screen.getByLabelText('Headcount'))
+  await user.type(screen.getByLabelText('Headcount'), '120')
+  await user.type(screen.getByLabelText('Layout (optional)'), 'Theatre')
+  await user.type(screen.getByLabelText('Facilities needed (optional)'), 'projector, PA system')
+  await user.type(screen.getByLabelText('Accessibility needs (optional)'), 'hearing loop')
+  await screen.findByText('Suitable')
+  await user.click(screen.getByRole('button', { name: 'Request venue' }))
+
+  await waitFor(() =>
+    expect(requestBookingMock).toHaveBeenCalledWith(
+      '900',
+      expect.objectContaining({
+        headcount: '120',
+        layout: 'Theatre',
+        facilities: 'projector, PA system',
+        accessibilityNeeds: 'hearing loop',
+      }),
+      coordinator,
+    ),
+  )
+})
+
+it('shows a refusal when the server finds the venue unsuitable at request time', async () => {
+  const user = userEvent.setup()
+  requestBookingMock.mockRejectedValue(
+    new EventRuleError('Great Hall is not suitable for this booking. It holds 500 people.'),
+  )
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+  await user.click(screen.getByRole('button', { name: 'Request venue' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Great Hall is not suitable for this booking.',
+  )
+})
+
+it('says what each booking was made for', async () => {
+  listBookingsMock.mockResolvedValue([
+    booking({
+      headcount: 40,
+      requiredLayout: 'Classroom',
+      requiredFacilities: ['projector', 'whiteboard'],
+      accessibilityNeeds: ['step-free access'],
+    }),
+  ])
+
+  render(<EventBookings event={event()} session={organiser} />)
+
+  expect(await screen.findByRole('listitem')).toHaveTextContent(
+    'For 40 people · Classroom layout · Needs projector, whiteboard · Access: step-free access',
+  )
+})
+
+it('says nothing about needs on a booking made before there were any', async () => {
+  listBookingsMock.mockResolvedValue([booking({ headcount: null })])
+
+  render(<EventBookings event={event()} session={organiser} />)
+
+  const row = await screen.findByRole('listitem')
+  expect(row).not.toHaveTextContent('For ')
+  expect(row.querySelector('.booking-needs')).toBeNull()
+})
+
+it('suggests every layout the catalogue lists, once each', async () => {
+  listVenuesMock.mockResolvedValue([
+    { ...venue('1', 'Great Hall', 500), supportedLayouts: 'Theatre, cabaret' },
+    { ...venue('3', 'Seminar Room 4', 60), supportedLayouts: '{theatre,"breakout tables"}' },
+  ])
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  const options = [...document.querySelectorAll('#booking-layouts option')].map(
+    (option) => (option as HTMLOptionElement).value,
+  )
+  expect(options).toEqual(['breakout tables', 'cabaret', 'Theatre'])
 })

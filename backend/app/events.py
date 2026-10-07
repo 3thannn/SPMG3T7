@@ -17,13 +17,14 @@ only ever compares them.
 """
 
 import re
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import booking_store, event_store, venue_store
+from app import booking_store, event_store, suitability, venue_store
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
 from app.booking_store import Booking, BookingStatus, StaleBookingStatus
 from app.event_status import (
@@ -39,7 +40,9 @@ from app.event_status import (
 )
 from app.event_store import Event, StaleEventStatus
 from app.permissions import Permission, has_permission
+from app.suitability import BookingNeeds, Verdict
 from app.users import User
+from app.venue_store import Venue
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -584,6 +587,16 @@ class BookingOut(BaseModel):
     ends_at: str = Field(serialization_alias="endsAt")
     status: BookingStatus
     requested_at: str = Field(serialization_alias="requestedAt")
+    #: US18.1: how many people this booking is for. Null only on a booking made
+    #: before US18.1 for an event that had no attendance to copy.
+    headcount: int | None = None
+    required_layout: str = Field(default="", serialization_alias="requiredLayout")
+    required_facilities: list[str] = Field(
+        default_factory=list, serialization_alias="requiredFacilities"
+    )
+    accessibility_needs: list[str] = Field(
+        default_factory=list, serialization_alias="accessibilityNeeds"
+    )
     #: Null unless the booking is Cancelled, so "not cancelled" is one state
     #: rather than three empty fields.
     cancellation: CancellationOut | None = None
@@ -600,6 +613,10 @@ def _booking_out(booking: Booking) -> BookingOut:
         ends_at=booking.ends_at,
         status=booking.status,
         requested_at=booking.requested_at,
+        headcount=booking.headcount,
+        required_layout=booking.required_layout,
+        required_facilities=list(booking.required_facilities),
+        accessibility_needs=list(booking.accessibility_needs),
         cancellation=(
             CancellationOut(
                 at=cancellation.at,
@@ -614,13 +631,18 @@ def _booking_out(booking: Booking) -> BookingOut:
 
 
 class BookingInput(BaseModel):
-    """What a Coordinator sends to request a venue for an event.
+    """What a Coordinator sends to request a venue for an event, or to check one.
 
     Every field is optional here so that a missing or malformed one is a
     sentence from `_validated_booking` with this module's 400 rather than
     Pydantic's 422, which is the same reason `UnavailabilityInput` takes its
     dates as text. The venue id may come as a string, the way ids go out, or
     as a number.
+
+    US18.1 added what the booking needs. The headcount defaults to the event's
+    expected attendance when it is left out. The layout, facilities and
+    accessibility needs are optional; each list may be sent as an array or as
+    one comma-separated string.
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -628,6 +650,10 @@ class BookingInput(BaseModel):
     venue_id: str | int | None = Field(default=None, alias="venueId")
     starts_at: str | None = Field(default=None, alias="startsAt")
     ends_at: str | None = Field(default=None, alias="endsAt")
+    headcount: int | str | None = None
+    layout: str | None = None
+    facilities: list[str] | str | None = None
+    accessibility_needs: list[str] | str | None = Field(default=None, alias="accessibilityNeeds")
 
 
 #: What a datetime-local input sends, with or without seconds, in ASCII digits.
@@ -664,8 +690,71 @@ def _booking_time(raw: str | None, *, which: str) -> tuple[str, datetime]:
         raise _invalid_booking(f"The {which} time {text} is not a real date and time.") from None
 
 
-def _validated_booking(payload: BookingInput) -> tuple[int, str, str]:
-    """US14.1: a venue, a start, and an end after it.
+#: Postgres `integer`, as for a venue's capacity (US9.1a).
+HEADCOUNT_MAX = 2_147_483_647
+#: Per layout, facility or accessibility need. About keeping a need a need.
+NEED_MAX = 100
+#: Per list. A booking needing more than this is a venue description, not a need.
+NEEDS_MAX = 20
+_WHOLE_NUMBER = re.compile(r"[0-9]+")
+
+
+def _headcount(raw: int | str | None, event: Event) -> int:
+    """US18.1: the booking's own headcount, or the event's attendance by default."""
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        attendance = event.expected_attendance
+        if attendance is None or attendance < 1:
+            raise _invalid_booking(
+                "Give the headcount for this booking. The event has no expected "
+                "attendance to start from."
+            )
+        return attendance
+    text = str(raw).strip()
+    if isinstance(raw, bool) or not _WHOLE_NUMBER.fullmatch(text):
+        raise _invalid_booking("Give the headcount as a whole number of people.")
+    headcount = int(text)
+    if headcount < 1:
+        raise _invalid_booking("The headcount must be at least 1.")
+    if headcount > HEADCOUNT_MAX:
+        raise _invalid_booking("That headcount is larger than any venue this system can hold.")
+    return headcount
+
+
+def _need(text: str, *, what: str) -> str:
+    cleaned = " ".join(text.split())
+    if len(cleaned) > NEED_MAX:
+        raise _invalid_booking(f"Keep each {what} to {NEED_MAX} characters or fewer.")
+    return cleaned
+
+
+def _needs(raw: list[str] | str | None, *, what: str, plural: str) -> tuple[str, ...]:
+    """A list of needs, trimmed, blanks dropped, and each named once."""
+    if raw is None:
+        return ()
+    items = raw.split(",") if isinstance(raw, str) else raw
+    kept: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        need = _need(str(item), what=what)
+        if need and need.casefold() not in seen:
+            seen.add(need.casefold())
+            kept.append(need)
+    if len(kept) > NEEDS_MAX:
+        raise _invalid_booking(f"List at most {NEEDS_MAX} {plural}.")
+    return tuple(kept)
+
+
+@dataclass(frozen=True)
+class _ValidBooking:
+    venue_id: int
+    #: As they will be stored, which is as they were sent.
+    starts_at: str
+    ends_at: str
+    needs: BookingNeeds
+
+
+def _validated_booking(payload: BookingInput, event: Event) -> _ValidBooking:
+    """US14.1: a venue, a start, and an end after it. US18.1: what it needs.
 
     One problem is named at a time, in the order the form shows the fields. The
     past is judged by date, as `_validate_submission` judges an event's start:
@@ -684,7 +773,69 @@ def _validated_booking(payload: BookingInput) -> tuple[int, str, str]:
         raise _invalid_booking("The booking must end after it starts.")
     if start.date() < date.today():
         raise _invalid_booking("A booking cannot start in the past.")
-    return int(raw_venue), starts_at, ends_at
+
+    needs = BookingNeeds(
+        headcount=_headcount(payload.headcount, event),
+        starts_at=start,
+        ends_at=end,
+        layout=_need(payload.layout or "", what="layout"),
+        facilities=_needs(payload.facilities, what="facility", plural="facilities"),
+        accessibility=_needs(
+            payload.accessibility_needs,
+            what="accessibility need",
+            plural="accessibility needs",
+        ),
+    )
+    return _ValidBooking(int(raw_venue), starts_at, ends_at, needs)
+
+
+def _prepared_booking(
+    event_id: str, payload: BookingInput, user: User
+) -> tuple[Event, Venue, _ValidBooking]:
+    """Everything a request and a suitability check both need, refused the same way.
+
+    404, then 409, then 400. A request for an event the caller cannot see is
+    wrong whatever it says, and one for a closed event is refused however
+    well-formed it is.
+    """
+    event = _readable(_as_id(event_id), user)
+
+    refusal = check_booking(status=event.status)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": booking_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+
+    valid = _validated_booking(payload, event)
+    venue = venue_store.repository().get_venue(valid.venue_id)
+    if venue is None:
+        raise _venue_missing()
+    return event, venue, valid
+
+
+class SuitabilityOut(BaseModel):
+    """US18.1: Suitable or Not suitable, with every reason."""
+
+    venue_id: str = Field(serialization_alias="venueId")
+    suitable: bool
+    #: Why it is not suitable, one sentence each. Empty when it is.
+    reasons: list[str]
+    #: What could not be checked, such as hours nobody has recorded.
+    notes: list[str]
+
+
+def _suitability_out(venue: Venue, verdict: Verdict) -> SuitabilityOut:
+    return SuitabilityOut(
+        venue_id=str(venue.id),
+        suitable=verdict.suitable,
+        reasons=list(verdict.reasons),
+        notes=list(verdict.notes),
+    )
 
 
 @router.get("/{event_id}/bookings", response_model=list[BookingOut])
@@ -719,36 +870,54 @@ def request_booking(
     admits the role, and `_readable` admits the assignment: it answers 404 to a
     Coordinator the event is not assigned to, as US8.1 does for the event itself.
 
-    404, then 409, then 400. A request for an event the caller cannot see is
-    wrong whatever it says, and one for a closed event is refused however
-    well-formed it is.
+    US18.1: a venue that is not suitable cannot be requested. The refusal is a
+    409 with `not-suitable` and every reason, from the same `assess` the
+    suitability check shows, so the form and the rule agree.
     """
-    event = _readable(_as_id(event_id), user)
+    event, venue, valid = _prepared_booking(event_id, payload, user)
 
-    refusal = check_booking(status=event.status)
-    if refusal is not None:
+    verdict = suitability.assess(venue, valid.needs)
+    if not verdict.suitable:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": EventError.REFUSED,
-                "message": booking_refusal_message(refusal),
-                "reason": str(refusal),
+                "message": f"{venue.name} is not suitable for this booking. "
+                + " ".join(verdict.reasons),
+                "reason": "not-suitable",
+                "reasons": list(verdict.reasons),
             },
         )
-
-    venue_id, starts_at, ends_at = _validated_booking(payload)
-    venue = venue_store.repository().get_venue(venue_id)
-    if venue is None:
-        raise _venue_missing()
 
     created = booking_store.repository().create(
         event_id=event.id,
         venue_id=venue.id,
-        starts_at=starts_at,
-        ends_at=ends_at,
+        starts_at=valid.starts_at,
+        ends_at=valid.ends_at,
         requested_by_id=user.id,
+        headcount=valid.needs.headcount,
+        required_layout=valid.needs.layout,
+        required_facilities=valid.needs.facilities,
+        accessibility_needs=valid.needs.accessibility,
     )
     return _booking_out(created)
+
+
+@router.post("/{event_id}/bookings/suitability", response_model=SuitabilityOut)
+def check_suitability(
+    event_id: str,
+    payload: BookingInput,
+    user: Annotated[User, Depends(require_permission(Permission.BOOKINGS_REQUEST))],
+) -> SuitabilityOut:
+    """US18.1: whether the chosen venue suits this booking, before it is requested.
+
+    Takes exactly what a request takes and stores nothing, so the form can show
+    Suitable or Not suitable as the Coordinator picks a venue and fills in what
+    the booking needs. Refused the way a request is: the same people, the same
+    events and the same validation.
+    """
+    _, venue, valid = _prepared_booking(event_id, payload, user)
+    return _suitability_out(venue, suitability.assess(venue, valid.needs))
 
 
 # -- US14.2: cancelling one booking ----------------------------------------------

@@ -128,9 +128,10 @@ CREATE INDEX ix_venue_unavailability_venue_start
 CREATE INDEX ix_venue_unavailability_created_by_id
     ON venue_unavailability(created_by_id);
 
--- US14.1: one row per venue an event asks for; US14.2 adds cancelling one. See
--- SUPABASE_ADD_VENUE_BOOKINGS.sql and SUPABASE_CANCEL_VENUE_BOOKINGS.sql for
--- why each constraint is what it is.
+-- US14.1: one row per venue an event asks for; US14.2 adds cancelling one and
+-- US18.1 what it needs. See SUPABASE_ADD_VENUE_BOOKINGS.sql,
+-- SUPABASE_CANCEL_VENUE_BOOKINGS.sql and SUPABASE_ADD_BOOKING_NEEDS.sql for why
+-- each constraint is what it is.
 CREATE TABLE venue_bookings (
     id SERIAL PRIMARY KEY,
     event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
@@ -140,10 +141,16 @@ CREATE TABLE venue_bookings (
     status booking_status NOT NULL DEFAULT 'Requested',
     requested_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    -- US18.1: what the booking needs of a venue. See SUPABASE_ADD_BOOKING_NEEDS.sql.
+    headcount INTEGER,
+    required_layout TEXT,
+    required_facilities TEXT[] NOT NULL DEFAULT '{}',
+    accessibility_needs TEXT[] NOT NULL DEFAULT '{}',
     cancelled_at TIMESTAMP,
     cancellation_reason TEXT,
     cancelled_by_id INTEGER,
     CONSTRAINT venue_bookings_end_after_start CHECK (end_at > start_at),
+    CONSTRAINT venue_bookings_headcount_positive CHECK (headcount IS NULL OR headcount >= 1),
     CONSTRAINT venue_bookings_cancelled_by_id_fkey
         FOREIGN KEY (cancelled_by_id) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT venue_bookings_cancellation_recorded CHECK (

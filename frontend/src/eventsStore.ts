@@ -216,6 +216,15 @@ export type BookingRecord = {
    */
   status: 'Requested' | 'Cancelled'
   requestedAt: string
+  /**
+   * US18.1: how many people this booking is for. null only on a booking made
+   * before US18.1 for an event that had no attendance to copy.
+   */
+  headcount: number | null
+  /** Empty when the booking asked for no particular layout. */
+  requiredLayout: string
+  requiredFacilities: string[]
+  accessibilityNeeds: string[]
   /** US14.2: who cancelled, when and why. null unless the status is Cancelled. */
   cancellation: BookingCancellation | null
 }
@@ -231,11 +240,51 @@ export type BookingCancellation = {
 /** The server's cap on a cancellation reason, mirrored so the form can say so. */
 export const CANCELLATION_REASON_MAX = 2000
 
-/** What the Coordinator's form sends — the values of its three inputs. */
+/**
+ * The Coordinator's booking form, as typed. `bookingPayload` turns it into what
+ * the API takes, so the form never holds a half-parsed number or list.
+ */
 export type BookingInput = {
   venueId: string
   startsAt: string
   endsAt: string
+  /** US18.1: starts as the event's expected attendance. */
+  headcount: string
+  layout: string
+  /** Comma-separated, as typed. */
+  facilities: string
+  accessibilityNeeds: string
+}
+
+/** A comma-separated field as a list, blanks dropped. */
+export function splitNeeds(text: string): string[] {
+  return text
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+/** The form as the API reads it: a number for the headcount, lists for needs. */
+export function bookingPayload(input: BookingInput) {
+  return {
+    venueId: input.venueId,
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    headcount: Number(input.headcount.trim()),
+    layout: input.layout.trim(),
+    facilities: splitNeeds(input.facilities),
+    accessibilityNeeds: splitNeeds(input.accessibilityNeeds),
+  }
+}
+
+/** US18.1: Suitable or Not suitable for one venue, with every reason. */
+export type Suitability = {
+  venueId: string
+  suitable: boolean
+  /** Why it is not suitable, one sentence each. Empty when it is. */
+  reasons: string[]
+  /** What could not be checked, such as hours nobody has recorded. */
+  notes: string[]
 }
 
 /**
@@ -250,6 +299,10 @@ export function validateBooking(input: BookingInput): string {
   if (!input.startsAt.trim()) return 'Give the booking a start time.'
   if (!input.endsAt.trim()) return 'Give the booking an end time.'
   if (input.endsAt <= input.startsAt) return 'The booking must end after it starts.'
+  const headcount = parseAttendance(input.headcount)
+  if (headcount === null) return 'Give the headcount for this booking.'
+  if (headcount === 'invalid') return 'Give the headcount as a whole number of people.'
+  if (headcount < 1) return 'The headcount must be at least 1.'
   return ''
 }
 
@@ -286,9 +339,34 @@ export async function requestBooking(
     const response = await authorizedFetch(`/events/${eventId}/bookings`, session.token, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify(bookingPayload(input)),
     })
     return (await response.json()) as BookingRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/**
+ * US18.1: whether the chosen venue suits this booking. Stores nothing; the
+ * request is refused by the server on the same verdict.
+ */
+export async function checkSuitability(
+  eventId: string,
+  input: BookingInput,
+  session: Session,
+): Promise<Suitability> {
+  try {
+    const response = await authorizedFetch(
+      `/events/${eventId}/bookings/suitability`,
+      session.token,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bookingPayload(input)),
+      },
+    )
+    return (await response.json()) as Suitability
   } catch (error) {
     return asRuleError(error)
   }

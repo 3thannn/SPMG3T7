@@ -17,6 +17,10 @@ Three choices worth knowing:
   statuses it moves a booking to arrive with it.
 * A cancelled booking (US14.2) is kept, not deleted. It stays on the event with
   who cancelled it, when and why, and it stops holding the venue for its slot.
+* Each booking carries what it needs of a venue (US18.1): its own headcount,
+  which is why a breakout room is not checked against the whole event's
+  attendance, and an optional layout, facilities and accessibility needs. They
+  are stored so the event page can show what each room was booked for.
 """
 
 from dataclasses import dataclass, field, replace
@@ -34,6 +38,7 @@ TABLE = "venue_bookings"
 #: constraint name, as US8.1 had to for an event's two users.
 COLUMNS = (
     "id, event_id, venue_id, start_at, end_at, status, requested_by_id, created_at, "
+    "headcount, required_layout, required_facilities, accessibility_needs, "
     "cancelled_at, cancelled_by_id, cancellation_reason, venues(name), "
     "cancelled_by:users!venue_bookings_cancelled_by_id_fkey(name)"
 )
@@ -76,6 +81,13 @@ class Booking:
     #: Who asked. Nullable so removing a user does not remove their bookings.
     requested_by_id: int | None
     requested_at: str
+    #: US18.1: how many people this booking is for. None only on a booking made
+    #: before US18.1 for an event with no attendance to copy.
+    headcount: int | None = None
+    #: US18.1: empty when the booking asked for no particular layout.
+    required_layout: str = ""
+    required_facilities: tuple[str, ...] = ()
+    accessibility_needs: tuple[str, ...] = ()
     #: Set exactly when the status is Cancelled; the table's CHECK holds that.
     cancellation: Cancellation | None = None
 
@@ -118,6 +130,10 @@ def to_booking(row: dict) -> Booking:
         status=BookingStatus(row["status"]),
         requested_by_id=row.get("requested_by_id"),
         requested_at=str(row["created_at"]) if row.get("created_at") else "",
+        headcount=row.get("headcount"),
+        required_layout=row.get("required_layout") or "",
+        required_facilities=tuple(row.get("required_facilities") or ()),
+        accessibility_needs=tuple(row.get("accessibility_needs") or ()),
         cancellation=_cancellation(row),
     )
 
@@ -137,6 +153,10 @@ class Repository(Protocol):
         starts_at: str,
         ends_at: str,
         requested_by_id: int,
+        headcount: int,
+        required_layout: str = "",
+        required_facilities: tuple[str, ...] = (),
+        accessibility_needs: tuple[str, ...] = (),
     ) -> Booking: ...
 
     def cancel(self, booking_id: int, *, actor_id: int, reason: str) -> Booking: ...
@@ -187,6 +207,10 @@ class SupabaseBookings:
         starts_at: str,
         ends_at: str,
         requested_by_id: int,
+        headcount: int,
+        required_layout: str = "",
+        required_facilities: tuple[str, ...] = (),
+        accessibility_needs: tuple[str, ...] = (),
     ) -> Booking:
         """US14.1: record one request for one venue, in the Requested state.
 
@@ -203,6 +227,12 @@ class SupabaseBookings:
             "status": str(BookingStatus.REQUESTED),
             "requested_by_id": requested_by_id,
             "created_at": _now(),
+            "headcount": headcount,
+            # NULL rather than "" for no layout, as `venue_store` keeps "nothing
+            # recorded" as one state. The lists go as JSON arrays to TEXT[].
+            "required_layout": required_layout or None,
+            "required_facilities": list(required_facilities),
+            "accessibility_needs": list(accessibility_needs),
         }
         created = supabase_client.admin().table(TABLE).insert(row).execute()
         booking = self.get_booking(created.data[0]["id"])
@@ -306,6 +336,10 @@ class InMemoryBookings:
         starts_at: str,
         ends_at: str,
         requested_by_id: int,
+        headcount: int,
+        required_layout: str = "",
+        required_facilities: tuple[str, ...] = (),
+        accessibility_needs: tuple[str, ...] = (),
     ) -> Booking:
         venue = venue_store.repository().get_venue(venue_id)
         self.next_id += 1
@@ -319,6 +353,10 @@ class InMemoryBookings:
             status=BookingStatus.REQUESTED,
             requested_by_id=requested_by_id,
             requested_at=_now(),
+            headcount=headcount,
+            required_layout=required_layout,
+            required_facilities=tuple(required_facilities),
+            accessibility_needs=tuple(accessibility_needs),
         )
         self.bookings.append(booking)
         return booking

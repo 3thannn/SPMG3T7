@@ -33,6 +33,10 @@ ROW = {
     "status": "Requested",
     "requested_by_id": 2,
     "created_at": "2026-10-07T09:00:00",
+    "headcount": 100,
+    "required_layout": "Theatre",
+    "required_facilities": ["projector"],
+    "accessibility_needs": ["hearing loop"],
     "venues": {"name": "Great Hall"},
 }
 
@@ -46,6 +50,10 @@ BOOKING = Booking(
     status=BookingStatus.REQUESTED,
     requested_by_id=2,
     requested_at="2026-10-07T09:00:00",
+    headcount=100,
+    required_layout="Theatre",
+    required_facilities=("projector",),
+    accessibility_needs=("hearing loop",),
 )
 
 
@@ -159,6 +167,7 @@ class TestSupabaseCreate:
             starts_at="2027-11-02T09:00",
             ends_at="2027-11-02T17:00",
             requested_by_id=2,
+            headcount=100,
         )
 
     def test_it_inserts_one_requested_row(self, query):
@@ -185,6 +194,64 @@ class TestSupabaseCreate:
 
         assert ("eq", "id", 7) in query.named("eq")
         assert booking.venue_name == "Great Hall"
+
+
+class TestSupabaseCreateNeeds:
+    """US18.1: what the booking needs goes in with it."""
+
+    def test_it_inserts_the_headcount_and_needs(self, query):
+        SupabaseBookings().create(
+            event_id=900,
+            venue_id=1,
+            starts_at="2027-11-02T09:00",
+            ends_at="2027-11-02T17:00",
+            requested_by_id=2,
+            headcount=120,
+            required_layout="Theatre",
+            required_facilities=("projector", "PA system"),
+            accessibility_needs=("hearing loop",),
+        )
+
+        [(_, row)] = query.named("insert")
+        assert row["headcount"] == 120
+        assert row["required_layout"] == "Theatre"
+        # Lists, which PostgREST sends to TEXT[] as JSON arrays.
+        assert row["required_facilities"] == ["projector", "PA system"]
+        assert row["accessibility_needs"] == ["hearing loop"]
+
+    def test_no_layout_is_stored_as_null(self, query):
+        SupabaseBookings().create(
+            event_id=900,
+            venue_id=1,
+            starts_at="2027-11-02T09:00",
+            ends_at="2027-11-02T17:00",
+            requested_by_id=2,
+            headcount=120,
+        )
+
+        [(_, row)] = query.named("insert")
+        assert row["required_layout"] is None
+        assert row["required_facilities"] == []
+
+    def test_a_row_from_before_us18_1_reads_back_with_no_needs(self):
+        row = {
+            key: value
+            for key, value in ROW.items()
+            if key
+            not in ("headcount", "required_layout", "required_facilities", "accessibility_needs")
+        }
+
+        booking = to_booking({**row, "headcount": None, "required_layout": None})
+
+        assert booking.headcount is None
+        assert booking.required_layout == ""
+        assert booking.required_facilities == ()
+        assert booking.accessibility_needs == ()
+
+    def test_the_needs_columns_are_selected(self):
+        needs = ("headcount", "required_layout", "required_facilities", "accessibility_needs")
+        for column in needs:
+            assert column in COLUMNS
 
 
 class TestSupabaseVenueHasBookings:
@@ -319,7 +386,12 @@ class TestInMemory:
             ("2027-11-02T09:00", "2027-11-02T12:00"),
         ]:
             store.create(
-                event_id=900, venue_id=1, starts_at=start, ends_at=end, requested_by_id=2
+                event_id=900,
+                venue_id=1,
+                starts_at=start,
+                ends_at=end,
+                requested_by_id=2,
+                headcount=100,
             )
 
         listed = store.list_for_event(900)
@@ -337,6 +409,7 @@ class TestInMemory:
             starts_at="2027-11-02T09:00",
             ends_at="2027-11-02T17:00",
             requested_by_id=2,
+            headcount=100,
         )
 
         assert booking.venue_name == "Seminar Room 4"
@@ -349,6 +422,7 @@ class TestInMemory:
             starts_at="2027-11-02T09:00",
             ends_at="2027-11-02T17:00",
             requested_by_id=2,
+            headcount=100,
         )
 
         cancelled = store.cancel(booking.id, actor_id=2, reason="Numbers dropped.")
@@ -364,6 +438,7 @@ class TestInMemory:
             starts_at="2027-11-02T09:00",
             ends_at="2027-11-02T17:00",
             requested_by_id=2,
+            headcount=100,
         )
         store.cancel(booking.id, actor_id=2, reason="Numbers dropped.")
 
@@ -379,6 +454,7 @@ class TestInMemory:
                 starts_at="2027-11-02T09:00",
                 ends_at="2027-11-02T17:00",
                 requested_by_id=2,
+                headcount=100,
             )
             for venue_id in (1, 3)
         )
