@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import type { Session } from '../api'
 import {
   assignCoordinator,
@@ -15,6 +15,9 @@ interface Props {
   session: Session
 }
 
+type SortField = 'title' | 'submittedAt' | 'startsAt' | 'expectedAttendance' | 'organiserName'
+type SortDirection = 'asc' | 'desc'
+
 /**
  * US8.2 + US8.3: Coordinator Lead's landing page - unassigned event queue.
  *
@@ -29,6 +32,11 @@ export default function UnassignedQueuePage({ session }: Props) {
   const [selectedEventForAssignment, setSelectedEventForAssignment] = useState<string | null>(null)
   const [assignError, setAssignError] = useState('')
   const [assignSuccess, setAssignSuccess] = useState('')
+
+  // Search and sort state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortField, setSortField] = useState<SortField>('submittedAt')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   // Load unassigned events
   useEffect(() => {
@@ -63,6 +71,71 @@ export default function UnassignedQueuePage({ session }: Props) {
     }
   }, [session])
 
+  // Filter and sort events
+  const filteredAndSortedEvents = useMemo(() => {
+    if (!events) return null
+
+    let filtered = events
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = events.filter(
+        (event) =>
+          event.title.toLowerCase().includes(query) ||
+          event.organiserName.toLowerCase().includes(query) ||
+          event.purpose?.toLowerCase().includes(query) ||
+          event.description?.toLowerCase().includes(query),
+      )
+    }
+
+    // Apply sorting
+    const sorted = [...filtered].sort((a, b) => {
+      let aVal: string | number | null
+      let bVal: string | number | null
+
+      switch (sortField) {
+        case 'title':
+          aVal = a.title.toLowerCase()
+          bVal = b.title.toLowerCase()
+          break
+        case 'submittedAt':
+          aVal = a.submittedAt
+          bVal = b.submittedAt
+          break
+        case 'startsAt':
+          aVal = a.startsAt ?? ''
+          bVal = b.startsAt ?? ''
+          break
+        case 'expectedAttendance':
+          aVal = a.expectedAttendance ?? 0
+          bVal = b.expectedAttendance ?? 0
+          break
+        case 'organiserName':
+          aVal = a.organiserName.toLowerCase()
+          bVal = b.organiserName.toLowerCase()
+          break
+        default:
+          return 0
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return sorted
+  }, [events, searchQuery, sortField, sortDirection])
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
   async function handleAssign(eventId: string, coordinatorId: string) {
     setAssigningEvent(eventId)
     setAssignError('')
@@ -87,45 +160,37 @@ export default function UnassignedQueuePage({ session }: Props) {
     }
   }
 
+  const displayEvents = filteredAndSortedEvents ?? []
+  const hasEvents = events && events.length > 0
+  const hasResults = displayEvents.length > 0
+
   return (
     <div className="page">
       <div className="shell">
         <header className="unassigned-header">
-          <div>
-            <h1 className="page-title">Unassigned Event Queue</h1>
-            <p className="page-subtitle">
-              Submitted events awaiting coordinator assignment
-            </p>
-          </div>
-          {events && events.length > 0 && (
+          <h1 className="page-title">Unassigned Events</h1>
+          {hasEvents && (
             <div className="queue-count">
-              <span className="count-number">{events.length}</span>
-              <span className="count-label">event{events.length === 1 ? '' : 's'} pending</span>
+              {events.length} event{events.length === 1 ? '' : 's'} awaiting assignment
             </div>
           )}
         </header>
 
         {assignSuccess && (
           <div className="alert alert-success" role="status">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M10 0C4.48 0 0 4.48 0 10C0 15.52 4.48 20 10 20C15.52 20 20 15.52 20 10C20 4.48 15.52 0 10 0ZM8 15L3 10L4.41 8.59L8 12.17L15.59 4.58L17 6L8 15Z" fill="currentColor"/>
-            </svg>
-            <span>{assignSuccess}</span>
+            {assignSuccess}
           </div>
         )}
 
         {assignError && (
           <div className="alert alert-error" role="alert">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M10 0C4.48 0 0 4.48 0 10C0 15.52 4.48 20 10 20C15.52 20 20 15.52 20 10C20 4.48 15.52 0 10 0ZM11 15H9V13H11V15ZM11 11H9V5H11V11Z" fill="currentColor"/>
-            </svg>
-            <span>{assignError}</span>
+            {assignError}
           </div>
         )}
 
         {loadError && (
           <div className="alert alert-error" role="alert">
-            <span>{loadError}</span>
+            {loadError}
           </div>
         )}
 
@@ -136,112 +201,142 @@ export default function UnassignedQueuePage({ session }: Props) {
           </div>
         ) : loadError ? null : events.length === 0 ? (
           <div className="empty-state">
-            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="2" opacity="0.2"/>
-              <path d="M32 20L32 44M20 32L44 32" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.3"/>
-            </svg>
             <h3>All caught up!</h3>
-            <p>
-              No unassigned events right now. New submissions will appear here automatically.
-            </p>
+            <p>No unassigned events right now. New submissions will appear here automatically.</p>
           </div>
         ) : (
-          <div className="events-grid">
-            {events.map((event) => (
-              <div key={event.id} className={`event-card ${assigningEvent === event.id ? 'assigning' : ''}`}>
-                <div className="event-card-header">
-                  <div className="event-title-section">
-                    <h3 className="event-title">{event.title}</h3>
-                    <StatusBadge status={event.status} />
-                  </div>
-                  {event.purpose && <p className="event-purpose">{event.purpose}</p>}
-                </div>
+          <>
+            {/* Search bar */}
+            <div className="search-bar">
+              <input
+                type="text"
+                placeholder="Search events..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="search-input"
+              />
+              {searchQuery && (
+                <button
+                  className="search-clear"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
 
-                <div className="event-meta-grid">
-                  <div className="meta-item">
-                    <span className="meta-label">Proposed Date</span>
-                    <span className="meta-value">
-                      {event.startsAt ? formatTimestamp(event.startsAt) : 'Not set'}
-                    </span>
-                  </div>
-                  <div className="meta-item">
-                    <span className="meta-label">Expected Attendance</span>
-                    <span className="meta-value">{event.expectedAttendance ?? '—'}</span>
-                  </div>
-                  <div className="meta-item">
-                    <span className="meta-label">Organiser</span>
-                    <span className="meta-value">{event.organiserName}</span>
-                  </div>
-                  <div className="meta-item">
-                    <span className="meta-label">Submitted</span>
-                    <span className="meta-value meta-timestamp">
-                      {formatTimestamp(event.submittedAt)}
-                    </span>
-                  </div>
-                </div>
-
-                {event.description && (
-                  <div className="event-description">
-                    <p>{event.description}</p>
-                  </div>
-                )}
-
-                <div className="event-card-footer">
-                  {selectedEventForAssignment === event.id ? (
-                    <div className="coordinator-picker">
-                      <p className="picker-label">Select a coordinator:</p>
-                      <div className="coordinator-list">
-                        {coordinators.map((coord) => (
-                          <button
-                            key={coord.id}
-                            type="button"
-                            className="coordinator-option"
-                            onClick={() => handleAssign(event.id, coord.id)}
-                            disabled={assigningEvent === event.id}
-                          >
-                            <div className="coordinator-avatar">
-                              {coord.name.split(' ').map(n => n[0]).join('')}
-                            </div>
-                            <div className="coordinator-info">
-                              <span className="coordinator-name">{coord.name}</span>
-                              <span className="coordinator-email">{coord.email}</span>
-                            </div>
-                          </button>
-                        ))}
+            {/* Events list */}
+            {hasResults ? (
+              <div className="events-list">
+                {displayEvents.map((event) => (
+                  <div key={event.id} className="event-card">
+                    <div className="event-date-badge">
+                      <div className="date-day">
+                        {event.startsAt ? new Date(event.startsAt).getDate() : '—'}
                       </div>
+                      <div className="date-month">
+                        {event.startsAt
+                          ? new Date(event.startsAt).toLocaleDateString('en-US', { month: 'short' })
+                          : 'TBD'}
+                      </div>
+                      {event.startsAt && (
+                        <div className="date-time">
+                          {new Date(event.startsAt).toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="event-content">
+                      <h3 className="event-title">{event.title}</h3>
+                      <p className="event-purpose">{event.purpose || event.description || 'No description provided'}</p>
+                      <div className="event-details">
+                        <span className="detail-item">
+                          <strong>Organiser:</strong> {event.organiserName}
+                        </span>
+                        {event.expectedAttendance && (
+                          <span className="detail-item">
+                            <strong>Attendance:</strong> {event.expectedAttendance}
+                          </span>
+                        )}
+                        <span className="detail-item">
+                          <strong>Submitted:</strong> {formatTimestamp(event.submittedAt)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="event-action">
                       <button
                         type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setSelectedEventForAssignment(null)}
+                        className="btn-assign-coordinator"
+                        onClick={() => setSelectedEventForAssignment(event.id)}
+                        disabled={assigningEvent === event.id || coordinators.length === 0}
                       >
-                        Cancel
+                        {assigningEvent === event.id ? 'Assigning...' : '+ Assign Coordinator'}
                       </button>
                     </div>
-                  ) : (
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <h3>No events found</h3>
+                <p>Try adjusting your search query.</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Coordinator assignment modal */}
+        {selectedEventForAssignment && (
+          <div className="modal-overlay" onClick={() => setSelectedEventForAssignment(null)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Assign Coordinator</h3>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setSelectedEventForAssignment(null)}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <p>Select a coordinator to assign this event to:</p>
+                <div className="coordinator-list">
+                  {coordinators.map((coord) => (
                     <button
+                      key={coord.id}
                       type="button"
-                      className="btn btn-primary"
-                      onClick={() => setSelectedEventForAssignment(event.id)}
-                      disabled={assigningEvent === event.id || coordinators.length === 0}
+                      className="coordinator-option"
+                      onClick={() => handleAssign(selectedEventForAssignment, coord.id)}
+                      disabled={assigningEvent === selectedEventForAssignment}
                     >
-                      {assigningEvent === event.id ? (
-                        <>
-                          <div className="button-spinner"></div>
-                          Assigning...
-                        </>
-                      ) : (
-                        <>
-                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M8 0C3.6 0 0 3.6 0 8C0 12.4 3.6 16 8 16C12.4 16 16 12.4 16 8C16 3.6 12.4 0 8 0ZM8 4C9.1 4 10 4.9 10 6C10 7.1 9.1 8 8 8C6.9 8 6 7.1 6 6C6 4.9 6.9 4 8 4ZM8 14C6 14 4.3 12.9 3.4 11.2C3.4 9.5 6.7 8.5 8 8.5C9.3 8.5 12.6 9.5 12.6 11.2C11.7 12.9 10 14 8 14Z" fill="currentColor"/>
-                          </svg>
-                          Assign Coordinator
-                        </>
-                      )}
+                      <div className="coordinator-avatar">
+                        {coord.name.split(' ').map(n => n[0]).join('')}
+                      </div>
+                      <div className="coordinator-info">
+                        <span className="coordinator-name">{coord.name}</span>
+                        <span className="coordinator-email">{coord.email}</span>
+                      </div>
                     </button>
-                  )}
+                  ))}
                 </div>
               </div>
-            ))}
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setSelectedEventForAssignment(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

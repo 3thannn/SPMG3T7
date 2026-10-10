@@ -143,25 +143,59 @@ export default function EventsPage({ session }: EventsPageProps) {
             {visible.map((event) => (
               <li key={event.id}>
                 <a
-                  className="event-row card"
+                  className="event-card"
                   href={`#/events/${event.id}`}
                   onClick={(clickEvent) => {
                     clickEvent.preventDefault()
                     navigate(`/events/${event.id}`)
                   }}
                 >
-                  <div className="event-row-main">
-                    <h3 className="event-row-title">{displayEventTitle(event.title)}</h3>
-                    <p className="event-row-meta">
-                      {event.startsAt ? formatTimestamp(event.startsAt) : 'Not set'}
-                      {seesAcrossOrganisers && <> · Organiser: {event.organiserName}</>}
-                    </p>
+                  <div className={`event-date-badge status-${event.status.toLowerCase().replace(/\s+/g, '-')}`}>
+                    {event.startsAt ? (
+                      <>
+                        <div className="date-day">{new Date(event.startsAt).getDate()}</div>
+                        <div className="date-month">
+                          {new Date(event.startsAt).toLocaleDateString('en-US', { month: 'short' })}
+                        </div>
+                        <div className="date-time">
+                          {new Date(event.startsAt).toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="date-day">—</div>
+                        <div className="date-month">TBD</div>
+                      </>
+                    )}
                   </div>
-                  <div className="event-row-end">
-                    <StatusBadge status={event.status} />
-                    <span className="event-row-updated">
-                      Updated {formatTimestamp(event.updatedAt)}
-                    </span>
+
+                  <div className="event-content">
+                    <div className="event-header">
+                      <h3 className="event-title">{displayEventTitle(event.title)}</h3>
+                      <StatusBadge status={event.status} />
+                    </div>
+                    <p className="event-meta">
+                      {seesAcrossOrganisers && <>Organiser: {event.organiserName}</>}
+                    </p>
+                    <p className="event-updated">Updated {formatTimestamp(event.updatedAt)}</p>
+                  </div>
+
+                  <div className="event-arrow">
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
                   </div>
                 </a>
               </li>
