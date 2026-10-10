@@ -17,13 +17,15 @@ type Filter = EventStatus | 'All'
  * US4.1: the list surface. Every row carries its status badge, and what the
  * list contains depends on the viewer's role — an Organiser sees the events
  * they own, while a Coordinator sees requests after submission.
+ * US8.6: Coordinator Lead sees all events, across all statuses and organisers.
  */
 export default function EventsPage({ session }: EventsPageProps) {
   const [events, setEvents] = useState<EventRecord[] | null>(null)
   const [filter, setFilter] = useState<Filter>('All')
   const [loadError, setLoadError] = useState('')
 
-  const seesAcrossOrganisers = session.role === 'Event Coordinator'
+  const seesAcrossOrganisers =
+    session.role === 'Event Coordinator' || session.role === 'Event Coordinator Lead'
 
   useEffect(() => {
     let cancelled = false
@@ -65,9 +67,11 @@ export default function EventsPage({ session }: EventsPageProps) {
           <div>
             <h1 className="page-title">Events</h1>
             <p className="page-subtitle">
-              {seesAcrossOrganisers
-                ? 'Submitted event requests across the programme, as Coordinator.'
-                : 'Events you own, as Organiser.'}
+              {session.role === 'Event Coordinator Lead'
+                ? 'All events across the programme, as Coordinator Lead.'
+                : seesAcrossOrganisers
+                  ? 'Submitted event requests across the programme, as Coordinator.'
+                  : 'Events you own, as Organiser.'}
             </p>
           </div>
           {!seesAcrossOrganisers && (
