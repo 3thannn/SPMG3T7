@@ -2,8 +2,9 @@
 """Complete setup for new roles: enum values + user records."""
 
 import os
+
 from dotenv import load_dotenv
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 load_dotenv()
 

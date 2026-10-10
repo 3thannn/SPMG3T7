@@ -46,7 +46,11 @@ from app.venue_store import Venue
 
 router = APIRouter(prefix="/events", tags=["events"])
 
-READ_ANY = (Permission.EVENTS_READ_OWN, Permission.EVENTS_READ_SUBMITTED, Permission.EVENTS_READ_ALL)
+READ_ANY = (
+    Permission.EVENTS_READ_OWN,
+    Permission.EVENTS_READ_SUBMITTED,
+    Permission.EVENTS_READ_ALL,
+)
 
 
 class EventError:

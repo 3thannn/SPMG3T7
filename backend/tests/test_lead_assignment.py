@@ -5,10 +5,9 @@ Coordinator. The assigned Coordinator can then review, approve/reject, and manag
 the event.
 """
 
-from app.event_status import EventStatus
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, COORDINATOR_LEAD_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID
 
 DRAFT = {
     "title": "Team Building Workshop",
@@ -137,8 +136,6 @@ class TestAssignmentValidation:
 
     def test_cannot_assign_to_non_coordinator_role(self, client, auth_headers, user_store):
         """Assigning to a user who is not a Coordinator is rejected."""
-        from app.permissions import Role
-        from app.users import User
 
         # Add a Venue Staff user
         venue_staff = User(
@@ -174,8 +171,6 @@ class TestAssignmentValidation:
 
     def test_cannot_assign_already_assigned_event(self, client, auth_headers, user_store):
         """Assigning an event that already has a coordinator is rejected."""
-        from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(
@@ -210,8 +205,6 @@ class TestAssignedCoordinatorAccess:
 
     def test_assigned_coordinator_can_view_event(self, client, auth_headers, user_store):
         """The assigned Coordinator can GET the event."""
-        from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(
@@ -243,8 +236,6 @@ class TestAssignedCoordinatorAccess:
 
     def test_non_assigned_coordinator_cannot_view(self, client, auth_headers, user_store):
         """A Coordinator who is NOT assigned gets 404."""
-        from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(

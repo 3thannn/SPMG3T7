@@ -2,6 +2,7 @@
 """Add new enum values to user_role using direct SQL execution."""
 
 import os
+
 import requests
 from dotenv import load_dotenv
 

@@ -214,7 +214,9 @@ class TestAC4VisibilityNarrowing:
         assert response.status_code == 200
         assert response.json()["id"] == event["id"]
 
-    def _DISABLED_test_non_assigned_coordinator_cannot_view_event(self, client, auth_headers, user_store):
+    def _DISABLED_test_non_assigned_coordinator_cannot_view_event(
+        self, client, auth_headers, user_store
+    ):
         """A Coordinator who is NOT assigned to an event gets 404."""
         from app.permissions import Role
 
@@ -265,7 +267,9 @@ class TestAC4VisibilityNarrowing:
         assert response.status_code == 200
         assert response.json()["title"] == "Updated by assigned coordinator"
 
-    def _DISABLED_test_non_assigned_coordinator_cannot_edit_event(self, client, auth_headers, user_store):
+    def _DISABLED_test_non_assigned_coordinator_cannot_edit_event(
+        self, client, auth_headers, user_store
+    ):
         """A non-assigned Coordinator cannot PUT changes to the event."""
         from app.permissions import Role
 
@@ -343,7 +347,9 @@ class TestAC4VisibilityNarrowing:
         assert response.status_code == 200
         assert response.json()["id"] == event["id"]
 
-    def _DISABLED_test_coordinator_list_only_shows_assigned_events(self, client, auth_headers, user_store):
+    def _DISABLED_test_coordinator_list_only_shows_assigned_events(
+        self, client, auth_headers, user_store
+    ):
         """When a Coordinator lists events, they only see events assigned to them."""
         from app.permissions import Role
 

@@ -5,9 +5,7 @@ The Lead needs to see which events are Submitted but have no Coordinator assigne
 """
 
 from app.event_status import EventStatus
-from app.permissions import Role
-from app.users import User
-from tests.conftest import COORDINATOR_ID, COORDINATOR_LEAD_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID
 
 DRAFT = {
     "title": "Team Building Workshop",
@@ -119,7 +117,9 @@ class TestUnassignedQueueFiltering:
         assert events[1]["id"] == "502"
         assert events[2]["id"] == "503"
 
-    def test_unassigned_queue_only_shows_submitted_status(self, client, auth_headers, event_repository):
+    def test_unassigned_queue_only_shows_submitted_status(
+        self, client, auth_headers, event_repository
+    ):
         """Only Submitted events appear in the unassigned queue, not Draft or other statuses."""
         from app.event_store import Event
 

@@ -8,8 +8,9 @@ Usage:
 """
 
 import os
+
 from dotenv import load_dotenv
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 load_dotenv()
 
@@ -66,7 +67,7 @@ for user_data in NEW_USERS:
                 existing.id,
                 {"password": user_data["password"]}
             )
-            print(f"   ✅ Password updated")
+            print("   ✅ Password updated")
         else:
             # Create new auth user
             result = supabase.auth.admin.create_user(user_data)

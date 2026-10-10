@@ -216,7 +216,9 @@ class Repository(Protocol):
         reason: str,
     ) -> Event: ...
 
-    def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event: ...
+    def assign_coordinator(
+        self, event_id: int, coordinator_id: int, assigned_by_id: int
+    ) -> Event: ...
 
 
 class SupabaseEvents:

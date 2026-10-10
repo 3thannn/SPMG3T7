@@ -8,7 +8,7 @@ the Lead can see ALL events (both assigned and unassigned) to manage assignments
 from app.event_status import EventStatus
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, COORDINATOR_LEAD_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID
 
 DRAFT = {
     "title": "Team Building Workshop",
@@ -76,8 +76,6 @@ class TestLeadCanViewAll:
     ):
         """Lead can view events assigned to other Coordinators."""
         from app.event_store import Event
-        from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(
@@ -149,8 +147,6 @@ class TestLeadCanViewAll:
     ):
         """Regular Coordinator cannot see events assigned to other Coordinators."""
         from app.event_store import Event
-        from app.permissions import Role
-        from app.users import User
 
         # Add a second coordinator
         coordinator_2 = User(
