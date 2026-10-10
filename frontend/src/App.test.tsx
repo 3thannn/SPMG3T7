@@ -327,7 +327,7 @@ it('routes a Coordinator Lead to the unassigned queue on sign-in', async () => {
   render(<App />)
 
   // Should redirect to their home page
-  expect(await screen.findByRole('heading', { name: 'Unassigned Event Queue' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Unassigned Events' })).toBeInTheDocument()
 })
 
 it('allows Coordinator Lead to access the unassigned queue', async () => {
@@ -337,7 +337,7 @@ it('allows Coordinator Lead to access the unassigned queue', async () => {
 
   render(<App />)
 
-  expect(await screen.findByRole('heading', { name: 'Unassigned Event Queue' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Unassigned Events' })).toBeInTheDocument()
 })
 
 it('blocks other roles from accessing the unassigned queue', async () => {

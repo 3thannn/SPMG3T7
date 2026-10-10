@@ -92,8 +92,8 @@ it('displays event details including organiser and submission time', async () =>
   expect(await screen.findByText('Tech Conference')).toBeInTheDocument()
   expect(screen.getByText('Annual tech meetup')).toBeInTheDocument()
   expect(screen.getByText('Dylan')).toBeInTheDocument()
-  // "Submitted" appears in both the label and the status badge
-  expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0)
+  // Submission time is shown in the redesigned card layout
+  expect(screen.getByText(/Feb 01, 2027/)).toBeInTheDocument()
 })
 
 it('shows coordinator picker when assign button is clicked', async () => {
@@ -107,7 +107,7 @@ it('shows coordinator picker when assign button is clicked', async () => {
   const assignButton = screen.getByRole('button', { name: /Assign Coordinator/ })
   await userEvent.click(assignButton)
 
-  expect(screen.getByText('Select a coordinator:')).toBeInTheDocument()
+  expect(screen.getByText(/Select a coordinator to assign this event to/)).toBeInTheDocument()
   expect(screen.getByText('Alice Chen')).toBeInTheDocument()
   expect(screen.getByText('alice@spmg3t7.edu')).toBeInTheDocument()
   expect(screen.getByText('Bob Smith')).toBeInTheDocument()
@@ -215,13 +215,13 @@ it('allows canceling coordinator selection', async () => {
   const assignButton = screen.getByRole('button', { name: /Assign Coordinator/ })
   await userEvent.click(assignButton)
 
-  expect(screen.getByText('Select a coordinator:')).toBeInTheDocument()
+  expect(screen.getByText(/Select a coordinator to assign this event to/)).toBeInTheDocument()
 
   // Cancel
   const cancelButton = screen.getByRole('button', { name: /Cancel/ })
   await userEvent.click(cancelButton)
 
   // Picker should be hidden, assign button should be back
-  expect(screen.queryByText('Select a coordinator:')).not.toBeInTheDocument()
+  expect(screen.queryByText(/Select a coordinator to assign this event to/)).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Assign Coordinator/ })).toBeInTheDocument()
 })

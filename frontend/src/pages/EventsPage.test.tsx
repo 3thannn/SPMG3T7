@@ -67,7 +67,8 @@ it('labels an untitled and undated draft without inventing stored details', asyn
   render(<EventsPage session={organiser} />)
 
   expect(await screen.findByText('Untitled event')).toBeInTheDocument()
-  expect(screen.getByText('Not set')).toBeInTheDocument()
+  // Undated events show "TBD" in the redesigned card layout
+  expect(screen.getByText('TBD')).toBeInTheDocument()
 })
 
 it('names the organiser for a Coordinator, who is looking across owners', async () => {
