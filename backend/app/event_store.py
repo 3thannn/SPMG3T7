@@ -279,8 +279,8 @@ class Repository(Protocol):
         to_status: EventStatus,
         reason: str,
     ) -> Event: ...
-      
-def submit_change_request(
+     
+    def submit_change_request(
         self,
         event_id: int,
         *,
@@ -290,14 +290,13 @@ def submit_change_request(
         note: str,
     ) -> Event: ...
 
-def resolve_change_request(
+    def resolve_change_request(
         self, event_id: int, *, actor_id: int, approve: bool, note: str
     ) -> Event: ...
 
-def assign_coordinator(
+    def assign_coordinator(
         self, event_id: int, coordinator_id: int, assigned_by_id: int
     ) -> Event: ...
-
 class SupabaseEvents:
     """The real store. Goes through the service role client, like the user store."""
 
@@ -730,7 +729,7 @@ class SupabaseEvents:
         assert decided is not None  # noqa: S101 - the row was just updated
         return decided
 
-def submit_change_request(
+    def submit_change_request(
         self,
         event_id: int,
         *,
@@ -772,7 +771,7 @@ def submit_change_request(
         assert requested is not None  # noqa: S101 - the row was just updated
         return requested
 
-def resolve_change_request(
+    def resolve_change_request(
         self, event_id: int, *, actor_id: int, approve: bool, note: str
     ) -> Event:
         """US11.1: approve (apply) or reject the pending proposal, and clear the flag.
@@ -801,7 +800,7 @@ def resolve_change_request(
         assert resolved is not None  # noqa: S101 - the row was just updated
         return resolved
 
-def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
+    def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
         """US8.3: Manually assign a Coordinator to an event.
 
         The assignment is permanent (no reassignment) and updates the event's
@@ -816,7 +815,6 @@ def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id:
         assigned = self.get_event(event_id)
         assert assigned is not None  # noqa: S101 — the row was just updated
         return assigned
-
 
 @dataclass
 class InMemoryEvents:
@@ -1100,7 +1098,7 @@ class InMemoryEvents:
             )
         )
 
-def submit_change_request(
+    def submit_change_request(
         self,
         event_id: int,
         *,
@@ -1134,7 +1132,7 @@ def submit_change_request(
             )
         )
 
-def resolve_change_request(
+    def resolve_change_request(
         self, event_id: int, *, actor_id: int, approve: bool, note: str
     ) -> Event:
         existing = self.get_event(event_id)
@@ -1165,7 +1163,7 @@ def resolve_change_request(
             )
         )
 
-def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
+    def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
         """US8.3: Manually assign a Coordinator to an event."""
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 - the caller checked it exists
@@ -1176,6 +1174,7 @@ def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id:
                 updated_at=_now(),
             )
         )
+
 
 _repository: Repository = SupabaseEvents()
 

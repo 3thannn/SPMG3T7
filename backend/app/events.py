@@ -24,7 +24,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import booking_store, event_store, suitability, venue_store,change_requests
+from app import booking_store, change_requests, event_store, suitability, venue_store
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
 from app.booking_store import Booking, BookingStatus, StaleBookingStatus
 from app.event_status import (

@@ -321,8 +321,7 @@ describe('US18.1: the booking form as the API reads it', () => {
       startsAt: '2027-11-02T09:00',
       endsAt: '2027-11-02T17:00',
       headcount: 120,
-      layout: 'Theatre',describe('US18.1: the booking form as the API reads it', () => {
-      
+      layout: 'Theatre',
       facilities: ['projector', 'PA system'],
       accessibilityNeeds: [],
     })
