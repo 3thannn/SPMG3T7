@@ -13,8 +13,8 @@ interface Props {
 export default function SafetyReviewPage({ session }: Props) {
   return (
     <div className="page shell">
+      <h1 className="page-title">Safety Review</h1>
       <div className="card">
-        <h2>Safety Review Queue</h2>
         <p>Welcome, {session.name}.</p>
         <p>
           This is the Safety Officer's landing page. The full safety review queue
