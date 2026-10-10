@@ -12,7 +12,13 @@ import { buildSession } from './test/sessions'
 import type { Role } from './status'
 
 /** Every role the app models. */
-const ROLES: Role[] = ['Event Organiser', 'Event Coordinator', 'Venue Staff']
+const ROLES: Role[] = [
+  'Event Organiser',
+  'Event Coordinator',
+  'Event Coordinator Lead',
+  'Venue Staff',
+  'Safety Officer',
+]
 
 /**
  * The roles with event permissions. Venue Staff is deliberately absent: it
@@ -96,7 +102,7 @@ describe('denialMessage', () => {
 
   it('describes the list as a page rather than an action', () => {
     expect(denialMessage(buildSession({ role: 'Event Coordinator' }), '/events')).toBe(
-      'The Event Coordinator role cannot open the events list. That is available to Organisers and Event Coordinators.',
+      'The Event Coordinator role cannot open the events list. That is available to Organisers, Event Coordinators, and Coordinator Lead.',
     )
   })
 

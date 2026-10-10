@@ -38,9 +38,9 @@ type GuardedRoute = {
  */
 const GUARDED: Record<string, GuardedRoute> = {
   '/events': {
-    anyOf: ['events:read:own', 'events:read:submitted'],
+    anyOf: ['events:read:own', 'events:read:submitted', 'events:read:all'],
     what: 'the events list',
-    who: 'Organisers and Event Coordinators',
+    who: 'Organisers, Event Coordinators, and Coordinator Lead',
   },
   '/events/new': {
     anyOf: ['events:create'],
@@ -77,9 +77,9 @@ export function guardFor(route: string): GuardedRoute | null {
   if (GUARDED[route]) return GUARDED[route]
   if (/^\/events\/[^/]+$/.test(route)) {
     return {
-      anyOf: ['events:read:own', 'events:read:submitted'],
+      anyOf: ['events:read:own', 'events:read:submitted', 'events:read:all'],
       what: 'event details',
-      who: 'Organisers and Event Coordinators',
+      who: 'Organisers, Event Coordinators, and Coordinator Lead',
     }
   }
   // Checked before the detail route, which would otherwise match the id and
