@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import type { Session } from '../api'
 import {
   assignCoordinator,
@@ -8,7 +8,6 @@ import {
   type UnassignedEvent,
 } from '../unassignedQueueStore'
 import { formatTimestamp } from '../status'
-import StatusBadge from '../components/StatusBadge'
 import './UnassignedQueuePage.css'
 
 interface Props {
@@ -35,8 +34,8 @@ export default function UnassignedQueuePage({ session }: Props) {
 
   // Search and sort state
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortField, setSortField] = useState<SortField>('submittedAt')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [sortField] = useState<SortField>('submittedAt')
+  const [sortDirection] = useState<SortDirection>('asc')
 
   // Load unassigned events
   useEffect(() => {
@@ -126,15 +125,6 @@ export default function UnassignedQueuePage({ session }: Props) {
 
     return sorted
   }, [events, searchQuery, sortField, sortDirection])
-
-  function toggleSort(field: SortField) {
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-    } else {
-      setSortField(field)
-      setSortDirection('asc')
-    }
-  }
 
   async function handleAssign(eventId: string, coordinatorId: string) {
     setAssigningEvent(eventId)

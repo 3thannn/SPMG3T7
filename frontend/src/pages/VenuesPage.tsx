@@ -296,8 +296,8 @@ export default function VenuesPage({ session }: VenuesPageProps) {
                   <div className="venue-content">
                     <h3 className="venue-name">{venue.name}</h3>
                     <p className="venue-location">{venue.location}</p>
-                    {venue.accessibility && (
-                      <p className="venue-accessibility">{venue.accessibility}</p>
+                    {venue.accessibilityFeatures && (
+                      <p className="venue-accessibility">{venue.accessibilityFeatures}</p>
                     )}
                   </div>
 
