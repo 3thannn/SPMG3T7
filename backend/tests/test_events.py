@@ -350,8 +350,22 @@ class TestSaving:
         assert response.status_code == 404
         assert response.json()["detail"]["code"] == "event_not_found"
 
-    def test_owner_can_edit_their_event(self, client, auth_headers):
-        """US4.2: Original behavior - owners can edit without change tracking."""
+    def test_owner_can_edit_their_draft(self, client, auth_headers):
+        """US4.2: owners edit a Draft directly, without change tracking."""
+        event = create(client, auth_headers("Event Organiser"))
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={**DRAFT, "title": "Renamed by Owner"},
+            headers=auth_headers("Event Organiser"),
+        )
+
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved["title"] == "Renamed by Owner"
+
+    def test_owner_cannot_edit_their_submitted_event_directly(self, client, auth_headers):
+        """US11.1: once submitted, the owner requests a change instead of editing."""
         event = create(client, auth_headers("Event Organiser"))
         client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
@@ -363,9 +377,8 @@ class TestSaving:
             headers=auth_headers("Event Organiser"),
         )
 
-        assert response.status_code == 200
-        saved = response.json()
-        assert saved["title"] == "Renamed by Owner"
+        assert response.status_code == 409
+        assert response.json()["detail"]["reason"] == "change-request-required"
 
     def test_coordinator_can_edit_any_event(self, client, auth_headers):
         """US5.2: Coordinators can edit submitted events they don't own.

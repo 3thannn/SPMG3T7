@@ -14,10 +14,13 @@ import {
   splitNeeds,
   validateBooking,
   approveEvent,
+  approveEventChange,
   createEvent,
   getEvent,
   listEvents,
   rejectEvent,
+  rejectEventChange,
+  requestEventChange,
   saveEvent,
   submitEvent,
 } from './eventsStore'
@@ -229,6 +232,75 @@ describe('event decisions', () => {
     stubFetch(failure(409, 'rule_refused', 'Only an event that is Under Review can be decided.'))
 
     await expect(approveEvent('101', session)).rejects.toBeInstanceOf(EventRuleError)
+  })
+})
+
+describe('US11.1 change requests', () => {
+  it('posts the form values and the note to the change-request route', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Under Review', changeRequested: true }))
+
+    const requested = await requestEventChange(
+      '101',
+      { ...DRAFT, title: 'Welcome Night' },
+      'Renamed.',
+      session,
+    )
+
+    expect(requested.changeRequested).toBe(true)
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/change-request')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+    expect(spy.mock.calls[0][1].headers.Authorization).toBe('Bearer session-token')
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({
+      ...DRAFT,
+      title: 'Welcome Night',
+      note: 'Renamed.',
+    })
+  })
+
+  it('posts an approval to the approve route', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Under Review', changeRequested: false }))
+
+    const approved = await approveEventChange('101', session)
+
+    expect(approved.changeRequested).toBe(false)
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/change-request/approve')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+  })
+
+  it('posts a rejection reason to the reject route', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Under Review' }))
+
+    await rejectEventChange('101', 'Booked.', session)
+
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/change-request/reject')
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({ reason: 'Booked.' })
+  })
+
+  it.each([
+    [409, 'rule_refused', 'A change request for this event is already awaiting review.'],
+    [400, 'invalid_event', 'Change at least one detail before requesting a change.'],
+    [403, 'forbidden', 'The Event Coordinator role cannot submit events for approval.'],
+  ])('turns a %i refusal into a rule error the page can show', async (status, code, message) => {
+    stubFetch(failure(status, code, message))
+
+    await expect(requestEventChange('101', DRAFT, '', session)).rejects.toEqual(
+      new EventRuleError(message),
+    )
+  })
+
+  it('surfaces a refused approval or rejection as a rule error', async () => {
+    stubFetch(failure(409, 'rule_refused', 'There is no change request awaiting review.'))
+    await expect(approveEventChange('101', session)).rejects.toBeInstanceOf(EventRuleError)
+
+    stubFetch(failure(400, 'invalid_event', 'Tell the Organiser why.'))
+    await expect(rejectEventChange('101', '', session)).rejects.toBeInstanceOf(EventRuleError)
+  })
+
+  it('lets a server fault through unchanged, for the page to explain', async () => {
+    stubFetch(failure(500, 'unknown', 'Boom'))
+    await expect(requestEventChange('101', DRAFT, '', session)).rejects.toBeInstanceOf(ApiError)
+    await expect(approveEventChange('101', session)).rejects.not.toBeInstanceOf(EventRuleError)
+    await expect(rejectEventChange('101', 'x', session)).rejects.toBeInstanceOf(ApiError)
   })
 })
 

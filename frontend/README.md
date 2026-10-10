@@ -70,7 +70,7 @@ than a form that fails on submit.
 - [`useIdleSignOut.ts`](src/useIdleSignOut.ts) — signs out after the same idle
   window the server uses, which the server sends on the session
 - [`eventsStore.ts`](src/eventsStore.ts) — the `/events` client used by the
-  draft and submit flow
+  draft and submit flow, the review decisions and change requests
 
 The route guard and the hidden nav links are conveniences: they keep people out
 of dead ends. The API refuses the request regardless, and that refusal is what
@@ -83,6 +83,18 @@ An assigned Event Coordinator can request clarification to move a Submitted
 event to Under Review, then approve it or reject it with a required reason from
 the event detail page. The Organiser sees both the resulting status and the
 timestamped, attributable decision in the existing status history.
+
+Once an event is submitted, its Organiser changes it through a change request
+(US11.1) rather than by editing it. **Request changes** on the event detail page
+opens the same edit form, with an optional note for the Coordinator; submitting
+it moves the event to Under Review and leaves its details as they were. Both
+sides then see a **Requested changes** panel listing each field's current and
+proposed value, with date/time and attendance changes tagged *Important* and
+listed first. The Coordinator approves (the changes are applied) or rejects
+with a reason, and must do so before approving or rejecting the event itself.
+The answer stays on the page for both sides until the next request. The events
+list tags any event with a request waiting, which is the Coordinator's review
+queue.
 
 ## Available scripts
 
@@ -105,7 +117,9 @@ npm run build
 npm test
 ```
 
-The coverage focuses on the draft and submit flow used by the live app.
+The coverage focuses on the draft and submit flow used by the live app, and on
+the review flows built on it — [`EventChangeRequest.test.tsx`](src/pages/EventChangeRequest.test.tsx)
+walks US11.1's acceptance criteria through the event detail page.
 
 ## Environment variables
 
@@ -140,12 +154,13 @@ src/
   api.ts             backend client and its error types
   session.ts         the stored session, revived on load
   permissions.ts     which route needs which permission
-  eventsStore.ts     the /events client used by the draft and submit flow
-  status.ts          event status model and roles
+  eventsStore.ts     the /events client: drafts, submit, review, change requests
+  draftRules.ts      rules shared by the event forms, including submission checks
+  status.ts          event status model, roles, and the client mirror of each rule
   useIdleSignOut.ts  signs out after the server's idle window
   pages/             sign-in, landing, events, event detail, new event,
                      access denied
-  components/        top nav, status badge, status timeline
+  components/        top nav, status badge, status timeline, proposed changes
   test/              Vitest setup and shared session builders
 ```
 

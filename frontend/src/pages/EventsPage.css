@@ -139,6 +139,19 @@
   gap: 0.5rem;
 }
 
+/* US11.1: an Organiser's change request awaiting review. */
+.event-row-flag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.event-row-updated {
+  font-size: 0.78rem;
+  color: var(--muted-soft);
+}
 .event-header {
   display: flex;
   align-items: flex-start;

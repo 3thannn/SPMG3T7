@@ -146,6 +146,7 @@ class TestDecisionHappyPaths:
             "byId": str(COORDINATOR_ID),
             "byName": "Priya",
             "notes": notes,
+            "kind": "",
         }
         assert latest["at"]
 

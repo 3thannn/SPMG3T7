@@ -1,0 +1,69 @@
+/* US11.1: an Organiser's proposed changes, current value beside the proposed
+   one. Important rows carry the accent rule the history uses for notes, so the
+   two read as the same kind of "look at this". */
+.proposed-list {
+  list-style: none;
+  margin: 0 0 0.9rem;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.proposed-item {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.proposed-item.is-important {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.proposed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.proposed-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.proposed-tag {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.proposed-values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  /* A description may hold line breaks the Organiser meant. */
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.proposed-old {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.proposed-arrow {
+  color: var(--muted);
+}
+
+.proposed-new {
+  color: var(--ink-strong);
+  font-weight: 500;
+}
