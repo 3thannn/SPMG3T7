@@ -580,7 +580,7 @@ def test_the_whole_journey_through_the_routes(client, organiser, coordinator, au
         },
         headers=organiser,
     ).json()
-    submitted = client.post(f"/events/{created['id']}/submit", headers=organiser).json()
+    client.post(f"/events/{created['id']}/submit", headers=organiser)
 
     # US8.6: Coordinator Lead assigns the event
     assigned = client.post(
