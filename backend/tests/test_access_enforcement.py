@@ -24,9 +24,10 @@ def test_the_denial_says_what_was_refused_and_who_may_do_it(client, auth_headers
     detail = client.get("/auth/users", headers=auth_headers("Event Organiser")).json()["detail"]
 
     assert detail["code"] == "forbidden"
+    # US1.4: Coordinator Lead also has USERS_READ, so message now lists both
     assert detail["message"] == (
         "The Event Organiser role cannot view the user directory. "
-        "That is available to: Event Coordinator."
+        "That is available to: Event Coordinator, Event Coordinator Lead."
     )
     assert detail["role"] == "Event Organiser"
     assert detail["required"] == "users:read"
@@ -100,3 +101,31 @@ class TestPermissionCatalogue:
             message = denial_message(Role.ORGANISER, permission)
             assert str(permission) not in message, f"{permission} has no readable label"
             assert message.startswith("The Event Organiser role cannot ")
+
+
+class TestUS14NewRoles:
+    """US1.4: Coordinator Lead and Safety Officer roles exist."""
+
+    def test_coordinator_lead_is_a_valid_role(self):
+        """US1.4 AC1: Coordinator Lead role exists."""
+        assert hasattr(Role, "COORDINATOR_LEAD")
+        assert Role.COORDINATOR_LEAD == "Event Coordinator Lead"
+
+    def test_safety_officer_is_a_valid_role(self):
+        """US1.4 AC1: Safety Officer role exists."""
+        assert hasattr(Role, "SAFETY_OFFICER")
+        assert Role.SAFETY_OFFICER == "Safety Officer"
+
+    def test_coordinator_lead_has_defined_permissions(self):
+        """US1.4 AC1: Lead has a permission set."""
+        perms = permissions_for(Role.COORDINATOR_LEAD)
+        assert perms is not None
+        # Lead needs at least permission to view unassigned queue (US8.2)
+        # Exact permissions will be defined when we know what Lead can do
+
+    def test_safety_officer_has_defined_permissions(self):
+        """US1.4 AC1: Safety Officer has a permission set."""
+        perms = permissions_for(Role.SAFETY_OFFICER)
+        assert perms is not None
+        # Safety Officer permissions will be defined in US17.x
+        # For now, just needs to be defined (can be empty)

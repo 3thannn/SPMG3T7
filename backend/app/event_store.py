@@ -146,6 +146,8 @@ def to_event(row: dict, changes: list[dict] | None = None) -> Event:
 class Repository(Protocol):
     def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]: ...
 
+    def list_unassigned(self) -> list[Event]: ...
+
     def get_event(self, event_id: int) -> Event | None: ...
 
     def create_event(
@@ -214,6 +216,10 @@ class Repository(Protocol):
         reason: str,
     ) -> Event: ...
 
+    def assign_coordinator(
+        self, event_id: int, coordinator_id: int, assigned_by_id: int
+    ) -> Event: ...
+
 
 class SupabaseEvents:
     """The real store. Goes through the service role client, like the user store."""
@@ -255,6 +261,21 @@ class SupabaseEvents:
         if not include_drafts:
             query = query.neq("status", str(EventStatus.DRAFT))
         rows = query.order("updated_at", desc=True).execute().data or []
+        changes = self._changes_for([row["id"] for row in rows])
+        return [to_event(row, changes.get(row["id"])) for row in rows]
+
+    def list_unassigned(self) -> list[Event]:
+        """US8.2: List events that are Submitted but have no assigned Coordinator."""
+        rows = (
+            supabase_client.admin()
+            .table(EVENTS_TABLE)
+            .select(EVENT_COLUMNS)
+            .eq("status", str(EventStatus.SUBMITTED))
+            .is_("coordinator_id", "null")
+            .order("submitted_at", desc=False)  # oldest first
+            .execute()
+            .data or []
+        )
         changes = self._changes_for([row["id"] for row in rows])
         return [to_event(row, changes.get(row["id"])) for row in rows]
 
@@ -513,15 +534,13 @@ class SupabaseEvents:
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
         """Move the event and write the audit entry US4.2 requires.
 
-        US8.1: Assign a Coordinator when moving to Submitted."""
+        US8.2: Auto-assignment is now OFF. Events remain unassigned on submit."""
         at = _now()
-        coordinator_id = self._pick_coordinator()
         supabase_client.admin().table(EVENTS_TABLE).update(
             {
                 "status": str(EventStatus.SUBMITTED),
                 "submitted_at": at,
                 "updated_at": at,
-                "coordinator_id": coordinator_id,
             }
         ).eq("id", event_id).execute()
         supabase_client.admin().table(CHANGES_TABLE).insert(
@@ -608,6 +627,22 @@ class SupabaseEvents:
         assert decided is not None  # noqa: S101 - the row was just updated
         return decided
 
+    def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
+        """US8.3: Manually assign a Coordinator to an event.
+
+        The assignment is permanent (no reassignment) and updates the event's
+        coordinator_id. No status change occurs (event stays Submitted)."""
+        at = _now()
+        supabase_client.admin().table(EVENTS_TABLE).update(
+            {
+                "coordinator_id": coordinator_id,
+                "updated_at": at,
+            }
+        ).eq("id", event_id).execute()
+        assigned = self.get_event(event_id)
+        assert assigned is not None  # noqa: S101 — the row was just updated
+        return assigned
+
 
 @dataclass
 class InMemoryEvents:
@@ -668,6 +703,16 @@ class InMemoryEvents:
             and (include_drafts or event.status != EventStatus.DRAFT)
         ]
         return sorted(visible, key=lambda event: event.updated_at, reverse=True)
+
+    def list_unassigned(self) -> list[Event]:
+        """US8.2: List events that are Submitted but have no assigned Coordinator."""
+        unassigned = [
+            event
+            for event in self.events
+            if event.status == EventStatus.SUBMITTED and event.coordinator_id is None
+        ]
+        # Sort by created_at oldest first (in-memory doesn't have submitted_at tracked separately)
+        return sorted(unassigned, key=lambda event: event.created_at)
 
     def get_event(self, event_id: int) -> Event | None:
         return next((event for event in self.events if event.id == event_id), None)
@@ -797,13 +842,10 @@ class InMemoryEvents:
         return event
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
-        """US8.1: Moving to Submitted assigns a Coordinator."""
+        """US8.2: Moving to Submitted leaves coordinator_id as NULL (auto-assignment OFF)."""
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 — the caller checked it exists
         at = _now()
-
-        # US8.1: Assign a Coordinator when transitioning to Submitted
-        coordinator_id = self._pick_coordinator()
 
         entry = StatusChange(
             from_status=from_status,
@@ -817,7 +859,6 @@ class InMemoryEvents:
                 existing,
                 status=EventStatus.SUBMITTED,
                 updated_at=at,
-                coordinator_id=coordinator_id,
                 history=(*existing.history, entry),
             )
         )
@@ -875,6 +916,18 @@ class InMemoryEvents:
                 status=to_status,
                 updated_at=at,
                 history=(*existing.history, entry),
+            )
+        )
+
+    def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
+        """US8.3: Manually assign a Coordinator to an event."""
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        return self._replace(
+            replace(
+                existing,
+                coordinator_id=coordinator_id,
+                updated_at=_now(),
             )
         )
 

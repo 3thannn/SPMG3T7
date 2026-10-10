@@ -39,14 +39,18 @@ from app.event_status import (
     transition_refusal_message,
 )
 from app.event_store import Event, StaleEventStatus
-from app.permissions import Permission, has_permission
+from app.permissions import Permission, Role, has_permission
 from app.suitability import BookingNeeds, Verdict
 from app.users import User
 from app.venue_store import Venue
 
 router = APIRouter(prefix="/events", tags=["events"])
 
-READ_ANY = (Permission.EVENTS_READ_OWN, Permission.EVENTS_READ_SUBMITTED)
+READ_ANY = (
+    Permission.EVENTS_READ_OWN,
+    Permission.EVENTS_READ_SUBMITTED,
+    Permission.EVENTS_READ_ALL,
+)
 
 
 class EventError:
@@ -255,16 +259,22 @@ def _validate_submission(event: Event) -> None:
 def _readable(event_id: int, user: User) -> Event:
     """Fetch an event the caller is allowed to see, or 404.
 
-    US8.1: Coordinators can only see events assigned to them."""
+    US8.1: Coordinators can only see events assigned to them.
+    US8.6: Lead can see all events (not just assigned ones)."""
     event = event_store.repository().get_event(event_id)
     if event is None:
         raise _not_found()
     sees_own = has_permission(user.role, Permission.EVENTS_READ_OWN)
     owns_event = sees_own and event.organiser_id == user.id
     sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
+    sees_all = has_permission(user.role, Permission.EVENTS_READ_ALL)
 
     # US8.1: Coordinators can only see events assigned to them
     is_assigned_coordinator = sees_submitted and event.coordinator_id == user.id
+
+    # US8.6: Lead can see all events
+    if sees_all and event.status != EventStatus.DRAFT:
+        return event
 
     if not owns_event and not (is_assigned_coordinator and event.status != EventStatus.DRAFT):
         raise _not_found()
@@ -285,18 +295,87 @@ def list_events(
 ) -> list[EventOut]:
     """US4.1: an Organiser sees their events; a Coordinator sees assigned non-Drafts.
 
-    US8.1: Coordinators now only see events assigned to them."""
+    US8.1: Coordinators now only see events assigned to them.
+    US8.6: Lead sees all events (unassigned and assigned)."""
     sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
+    sees_all = has_permission(user.role, Permission.EVENTS_READ_ALL)
+
     all_events = event_store.repository().list_events(
-        organiser_id=None if sees_submitted else user.id,
-        include_drafts=not sees_submitted,
+        organiser_id=None if (sees_submitted or sees_all) else user.id,
+        include_drafts=not (sees_submitted or sees_all),
     )
 
-    # US8.1: Filter by coordinator assignment
-    if sees_submitted:
+    # US8.1: Filter by coordinator assignment (but not for Lead who sees all)
+    if sees_submitted and not sees_all:
         all_events = [e for e in all_events if e.coordinator_id == user.id]
 
     return [_to_out(event) for event in all_events]
+
+
+@router.get("/unassigned", response_model=list[EventOut])
+def list_unassigned(
+    user: Annotated[User, Depends(require_permission(Permission.QUEUE_VIEW_UNASSIGNED))],
+) -> list[EventOut]:
+    """US8.2: List Submitted events with no assigned Coordinator (oldest first).
+
+    Only Coordinator Lead can access this queue."""
+    events = event_store.repository().list_unassigned()
+    return [_to_out(event) for event in events]
+
+
+class AssignmentPayload(BaseModel):
+    """Payload for assigning a Coordinator to an event (US8.3)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    coordinator_id: str = Field(alias="coordinatorId")
+
+
+@router.post("/{event_id}/assign", response_model=EventOut)
+def assign_coordinator(
+    event_id: str,
+    payload: AssignmentPayload,
+    user: Annotated[User, Depends(require_permission(Permission.COORDINATORS_ASSIGN))],
+) -> EventOut:
+    """US8.3: Lead assigns a Coordinator to an unassigned event.
+
+    Once assigned, the Coordinator can review, approve/reject, and manage the event."""
+    from app import users
+
+    event = event_store.repository().get_event(_as_id(event_id))
+    if event is None:
+        raise _not_found()
+
+    # Cannot reassign an already-assigned event
+    if event.coordinator_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": "This event is already assigned to a Coordinator.",
+                "reason": "already-assigned",
+            },
+        )
+
+    # Validate the coordinator ID
+    try:
+        coordinator_id = int(payload.coordinator_id)
+    except ValueError:
+        raise _invalid("The coordinator ID must be a valid number.") from None
+
+    # Check that the coordinator exists and is a Coordinator
+    all_users = users.list_users()
+    coordinator = next((u for u in all_users if u.id == coordinator_id), None)
+    if coordinator is None:
+        raise _invalid("That coordinator does not exist.")
+    if coordinator.role != Role.COORDINATOR:
+        raise _invalid("That user is not a Coordinator.")
+
+    # Assign the coordinator
+    assigned = event_store.repository().assign_coordinator(
+        event.id, coordinator_id, assigned_by_id=user.id
+    )
+    return _to_out(assigned)
 
 
 @router.get("/{event_id}", response_model=EventOut)

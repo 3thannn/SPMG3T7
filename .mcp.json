@@ -6,7 +6,7 @@
     },
     "jira-cloud": {
       "type": "http",
-      "url": "https://mcp-jira.us.auth0.com/authorize?response_type=code&client_id=VFwXJhNBiWVCDtMC1qLPdOQGfrmFgGaz&redirect_uri=https%3A%2F%2Fmcp.atlassian.com%2Fauth%2Fcallback&scope=offline_access%20read%3Ajira-user%20read%3Ajira-work%20write%3Ajira-work&audience=mcp.atlassian.com&state=&atlassianSiteUrl=https://smu-team-g10t1.atlassian.net&jiraProjectKey=SPMG3T7",
+      "url": "https://mcp.atlassian.com/mcp?atlassianSiteUrl=https://smu-team-g10t1.atlassian.net&jiraProjectKey=SPMG3T7",
       "auth": {
         "type": "bearer",
         "token": "ATATT3xFfGF0S9mOFNLBnpBPrMF4rvpS7cunS_b4YZmSyBD9Jf1dzb37_N_6FKLghbGCB8dZtxPq0ZgviK6quUHcbgOwod3__jZBL68jW51q6HGImEAl5nqf9xqBKzgGx1QgH7nSqqtnDPux8RgQPifDyXgpW74aavNjkd_rhv6wQsW_-mNRE2w=52BFDD3E"

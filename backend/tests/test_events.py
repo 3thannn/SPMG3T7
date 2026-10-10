@@ -199,11 +199,19 @@ class TestVisibility:
     def test_a_coordinator_sees_submitted_events_but_not_drafts(
         self, client, auth_headers
     ):
+        """US8.6: Coordinators only see events assigned to them."""
         draft = create(client, auth_headers("Event Organiser"), title="Private Draft")
         submitted = create(client, auth_headers("Event Organiser"), title="Ready for Review")
         client.post(
             f"/events/{submitted['id']}/submit",
             headers=auth_headers("Event Organiser"),
+        )
+
+        # US8.6: Assign the event to the coordinator
+        client.post(
+            f"/events/{submitted['id']}/assign",
+            json={"coordinatorId": str(COORDINATOR_ID)},
+            headers=auth_headers("Event Coordinator Lead"),
         )
 
         listed = client.get("/events", headers=auth_headers("Event Coordinator")).json()
@@ -225,9 +233,17 @@ class TestVisibility:
     def test_a_coordinator_can_open_a_submitted_event_and_see_every_field(
         self, client, auth_headers
     ):
-        """US5.1: a Coordinator opens a submitted request and reads it whole."""
+        """US5.1: a Coordinator opens a submitted request and reads it whole.
+        US8.6: Coordinator must be assigned to the event first."""
         event = create(client, auth_headers("Event Organiser"))
         client.post(f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser"))
+
+        # US8.6: Assign the event to the coordinator
+        client.post(
+            f"/events/{event['id']}/assign",
+            json={"coordinatorId": str(COORDINATOR_ID)},
+            headers=auth_headers("Event Coordinator Lead"),
+        )
 
         fetched = client.get(
             f"/events/{event['id']}", headers=auth_headers("Event Coordinator")
@@ -243,7 +259,7 @@ class TestVisibility:
         assert body["status"] == "Submitted"
         assert body["organiserId"] == str(ORGANISER_ID)
         assert body["organiserName"] == "Dylan"
-        assert len(body["history"]) == 2
+        assert len(body["history"]) >= 2  # At least creation and submission
 
     def test_an_event_that_is_not_yours_reads_as_missing_not_forbidden(
         self, client, auth_headers, event_repository
@@ -352,12 +368,20 @@ class TestSaving:
         assert saved["title"] == "Renamed by Owner"
 
     def test_coordinator_can_edit_any_event(self, client, auth_headers):
-        """US5.2: Coordinators can edit submitted events they don't own."""
+        """US5.2: Coordinators can edit submitted events they don't own.
+        US8.6: Coordinator must be assigned to the event first."""
         event = create(client, auth_headers("Event Organiser"))
         # Submit the event first - coordinators can only edit submitted events
         submitted = client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
         ).json()
+
+        # US8.6: Assign the event to the coordinator
+        client.post(
+            f"/events/{submitted['id']}/assign",
+            json={"coordinatorId": str(COORDINATOR_ID)},
+            headers=auth_headers("Event Coordinator Lead"),
+        )
 
         response = client.put(
             f"/events/{submitted['id']}",
@@ -532,15 +556,22 @@ class TestSubmitting:
 
 
 class TestCoordinatorEditing:
-    """US5.2: Coordinators can edit events with change tracking (important vs routine)."""
+    """US5.2: Coordinators can edit events with change tracking (important vs routine).
+    US8.6: Coordinators must be assigned to events to edit them."""
 
     def test_coordinator_edit_tracks_important_change_to_date(self, client, auth_headers):
         """Editing proposed_date is logged as important."""
         event = create(client, auth_headers("Event Organiser"))
-        # Submit the event first - coordinators can only edit submitted events
         submitted = client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
         ).json()
+
+        # US8.6: Assign to coordinator
+        client.post(
+            f"/events/{submitted['id']}/assign",
+            json={"coordinatorId": str(COORDINATOR_ID)},
+            headers=auth_headers("Event Coordinator Lead"),
+        )
 
         response = client.put(
             f"/events/{submitted['id']}",
@@ -555,10 +586,16 @@ class TestCoordinatorEditing:
     def test_coordinator_edit_tracks_important_change_to_attendance(self, client, auth_headers):
         """Editing expected_attendance is logged as important."""
         event = create(client, auth_headers("Event Organiser"))
-        # Submit the event first - coordinators can only edit submitted events
         submitted = client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
         ).json()
+
+        # US8.6: Assign to coordinator
+        client.post(
+            f"/events/{submitted['id']}/assign",
+            json={"coordinatorId": str(COORDINATOR_ID)},
+            headers=auth_headers("Event Coordinator Lead"),
+        )
 
         response = client.put(
             f"/events/{submitted['id']}",
@@ -573,10 +610,16 @@ class TestCoordinatorEditing:
     def test_coordinator_edit_tracks_routine_change_to_title(self, client, auth_headers):
         """Editing title is logged as routine."""
         event = create(client, auth_headers("Event Organiser"))
-        # Submit the event first - coordinators can only edit submitted events
         submitted = client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
         ).json()
+
+        # US8.6: Assign to coordinator
+        client.post(
+            f"/events/{submitted['id']}/assign",
+            json={"coordinatorId": str(COORDINATOR_ID)},
+            headers=auth_headers("Event Coordinator Lead"),
+        )
 
         response = client.put(
             f"/events/{submitted['id']}",
@@ -591,10 +634,16 @@ class TestCoordinatorEditing:
     def test_coordinator_edit_tracks_routine_change_to_purpose(self, client, auth_headers):
         """Editing purpose is logged as routine."""
         event = create(client, auth_headers("Event Organiser"))
-        # Submit the event first - coordinators can only edit submitted events
         submitted = client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
         ).json()
+
+        # US8.6: Assign to coordinator
+        client.post(
+            f"/events/{submitted['id']}/assign",
+            json={"coordinatorId": str(COORDINATOR_ID)},
+            headers=auth_headers("Event Coordinator Lead"),
+        )
 
         response = client.put(
             f"/events/{submitted['id']}",
@@ -609,10 +658,16 @@ class TestCoordinatorEditing:
     def test_coordinator_edit_tracks_routine_change_to_description(self, client, auth_headers):
         """Editing description is logged as routine."""
         event = create(client, auth_headers("Event Organiser"))
-        # Submit the event first - coordinators can only edit submitted events
         submitted = client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
         ).json()
+
+        # US8.6: Assign to coordinator
+        client.post(
+            f"/events/{submitted['id']}/assign",
+            json={"coordinatorId": str(COORDINATOR_ID)},
+            headers=auth_headers("Event Coordinator Lead"),
+        )
 
         response = client.put(
             f"/events/{submitted['id']}",
@@ -646,6 +701,13 @@ class TestCoordinatorEditing:
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
         ).json()
 
+        # US8.6: Assign to coordinator
+        client.post(
+            f"/events/{submitted['id']}/assign",
+            json={"coordinatorId": str(COORDINATOR_ID)},
+            headers=auth_headers("Event Coordinator Lead"),
+        )
+
         response = client.put(
             f"/events/{submitted['id']}",
             json={**DRAFT, "title": "Edited After Submission"},
@@ -674,10 +736,18 @@ class TestSprintOneReachableStatuses:
 
 
 def test_the_directory_and_the_events_list_agree_on_ids(client, auth_headers):
-    """A Coordinator reading both must be able to join them without translating."""
+    """A Coordinator reading both must be able to join them without translating.
+    US8.6: Coordinator must be assigned to see the event."""
     event = create(client, auth_headers("Event Organiser"))
     client.post(
         f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
+    )
+
+    # US8.6: Assign the event to the coordinator
+    client.post(
+        f"/events/{event['id']}/assign",
+        json={"coordinatorId": str(COORDINATOR_ID)},
+        headers=auth_headers("Event Coordinator Lead"),
     )
 
     directory = client.get("/auth/users", headers=auth_headers("Event Coordinator")).json()

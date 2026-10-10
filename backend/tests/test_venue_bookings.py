@@ -565,8 +565,9 @@ class TestBookedVenuesStayInTheCatalogue:
         assert venue_repository.get_venue(3) is None
 
 
-def test_the_whole_journey_through_the_routes(client, organiser, coordinator):
-    """Created and submitted by the Organiser, assigned, booked, and seen by both."""
+def test_the_whole_journey_through_the_routes(client, organiser, coordinator, auth_headers):
+    """Created and submitted by the Organiser, assigned, booked, and seen by both.
+    US8.6: Coordinator Lead assigns the event to a coordinator."""
     created = client.post(
         "/events",
         json={
@@ -579,8 +580,15 @@ def test_the_whole_journey_through_the_routes(client, organiser, coordinator):
         },
         headers=organiser,
     ).json()
-    submitted = client.post(f"/events/{created['id']}/submit", headers=organiser).json()
-    assert submitted["coordinatorId"] == str(COORDINATOR_ID)
+    client.post(f"/events/{created['id']}/submit", headers=organiser)
+
+    # US8.6: Coordinator Lead assigns the event
+    assigned = client.post(
+        f"/events/{created['id']}/assign",
+        json={"coordinatorId": str(COORDINATOR_ID)},
+        headers=auth_headers("Event Coordinator Lead"),
+    ).json()
+    assert assigned["coordinatorId"] == str(COORDINATOR_ID)
 
     hall = client.post(
         f"/events/{created['id']}/bookings", json=BOOKING, headers=coordinator

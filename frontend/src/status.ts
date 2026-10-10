@@ -30,13 +30,16 @@ export const SPRINT_1_REACHABLE: readonly EventStatus[] = ['Draft', 'Submitted']
 /**
  * The roles the system knows about.
  *
- * The three that have features: an Organiser proposes events, a Coordinator
- * reviews them and reads the venue catalogue, and Venue Staff maintain that
- * catalogue (US9.1a-c). Technical Support and Attendee are still deliberately
- * absent — the server agrees, and this type is what makes a stray role name a
- * build error rather than a runtime surprise.
+ * US1.4 adds Coordinator Lead and Safety Officer. Technical Support and
+ * Attendee are still deliberately absent — the server agrees, and this type
+ * is what makes a stray role name a build error rather than a runtime surprise.
  */
-export type Role = 'Event Organiser' | 'Event Coordinator' | 'Venue Staff'
+export type Role =
+  | 'Event Organiser'
+  | 'Event Coordinator'
+  | 'Event Coordinator Lead'
+  | 'Venue Staff'
+  | 'Safety Officer'
 
 /**
  * US4.1: status is visible to the Organiser who owns the event. Coordinators
