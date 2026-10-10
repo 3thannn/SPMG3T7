@@ -28,14 +28,24 @@ MESSAGE = "Please confirm the catering budget and add a wet-weather plan."
 
 
 def submitted_event(client, auth_headers) -> dict:
-    """An event in the state US7.3 starts from: submitted, awaiting review."""
+    """An event in the state US7.3 starts from: submitted, awaiting review.
+    US8.6: Assigns the event to the coordinator so they can see it."""
     organiser = auth_headers("Event Organiser")
     created = client.post("/events", json=DRAFT, headers=organiser)
     assert created.status_code == 201, created.text
     event_id = created.json()["id"]
     submitted = client.post(f"/events/{event_id}/submit", headers=organiser)
     assert submitted.status_code == 200, submitted.text
-    return submitted.json()
+
+    # US8.6: Assign the event to the coordinator so they can interact with it
+    assigned = client.post(
+        f"/events/{event_id}/assign",
+        json={"coordinatorId": str(COORDINATOR_ID)},
+        headers=auth_headers("Event Coordinator Lead"),
+    )
+    assert assigned.status_code == 200, assigned.text
+
+    return assigned.json()
 
 
 def seed(event_repository, **overrides) -> Event:
@@ -127,6 +137,7 @@ class TestAsking:
         response = request_clarification(client, auth_headers("Event Coordinator"), event["id"])
 
         history = response.json()["history"]
+        # US8.6: Assignment doesn't create a history entry (coordinator_id just gets set)
         assert [entry["to"] for entry in history] == [
             "Draft",
             "Submitted",
@@ -200,6 +211,7 @@ class TestTheOrganiserSeesIt:
         """So a client can tell a request apart from a plain status change."""
         event = submitted_event(client, auth_headers)
 
+        # US8.6: Assignment doesn't create a history entry
         assert [entry["notes"] for entry in event["history"]] == ["", ""]
 
 

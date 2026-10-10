@@ -41,3 +41,4 @@ lerna-debug.log*
 *.sln
 *.sw?
 .mcp.json
+TEST_CASE_REPORT.md

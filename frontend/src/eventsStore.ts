@@ -14,7 +14,7 @@
  */
 
 import { ApiError, authorizedFetch, type Session } from './api'
-import type { EventStatus, StatusChange } from './status'
+import { formatTimestamp, type EventStatus, type StatusChange } from './status'
 
 export type EventRecord = {
   id: string
@@ -224,6 +224,206 @@ export async function rejectEvent(
       body: JSON.stringify({ reason }),
     })
     return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/**
+ * US14.1: one venue requested for an event. An event may have many, such as a
+ * main hall and its breakout rooms, and each is its own record.
+ */
+export type BookingRecord = {
+  id: string
+  eventId: string
+  venueId: string
+  venueName: string
+  /** Naive local times, "YYYY-MM-DDTHH:MM" or with seconds once stored. */
+  startsAt: string
+  endsAt: string
+  /**
+   * Every new booking waits on Venue Staff, whose approval is a later epic. A
+   * Coordinator may cancel one (US14.2), which is final.
+   */
+  status: 'Requested' | 'Cancelled'
+  requestedAt: string
+  /**
+   * US18.1: how many people this booking is for. null only on a booking made
+   * before US18.1 for an event that had no attendance to copy.
+   */
+  headcount: number | null
+  /** Empty when the booking asked for no particular layout. */
+  requiredLayout: string
+  requiredFacilities: string[]
+  accessibilityNeeds: string[]
+  /** US14.2: who cancelled, when and why. null unless the status is Cancelled. */
+  cancellation: BookingCancellation | null
+}
+
+export type BookingCancellation = {
+  at: string
+  /** null once the user who cancelled has been removed; the record stays. */
+  byId: string | null
+  byName: string
+  reason: string
+}
+
+/** The server's cap on a cancellation reason, mirrored so the form can say so. */
+export const CANCELLATION_REASON_MAX = 2000
+
+/**
+ * The Coordinator's booking form, as typed. `bookingPayload` turns it into what
+ * the API takes, so the form never holds a half-parsed number or list.
+ */
+export type BookingInput = {
+  venueId: string
+  startsAt: string
+  endsAt: string
+  /** US18.1: starts as the event's expected attendance. */
+  headcount: string
+  layout: string
+  /** Comma-separated, as typed. */
+  facilities: string
+  accessibilityNeeds: string
+}
+
+/** A comma-separated field as a list, blanks dropped. */
+export function splitNeeds(text: string): string[] {
+  return text
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+/** The form as the API reads it: a number for the headcount, lists for needs. */
+export function bookingPayload(input: BookingInput) {
+  return {
+    venueId: input.venueId,
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    headcount: Number(input.headcount.trim()),
+    layout: input.layout.trim(),
+    facilities: splitNeeds(input.facilities),
+    accessibilityNeeds: splitNeeds(input.accessibilityNeeds),
+  }
+}
+
+/** US18.1: Suitable or Not suitable for one venue, with every reason. */
+export type Suitability = {
+  venueId: string
+  suitable: boolean
+  /** Why it is not suitable, one sentence each. Empty when it is. */
+  reasons: string[]
+  /** What could not be checked, such as hours nobody has recorded. */
+  notes: string[]
+}
+
+/**
+ * US14.1: the first problem with a booking request as a sentence, or ''.
+ *
+ * The server checks again; this is so the form can say what is wrong without a
+ * round trip. datetime-local values sort as text in time order, so they are
+ * compared as strings, as the event form compares its own.
+ */
+export function validateBooking(input: BookingInput): string {
+  if (!input.venueId.trim()) return 'Choose a venue.'
+  if (!input.startsAt.trim()) return 'Give the booking a start time.'
+  if (!input.endsAt.trim()) return 'Give the booking an end time.'
+  if (input.endsAt <= input.startsAt) return 'The booking must end after it starts.'
+  const headcount = parseAttendance(input.headcount)
+  if (headcount === null) return 'Give the headcount for this booking.'
+  if (headcount === 'invalid') return 'Give the headcount as a whole number of people.'
+  if (headcount < 1) return 'The headcount must be at least 1.'
+  return ''
+}
+
+/**
+ * "2 Nov 2027, 09:00 – 17:00" for a booking within one day; both ends in full
+ * when it runs past midnight, so an overnight booking cannot be misread.
+ */
+export function formatBookingTimes(startsAt: string, endsAt: string): string {
+  const start = formatTimestamp(startsAt)
+  if (startsAt.slice(0, 10) !== endsAt.slice(0, 10)) {
+    return `${start} – ${formatTimestamp(endsAt)}`
+  }
+  const end = new Date(endsAt)
+  if (Number.isNaN(end.getTime())) return `${start} – ${endsAt}`
+  return `${start} – ${end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+}
+
+/** US14.1: every venue booking for the event, soonest first — the server's order. */
+export async function listBookings(eventId: string, session: Session): Promise<BookingRecord[]> {
+  const response = await authorizedFetch(`/events/${eventId}/bookings`, session.token)
+  return (await response.json()) as BookingRecord[]
+}
+
+/**
+ * US14.1: request one venue for the event. Each call stands alone, so a refused
+ * breakout room leaves the main hall already requested.
+ */
+export async function requestBooking(
+  eventId: string,
+  input: BookingInput,
+  session: Session,
+): Promise<BookingRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${eventId}/bookings`, session.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bookingPayload(input)),
+    })
+    return (await response.json()) as BookingRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/**
+ * US18.1: whether the chosen venue suits this booking. Stores nothing; the
+ * request is refused by the server on the same verdict.
+ */
+export async function checkSuitability(
+  eventId: string,
+  input: BookingInput,
+  session: Session,
+): Promise<Suitability> {
+  try {
+    const response = await authorizedFetch(
+      `/events/${eventId}/bookings/suitability`,
+      session.token,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bookingPayload(input)),
+      },
+    )
+    return (await response.json()) as Suitability
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/**
+ * US14.2: cancel one booking, with a reason. Only that booking changes; the
+ * event and its other bookings are left as they were.
+ */
+export async function cancelBooking(
+  eventId: string,
+  bookingId: string,
+  reason: string,
+  session: Session,
+): Promise<BookingRecord> {
+  try {
+    const response = await authorizedFetch(
+      `/events/${eventId}/bookings/${bookingId}/cancel`,
+      session.token,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      },
+    )
+    return (await response.json()) as BookingRecord
   } catch (error) {
     return asRuleError(error)
   }

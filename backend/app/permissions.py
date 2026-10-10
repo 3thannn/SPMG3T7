@@ -13,9 +13,9 @@ from enum import StrEnum
 class Role(StrEnum):
     """The roles the system knows about. The values are the wire format.
 
-    The three roles that have features: an Organiser proposes events, a
-    Coordinator reviews them and reads the venue catalogue, and Venue Staff
-    maintain that catalogue (US9.1a-c).
+    US1.4 (Week 7): Event Coordinator Lead and Safety Officer join the active
+    roles. Lead manages the unassigned queue (US8.2) and assigns Coordinators
+    (US8.3). Safety Officer runs the Operational Safety Check (US17.x).
 
     Technical Support and Attendee are still deliberately absent — a role that
     can sign in but can do nothing is a dead end for whoever holds it. They come
@@ -26,25 +26,38 @@ class Role(StrEnum):
 
     ORGANISER = "Event Organiser"
     COORDINATOR = "Event Coordinator"
+    COORDINATOR_LEAD = "Event Coordinator Lead"
     VENUE_STAFF = "Venue Staff"
+    SAFETY_OFFICER = "Safety Officer"
 
 
 class Permission(StrEnum):
     """A single thing a role may do, named `resource:action`.
 
     Only permissions some role actually holds are listed. Declaring the ones for
-    venue booking or registration now would put names in the catalogue that
-    nothing grants and nothing checks; they arrive with their own roles.
+    booking approval or registration now would put names in the catalogue that
+    nothing grants and nothing checks; they arrive with their own stories.
 
     Note that reading the catalogue and maintaining it are separate permissions
     held by different roles: a Coordinator reads (US9.2) and Venue Staff write
     (US9.1a-c). Neither is a superset of the other, which is why there are four
     venue permissions rather than one.
+
+    Requesting a venue for an event (US14.1) is a fifth, and not one of them:
+    it does not change the catalogue, it asks Venue Staff for part of it.
+    Cancelling one of those requests (US14.2) is the same grant rather than a
+    sixth, as US12.1's blackouts are `venues:edit`: the same role holds both,
+    under the same assignment rule, and a second name would only be one more
+    thing for the frontend's copy to drift on.
+
+    US1.4/US8.2/US8.3: Coordinator Lead permissions for managing assignments.
+    US1.4/US17.x: Safety Officer permissions (placeholder for now).
     """
 
     EVENTS_CREATE = "events:create"
     EVENTS_READ_OWN = "events:read:own"
     EVENTS_READ_SUBMITTED = "events:read:submitted"
+    EVENTS_READ_ALL = "events:read:all"  # US8.6: Lead sees all, not just assigned
     EVENTS_SUBMIT = "events:submit"
     EVENTS_REVIEW = "events:review"
     EVENTS_EDIT = "events:edit"
@@ -53,6 +66,10 @@ class Permission(StrEnum):
     VENUES_CREATE = "venues:create"
     VENUES_EDIT = "venues:edit"
     VENUES_DELETE = "venues:delete"
+    BOOKINGS_REQUEST = "bookings:request"
+    QUEUE_VIEW_UNASSIGNED = "queue:view:unassigned"  # US8.2: Lead sees unassigned queue
+    COORDINATORS_ASSIGN = "coordinators:assign"  # US8.3: Lead assigns Coordinators
+    SAFETY_REVIEW = "safety:review"  # US17.x: Safety Officer (placeholder)
 
 
 #: Said in the first person, to be dropped into a denial message.
@@ -60,6 +77,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.EVENTS_CREATE: "create events",
     Permission.EVENTS_READ_OWN: "view your own events",
     Permission.EVENTS_READ_SUBMITTED: "view submitted events",
+    Permission.EVENTS_READ_ALL: "view all events",
     Permission.EVENTS_SUBMIT: "submit events for approval",
     Permission.EVENTS_REVIEW: "review submitted events",
     Permission.EVENTS_EDIT: "edit events",
@@ -68,6 +86,10 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.VENUES_CREATE: "add a venue to the catalogue",
     Permission.VENUES_EDIT: "update a venue record",
     Permission.VENUES_DELETE: "remove a venue from the catalogue",
+    Permission.BOOKINGS_REQUEST: "request and cancel venue bookings",
+    Permission.QUEUE_VIEW_UNASSIGNED: "view the unassigned event queue",
+    Permission.COORDINATORS_ASSIGN: "assign events to Coordinators",
+    Permission.SAFETY_REVIEW: "review event safety",
 }
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -85,6 +107,21 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.EVENTS_EDIT,
             Permission.USERS_READ,
             Permission.VENUES_READ,
+            # US14.1. The role is the first half of US8.6's rule; the event
+            # being assigned to them is the second, checked per event.
+            Permission.BOOKINGS_REQUEST,
+        }
+    ),
+    # US1.4/US8.2/US8.3: Coordinator Lead manages the unassigned queue and
+    # assigns events to Coordinators. Can view all events (US8.6), not just
+    # assigned ones like regular Coordinators.
+    Role.COORDINATOR_LEAD: frozenset(
+        {
+            Permission.EVENTS_READ_ALL,
+            Permission.USERS_READ,
+            Permission.VENUES_READ,
+            Permission.QUEUE_VIEW_UNASSIGNED,
+            Permission.COORDINATORS_ASSIGN,
         }
     ),
     # US9.1a-c: Venue Staff own the catalogue and nothing else. They read it
@@ -98,16 +135,27 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VENUES_DELETE,
         }
     ),
+    # US1.4: Safety Officer placeholder. Features arrive in US17.x.
+    Role.SAFETY_OFFICER: frozenset(
+        {
+            Permission.SAFETY_REVIEW,
+        }
+    ),
 }
 
 #: Where each role lands after signing in — the "role-appropriate view" of
 #: US1.1. Venue Staff are the role that made this lookup earn its keep: the
 #: events list is no use to someone who cannot open an event, so they land on
 #: the catalogue they maintain instead.
+#:
+#: US1.4 AC2: Lead lands on the unassigned queue (US8.2), Safety Officer lands
+#: on the safety review queue (US17.1, placeholder for now).
 HOME_ROUTE: dict[Role, str] = {
     Role.ORGANISER: "/events",
     Role.COORDINATOR: "/events",
+    Role.COORDINATOR_LEAD: "/unassigned-queue",
     Role.VENUE_STAFF: "/venues",
+    Role.SAFETY_OFFICER: "/safety-review",
 }
 
 

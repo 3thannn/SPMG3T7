@@ -347,9 +347,9 @@ class SupabaseVenues:
     def delete_venue(self, venue_id: int) -> None:
         """US9.1c: a hard delete.
 
-        No referential check, because nothing books a venue yet and so no row
-        can be orphaned by this. That check becomes necessary with Sprint 3's
-        booking feature, and this is where it belongs when it does.
+        The route refuses a venue that has bookings (US14.1) before it gets
+        here, and `venue_bookings.venue_id` has no cascade, so no booking can be
+        orphaned by this.
         """
         supabase_client.admin().table(TABLE).delete().eq("id", venue_id).execute()
 

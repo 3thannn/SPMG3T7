@@ -6,7 +6,9 @@ import EventDetailPage from './pages/EventDetailPage'
 import EventsPage from './pages/EventsPage'
 import LandingPage from './pages/LandingPage'
 import NewEventPage from './pages/NewEventPage'
+import SafetyReviewPage from './pages/SafetyReviewPage'
 import SignInPage from './pages/SignInPage'
+import UnassignedQueuePage from './pages/UnassignedQueuePage'
 import VenueDetailPage from './pages/VenueDetailPage'
 import VenueFormPage from './pages/VenueFormPage'
 import VenuesPage from './pages/VenuesPage'
@@ -199,6 +201,14 @@ export default function App() {
 
     if (route === '/venues/new') {
       return <VenueFormPage venueId={null} session={session} />
+    }
+
+    if (route === '/unassigned-queue') {
+      return <UnassignedQueuePage session={session} />
+    }
+
+    if (route === '/safety-review') {
+      return <SafetyReviewPage session={session} />
     }
 
     const eventId = matchEventDetail(route)

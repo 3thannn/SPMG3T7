@@ -65,6 +65,9 @@ so running one twice is a no-op.
 | ------ | ---------- | -------------- |
 | [`SUPABASE_ADD_VENUE_LAYOUTS.sql`](backend/SUPABASE_ADD_VENUE_LAYOUTS.sql) | US9.1a-c, US9.2, US9.3 — every venue route | **All five `/venues` routes return 500.** Reads included, not just writes |
 | [`SUPABASE_ADD_VENUE_UNAVAILABILITY.sql`](backend/SUPABASE_ADD_VENUE_UNAVAILABILITY.sql) | US12.1 venue blackout periods | Both `/venues/{id}/unavailability` routes return 500. The other venue routes are unaffected |
+| [`SUPABASE_ADD_VENUE_BOOKINGS.sql`](backend/SUPABASE_ADD_VENUE_BOOKINGS.sql) | US14.1 venue bookings | Every `/events/{id}/bookings` route returns 500, so the bookings card on an event shows an error. `DELETE /venues/{id}` also returns 500, because it checks for bookings first |
+| [`SUPABASE_CANCEL_VENUE_BOOKINGS.sql`](backend/SUPABASE_CANCEL_VENUE_BOOKINGS.sql) | US14.2 cancelling a booking. Run after the US14.1 script | Every `/events/{id}/bookings` route returns 500, not only cancel: each booking read selects the cancellation columns. `DELETE /venues/{id}` is unaffected |
+| [`SUPABASE_ADD_BOOKING_NEEDS.sql`](backend/SUPABASE_ADD_BOOKING_NEEDS.sql) | US18.1 headcount and needs per booking. Run after the US14.2 script | Every `/events/{id}/bookings` route returns 500: each booking read selects the new columns. The suitability check itself still works, because it reads venues only |
 | [`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`](backend/SUPABASE_ALLOW_PARTIAL_DRAFTS.sql) | US4.2 partial drafts | Saving a draft with no date fails |
 | [`SUPABASE_ADD_CHANGE_REQUESTS.sql`](backend/SUPABASE_ADD_CHANGE_REQUESTS.sql) | US11.1 change requests — and every events page | **`GET /events` and every event page return 500**, which the browser reports as a CORS error. See below |
 | [`SUPABASE_HARDENING.sql`](backend/SUPABASE_HARDENING.sql) | Row Level Security, indexes | Supabase advisor warnings; the app still works |
@@ -216,9 +219,10 @@ backend/
     sessions.py        session store with a sliding inactivity window
     security.py        session-token generation
     supabase_client.py the Supabase clients, and which key each one uses
-    events.py          /events routes — US4.1, US4.2, US7.1, US7.3 and US11.1
-    event_store.py     event data access, over events, status_changes and
-                       event_change_requests
+    events.py          /events routes — US4.1, US4.2, and US14.1's venue bookings
+    event_store.py     event data access, over events and status_changes and event_change_requests
+    booking_store.py   venue booking data access, over venue_bookings
+    suitability.py     whether a venue suits one booking (US18.1)
     event_status.py    the status label set, the submit rule and the US7.3 review rule
     change_requests.py the US11.1 rules: which fields changed, which are
                        important, and when a change may be requested
@@ -242,7 +246,8 @@ frontend/
     status.ts          event status model and roles
     pages/             sign-in, landing, events, event detail, venues, venue
                        detail, venue form, access denied
-    components/        top nav, status badge, status timeline, proposed changes
+    components/        top nav, status badge, status timeline, venue
+                       unavailability, event venue bookings
   index.html
   package.json
   vite.config.ts

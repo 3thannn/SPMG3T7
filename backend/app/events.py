@@ -16,17 +16,21 @@ Ids go out as strings for the same reason they do in `auth.Identity`: the client
 only ever compares them.
 """
 
-from dataclasses import replace
+import re
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import change_requests, event_store
+from app import booking_store, event_store, suitability, venue_store,change_requests
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
+from app.booking_store import Booking, BookingStatus, StaleBookingStatus
 from app.event_status import (
     EventStatus,
+    booking_refusal_message,
+    check_booking,
     check_clarification,
     check_submit,
     clarification_refusal_message,
@@ -35,18 +39,26 @@ from app.event_status import (
     transition_refusal_message,
 )
 from app.event_store import Event, StaleEventStatus
-from app.permissions import Permission, has_permission
+from app.permissions import Permission, Role, has_permission
+from app.suitability import BookingNeeds, Verdict
 from app.users import User
+from app.venue_store import Venue
 
 router = APIRouter(prefix="/events", tags=["events"])
 
-READ_ANY = (Permission.EVENTS_READ_OWN, Permission.EVENTS_READ_SUBMITTED)
+READ_ANY = (
+    Permission.EVENTS_READ_OWN,
+    Permission.EVENTS_READ_SUBMITTED,
+    Permission.EVENTS_READ_ALL,
+)
 
 
 class EventError:
     NOT_FOUND = "event_not_found"
     INVALID = "invalid_event"
     REFUSED = "rule_refused"
+    INVALID_BOOKING = "invalid_booking"
+    BOOKING_NOT_FOUND = "booking_not_found"
 
 
 class StatusChangeOut(BaseModel):
@@ -305,16 +317,22 @@ def _validate_submission(event: Event) -> None:
 def _readable(event_id: int, user: User) -> Event:
     """Fetch an event the caller is allowed to see, or 404.
 
-    US8.1: Coordinators can only see events assigned to them."""
+    US8.1: Coordinators can only see events assigned to them.
+    US8.6: Lead can see all events (not just assigned ones)."""
     event = event_store.repository().get_event(event_id)
     if event is None:
         raise _not_found()
     sees_own = has_permission(user.role, Permission.EVENTS_READ_OWN)
     owns_event = sees_own and event.organiser_id == user.id
     sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
+    sees_all = has_permission(user.role, Permission.EVENTS_READ_ALL)
 
     # US8.1: Coordinators can only see events assigned to them
     is_assigned_coordinator = sees_submitted and event.coordinator_id == user.id
+
+    # US8.6: Lead can see all events
+    if sees_all and event.status != EventStatus.DRAFT:
+        return event
 
     if not owns_event and not (is_assigned_coordinator and event.status != EventStatus.DRAFT):
         raise _not_found()
@@ -335,18 +353,87 @@ def list_events(
 ) -> list[EventOut]:
     """US4.1: an Organiser sees their events; a Coordinator sees assigned non-Drafts.
 
-    US8.1: Coordinators now only see events assigned to them."""
+    US8.1: Coordinators now only see events assigned to them.
+    US8.6: Lead sees all events (unassigned and assigned)."""
     sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
+    sees_all = has_permission(user.role, Permission.EVENTS_READ_ALL)
+
     all_events = event_store.repository().list_events(
-        organiser_id=None if sees_submitted else user.id,
-        include_drafts=not sees_submitted,
+        organiser_id=None if (sees_submitted or sees_all) else user.id,
+        include_drafts=not (sees_submitted or sees_all),
     )
 
-    # US8.1: Filter by coordinator assignment
-    if sees_submitted:
+    # US8.1: Filter by coordinator assignment (but not for Lead who sees all)
+    if sees_submitted and not sees_all:
         all_events = [e for e in all_events if e.coordinator_id == user.id]
 
     return [_to_out(event) for event in all_events]
+
+
+@router.get("/unassigned", response_model=list[EventOut])
+def list_unassigned(
+    user: Annotated[User, Depends(require_permission(Permission.QUEUE_VIEW_UNASSIGNED))],
+) -> list[EventOut]:
+    """US8.2: List Submitted events with no assigned Coordinator (oldest first).
+
+    Only Coordinator Lead can access this queue."""
+    events = event_store.repository().list_unassigned()
+    return [_to_out(event) for event in events]
+
+
+class AssignmentPayload(BaseModel):
+    """Payload for assigning a Coordinator to an event (US8.3)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    coordinator_id: str = Field(alias="coordinatorId")
+
+
+@router.post("/{event_id}/assign", response_model=EventOut)
+def assign_coordinator(
+    event_id: str,
+    payload: AssignmentPayload,
+    user: Annotated[User, Depends(require_permission(Permission.COORDINATORS_ASSIGN))],
+) -> EventOut:
+    """US8.3: Lead assigns a Coordinator to an unassigned event.
+
+    Once assigned, the Coordinator can review, approve/reject, and manage the event."""
+    from app import users
+
+    event = event_store.repository().get_event(_as_id(event_id))
+    if event is None:
+        raise _not_found()
+
+    # Cannot reassign an already-assigned event
+    if event.coordinator_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": "This event is already assigned to a Coordinator.",
+                "reason": "already-assigned",
+            },
+        )
+
+    # Validate the coordinator ID
+    try:
+        coordinator_id = int(payload.coordinator_id)
+    except ValueError:
+        raise _invalid("The coordinator ID must be a valid number.") from None
+
+    # Check that the coordinator exists and is a Coordinator
+    all_users = users.list_users()
+    coordinator = next((u for u in all_users if u.id == coordinator_id), None)
+    if coordinator is None:
+        raise _invalid("That coordinator does not exist.")
+    if coordinator.role != Role.COORDINATOR:
+        raise _invalid("That user is not a Coordinator.")
+
+    # Assign the coordinator
+    assigned = event_store.repository().assign_coordinator(
+        event.id, coordinator_id, assigned_by_id=user.id
+    )
+    return _to_out(assigned)
 
 
 @router.get("/{event_id}", response_model=EventOut)
@@ -634,7 +721,6 @@ def reject_event(
         raise _invalid(f"Keep the reason to {DECISION_REASON_MAX} characters or fewer.")
     return _decide_event(event_id, user, EventStatus.REJECTED, reason=reason)
 
-
 class ChangeRequestIn(EventDraft):
     """US11.1: the edit form's values, proposed rather than saved, plus a note.
 
@@ -775,3 +861,453 @@ def reject_change(
     if len(reason) > DECISION_REASON_MAX:
         raise _invalid(f"Keep the reason to {DECISION_REASON_MAX} characters or fewer.")
     return _resolve_change(event_id, user, approve=False, note=reason)
+
+
+# -- US14.1: venue bookings ----------------------------------------------------
+#
+# A Coordinator asks for one or more venues for an event, such as a main hall
+# and its breakout rooms (Week 7 change #3). Each request is its own record and
+# its own call, so a venue that is refused never holds up another: the main hall
+# is stored before the breakout room is even sent. US15.1 (availability) and
+# US18.1 (suitability) add their checks per booking, in `request_booking`.
+#
+# These routes live here rather than in a module of their own because a booking
+# is reached through its event, and the event's visibility rule is what decides
+# who may see or request one.
+
+
+class CancellationOut(BaseModel):
+    """Who cancelled a booking, when, and why (US14.2)."""
+
+    at: str
+    #: Null once the user who cancelled has been removed; the record stays.
+    by_id: str | None = Field(serialization_alias="byId")
+    by_name: str = Field(serialization_alias="byName")
+    reason: str
+
+
+class BookingOut(BaseModel):
+    id: str
+    event_id: str = Field(serialization_alias="eventId")
+    venue_id: str = Field(serialization_alias="venueId")
+    venue_name: str = Field(serialization_alias="venueName")
+    #: As sent, "YYYY-MM-DDTHH:MM", or with seconds once read back from Postgres.
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+    status: BookingStatus
+    requested_at: str = Field(serialization_alias="requestedAt")
+    #: US18.1: how many people this booking is for. Null only on a booking made
+    #: before US18.1 for an event that had no attendance to copy.
+    headcount: int | None = None
+    required_layout: str = Field(default="", serialization_alias="requiredLayout")
+    required_facilities: list[str] = Field(
+        default_factory=list, serialization_alias="requiredFacilities"
+    )
+    accessibility_needs: list[str] = Field(
+        default_factory=list, serialization_alias="accessibilityNeeds"
+    )
+    #: Null unless the booking is Cancelled, so "not cancelled" is one state
+    #: rather than three empty fields.
+    cancellation: CancellationOut | None = None
+
+
+def _booking_out(booking: Booking) -> BookingOut:
+    cancellation = booking.cancellation
+    return BookingOut(
+        id=str(booking.id),
+        event_id=str(booking.event_id),
+        venue_id=str(booking.venue_id),
+        venue_name=booking.venue_name,
+        starts_at=booking.starts_at,
+        ends_at=booking.ends_at,
+        status=booking.status,
+        requested_at=booking.requested_at,
+        headcount=booking.headcount,
+        required_layout=booking.required_layout,
+        required_facilities=list(booking.required_facilities),
+        accessibility_needs=list(booking.accessibility_needs),
+        cancellation=(
+            CancellationOut(
+                at=cancellation.at,
+                by_id=str(cancellation.by_id) if cancellation.by_id is not None else None,
+                by_name=cancellation.by_name,
+                reason=cancellation.reason,
+            )
+            if cancellation
+            else None
+        ),
+    )
+
+
+class BookingInput(BaseModel):
+    """What a Coordinator sends to request a venue for an event, or to check one.
+
+    Every field is optional here so that a missing or malformed one is a
+    sentence from `_validated_booking` with this module's 400 rather than
+    Pydantic's 422, which is the same reason `UnavailabilityInput` takes its
+    dates as text. The venue id may come as a string, the way ids go out, or
+    as a number.
+
+    US18.1 added what the booking needs. The headcount defaults to the event's
+    expected attendance when it is left out. The layout, facilities and
+    accessibility needs are optional; each list may be sent as an array or as
+    one comma-separated string.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    venue_id: str | int | None = Field(default=None, alias="venueId")
+    starts_at: str | None = Field(default=None, alias="startsAt")
+    ends_at: str | None = Field(default=None, alias="endsAt")
+    headcount: int | str | None = None
+    layout: str | None = None
+    facilities: list[str] | str | None = None
+    accessibility_needs: list[str] | str | None = Field(default=None, alias="accessibilityNeeds")
+
+
+#: What a datetime-local input sends, with or without seconds, in ASCII digits.
+#: `datetime.fromisoformat` alone is looser than this, and a time the form did
+#: not mean to send should be refused rather than reinterpreted.
+_ISO_DATETIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?")
+_VENUE_ID = re.compile(r"[0-9]+")
+
+
+def _invalid_booking(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={"code": EventError.INVALID_BOOKING, "message": message},
+    )
+
+
+def _venue_missing() -> HTTPException:
+    """400 rather than 404: the event in the path exists; the venue in the body does not."""
+    return _invalid_booking("That venue is not in the catalogue.")
+
+
+def _booking_time(raw: str | None, *, which: str) -> tuple[str, datetime]:
+    """The time as it will be stored, and as a datetime to compare with."""
+    text = (raw or "").strip()
+    if not text:
+        article = "an" if which == "end" else "a"
+        raise _invalid_booking(f"Give the booking {article} {which} time.")
+    if not _ISO_DATETIME.fullmatch(text):
+        raise _invalid_booking(f"Give the {which} time as YYYY-MM-DDTHH:MM.")
+    try:
+        return text, datetime.fromisoformat(text)
+    except ValueError:
+        # Well-formed but not on any calendar or clock: 2027-02-30, 25:00.
+        raise _invalid_booking(f"The {which} time {text} is not a real date and time.") from None
+
+
+#: Postgres `integer`, as for a venue's capacity (US9.1a).
+HEADCOUNT_MAX = 2_147_483_647
+#: Per layout, facility or accessibility need. About keeping a need a need.
+NEED_MAX = 100
+#: Per list. A booking needing more than this is a venue description, not a need.
+NEEDS_MAX = 20
+_WHOLE_NUMBER = re.compile(r"[0-9]+")
+
+
+def _headcount(raw: int | str | None, event: Event) -> int:
+    """US18.1: the booking's own headcount, or the event's attendance by default."""
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        attendance = event.expected_attendance
+        if attendance is None or attendance < 1:
+            raise _invalid_booking(
+                "Give the headcount for this booking. The event has no expected "
+                "attendance to start from."
+            )
+        return attendance
+    text = str(raw).strip()
+    if isinstance(raw, bool) or not _WHOLE_NUMBER.fullmatch(text):
+        raise _invalid_booking("Give the headcount as a whole number of people.")
+    headcount = int(text)
+    if headcount < 1:
+        raise _invalid_booking("The headcount must be at least 1.")
+    if headcount > HEADCOUNT_MAX:
+        raise _invalid_booking("That headcount is larger than any venue this system can hold.")
+    return headcount
+
+
+def _need(text: str, *, what: str) -> str:
+    cleaned = " ".join(text.split())
+    if len(cleaned) > NEED_MAX:
+        raise _invalid_booking(f"Keep each {what} to {NEED_MAX} characters or fewer.")
+    return cleaned
+
+
+def _needs(raw: list[str] | str | None, *, what: str, plural: str) -> tuple[str, ...]:
+    """A list of needs, trimmed, blanks dropped, and each named once."""
+    if raw is None:
+        return ()
+    items = raw.split(",") if isinstance(raw, str) else raw
+    kept: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        need = _need(str(item), what=what)
+        if need and need.casefold() not in seen:
+            seen.add(need.casefold())
+            kept.append(need)
+    if len(kept) > NEEDS_MAX:
+        raise _invalid_booking(f"List at most {NEEDS_MAX} {plural}.")
+    return tuple(kept)
+
+
+@dataclass(frozen=True)
+class _ValidBooking:
+    venue_id: int
+    #: As they will be stored, which is as they were sent.
+    starts_at: str
+    ends_at: str
+    needs: BookingNeeds
+
+
+def _validated_booking(payload: BookingInput, event: Event) -> _ValidBooking:
+    """US14.1: a venue, a start, and an end after it. US18.1: what it needs.
+
+    One problem is named at a time, in the order the form shows the fields. The
+    past is judged by date, as `_validate_submission` judges an event's start:
+    the times are naive and local to whoever typed them, so the server's clock
+    cannot say whether 09:00 today has passed for them.
+    """
+    raw_venue = "" if payload.venue_id is None else str(payload.venue_id).strip()
+    if not raw_venue:
+        raise _invalid_booking("Choose a venue.")
+    if not _VENUE_ID.fullmatch(raw_venue):
+        raise _venue_missing()
+
+    starts_at, start = _booking_time(payload.starts_at, which="start")
+    ends_at, end = _booking_time(payload.ends_at, which="end")
+    if end <= start:
+        raise _invalid_booking("The booking must end after it starts.")
+    if start.date() < date.today():
+        raise _invalid_booking("A booking cannot start in the past.")
+
+    needs = BookingNeeds(
+        headcount=_headcount(payload.headcount, event),
+        starts_at=start,
+        ends_at=end,
+        layout=_need(payload.layout or "", what="layout"),
+        facilities=_needs(payload.facilities, what="facility", plural="facilities"),
+        accessibility=_needs(
+            payload.accessibility_needs,
+            what="accessibility need",
+            plural="accessibility needs",
+        ),
+    )
+    return _ValidBooking(int(raw_venue), starts_at, ends_at, needs)
+
+
+def _prepared_booking(
+    event_id: str, payload: BookingInput, user: User
+) -> tuple[Event, Venue, _ValidBooking]:
+    """Everything a request and a suitability check both need, refused the same way.
+
+    404, then 409, then 400. A request for an event the caller cannot see is
+    wrong whatever it says, and one for a closed event is refused however
+    well-formed it is.
+    """
+    event = _readable(_as_id(event_id), user)
+
+    refusal = check_booking(status=event.status)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": booking_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+
+    valid = _validated_booking(payload, event)
+    venue = venue_store.repository().get_venue(valid.venue_id)
+    if venue is None:
+        raise _venue_missing()
+    return event, venue, valid
+
+
+class SuitabilityOut(BaseModel):
+    """US18.1: Suitable or Not suitable, with every reason."""
+
+    venue_id: str = Field(serialization_alias="venueId")
+    suitable: bool
+    #: Why it is not suitable, one sentence each. Empty when it is.
+    reasons: list[str]
+    #: What could not be checked, such as hours nobody has recorded.
+    notes: list[str]
+
+
+def _suitability_out(venue: Venue, verdict: Verdict) -> SuitabilityOut:
+    return SuitabilityOut(
+        venue_id=str(venue.id),
+        suitable=verdict.suitable,
+        reasons=list(verdict.reasons),
+        notes=list(verdict.notes),
+    )
+
+
+@router.get("/{event_id}/bookings", response_model=list[BookingOut])
+def list_bookings(
+    event_id: str,
+    user: Annotated[User, Depends(require_any_permission(*READ_ANY))],
+) -> list[BookingOut]:
+    """US14.1: every venue booking for the event, together, soonest first.
+
+    Whoever may open the event may see its bookings (the owning Organiser and
+    the assigned Coordinator) and nobody else, because this goes through the
+    same `_readable` check as the event itself.
+    """
+    event = _readable(_as_id(event_id), user)
+    bookings = booking_store.repository().list_for_event(event.id)
+    return [_booking_out(booking) for booking in bookings]
+
+
+@router.post(
+    "/{event_id}/bookings",
+    response_model=BookingOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def request_booking(
+    event_id: str,
+    payload: BookingInput,
+    user: Annotated[User, Depends(require_permission(Permission.BOOKINGS_REQUEST))],
+) -> BookingOut:
+    """US14.1: ask for one venue for the event. It starts as Requested.
+
+    Only the assigned Coordinator gets this far (US8.6). The permission above
+    admits the role, and `_readable` admits the assignment: it answers 404 to a
+    Coordinator the event is not assigned to, as US8.1 does for the event itself.
+
+    US18.1: a venue that is not suitable cannot be requested. The refusal is a
+    409 with `not-suitable` and every reason, from the same `assess` the
+    suitability check shows, so the form and the rule agree.
+    """
+    event, venue, valid = _prepared_booking(event_id, payload, user)
+
+    verdict = suitability.assess(venue, valid.needs)
+    if not verdict.suitable:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": f"{venue.name} is not suitable for this booking. "
+                + " ".join(verdict.reasons),
+                "reason": "not-suitable",
+                "reasons": list(verdict.reasons),
+            },
+        )
+
+    created = booking_store.repository().create(
+        event_id=event.id,
+        venue_id=venue.id,
+        starts_at=valid.starts_at,
+        ends_at=valid.ends_at,
+        requested_by_id=user.id,
+        headcount=valid.needs.headcount,
+        required_layout=valid.needs.layout,
+        required_facilities=valid.needs.facilities,
+        accessibility_needs=valid.needs.accessibility,
+    )
+    return _booking_out(created)
+
+
+@router.post("/{event_id}/bookings/suitability", response_model=SuitabilityOut)
+def check_suitability(
+    event_id: str,
+    payload: BookingInput,
+    user: Annotated[User, Depends(require_permission(Permission.BOOKINGS_REQUEST))],
+) -> SuitabilityOut:
+    """US18.1: whether the chosen venue suits this booking, before it is requested.
+
+    Takes exactly what a request takes and stores nothing, so the form can show
+    Suitable or Not suitable as the Coordinator picks a venue and fills in what
+    the booking needs. Refused the way a request is: the same people, the same
+    events and the same validation.
+    """
+    _, venue, valid = _prepared_booking(event_id, payload, user)
+    return _suitability_out(venue, suitability.assess(venue, valid.needs))
+
+
+# -- US14.2: cancelling one booking ----------------------------------------------
+
+
+class BookingCancellation(BaseModel):
+    """Why a Coordinator is cancelling a venue booking (US14.2)."""
+
+    reason: str = ""
+
+
+#: `venue_bookings.cancellation_reason` is TEXT. The cap is about a reason
+#: staying readable, as US7.1's is.
+CANCELLATION_REASON_MAX = 2000
+
+
+def _booking_not_found() -> HTTPException:
+    """The same answer for a booking that is missing and one on another event."""
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "code": EventError.BOOKING_NOT_FOUND,
+            "message": "That booking is not on this event.",
+        },
+    )
+
+
+def _already_cancelled() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": "This booking has already been cancelled.",
+            "reason": "already-cancelled",
+        },
+    )
+
+
+@router.post("/{event_id}/bookings/{booking_id}/cancel", response_model=BookingOut)
+def cancel_booking(
+    event_id: str,
+    booking_id: str,
+    payload: BookingCancellation,
+    user: Annotated[User, Depends(require_permission(Permission.BOOKINGS_REQUEST))],
+) -> BookingOut:
+    """US14.2: cancel one venue booking, with a reason, and change nothing else.
+
+    Only this booking's row is written. The event's status and its other
+    bookings are not touched at all, so changing one room never means redoing
+    the plan. The cancelled booking stays on the event's list with who, when
+    and why, and stops holding its venue for the slot (`HOLDS_VENUE`).
+
+    The same Coordinator who may request may cancel (US8.6), and on an event at
+    any status they can see: cancelling the hall for a Rejected event is how
+    the venue is given back.
+
+    404, then 409, then 400, as for a request. A booking on another event is
+    404 rather than 403, for the reason `_not_found` gives for events.
+    """
+    event = _readable(_as_id(event_id), user)
+    try:
+        booking = booking_store.repository().get_booking(int(booking_id))
+    except ValueError:
+        booking = None
+    if booking is None or booking.event_id != event.id:
+        raise _booking_not_found()
+
+    if booking.status is BookingStatus.CANCELLED:
+        raise _already_cancelled()
+
+    reason = payload.reason.strip()
+    if not reason:
+        raise _invalid_booking("Give a reason for cancelling this booking.")
+    if len(reason) > CANCELLATION_REASON_MAX:
+        raise _invalid_booking(
+            f"Keep the reason to {CANCELLATION_REASON_MAX} characters or fewer."
+        )
+
+    try:
+        cancelled = booking_store.repository().cancel(booking.id, actor_id=user.id, reason=reason)
+    except StaleBookingStatus:
+        # Someone else cancelled it between the read above and this write.
+        raise _already_cancelled() from None
+    return _booking_out(cancelled)

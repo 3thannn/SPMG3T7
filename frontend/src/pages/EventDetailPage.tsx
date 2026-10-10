@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import './EventDetailPage.css'
+import EventBookings from '../components/EventBookings'
 import StatusBadge from '../components/StatusBadge'
 import StatusTimeline from '../components/StatusTimeline'
 import ProposedChanges from '../components/ProposedChanges'
@@ -854,6 +855,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             )}
           </aside>
         </div>
+
+        {/* US14.1. Not on a Draft: nothing can be requested for one, so the
+            card would only ever say so. */}
+        {event.status !== 'Draft' && <EventBookings event={event} session={session} />}
       </div>
     </div>
   )

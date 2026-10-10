@@ -47,6 +47,16 @@ function stubApi({ me = 'ok', role = 'Event Organiser' }: { me?: MeOutcome; role
       return { ok: false, status: 401, json: async () => ({ detail }) }
     }
 
+    // US8.2: unassigned events queue
+    if (url.endsWith('/events/unassigned')) {
+      return { ok: true, status: 200, json: async () => [] }
+    }
+
+    // Users list for coordinator assignment
+    if (url.endsWith('/auth/users')) {
+      return { ok: true, status: 200, json: async () => [] }
+    }
+
     throw new Error(`unexpected request to ${url}`)
   })
 
@@ -305,4 +315,74 @@ it('offers the events link to a role that can open it', async () => {
 
   await screen.findByRole('heading', { name: 'Events' })
   expect(screen.getByRole('link', { name: 'Events' })).toBeInTheDocument()
+})
+
+/* ---------- US1.4: Coordinator Lead and Safety Officer roles ---------- */
+
+it('routes a Coordinator Lead to the unassigned queue on sign-in', async () => {
+  signedInAs('Event Coordinator Lead')
+  stubApi({ me: 'ok', role: 'Event Coordinator Lead' })
+  window.location.hash = '/signin'
+
+  render(<App />)
+
+  // Should redirect to their home page
+  expect(await screen.findByRole('heading', { name: 'Unassigned Events' })).toBeInTheDocument()
+})
+
+it('allows Coordinator Lead to access the unassigned queue', async () => {
+  signedInAs('Event Coordinator Lead')
+  stubApi({ me: 'ok', role: 'Event Coordinator Lead' })
+  window.location.hash = '/unassigned-queue'
+
+  render(<App />)
+
+  expect(await screen.findByRole('heading', { name: 'Unassigned Events' })).toBeInTheDocument()
+})
+
+it('blocks other roles from accessing the unassigned queue', async () => {
+  signedInAs('Event Coordinator')
+  stubApi({ me: 'ok', role: 'Event Coordinator' })
+  window.location.hash = '/unassigned-queue'
+
+  render(<App />)
+
+  expect(await screen.findByText('Access denied')).toBeInTheDocument()
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'The Event Coordinator role cannot open the unassigned event queue. That is available to Event Coordinator Lead.',
+  )
+})
+
+it('routes a Safety Officer to the safety review page on sign-in', async () => {
+  signedInAs('Safety Officer')
+  stubApi({ me: 'ok', role: 'Safety Officer' })
+  window.location.hash = '/signin'
+
+  render(<App />)
+
+  // Should redirect to their home page
+  expect(await screen.findByRole('heading', { name: 'Safety Review' })).toBeInTheDocument()
+})
+
+it('allows Safety Officer to access the safety review page', async () => {
+  signedInAs('Safety Officer')
+  stubApi({ me: 'ok', role: 'Safety Officer' })
+  window.location.hash = '/safety-review'
+
+  render(<App />)
+
+  expect(await screen.findByRole('heading', { name: 'Safety Review' })).toBeInTheDocument()
+})
+
+it('blocks other roles from accessing the safety review page', async () => {
+  signedInAs('Event Organiser')
+  stubApi({ me: 'ok', role: 'Event Organiser' })
+  window.location.hash = '/safety-review'
+
+  render(<App />)
+
+  expect(await screen.findByText('Access denied')).toBeInTheDocument()
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'The Event Organiser role cannot open the safety review queue. That is available to Safety Officer.',
+  )
 })

@@ -67,7 +67,8 @@ it('labels an untitled and undated draft without inventing stored details', asyn
   render(<EventsPage session={organiser} />)
 
   expect(await screen.findByText('Untitled event')).toBeInTheDocument()
-  expect(screen.getByText('Not set')).toBeInTheDocument()
+  // Undated events show "TBD" in the redesigned card layout
+  expect(screen.getByText('TBD')).toBeInTheDocument()
 })
 
 it('names the organiser for a Coordinator, who is looking across owners', async () => {
@@ -129,4 +130,61 @@ it('flags an event with a change request awaiting review (US11.1)', async () => 
   const flagged = await screen.findByText('Change requested')
   expect(flagged.closest('a')).toHaveTextContent('Asked')
   expect(screen.getAllByText('Change requested')).toHaveLength(1)
+})
+
+/* ---------- US8.6: Coordinator Lead sees all events ---------- */
+
+it('shows all events to a Coordinator Lead, regardless of status', async () => {
+  const lead = buildSession({
+    role: 'Event Coordinator Lead',
+    id: '10',
+    name: 'Jordan',
+  })
+
+  listEventsMock.mockResolvedValue([
+    buildEvent({ id: '101', title: 'Draft Event', status: 'Draft' }),
+    buildEvent({ id: '102', title: 'Submitted Event', status: 'Submitted' }),
+    buildEvent({ id: '103', title: 'Approved Event', status: 'Approved' }),
+  ])
+
+  render(<EventsPage session={lead} />)
+
+  expect(await screen.findByText('Draft Event')).toBeInTheDocument()
+  expect(screen.getByText('Submitted Event')).toBeInTheDocument()
+  expect(screen.getByText('Approved Event')).toBeInTheDocument()
+  // Check that status badges are present (text appears in both filters and badges)
+  const statusBadges = screen.getAllByText('Draft')
+  expect(statusBadges.length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Approved').length).toBeGreaterThan(0)
+})
+
+it('shows organiser names for all events when viewing as Coordinator Lead', async () => {
+  const lead = buildSession({
+    role: 'Event Coordinator Lead',
+    id: '10',
+    name: 'Jordan',
+  })
+
+  listEventsMock.mockResolvedValue([
+    buildEvent({
+      id: '101',
+      title: 'First Event',
+      organiserId: '1',
+      organiserName: 'Alice',
+    }),
+    buildEvent({
+      id: '102',
+      title: 'Second Event',
+      organiserId: '2',
+      organiserName: 'Bob',
+    }),
+  ])
+
+  render(<EventsPage session={lead} />)
+
+  expect(await screen.findByText('First Event')).toBeInTheDocument()
+  expect(screen.getByText('Second Event')).toBeInTheDocument()
+  expect(screen.getByText(/Organiser: Alice/)).toBeInTheDocument()
+  expect(screen.getByText(/Organiser: Bob/)).toBeInTheDocument()
 })

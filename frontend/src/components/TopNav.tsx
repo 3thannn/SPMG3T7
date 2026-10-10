@@ -20,6 +20,8 @@ type NavLink = { label: string; path: string }
 const NAV_LINKS: NavLink[] = [
   { label: 'Events', path: '/events' },
   { label: 'Create', path: '/events/new' },
+  { label: 'Unassigned Queue', path: '/unassigned-queue' },
+  { label: 'Safety Review', path: '/safety-review' },
   { label: 'Venues', path: '/venues' },
   { label: 'Add venue', path: '/venues/new' },
 ]
