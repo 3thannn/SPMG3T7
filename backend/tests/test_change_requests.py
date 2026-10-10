@@ -89,7 +89,14 @@ def submitted_event(client, auth_headers) -> dict:
     assert created.status_code == 201, created.text
     submitted = client.post(f"/events/{created.json()['id']}/submit", headers=organiser)
     assert submitted.status_code == 200, submitted.text
-    return submitted.json()
+    lead = auth_headers("Event Coordinator Lead")
+    assigned = client.post(
+        f"/events/{submitted.json()['id']}/assign",
+        json={"coordinatorId": str(COORDINATOR_ID)},
+        headers=lead,
+    )
+    assert assigned.status_code == 200, assigned.text
+    return assigned.json()
 
 
 def under_review_event(client, auth_headers) -> dict:

@@ -43,6 +43,10 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   submitEvent: vi.fn(),
 }))
 
+vi.mock('../components/EventBookings', () => ({
+  default: () => null,
+}))
+
 const getEventMock = vi.mocked(getEvent)
 const requestEventChangeMock = vi.mocked(requestEventChange)
 const approveEventChangeMock = vi.mocked(approveEventChange)
