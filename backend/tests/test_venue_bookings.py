@@ -373,7 +373,7 @@ class TestOnlyTheAssignedCoordinatorRequests:
 
 
 class TestEventStatus:
-    """Venues can be requested for any event the Coordinator can see, unless it is over."""
+    """Venues can be requested only after approval and during planning."""
 
     @pytest.mark.parametrize("event_status", BOOKABLE)
     def test_an_open_event_takes_requests(
@@ -385,7 +385,7 @@ class TestEventStatus:
 
     @pytest.mark.parametrize(
         "event_status",
-        [EventStatus.REJECTED, EventStatus.CANCELLED, EventStatus.COMPLETED],
+        [EventStatus.REJECTED, EventStatus.CANCELLED, EventStatus.CONFIRMED, EventStatus.COMPLETED],
     )
     def test_a_closed_event_is_refused_with_the_reason(
         self, client, coordinator, event_repository, booking_repository, event_status
@@ -426,6 +426,8 @@ class TestEventStatus:
 
     def test_the_rule_on_its_own(self):
         assert check_booking(status=EventStatus.DRAFT) is BookingRefusal.NOT_YET_SUBMITTED
+        assert check_booking(status=EventStatus.SUBMITTED) is BookingRefusal.NOT_APPROVED
+        assert check_booking(status=EventStatus.UNDER_REVIEW) is BookingRefusal.NOT_APPROVED
         assert check_booking(status=EventStatus.REJECTED) is BookingRefusal.EVENT_CLOSED
         assert all(check_booking(status=status) is None for status in BOOKABLE)
 
@@ -589,6 +591,8 @@ def test_the_whole_journey_through_the_routes(client, organiser, coordinator, au
         headers=auth_headers("Event Coordinator Lead"),
     ).json()
     assert assigned["coordinatorId"] == str(COORDINATOR_ID)
+    approved = client.post(f"/events/{created['id']}/approve", headers=coordinator)
+    assert approved.status_code == 200, approved.text
 
     hall = client.post(
         f"/events/{created['id']}/bookings", json=BOOKING, headers=coordinator

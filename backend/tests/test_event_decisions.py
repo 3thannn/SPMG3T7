@@ -79,6 +79,8 @@ class TestTransitionRules:
             (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW),
             (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
             (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
+            (EventStatus.APPROVED, EventStatus.PLANNING),
+            (EventStatus.CONFIRMED, EventStatus.COMPLETED),
         ],
     )
     def test_allowed_transitions(self, before, after):
@@ -90,6 +92,8 @@ class TestTransitionRules:
             (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW),
             (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
             (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
+            (EventStatus.APPROVED, EventStatus.PLANNING),
+            (EventStatus.CONFIRMED, EventStatus.COMPLETED),
         }
         for before in EventStatus:
             for after in EventStatus:

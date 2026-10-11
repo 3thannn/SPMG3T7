@@ -21,6 +21,7 @@ export type Permission =
   | 'events:read:all'
   | 'events:submit'
   | 'events:review'
+  | 'events:complete'
   | 'events:edit'
   | 'users:read'
   | 'venues:read'

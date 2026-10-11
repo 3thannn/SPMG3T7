@@ -256,7 +256,7 @@ class TestVisibility:
         assert body["description"] == "Talks."
         assert body["startsAt"] == "2026-11-02T18:00"
         assert body["expectedAttendance"] == 120
-        assert body["status"] == "Submitted"
+        assert body["status"] == "Under Review"
         assert body["organiserId"] == str(ORGANISER_ID)
         assert body["organiserName"] == "Dylan"
         assert len(body["history"]) >= 2  # At least creation and submission
@@ -708,7 +708,7 @@ class TestCoordinatorEditing:
         assert detail["message"] == "That event no longer exists."
 
     def test_coordinator_can_edit_submitted_event(self, client, auth_headers):
-        """Coordinators can edit events in Submitted status."""
+        """Coordinators can edit assigned events after review begins."""
         event = create(client, auth_headers("Event Organiser"))
         submitted = client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
@@ -730,7 +730,7 @@ class TestCoordinatorEditing:
         assert response.status_code == 200
         saved = response.json()
         assert saved["title"] == "Edited After Submission"
-        assert saved["status"] == "Submitted"  # Status unchanged
+        assert saved["status"] == "Under Review"  # Status unchanged
 
 
 class TestSprintOneReachableStatuses:

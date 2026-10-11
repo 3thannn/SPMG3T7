@@ -56,8 +56,8 @@ npm install
 
 ### Required SQL migrations
 
-The schema in `SUPABASE_SETUP.sql` covers a fresh project. An **existing**
-project needs the scripts below applied once each, in the Supabase SQL Editor
+`SUPABASE_SETUP.sql` creates the base schema. Fresh and existing projects need
+the applicable additions below applied in dependency order in the Supabase SQL Editor
 (Dashboard → SQL Editor → New Query → paste → Run). All of them are idempotent,
 so running one twice is a no-op.
 
@@ -70,6 +70,7 @@ so running one twice is a no-op.
 | [`SUPABASE_ADD_BOOKING_NEEDS.sql`](backend/SUPABASE_ADD_BOOKING_NEEDS.sql) | US18.1 headcount and needs per booking. Run after the US14.2 script | Every `/events/{id}/bookings` route returns 500: each booking read selects the new columns. The suitability check itself still works, because it reads venues only |
 | [`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`](backend/SUPABASE_ALLOW_PARTIAL_DRAFTS.sql) | US4.2 partial drafts | Saving a draft with no date fails |
 | [`SUPABASE_ADD_CHANGE_REQUESTS.sql`](backend/SUPABASE_ADD_CHANGE_REQUESTS.sql) | US11.1 change requests — and every events page | **`GET /events` and every event page return 500**, which the browser reports as a CORS error. See below |
+| [`SUPABASE_US4_5_LIFECYCLE.sql`](backend/SUPABASE_US4_5_LIFECYCLE.sql) | US4.5 lifecycle; run after coordinator assignment, venue bookings and needs, and change requests | Assignment, booking, completion and change-request writes require its RPCs and column; event reads also require `request_note` |
 | [`SUPABASE_HARDENING.sql`](backend/SUPABASE_HARDENING.sql) | Row Level Security, indexes | Supabase advisor warnings; the app still works |
 | [`SUPABASE_SEED_VENUES.sql`](backend/SUPABASE_SEED_VENUES.sql) | Optional | The catalogue shows its empty state until Venue Staff add records |
 

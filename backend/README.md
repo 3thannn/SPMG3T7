@@ -197,9 +197,8 @@ curl -X POST http://localhost:8000/events/12/clarification \
 
 **There is no new table.** The message goes in `status_changes.notes`, a column
 the schema has always had and nothing wrote until now, on the row that records
-the move to Under Review. The request and the status change it caused are one
-event in the event's history, and storing them apart would let them disagree
-about when it happened or who asked.
+the clarification entry. If Lead assignment already moved the event to Under
+Review, this entry keeps the same status and records the Coordinator's message.
 
 That is also how "visible to the Organiser" is satisfied without any delivery
 mechanism: the owning Organiser already reads the event's history, so the message
@@ -267,15 +266,18 @@ curl -X POST http://localhost:8000/events/12/change-request/reject \
 **What a request does.** The server compares the form's values with the
 event's and records one row per field that differs. Text is compared exactly;
 dates are compared as moments, so `18:00` and `18:00:00` are not a change. The
-event moves to Under Review — from `Submitted`, or staying there when the
-request answers a US7.3 question — which puts it in the Coordinator's queue.
+event moves to Under Review only if it is assigned and still Submitted. An
+unassigned Submitted event stays in the Lead's queue; Under Review, Approved
+and Planning keep their statuses and carry the pending flag.
 The response carries:
 
 - `changeRequested` — the "change requested" flag, true while a request waits;
 - `pendingChanges` — each field's label, current and proposed value, and
   whether it is `important`;
+- `changeRequestNote` — the Organiser's note while a request is pending;
 - `lastChangeReview` — the Coordinator's answer to the most recent request:
-  `approved` or `rejected`, when, and the reason.
+  `approved` or `rejected`, when, the reason, and that request's Organiser note
+  in `requestNote`.
 
 **Important changes** follow US5.2's logging rule: date/time (`proposed_date`,
 `end_date`), attendance, venue and equipment. Venue and equipment are in the
@@ -292,7 +294,7 @@ changes nothing answers `400`.
 | Reason | When |
 | ------ | ---- |
 | `not-submitted` | The event is still a Draft — edit it directly instead |
-| `already-decided` | The event is Approved, Rejected or later |
+| `already-decided` | The event is Rejected, Confirmed, Completed or Cancelled |
 | `already-pending` | A request is already waiting; one at a time |
 | `nothing-pending` | Approve or reject was called with no request waiting |
 | `invalid-transition` | Someone else acted on the event first; refresh and retry |
@@ -304,10 +306,11 @@ Another Organiser's event answers `404`, as everywhere else in this API.
 (`pending` → `approved` or `rejected`), who asked and when, and who answered,
 when and why. No other table's columns change:
 
-- `events` gets the approved values, and the move to Under Review.
-- `status_changes` gets one ordinary row for the move to Under Review, like
-  every other status change (US4.2); the Organiser's note travels in `notes`.
-  Answering a request does not move the status, so it adds no row there.
+- `events` gets approved values. A request on an assigned Submitted event moves
+  it to Under Review; unassigned Submitted, Under Review, Approved and Planning
+  retain their status.
+- `status_changes` gets a row only when the status actually moves. The note is
+  also stored on the request rows, so it remains visible for flag-only requests.
 - `event_changes` stays a log of changes that were actually applied. An
   approved request writes its fields there when it is applied, with the same
   `important`/`routine` `change_type` as a US5.2 edit; the approving
@@ -315,9 +318,7 @@ when and why. No other table's columns change:
   request never writes there.
 
 "Change requested" is worked out rather than stored: an event has a request
-waiting exactly when it has `pending` rows. The history labels the Organiser's
-entry the same way — the Organiser moves their own event to Under Review only
-by requesting a change.
+waiting exactly when it has `pending` rows.
 
 Existing Supabase projects must run
 [`SUPABASE_ADD_CHANGE_REQUESTS.sql`](SUPABASE_ADD_CHANGE_REQUESTS.sql) before
@@ -325,6 +326,12 @@ deploying this story; every events route reads the new table. Its two RPCs make
 each request and each answer atomic, and lock the event row so two requests or
 two answers cannot slip past each other. Validation stays in Python, in
 `app/change_requests.py` and `app/events.py`.
+
+US4.5 additionally requires [`SUPABASE_US4_5_LIFECYCLE.sql`](SUPABASE_US4_5_LIFECYCLE.sql)
+after the assignment, booking-needs and change-request scripts. Apply it before
+deploying the US4.5 backend, because event reads select `request_note` and the
+new writes use its atomic RPCs. The old round-robin backfill is retired; assign
+unassigned events through the Lead's queue.
 ### Venue bookings (US14.1)
 
 An assigned Coordinator requests one or more venues for an event, so a bigger
@@ -352,10 +359,10 @@ none ever did, so there was nothing to move.
 - **Status.** Every new booking is `Requested` and waits for Venue Staff; the
   `booking_status` enum holds only that value until the Venue Booking Approval
   epic adds the rest.
-- **Which events.** Submitted, Under Review, Approved, Planning and Confirmed. A
-  Rejected, Cancelled or Completed event answers `409` with `event-closed`. A
-  booking is only a request until Venue Staff approve it, so asking while the
-  event is still under review costs nothing.
+- **Which events.** Approved and Planning only. The first successful request
+  moves Approved to Planning with an audit entry; later requests leave Planning
+  unchanged. Submitted and Under Review answer `not-approved`; Confirmed,
+  Rejected, Cancelled and Completed answer `event-closed`.
 - **Validation.** A venue that is in the catalogue, and a start and an end as
   `YYYY-MM-DDTHH:MM` (seconds optional), with the end after the start and the
   start not on a past date. Each refusal is a `400` with `invalid_booking` and a

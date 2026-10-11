@@ -214,8 +214,9 @@ it('offers the Coordinator the catalogue, starting from the event times', async 
 
 it('requests the chosen venue and adds it to the list as Requested', async () => {
   const user = userEvent.setup()
+  const onBookingRequested = vi.fn()
   requestBookingMock.mockResolvedValue(booking())
-  render(<EventBookings event={event()} session={coordinator} />)
+  render(<EventBookings event={event()} session={coordinator} onBookingRequested={onBookingRequested} />)
   await formReady()
 
   await user.selectOptions(screen.getByLabelText('Venue'), '1')
@@ -241,6 +242,7 @@ it('requests the chosen venue and adds it to the list as Requested', async () =>
   ).toBeInTheDocument()
   expect(within(bookingList()).getByText('Great Hall')).toBeInTheDocument()
   expect(within(bookingList()).getByText('Requested')).toBeInTheDocument()
+  expect(onBookingRequested).toHaveBeenCalledOnce()
 })
 
 it('clears the venue after a request but keeps the times for the next one', async () => {
@@ -374,7 +376,7 @@ it('reports a catalogue that will not load and keeps the form shut', async () =>
 
 // -- The status rule -------------------------------------------------------------
 
-it.each(['Rejected', 'Cancelled', 'Completed'] as const)(
+it.each(['Rejected', 'Cancelled', 'Confirmed', 'Completed'] as const)(
   'tells the Coordinator why a %s event takes no more requests',
   async (status) => {
     listBookingsMock.mockResolvedValue([booking()])
@@ -391,7 +393,7 @@ it.each(['Rejected', 'Cancelled', 'Completed'] as const)(
   },
 )
 
-it.each(['Submitted', 'Under Review', 'Approved', 'Planning', 'Confirmed'] as const)(
+it.each(['Approved', 'Planning'] as const)(
   'offers the form on a %s event',
   async (status) => {
     render(<EventBookings event={event({ status })} session={coordinator} />)

@@ -1,7 +1,7 @@
-"""US8.1 — automatic Coordinator assignment on submission.
+"""Coordinator assignment and assigned-event visibility.
 
-When an event moves to Submitted, the system assigns exactly one Event Coordinator
-automatically via round-robin. Once assigned, only that Coordinator may review,
+When an event moves to Submitted, it waits for Lead assignment. Once assigned,
+only that Coordinator may review,
 request clarification, or edit the event. The Organiser retains visibility of
 their own events regardless of assignment.
 
@@ -358,7 +358,7 @@ class TestAC4VisibilityNarrowing:
         user_store.users.append(coordinator_2)
         user_store.passwords["coord2@spmg3t7.edu"] = "Sprint1!demo"
 
-        # Submit 3 events (will be assigned round-robin: 2, 10, 2)
+        # Submit 3 events for later Lead assignment.
         organiser = auth_headers("Event Organiser")
         event_ids = []
         for i in range(3):

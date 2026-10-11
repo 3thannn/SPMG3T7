@@ -37,6 +37,7 @@ export type EventRecord = {
   status: EventStatus
   organiserId: string
   organiserName: string
+  coordinatorId?: string | null
   createdAt: string
   updatedAt: string
   history: StatusChange[]
@@ -46,6 +47,7 @@ export type EventRecord = {
    * fixtures still type-check; absent means no request.
    */
   changeRequested?: boolean
+  changeRequestNote?: string
   /** US11.1: what the Organiser has asked for, in form order. */
   pendingChanges?: ProposedChange[]
   /** US11.1: the Coordinator's answer to the most recent request, if any. */
@@ -58,6 +60,8 @@ export type ChangeReview = {
   at: string
   /** The rejection reason. Empty for an approval. */
   note: string
+  /** The Organiser's note on the request that received this answer. */
+  requestNote?: string
 }
 
 /** One field of a US11.1 change request, as the server describes it. */
@@ -203,6 +207,18 @@ export async function requestClarification(
 export async function approveEvent(id: string, session: Session): Promise<EventRecord> {
   try {
     const response = await authorizedFetch(`/events/${id}/approve`, session.token, {
+      method: 'POST',
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/** US4.5: close an assigned Confirmed event after its end time. */
+export async function completeEvent(id: string, session: Session): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/complete`, session.token, {
       method: 'POST',
     })
     return (await response.json()) as EventRecord
@@ -445,8 +461,8 @@ export async function submitEvent(id: string, session: Session): Promise<EventRe
  * US11.1: propose changes to a submitted event instead of saving them.
  *
  * Sends the edit form's values; the server works out which fields differ,
- * flags the event and moves it to Under Review. The event's own values do not
- * change until a Coordinator approves.
+ * flags the event. Only an assigned Submitted event moves to Under Review;
+ * the event's values do not change until a Coordinator approves.
  */
 export async function requestEventChange(
   id: string,

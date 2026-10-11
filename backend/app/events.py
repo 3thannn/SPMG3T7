@@ -32,8 +32,10 @@ from app.event_status import (
     booking_refusal_message,
     check_booking,
     check_clarification,
+    check_completion,
     check_submit,
     clarification_refusal_message,
+    completion_refusal_message,
     refusal_message,
     transition_allowed,
     transition_refusal_message,
@@ -100,6 +102,7 @@ class ChangeReviewOut(BaseModel):
     at: str
     #: The rejection reason. Empty for an approval.
     note: str = ""
+    request_note: str = Field(default="", serialization_alias="requestNote")
 
 
 class EventOut(BaseModel):
@@ -126,6 +129,7 @@ class EventOut(BaseModel):
     pending_changes: list[ProposedChangeOut] = Field(
         default_factory=list, serialization_alias="pendingChanges"
     )
+    change_request_note: str = Field(default="", serialization_alias="changeRequestNote")
     last_change_review: ChangeReviewOut | None = Field(
         default=None, serialization_alias="lastChangeReview"
     )
@@ -187,6 +191,7 @@ def _to_out(event: Event) -> EventOut:
             for change in event.history
         ],
         change_requested=event.change_requested,
+        change_request_note=event.change_request_note,
         pending_changes=[
             ProposedChangeOut(
                 field=change.field,
@@ -202,6 +207,7 @@ def _to_out(event: Event) -> EventOut:
                 outcome=event.last_change_review.outcome,
                 at=event.last_change_review.at,
                 note=event.last_change_review.note,
+                request_note=event.last_change_review.request_note,
             )
             if event.last_change_review is not None
             else None
@@ -415,6 +421,17 @@ def assign_coordinator(
             },
         )
 
+    if event.status is not EventStatus.SUBMITTED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": "Only a Submitted event can be assigned to a Coordinator.",
+                "reason": "invalid-transition",
+            },
+        )
+    _require_transition(event.status, EventStatus.UNDER_REVIEW)
+
     # Validate the coordinator ID
     try:
         coordinator_id = int(payload.coordinator_id)
@@ -430,9 +447,12 @@ def assign_coordinator(
         raise _invalid("That user is not a Coordinator.")
 
     # Assign the coordinator
-    assigned = event_store.repository().assign_coordinator(
-        event.id, coordinator_id, assigned_by_id=user.id
-    )
+    try:
+        assigned = event_store.repository().assign_coordinator(
+            event.id, coordinator_id, assigned_by_id=user.id
+        )
+    except StaleEventStatus:
+        raise _stale_request() from None
     return _to_out(assigned)
 
 
@@ -721,6 +741,31 @@ def reject_event(
         raise _invalid(f"Keep the reason to {DECISION_REASON_MAX} characters or fewer.")
     return _decide_event(event_id, user, EventStatus.REJECTED, reason=reason)
 
+
+@router.post("/{event_id}/complete", response_model=EventOut)
+def complete_event(
+    event_id: str,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_COMPLETE))],
+) -> EventOut:
+    """The assigned Coordinator closes a Confirmed event after its end time."""
+    event = _readable(_as_id(event_id), user)
+    _require_transition(event.status, EventStatus.COMPLETED)
+    refusal = check_completion(event.ends_at)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": completion_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+    try:
+        completed = event_store.repository().complete_event(event.id, actor_id=user.id)
+    except StaleEventStatus:
+        raise _stale_request() from None
+    return _to_out(completed)
+
 class ChangeRequestIn(EventDraft):
     """US11.1: the edit form's values, proposed rather than saved, plus a note.
 
@@ -753,11 +798,11 @@ def request_change(
     payload: ChangeRequestIn,
     user: Annotated[User, Depends(require_permission(Permission.EVENTS_SUBMIT))],
 ) -> EventOut:
-    """US11.1: propose changes to a submitted event for the Coordinator to review.
+    """US11.1: propose changes for the Coordinator to review.
 
-    The event's own values do not move. What moves is the "change requested"
-    flag, the status (to Under Review, which puts the event in the assigned
-    Coordinator's queue), and one pending `event_change_requests` row per field
+    The event's own values do not move. The pending flag is set, and an assigned
+    Submitted event moves to Under Review. Other requestable statuses stay put.
+    One pending `event_change_requests` row is written per field
     that differs, each marked important or routine by US5.2's rule. Nothing is
     written to `event_changes` until a Coordinator approves.
 
@@ -803,7 +848,8 @@ def request_change(
     if not changes:
         raise _invalid("Change at least one detail before requesting a change.")
 
-    _require_transition(event.status, EventStatus.UNDER_REVIEW)
+    if event.status is EventStatus.SUBMITTED and event.coordinator_id is not None:
+        _require_transition(event.status, EventStatus.UNDER_REVIEW)
     try:
         requested = event_store.repository().submit_change_request(
             event.id,
@@ -1198,17 +1244,21 @@ def request_booking(
             },
         )
 
-    created = booking_store.repository().create(
-        event_id=event.id,
-        venue_id=venue.id,
-        starts_at=valid.starts_at,
-        ends_at=valid.ends_at,
-        requested_by_id=user.id,
-        headcount=valid.needs.headcount,
-        required_layout=valid.needs.layout,
-        required_facilities=valid.needs.facilities,
-        accessibility_needs=valid.needs.accessibility,
-    )
+    try:
+        created = booking_store.repository().create(
+            event_id=event.id,
+            venue_id=venue.id,
+            starts_at=valid.starts_at,
+            ends_at=valid.ends_at,
+            requested_by_id=user.id,
+            headcount=valid.needs.headcount,
+            required_layout=valid.needs.layout,
+            required_facilities=valid.needs.facilities,
+            accessibility_needs=valid.needs.accessibility,
+            expected_status=event.status,
+        )
+    except StaleEventStatus:
+        raise _stale_request() from None
     return _booking_out(created)
 
 

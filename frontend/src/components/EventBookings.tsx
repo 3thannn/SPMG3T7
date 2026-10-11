@@ -23,6 +23,7 @@ import { can } from '../permissions'
 type EventBookingsProps = {
   event: EventRecord
   session: Session
+  onBookingRequested?: () => void
 }
 
 type Bookings =
@@ -106,7 +107,7 @@ function describeNeeds(booking: BookingRecord): string {
  * Its own card and its own request, as US12.1's blackout card is, so a failure
  * to load the bookings says so here and leaves the event above it readable.
  */
-export default function EventBookings({ event, session }: EventBookingsProps) {
+export default function EventBookings({ event, session, onBookingRequested }: EventBookingsProps) {
   const mayRequest = can(session, 'bookings:request')
   const bookingCheck = checkBooking(event)
   const showForm = mayRequest && bookingCheck.allowed
@@ -228,6 +229,7 @@ export default function EventBookings({ event, session }: EventBookingsProps) {
     setNotice('')
     requestBooking(event.id, fields, session)
       .then((created) => {
+        onBookingRequested?.()
         setBookings((current) =>
           current.state === 'loaded'
             ? { state: 'loaded', bookings: [...current.bookings, created].sort(bySchedule) }

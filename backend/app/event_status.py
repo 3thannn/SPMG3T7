@@ -9,6 +9,7 @@ US4.2's rules live here rather than in the route, so the check that decides
 whether a submit is allowed is the same one that explains why it was not.
 """
 
+from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 
 
@@ -52,6 +53,8 @@ VALID_TRANSITIONS: frozenset[tuple[EventStatus, EventStatus]] = frozenset(
         (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW),
         (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
         (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
+        (EventStatus.APPROVED, EventStatus.PLANNING),
+        (EventStatus.CONFIRMED, EventStatus.COMPLETED),
     }
 )
 
@@ -151,17 +154,10 @@ def clarification_refusal_message(reason: ClarificationRefusal) -> str:
 
 #: Statuses an event may have venues requested for (US14.1).
 #:
-#: Every status a Coordinator can see, except the ones that end an event. A
-#: booking is only a request until Venue Staff approve it, so asking for the hall
-#: while the event is still under review costs nothing and saves a round trip
-#: once it is approved. A Rejected, Cancelled or Completed event will not use a
-#: venue again, and a request for one would be work for Venue Staff to refuse.
+#: Requests start after approval. Further requests leave an event in Planning.
 BOOKABLE: tuple[EventStatus, ...] = (
-    EventStatus.SUBMITTED,
-    EventStatus.UNDER_REVIEW,
     EventStatus.APPROVED,
     EventStatus.PLANNING,
-    EventStatus.CONFIRMED,
 )
 
 
@@ -169,6 +165,7 @@ class BookingRefusal(StrEnum):
     """Why venues cannot be requested for an event (US14.1)."""
 
     NOT_YET_SUBMITTED = "not-yet-submitted"
+    NOT_APPROVED = "not-approved"
     EVENT_CLOSED = "event-closed"
 
 
@@ -176,6 +173,7 @@ BOOKING_REFUSAL_MESSAGES: dict[BookingRefusal, str] = {
     BookingRefusal.NOT_YET_SUBMITTED: (
         "This event has not been submitted yet, so no venues can be requested for it."
     ),
+    BookingRefusal.NOT_APPROVED: "Approve this event before requesting a venue.",
     BookingRefusal.EVENT_CLOSED: (
         "This event is closed, so no more venues can be requested for it."
     ),
@@ -191,6 +189,8 @@ def check_booking(*, status: EventStatus) -> BookingRefusal | None:
     """
     if status is EventStatus.DRAFT:
         return BookingRefusal.NOT_YET_SUBMITTED
+    if status in (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW):
+        return BookingRefusal.NOT_APPROVED
     if status not in BOOKABLE:
         return BookingRefusal.EVENT_CLOSED
     return None
@@ -198,3 +198,38 @@ def check_booking(*, status: EventStatus) -> BookingRefusal | None:
 
 def booking_refusal_message(reason: BookingRefusal) -> str:
     return BOOKING_REFUSAL_MESSAGES[reason]
+
+
+class CompletionRefusal(StrEnum):
+    MISSING_END_TIME = "missing-end-time"
+    INVALID_END_TIME = "invalid-end-time"
+    EVENT_NOT_ENDED = "event-not-ended"
+
+
+COMPLETION_REFUSAL_MESSAGES: dict[CompletionRefusal, str] = {
+    CompletionRefusal.MISSING_END_TIME: "Set an end date and time before completing this event.",
+    CompletionRefusal.INVALID_END_TIME: "The event end date and time is invalid.",
+    CompletionRefusal.EVENT_NOT_ENDED: (
+        "This event can be completed only after its end date and time has passed."
+    ),
+}
+
+
+def check_completion(ends_at: str, *, now: datetime | None = None) -> CompletionRefusal | None:
+    """Event timestamps are naive Singapore local times; equality is too early."""
+    if not ends_at:
+        return CompletionRefusal.MISSING_END_TIME
+    try:
+        end = datetime.fromisoformat(ends_at)
+    except ValueError:
+        return CompletionRefusal.INVALID_END_TIME
+    if end.tzinfo is not None:
+        return CompletionRefusal.INVALID_END_TIME
+    current = now or datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+    if current <= end:
+        return CompletionRefusal.EVENT_NOT_ENDED
+    return None
+
+
+def completion_refusal_message(reason: CompletionRefusal) -> str:
+    return COMPLETION_REFUSAL_MESSAGES[reason]
