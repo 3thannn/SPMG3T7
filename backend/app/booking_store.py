@@ -27,7 +27,8 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Protocol
 
-from app import supabase_client, users, venue_store
+from app import event_store, supabase_client, users, venue_store
+from app.event_status import EventStatus
 from app.venue_store import _now
 
 TABLE = "venue_bookings"
@@ -157,6 +158,7 @@ class Repository(Protocol):
         required_layout: str = "",
         required_facilities: tuple[str, ...] = (),
         accessibility_needs: tuple[str, ...] = (),
+        expected_status: EventStatus | None = None,
     ) -> Booking: ...
 
     def cancel(self, booking_id: int, *, actor_id: int, reason: str) -> Booking: ...
@@ -211,6 +213,7 @@ class SupabaseBookings:
         required_layout: str = "",
         required_facilities: tuple[str, ...] = (),
         accessibility_needs: tuple[str, ...] = (),
+        expected_status: EventStatus | None = None,
     ) -> Booking:
         """US14.1: record one request for one venue, in the Requested state.
 
@@ -234,8 +237,23 @@ class SupabaseBookings:
             "required_facilities": list(required_facilities),
             "accessibility_needs": list(accessibility_needs),
         }
-        created = supabase_client.admin().table(TABLE).insert(row).execute()
-        booking = self.get_booking(created.data[0]["id"])
+        if expected_status is None:
+            created = supabase_client.admin().table(TABLE).insert(row).execute()
+            booking_id = created.data[0]["id"]
+        else:
+            result = supabase_client.admin().rpc(
+                "request_venue_and_plan",
+                {"p_event_id": event_id, "p_expected_status": str(expected_status),
+                 "p_venue_id": venue_id, "p_start_at": starts_at, "p_end_at": ends_at,
+                 "p_requested_by_id": requested_by_id, "p_headcount": headcount,
+                 "p_required_layout": required_layout or None,
+                 "p_required_facilities": list(required_facilities),
+                 "p_accessibility_needs": list(accessibility_needs)},
+            ).execute()
+            if not result.data:
+                raise event_store.StaleEventStatus
+            booking_id = result.data
+        booking = self.get_booking(booking_id)
         assert booking is not None  # noqa: S101 — the row was just inserted
         return booking
 
@@ -340,7 +358,18 @@ class InMemoryBookings:
         required_layout: str = "",
         required_facilities: tuple[str, ...] = (),
         accessibility_needs: tuple[str, ...] = (),
+        expected_status: EventStatus | None = None,
     ) -> Booking:
+        if expected_status is not None:
+            event = event_store.repository().get_event(event_id)
+            if (
+                event is None
+                or event.status is not expected_status
+                or event.coordinator_id != requested_by_id
+            ):
+                raise event_store.StaleEventStatus
+            if event.status is EventStatus.APPROVED:
+                event_store.repository().plan_event(event_id, actor_id=requested_by_id)
         venue = venue_store.repository().get_venue(venue_id)
         self.next_id += 1
         booking = Booking(

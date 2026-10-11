@@ -165,15 +165,12 @@ export type StatusNoteKind = 'clarification' | 'rejection' | 'change-request'
  * event is under review costs nothing.
  */
 export const BOOKABLE: readonly EventStatus[] = [
-  'Submitted',
-  'Under Review',
   'Approved',
   'Planning',
-  'Confirmed',
 ]
 
 /** Why venues cannot be requested, so the UI can explain rather than deny. */
-export type BookingRefusal = 'not-yet-submitted' | 'event-closed'
+export type BookingRefusal = 'not-yet-submitted' | 'not-approved' | 'event-closed'
 
 export type BookingCheck = { allowed: true } | { allowed: false; reason: BookingRefusal }
 
@@ -186,6 +183,9 @@ export type BookingCheck = { allowed: true } | { allowed: false; reason: Booking
  */
 export function checkBooking(event: { status: EventStatus }): BookingCheck {
   if (event.status === 'Draft') return { allowed: false, reason: 'not-yet-submitted' }
+  if (event.status === 'Submitted' || event.status === 'Under Review') {
+    return { allowed: false, reason: 'not-approved' }
+  }
   if (!BOOKABLE.includes(event.status)) return { allowed: false, reason: 'event-closed' }
   return { allowed: true }
 }
@@ -194,6 +194,8 @@ export function bookingRefusalMessage(reason: BookingRefusal): string {
   switch (reason) {
     case 'not-yet-submitted':
       return 'This event has not been submitted yet, so no venues can be requested for it.'
+    case 'not-approved':
+      return 'Approve this event before requesting a venue.'
     case 'event-closed':
       return 'This event is closed, so no more venues can be requested for it.'
   }
@@ -223,7 +225,9 @@ export function statusNoteLabel(kind: StatusNoteKind): string {
  * US11.1: where an Organiser may request changes. A Draft is still theirs to
  * edit directly; a decided event is no longer under review.
  */
-export const REQUESTABLE: readonly EventStatus[] = ['Submitted', 'Under Review']
+export const REQUESTABLE: readonly EventStatus[] = [
+  'Submitted', 'Under Review', 'Approved', 'Planning',
+]
 
 /** Why a change request is not available, so the page can say rather than hide. */
 export type ChangeRequestRefusal =

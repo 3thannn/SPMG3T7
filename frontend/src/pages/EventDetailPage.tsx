@@ -8,6 +8,7 @@ import {
   EventRuleError,
   approveEvent,
   approveEventChange,
+  completeEvent,
   attendanceField,
   getEvent,
   parseAttendance,
@@ -87,6 +88,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const [asking, setAsking] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [deciding, setDeciding] = useState<'approve' | 'reject' | null>(null)
+  const [completing, setCompleting] = useState(false)
+  const [nowMs, setNowMs] = useState<number | null>(null)
   //: US11.1. `proposing` opens the existing edit form on a submitted event; what
   //: is typed there is sent as a change request rather than saved.
   const [proposing, setProposing] = useState(false)
@@ -116,6 +119,14 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
       cancelled = true
     }
   }, [eventId, session])
+
+  useEffect(() => {
+    if (page.state !== 'loaded' || page.event.status !== 'Confirmed') return
+    const updateClock = () => setNowMs(Date.now())
+    updateClock()
+    const timer = window.setInterval(updateClock, 1000)
+    return () => window.clearInterval(timer)
+  }, [page])
 
   if (page.state === 'loading') {
     return (
@@ -174,8 +185,12 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const lastReview = changeRequested ? null : (event.lastChangeReview ?? null)
   const changeCheck = checkChangeRequest(event, session.id)
   const canDecide = mayReview && event.status === 'Under Review' && !changeRequested
+  const canComplete = can(session, 'events:complete') &&
+    event.coordinatorId === session.id && event.status === 'Confirmed'
+  const eventEnded = Boolean(event.endsAt) && nowMs !== null &&
+    nowMs > Date.parse(`${event.endsAt}+08:00`)
   const writePending =
-    busy || asking || deciding !== null || requesting || answering !== null
+    busy || asking || deciding !== null || requesting || answering !== null || completing
   // US5.2: Coordinators can edit submitted events (not drafts), owners can edit their own drafts.
   // US11.1: an owner can also open the form on a submitted event, to propose changes.
   const editable =
@@ -266,6 +281,33 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     } finally {
       setDeciding(null)
     }
+  }
+
+  async function handleComplete() {
+    setCompleting(true)
+    setBanner(null)
+    try {
+      const updated = await completeEvent(event.id, session)
+      setPage({ state: 'loaded', event: updated })
+      setBanner({ kind: 'ok', text: 'Completed. The status change has been recorded.' })
+    } catch (error) {
+      setBanner({
+        kind: 'error',
+        text: error instanceof EventRuleError
+          ? error.message
+          : unexpectedFailureMessage(error, 'complete the event'),
+      })
+    } finally {
+      setCompleting(false)
+    }
+  }
+
+  function refreshAfterBooking() {
+    void getEvent(event.id, session).then((updated) => {
+      if (updated) setPage({ state: 'loaded', event: updated })
+    }).catch(() => {
+      setBanner({ kind: 'error', text: 'The venue request was saved. Refresh to see the latest event status.' })
+    })
   }
 
   /** US11.1: send the form's values as a change request, not as a save. */
@@ -719,6 +761,12 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     : 'The Coordinator kept the current details on '}
                   <time dateTime={lastReview.at}>{formatTimestamp(lastReview.at)}</time>.
                 </p>
+                {lastReview.requestNote && (
+                  <blockquote className="timeline-note">
+                    <p className="timeline-note-label">Organiser’s note</p>
+                    {lastReview.requestNote}
+                  </blockquote>
+                )}
                 {lastReview.note && (
                   <blockquote className="timeline-note">
                     <p className="timeline-note-label">Reason</p>
@@ -735,12 +783,16 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                 <h3 className="detail-clarify-title">Requested changes</h3>
                 <p className="detail-clarify-lede">
                   {mayReview
-                    ? 'The Organiser has asked to change these details. Review them and ' +
-                      'approve or reject the request before deciding the event.'
+                    ? event.status === 'Under Review'
+                      ? 'The Organiser has asked to change these details. Review them and ' +
+                        'approve or reject the request before deciding the event.'
+                      : 'The Organiser has asked to change these details. Approve or reject ' +
+                        'the request; the event keeps its current status.'
                     : 'Awaiting the Coordinator’s review. Your event keeps its current ' +
                       'details until the changes are approved.'}
                 </p>
                 <ProposedChanges changes={pendingChanges} />
+                {event.changeRequestNote && <p className="detail-clarify-lede">{event.changeRequestNote}</p>}
                 {mayReview && (
                   <>
                     <button
@@ -812,6 +864,20 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               </div>
             )}
 
+            {canComplete && (
+              <div className="detail-decision">
+                <h3 className="detail-clarify-title">Complete event</h3>
+                <p className="detail-clarify-lede">
+                  {eventEnded ? 'The event has ended and can be marked Completed.'
+                    : 'You can mark this event Completed after its end date and time.'}
+                </p>
+                <button type="button" className="btn btn-primary btn-sm"
+                  disabled={writePending || !eventEnded} onClick={handleComplete}>
+                  {completing ? 'Completing…' : 'Mark Completed'}
+                </button>
+              </div>
+            )}
+
             {/* US7.3. In the history panel rather than beside the form, because
                 a request is an entry in this trail and the Organiser reads it
                 here. A Coordinator who cannot ask yet is told why instead of
@@ -858,7 +924,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
         {/* US14.1. Not on a Draft: nothing can be requested for one, so the
             card would only ever say so. */}
-        {event.status !== 'Draft' && <EventBookings event={event} session={session} />}
+        {event.status !== 'Draft' && <EventBookings event={event} session={session} onBookingRequested={refreshAfterBooking} />}
       </div>
     </div>
   )

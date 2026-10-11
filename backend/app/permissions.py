@@ -60,6 +60,7 @@ class Permission(StrEnum):
     EVENTS_READ_ALL = "events:read:all"  # US8.6: Lead sees all, not just assigned
     EVENTS_SUBMIT = "events:submit"
     EVENTS_REVIEW = "events:review"
+    EVENTS_COMPLETE = "events:complete"
     EVENTS_EDIT = "events:edit"
     USERS_READ = "users:read"
     VENUES_READ = "venues:read"
@@ -80,6 +81,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.EVENTS_READ_ALL: "view all events",
     Permission.EVENTS_SUBMIT: "submit events for approval",
     Permission.EVENTS_REVIEW: "review submitted events",
+    Permission.EVENTS_COMPLETE: "complete confirmed events",
     Permission.EVENTS_EDIT: "edit events",
     Permission.USERS_READ: "view the user directory",
     Permission.VENUES_READ: "view the venue catalogue",
@@ -104,6 +106,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         {
             Permission.EVENTS_READ_SUBMITTED,
             Permission.EVENTS_REVIEW,
+            Permission.EVENTS_COMPLETE,
             Permission.EVENTS_EDIT,
             Permission.USERS_READ,
             Permission.VENUES_READ,

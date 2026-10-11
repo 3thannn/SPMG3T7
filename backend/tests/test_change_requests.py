@@ -371,9 +371,7 @@ class TestRules:
     @pytest.mark.parametrize(
         "status",
         [
-            EventStatus.APPROVED,
             EventStatus.REJECTED,
-            EventStatus.PLANNING,
             EventStatus.CONFIRMED,
             EventStatus.COMPLETED,
             EventStatus.CANCELLED,
@@ -428,11 +426,12 @@ class TestRules:
         [
             (EventStatus.UNDER_REVIEW, True, True),
             (EventStatus.UNDER_REVIEW, False, False),
-            (EventStatus.APPROVED, True, False),
+            (EventStatus.APPROVED, True, True),
+            (EventStatus.PLANNING, True, True),
             (EventStatus.SUBMITTED, False, False),
         ],
     )
-    def test_a_request_is_pending_only_while_flagged_and_under_review(
+    def test_a_request_is_pending_at_each_requestable_status(
         self, status, flagged, expected
     ):
         assert has_pending_request(status=status, change_requested=flagged) is expected
@@ -506,10 +505,11 @@ class TestProposing:
         latest = event["history"][-1]
         assert latest["from"] == "Submitted"
         assert latest["to"] == "Under Review"
-        assert latest["byId"] == str(ORGANISER_ID)
-        assert latest["byName"] == "Dylan"
-        assert latest["kind"] == "change-request"
+        assert latest["byId"] == "3"
+        assert latest["byName"] == "Jordan"
+        assert latest["kind"] == ""
         assert latest["at"]
+        assert event["changeRequested"] is True
 
     def test_the_note_travels_with_the_request(self, client, auth_headers):
         event = submitted_event(client, auth_headers)
@@ -522,19 +522,19 @@ class TestProposing:
             startsAt="2027-11-02T19:00",
         )
 
-        assert response.json()["history"][-1]["notes"] == "Moved to 19:00 as you asked."
+        assert response.json()["changeRequestNote"] == "Moved to 19:00 as you asked."
 
     def test_the_note_is_optional(self, client, auth_headers):
         event = pending_event(client, auth_headers, title="Welcome Night")
 
-        assert event["history"][-1]["notes"] == ""
+        assert event["changeRequestNote"] == ""
 
     def test_a_whitespace_note_is_stored_as_no_note(self, client, auth_headers):
         event = submitted_event(client, auth_headers)
 
         response = propose(client, auth_headers(ORGANISER), event["id"], "   ", title="New")
 
-        assert response.json()["history"][-1]["notes"] == ""
+        assert response.json()["changeRequestNote"] == ""
 
     def test_a_note_of_exactly_the_limit_is_accepted(self, client, auth_headers):
         event = submitted_event(client, auth_headers)
@@ -563,7 +563,7 @@ class TestProposing:
     ):
         event = under_review_event(client, auth_headers)
 
-        assert [entry["kind"] for entry in event["history"]] == ["", "", ""]
+        assert [entry["kind"] for entry in event["history"]] == ["", "", "", ""]
 
     def test_the_organiser_sees_their_own_pending_request(self, client, auth_headers):
         event = pending_event(client, auth_headers, title="Welcome Night")
@@ -657,7 +657,7 @@ class TestWhenAProposalIsRefused:
         assert response.status_code == 409
         assert response.json()["detail"]["reason"] == "not-submitted"
 
-    @pytest.mark.parametrize("status", [EventStatus.APPROVED, EventStatus.REJECTED])
+    @pytest.mark.parametrize("status", [EventStatus.REJECTED, EventStatus.CONFIRMED])
     def test_a_decided_event_is_refused(self, client, auth_headers, event_repository, status):
         seeded = seed(event_repository, status=status)
 
@@ -712,7 +712,7 @@ class TestWhenAProposalIsRefused:
         propose(client, auth_headers(ORGANISER), event["id"], expectedAttendance=0)
 
         fetched = client.get(f"/events/{event['id']}", headers=auth_headers(ORGANISER)).json()
-        assert fetched["status"] == "Submitted"
+        assert fetched["status"] == "Under Review"
         assert fetched["changeRequested"] is False
         assert len(fetched["history"]) == len(event["history"])
 
@@ -858,8 +858,7 @@ class TestCoordinatorSees:
 
         fetched = client.get(f"/events/{event['id']}", headers=auth_headers(COORDINATOR)).json()
 
-        assert fetched["history"][-1]["notes"] == "Venue moved."
-        assert fetched["history"][-1]["kind"] == "change-request"
+        assert fetched["changeRequestNote"] == "Venue moved."
 
     def test_an_unassigned_coordinator_cannot_see_it(self, client, auth_headers, user_store):
         event = pending_event(client, auth_headers, title="Welcome Night")
@@ -1237,7 +1236,7 @@ class TestInMemoryStore:
 
     def test_answering_after_the_event_moved_on_is_stale(self):
         store = InMemoryEvents(
-            events=[_event(status=EventStatus.APPROVED, change_requested=True)]
+            events=[_event(status=EventStatus.CONFIRMED, change_requested=True)]
         )
 
         with pytest.raises(StaleEventStatus):

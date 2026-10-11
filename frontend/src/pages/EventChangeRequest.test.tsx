@@ -165,7 +165,10 @@ function answered(approved: boolean, note: string): EventRecord {
     title: approved ? 'Welcome Night' : base.title,
     changeRequested: false,
     pendingChanges: [],
-    lastChangeReview: { outcome: approved ? 'approved' : 'rejected', at: ANSWERED_AT, note },
+    lastChangeReview: {
+      outcome: approved ? 'approved' : 'rejected', at: ANSWERED_AT, note,
+      requestNote: 'Please adjust the welcome programme.',
+    },
   }
 }
 
@@ -279,8 +282,8 @@ describe('AC1 — opening the edit form on a submitted event', () => {
   })
 
   it.each([
-    ['Approved', 'already been decided'],
     ['Rejected', 'already been decided'],
+    ['Confirmed', 'already been decided'],
   ] as const)('is not offered on a %s event, and says why', async (status, why) => {
     await openAs(organiser, submitted({ status }))
 
@@ -617,6 +620,8 @@ describe('AC5 — the Coordinator’s answer is shown to both sides', () => {
     expect(screen.getByText(formatTimestamp(ANSWERED_AT))).toHaveAttribute('dateTime', ANSWERED_AT)
     expect(screen.getByText('Reason')).toBeInTheDocument()
     expect(screen.getByText('Hall is booked at 19:00.')).toBeInTheDocument()
+    expect(screen.getByText('Organiser’s note')).toBeInTheDocument()
+    expect(screen.getByText('Please adjust the welcome programme.')).toBeInTheDocument()
   })
 
   it('shows an approval without a reason block', async () => {
@@ -625,6 +630,7 @@ describe('AC5 — the Coordinator’s answer is shown to both sides', () => {
     expect(screen.getByRole('heading', { name: 'Requested changes approved' })).toBeInTheDocument()
     expect(screen.getByText(/applied the changes on/)).toBeInTheDocument()
     expect(screen.queryByText('Reason')).not.toBeInTheDocument()
+    expect(screen.getByText('Please adjust the welcome programme.')).toBeInTheDocument()
   })
 
   it('shows the Coordinator the same answer', async () => {
@@ -636,12 +642,18 @@ describe('AC5 — the Coordinator’s answer is shown to both sides', () => {
   it('hides the previous answer while a new request is waiting', async () => {
     await openAs(organiser, {
       ...pending(),
-      lastChangeReview: { outcome: 'rejected', at: ANSWERED_AT, note: 'Earlier, no.' },
+      changeRequestNote: 'Current request note.',
+      lastChangeReview: {
+        outcome: 'rejected', at: ANSWERED_AT, note: 'Earlier, no.',
+        requestNote: 'Previous request note.',
+      },
     })
 
     expect(screen.getByRole('heading', { name: 'Requested changes' })).toBeInTheDocument()
     expect(screen.queryByText('Requested changes rejected')).not.toBeInTheDocument()
     expect(screen.queryByText('Earlier, no.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Previous request note.')).not.toBeInTheDocument()
+    expect(screen.getByText('Current request note.')).toBeInTheDocument()
   })
 
   it('shows nothing for an event that was never asked about', async () => {

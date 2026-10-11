@@ -84,10 +84,12 @@ class TestLeadCanAssign:
 
         assigned = response.json()
         # The event should have history tracking who assigned it
-        assert len(assigned["history"]) >= 1
-        # Status stays Submitted, but we can verify the coordinatorId changed
-        assert assigned["status"] == "Submitted"
+        assert assigned["status"] == "Under Review"
         assert assigned["coordinatorId"] == str(COORDINATOR_ID)
+        assert assigned["history"][-1]["from"] == "Submitted"
+        assert assigned["history"][-1]["to"] == "Under Review"
+        assert assigned["history"][-1]["byId"] == "3"
+        assert assigned["history"][-1]["at"]
 
     def test_only_lead_can_assign(self, client, auth_headers):
         """Regular Coordinator gets 403 when trying to assign."""

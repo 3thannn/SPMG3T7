@@ -31,7 +31,7 @@ from app.change_requests import (
     change_type,
     ordered,
 )
-from app.event_status import EventStatus
+from app.event_status import EventStatus, check_completion
 
 EVENTS_TABLE = "events"
 CHANGES_TABLE = "status_changes"
@@ -52,7 +52,7 @@ CHANGE_COLUMNS = "id, old_status, new_status, changed_at, notes, changed_by_id, 
 #: most recently answered ones carry the Coordinator's answer.
 REQUEST_COLUMNS = (
     "event_id, changed_field, old_value, new_value, change_type, status, "
-    "reviewed_at, review_note"
+    "reviewed_at, review_note, request_note"
 )
 PENDING = "pending"
 
@@ -103,6 +103,7 @@ class Event:
     #: US11.1: what the Organiser has asked for, in form order. Empty unless
     #: `change_requested` is set.
     pending_changes: tuple[FieldChange, ...] = ()
+    change_request_note: str = ""
     #: US11.1: the Coordinator's answer to the most recent request, if any.
     last_change_review: ChangeReview | None = None
 
@@ -170,6 +171,7 @@ def latest_review(requests: list[dict]) -> ChangeReview | None:
         outcome=last["status"],
         at=str(last["reviewed_at"]),
         note=last.get("review_note") or "",
+        request_note=last.get("request_note") or "",
     )
 
 
@@ -203,6 +205,14 @@ def to_event(
         history=(creation_entry(event), *stored),
         change_requested=bool(pending),
         pending_changes=pending,
+        change_request_note=next(
+            (
+                item.get("request_note") or ""
+                for item in requests or []
+                if item.get("status") == PENDING
+            ),
+            "",
+        ),
         last_change_review=latest_review(requests or []),
     )
 
@@ -252,18 +262,6 @@ class Repository(Protocol):
         previous_event: Event,
     ) -> Event: ...
 
-    def create_event_request(
-        self,
-        *,
-        name: str,
-        purpose: str,
-        description: str,
-        starts_at: str,
-        ends_at: str,
-        expected_attendance: int,
-        organiser_id: int,
-    ) -> Event: ...
-
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event: ...
 
     def request_clarification(
@@ -297,21 +295,13 @@ class Repository(Protocol):
     def assign_coordinator(
         self, event_id: int, coordinator_id: int, assigned_by_id: int
     ) -> Event: ...
+
+    def complete_event(self, event_id: int, *, actor_id: int) -> Event: ...
+
+    def plan_event(self, event_id: int, *, actor_id: int) -> Event: ...
+
 class SupabaseEvents:
     """The real store. Goes through the service role client, like the user store."""
-
-    def _pick_coordinator(self) -> int | None:
-        """US8.1 AC2/AC5: Use database function to pick next coordinator via round-robin.
-
-        The assignment logic lives in the database so backfill and live assignment
-        use the same mechanism. If the function doesn't exist yet (pre-migration),
-        this returns None and events remain unassigned."""
-        try:
-            result = supabase_client.admin().rpc("pick_next_coordinator").execute()
-            return result.data if result.data else None
-        except Exception:
-            # Function doesn't exist yet (pre-migration) or no coordinators exist
-            return None
 
     def _changes_for(self, event_ids: list[int]) -> dict[int, list[dict]]:
         """Every audit row for a page of events, in one query rather than one each."""
@@ -375,7 +365,8 @@ class SupabaseEvents:
             .data or []
         )
         changes = self._changes_for([row["id"] for row in rows])
-        return [to_event(row, changes.get(row["id"])) for row in rows]
+        requests = self._requests_for([row["id"] for row in rows])
+        return [to_event(row, changes.get(row["id"]), requests.get(row["id"])) for row in rows]
 
     def get_event(self, event_id: int) -> Event | None:
         response = (
@@ -592,10 +583,9 @@ class SupabaseEvents:
         about what happened — the event did exist as a draft, for no time at
         all — and keeps the derived creation entry meaning what it always meant.
 
-        US8.1: Events created already Submitted get assigned a Coordinator.
+        Direct creation leaves the event unassigned for the Lead's queue.
         """
         at = _now()
-        coordinator_id = self._pick_coordinator()
         created = (
             supabase_client.admin()
             .table(EVENTS_TABLE)
@@ -609,7 +599,7 @@ class SupabaseEvents:
                     "expected_attendance": expected_attendance,
                     "status": str(EventStatus.SUBMITTED),
                     "organiser_id": organiser_id,
-                    "coordinator_id": coordinator_id,
+                    "coordinator_id": None,
                     "created_at": at,
                     "updated_at": at,
                     "submitted_at": at,
@@ -738,7 +728,7 @@ class SupabaseEvents:
         changes: tuple[FieldChange, ...],
         note: str,
     ) -> Event:
-        """US11.1: flag the event, store the proposal, and move it Under Review — at once.
+        """Store the proposal and flag; only assigned Submitted events move status.
 
         The proposal goes to event_change_requests, not event_changes:
         nothing has changed yet. The status move, the request rows and the
@@ -782,8 +772,7 @@ class SupabaseEvents:
         and the reason. No status-history entry is added: the status does not
         move.
 
-        The status stays Under Review either way: the Coordinator has answered
-        the request, not decided the event, which is still US7.1's to do.
+        Answering a request never changes the event's current status.
         """
         result = supabase_client.admin().rpc(
             "resolve_change_request",
@@ -801,20 +790,38 @@ class SupabaseEvents:
         return resolved
 
     def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
-        """US8.3: Manually assign a Coordinator to an event.
-
-        The assignment is permanent (no reassignment) and updates the event's
-        coordinator_id. No status change occurs (event stays Submitted)."""
-        at = _now()
-        supabase_client.admin().table(EVENTS_TABLE).update(
+        """Assign and audit Submitted -> Under Review in one transaction."""
+        result = supabase_client.admin().rpc(
+            "assign_event_coordinator",
             {
-                "coordinator_id": coordinator_id,
-                "updated_at": at,
-            }
-        ).eq("id", event_id).execute()
+                "p_event_id": event_id,
+                "p_coordinator_id": coordinator_id,
+                "p_assigned_by_id": assigned_by_id,
+            },
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
         assigned = self.get_event(event_id)
-        assert assigned is not None  # noqa: S101 — the row was just updated
+        assert assigned is not None  # noqa: S101 - the row was just updated
         return assigned
+
+    def complete_event(self, event_id: int, *, actor_id: int) -> Event:
+        """Complete only an ended Confirmed event, with its audit entry."""
+        result = supabase_client.admin().rpc(
+            "complete_event_status",
+            {"p_event_id": event_id, "p_coordinator_id": actor_id},
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
+        completed = self.get_event(event_id)
+        assert completed is not None  # noqa: S101 - the row was just updated
+        return completed
+
+    def plan_event(self, event_id: int, *, actor_id: int) -> Event:
+        return self.decide_event(
+            event_id, actor_id=actor_id, from_status=EventStatus.APPROVED,
+            to_status=EventStatus.PLANNING, reason="",
+        )
 
 @dataclass
 class InMemoryEvents:
@@ -824,8 +831,6 @@ class InMemoryEvents:
     #: user id -> display name, standing in for the joined `users(name)`.
     names: dict[int, str] = field(default_factory=dict)
     next_id: int = 100
-    #: US8.1 AC2: Track the last assigned coordinator ID for round-robin.
-    last_assigned_coordinator_id: int | None = None
     #: US11.1: `event_change_requests` rows as `(event_id, change, status)`.
     #: Pending rows are also on the event as `pending_changes`; this keeps
     #: every request, including the ones answered.
@@ -837,42 +842,6 @@ class InMemoryEvents:
     def _replace(self, event: Event) -> Event:
         self.events = [event if item.id == event.id else item for item in self.events]
         return event
-
-    def _pick_coordinator(self) -> int | None:
-        """US8.1 AC2: Select a Coordinator via round-robin. Returns None if none exist."""
-        from app import users
-        from app.permissions import Role
-
-        # Get all coordinators from the user store, sorted by ID for consistency
-        all_users = users.list_users()
-        coordinators = sorted(
-            [u for u in all_users if u.role == Role.COORDINATOR],
-            key=lambda u: u.id
-        )
-
-        if not coordinators:
-            return None
-
-        # Round-robin: find the next coordinator after the last assigned one
-        if self.last_assigned_coordinator_id is None:
-            # First assignment: pick the first coordinator
-            next_coordinator = coordinators[0]
-        else:
-            # Find the last assigned coordinator's index
-            try:
-                last_index = next(
-                    i for i, c in enumerate(coordinators)
-                    if c.id == self.last_assigned_coordinator_id
-                )
-                # Pick the next one, wrapping around if needed
-                next_coordinator = coordinators[(last_index + 1) % len(coordinators)]
-            except StopIteration:
-                # Last assigned coordinator no longer exists, start from beginning
-                next_coordinator = coordinators[0]
-
-        # Remember this assignment for next time
-        self.last_assigned_coordinator_id = next_coordinator.id
-        return next_coordinator.id
 
     def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]:
         visible = [
@@ -990,10 +959,9 @@ class InMemoryEvents:
     ) -> Event:
         """The same two writes as the Supabase store, and the same history.
 
-        US8.1: Events created already Submitted get assigned a Coordinator."""
+        Direct creation leaves the event unassigned for the Lead's queue."""
         at = _now()
         self.next_id += 1
-        coordinator_id = self._pick_coordinator()
         event = Event(
             id=self.next_id,
             title=name,
@@ -1007,7 +975,7 @@ class InMemoryEvents:
             organiser_name=self.names.get(organiser_id, ""),
             created_at=at,
             updated_at=at,
-            coordinator_id=coordinator_id,
+            coordinator_id=None,
         )
         submission = StatusChange(
             from_status=EventStatus.DRAFT,
@@ -1112,23 +1080,28 @@ class InMemoryEvents:
         if existing.status is not from_status or existing.change_requested:
             raise StaleEventStatus
         at = _now()
+        move_to_review = (
+            from_status is EventStatus.SUBMITTED and existing.coordinator_id is not None
+        )
+        new_status = EventStatus.UNDER_REVIEW if move_to_review else from_status
         entry = StatusChange(
             from_status=from_status,
-            to_status=EventStatus.UNDER_REVIEW,
+            to_status=new_status,
             at=at,
             by_id=actor_id,
             by_name=self.names.get(actor_id, ""),
             notes=note,
-        )
+        ) if move_to_review else None
         self.change_requests.extend((event_id, change, "pending") for change in changes)
         return self._replace(
             replace(
                 existing,
-                status=EventStatus.UNDER_REVIEW,
+                status=new_status,
                 updated_at=at,
                 change_requested=True,
                 pending_changes=ordered(changes),
-                history=(*existing.history, entry),
+                change_request_note=note,
+                history=(*existing.history, entry) if entry else existing.history,
             )
         )
 
@@ -1137,7 +1110,9 @@ class InMemoryEvents:
     ) -> Event:
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 - the caller checked it exists
-        if not existing.change_requested or existing.status is not EventStatus.UNDER_REVIEW:
+        if not existing.change_requested or existing.status not in (
+            EventStatus.UNDER_REVIEW, EventStatus.APPROVED, EventStatus.PLANNING
+        ):
             raise StaleEventStatus
         at = _now()
         outcome = "approved" if approve else "rejected"
@@ -1159,7 +1134,11 @@ class InMemoryEvents:
                 updated_at=at,
                 change_requested=False,
                 pending_changes=(),
-                last_change_review=ChangeReview(outcome=outcome, at=at, note=note),
+                change_request_note="",
+                last_change_review=ChangeReview(
+                    outcome=outcome, at=at, note=note,
+                    request_note=existing.change_request_note,
+                ),
             )
         )
 
@@ -1167,12 +1146,52 @@ class InMemoryEvents:
         """US8.3: Manually assign a Coordinator to an event."""
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 - the caller checked it exists
+        if existing.status is not EventStatus.SUBMITTED or existing.coordinator_id is not None:
+            raise StaleEventStatus
+        at = _now()
+        entry = StatusChange(
+            from_status=EventStatus.SUBMITTED,
+            to_status=EventStatus.UNDER_REVIEW,
+            at=at,
+            by_id=assigned_by_id,
+            by_name=self.names.get(assigned_by_id, ""),
+        )
         return self._replace(
             replace(
                 existing,
                 coordinator_id=coordinator_id,
-                updated_at=_now(),
+                status=EventStatus.UNDER_REVIEW,
+                updated_at=at,
+                history=(*existing.history, entry),
             )
+        )
+
+    def complete_event(self, event_id: int, *, actor_id: int) -> Event:
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        if existing.status is not EventStatus.CONFIRMED or existing.coordinator_id != actor_id:
+            raise StaleEventStatus
+        if check_completion(existing.ends_at) is not None:
+            raise StaleEventStatus
+        at = _now()
+        entry = StatusChange(
+            from_status=EventStatus.CONFIRMED,
+            to_status=EventStatus.COMPLETED,
+            at=at,
+            by_id=actor_id,
+            by_name=self.names.get(actor_id, ""),
+        )
+        return self._replace(
+            replace(
+                existing, status=EventStatus.COMPLETED, updated_at=at,
+                history=(*existing.history, entry),
+            )
+        )
+
+    def plan_event(self, event_id: int, *, actor_id: int) -> Event:
+        return self.decide_event(
+            event_id, actor_id=actor_id, from_status=EventStatus.APPROVED,
+            to_status=EventStatus.PLANNING, reason="",
         )
 
 

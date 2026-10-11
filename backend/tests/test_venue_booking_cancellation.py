@@ -158,7 +158,7 @@ class TestTheEventIsUnchanged:
 
     @pytest.mark.parametrize(
         "event_status",
-        [EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW, EventStatus.APPROVED],
+        [EventStatus.APPROVED, EventStatus.PLANNING],
     )
     def test_the_event_status_is_unchanged(
         self, client, coordinator, event_repository, event_status
@@ -170,7 +170,7 @@ class TestTheEventIsUnchanged:
         cancel(client, coordinator, booking["id"])
 
         after = client.get(f"/events/{EVENT_ID}", headers=coordinator).json()
-        assert after["status"] == str(event_status)
+        assert after["status"] == before["status"]
         assert after == before
 
     def test_cancelling_the_last_booking_still_leaves_the_event_alone(

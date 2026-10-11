@@ -125,11 +125,11 @@ describe('US11.1 — who may request changes, and when', () => {
     changeRequested,
   })
 
-  it('may be requested on a Submitted or Under Review event only', () => {
-    expect(REQUESTABLE).toEqual(['Submitted', 'Under Review'])
+  it('allows requests through Planning', () => {
+    expect(REQUESTABLE).toEqual(['Submitted', 'Under Review', 'Approved', 'Planning'])
   })
 
-  it.each(['Submitted', 'Under Review'] as EventStatus[])('allows the owner on %s', (status) => {
+  it.each(['Submitted', 'Under Review', 'Approved', 'Planning'] as EventStatus[])('allows the owner on %s', (status) => {
     expect(checkChangeRequest(event(status), 'user_1')).toEqual({ allowed: true })
     expect(checkChangeRequest(event(status, false), 'user_1')).toEqual({ allowed: true })
   })
@@ -148,7 +148,7 @@ describe('US11.1 — who may request changes, and when', () => {
     })
   })
 
-  it.each(['Approved', 'Rejected', 'Planning', 'Confirmed', 'Completed', 'Cancelled'] as EventStatus[])(
+  it.each(['Rejected', 'Confirmed', 'Completed', 'Cancelled'] as EventStatus[])(
     'refuses a decided event (%s)',
     (status) => {
       expect(checkChangeRequest(event(status), 'user_1')).toEqual({

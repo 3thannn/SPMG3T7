@@ -15,6 +15,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
   'Event Coordinator': [
     'events:read:submitted',
     'events:review',
+    'events:complete',
     'users:read',
     'venues:read',
     // US14.1: request venues for the events assigned to them.

@@ -158,10 +158,14 @@ def applied_values(changes: Iterable[FieldChange]) -> dict[str, Any]:
     return values
 
 
-#: Where a change may be requested. A Draft is still the Organiser's to edit
-#: directly; a decided event is no longer under review, and reopening it is a
-#: different story — the same line US7.3 draws for clarification.
-REQUESTABLE: tuple[EventStatus, ...] = (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW)
+#: Drafts are edited directly. Approved and Planning events can carry a pending
+#: request without moving back to Under Review; closed events cannot.
+REQUESTABLE: tuple[EventStatus, ...] = (
+    EventStatus.SUBMITTED,
+    EventStatus.UNDER_REVIEW,
+    EventStatus.APPROVED,
+    EventStatus.PLANNING,
+)
 
 
 class ChangeRequestRefusal(StrEnum):
@@ -223,11 +227,10 @@ NOTHING_PENDING_MESSAGE = "There is no change request awaiting review on this ev
 def has_pending_request(*, status: EventStatus, change_requested: bool) -> bool:
     """Whether a Coordinator has a change request to approve or reject.
 
-    Submitting a request always moves the event to Under Review, so pending
-    rows on any other status mean the event moved on underneath it and there
-    is nothing left to review.
+    A request preserves its status except when an assigned Submitted event
+    moves to Under Review. An unassigned Submitted event awaits Lead assignment.
     """
-    return change_requested and status is EventStatus.UNDER_REVIEW
+    return change_requested and status in REQUESTABLE
 
 
 #: How the history labels the entry a change request wrote.
@@ -258,3 +261,5 @@ class ChangeReview:
     at: str
     #: The rejection reason the Organiser reads. Empty for an approval.
     note: str = ""
+    #: The Organiser's note on the request that received this answer.
+    request_note: str = ""
