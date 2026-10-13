@@ -17,13 +17,15 @@ type Filter = EventStatus | 'All'
  * US4.1: the list surface. Every row carries its status badge, and what the
  * list contains depends on the viewer's role — an Organiser sees the events
  * they own, while a Coordinator sees requests after submission.
+ * US8.6: Coordinator Lead sees all events, across all statuses and organisers.
  */
 export default function EventsPage({ session }: EventsPageProps) {
   const [events, setEvents] = useState<EventRecord[] | null>(null)
   const [filter, setFilter] = useState<Filter>('All')
   const [loadError, setLoadError] = useState('')
 
-  const seesAcrossOrganisers = session.role === 'Event Coordinator'
+  const seesAcrossOrganisers =
+    session.role === 'Event Coordinator' || session.role === 'Event Coordinator Lead'
 
   useEffect(() => {
     let cancelled = false
@@ -65,9 +67,11 @@ export default function EventsPage({ session }: EventsPageProps) {
           <div>
             <h1 className="page-title">Events</h1>
             <p className="page-subtitle">
-              {seesAcrossOrganisers
-                ? 'Submitted event requests across the programme, as Coordinator.'
-                : 'Events you own, as Organiser.'}
+              {session.role === 'Event Coordinator Lead'
+                ? 'All events across the programme, as Coordinator Lead.'
+                : seesAcrossOrganisers
+                  ? 'Submitted event requests across the programme, as Coordinator.'
+                  : 'Events you own, as Organiser.'}
             </p>
           </div>
           {!seesAcrossOrganisers && (
@@ -139,25 +143,63 @@ export default function EventsPage({ session }: EventsPageProps) {
             {visible.map((event) => (
               <li key={event.id}>
                 <a
-                  className="event-row card"
+                  className="event-card"
                   href={`#/events/${event.id}`}
                   onClick={(clickEvent) => {
                     clickEvent.preventDefault()
                     navigate(`/events/${event.id}`)
                   }}
                 >
-                  <div className="event-row-main">
-                    <h3 className="event-row-title">{displayEventTitle(event.title)}</h3>
-                    <p className="event-row-meta">
-                      {event.startsAt ? formatTimestamp(event.startsAt) : 'Not set'}
-                      {seesAcrossOrganisers && <> · Organiser: {event.organiserName}</>}
-                    </p>
+                  <div className={`event-date-badge status-${event.status.toLowerCase().replace(/\s+/g, '-')}`}>
+                    {event.startsAt ? (
+                      <>
+                        <div className="date-day">{new Date(event.startsAt).getDate()}</div>
+                        <div className="date-month">
+                          {new Date(event.startsAt).toLocaleDateString('en-US', { month: 'short' })}
+                        </div>
+                        <div className="date-time">
+                          {new Date(event.startsAt).toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="date-day">—</div>
+                        <div className="date-month">TBD</div>
+                      </>
+                    )}
                   </div>
-                  <div className="event-row-end">
-                    <StatusBadge status={event.status} />
-                    <span className="event-row-updated">
-                      Updated {formatTimestamp(event.updatedAt)}
-                    </span>
+
+                  <div className="event-content">
+                    <div className="event-header">
+                      <h3 className="event-title">{displayEventTitle(event.title)}</h3>
+                      {/* US11.1: what puts a request in the Coordinator's queue. */}
+                      {event.changeRequested && (
+                        <span className="event-row-flag">Change requested</span>
+                      )}
+                      <StatusBadge status={event.status} />
+                    </div>
+                    <p className="event-meta">
+                      {seesAcrossOrganisers && <>Organiser: {event.organiserName}</>}
+                    </p>
+                    <p className="event-updated">Updated {formatTimestamp(event.updatedAt)}</p>
+                  </div>
+
+                  <div className="event-arrow">
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
                   </div>
                 </a>
               </li>

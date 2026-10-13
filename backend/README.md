@@ -136,11 +136,18 @@ button is a courtesy and a refused request is the rule.
 | `GET /events`                | Organiser (own), Coordinator (assigned) | The events list (US4.1/US8.1)     |
 | `GET /events/{id}`           | as above                      | One event, with its audit trail            |
 | `POST /events`               | Organiser                     | Create — always lands in Draft (US4.2)     |
-| `PUT /events/{id}`           | the owning Organiser          | Save edits; the status does not move       |
+| `PUT /events/{id}`           | the owning Organiser (Draft only); assigned Coordinator | Save edits; the status does not move |
 | `POST /events/{id}/submit`   | the owning Organiser          | Draft → Submitted, once (US4.2)            |
 | `POST /events/{id}/clarification` | assigned Coordinator     | Ask for info or changes; → Under Review (US7.3) |
 | `POST /events/{id}/approve`  | assigned Coordinator        | Under Review → Approved (US7.1)       |
 | `POST /events/{id}/reject`   | assigned Coordinator        | Under Review → Rejected with a reason (US7.1) |
+| `POST /events/{id}/change-request` | the owning Organiser  | Propose changes to a submitted event; → Under Review (US11.1) |
+| `POST /events/{id}/change-request/approve` | assigned Coordinator | Apply the proposed changes (US11.1) |
+| `POST /events/{id}/change-request/reject` | assigned Coordinator | Keep the current details, with a reason (US11.1) |
+| `GET /events/{id}/bookings`  | owning Organiser, assigned Coordinator | The event's venue bookings, soonest first (US14.1) |
+| `POST /events/{id}/bookings` | assigned Coordinator        | Request one venue; it starts Requested (US14.1) |
+| `POST /events/{id}/bookings/{bookingId}/cancel` | assigned Coordinator | Cancel one booking with a reason (US14.2) |
+| `POST /events/{id}/bookings/suitability` | assigned Coordinator | Whether a venue suits a booking; stores nothing (US18.1) |
 
 An event that belongs to another Organiser answers `404`, not `403`. Telling
 someone an event exists but is not theirs tells them something about another
@@ -190,9 +197,8 @@ curl -X POST http://localhost:8000/events/12/clarification \
 
 **There is no new table.** The message goes in `status_changes.notes`, a column
 the schema has always had and nothing wrote until now, on the row that records
-the move to Under Review. The request and the status change it caused are one
-event in the event's history, and storing them apart would let them disagree
-about when it happened or who asked.
+the clarification entry. If Lead assignment already moved the event to Under
+Review, this entry keeps the same status and records the Coordinator's message.
 
 That is also how "visible to the Organiser" is satisfied without any delivery
 mechanism: the owning Organiser already reads the event's history, so the message
@@ -209,7 +215,7 @@ ask. A decided event answers `409` with `already-decided`. A `Draft` answers
 `not-yet-submitted` refusal exists for completeness and is unreachable through
 the route.
 
-The Organiser's reply is **US11.1** and is deliberately not modelled here.
+The Organiser's reply is a change request — see **US11.1** below.
 
 ### Approving and rejecting (US7.1/US4.3)
 
@@ -226,6 +232,223 @@ US8.1's coordinator assignment is unchanged. Existing Supabase projects must run
 [`SUPABASE_ATOMIC_EVENT_DECISIONS.sql`](SUPABASE_ATOMIC_EVENT_DECISIONS.sql)
 before deploying this story. Its RPC only makes the conditional decision update
 and audit insert atomic; it does not decide which transitions are valid.
+
+While a change request is waiting (US11.1, below), approving or rejecting the
+event answers `409` with `change-pending`: the Coordinator reviews the proposed
+changes before deciding.
+
+### Requesting changes to a submitted event (US11.1)
+
+Once an event is submitted, its Organiser no longer edits it directly — a
+`PUT` on a non-Draft answers `409` with `change-request-required`. They fill in
+the same edit form instead, and what they send becomes a proposal for the
+assigned Coordinator to review. The event keeps its current details until the
+Coordinator approves.
+
+```bash
+# Organiser: the edit form's values, plus an optional note (up to 2,000 characters)
+curl -X POST http://localhost:8000/events/12/change-request \
+  -H "Authorization: Bearer <organiser token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Welcome Night","purpose":"Welcome the new intake.","description":"Talks.",
+       "startsAt":"2027-11-02T19:00","endsAt":"2027-11-02T22:00","expectedAttendance":150,
+       "note":"Moved to 19:00 as you asked."}'
+
+# Coordinator: apply them, or keep the current details with a reason
+curl -X POST http://localhost:8000/events/12/change-request/approve \
+  -H "Authorization: Bearer <coordinator token>"
+curl -X POST http://localhost:8000/events/12/change-request/reject \
+  -H "Authorization: Bearer <coordinator token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"The hall is booked at 19:00."}'
+```
+
+**What a request does.** The server compares the form's values with the
+event's and records one row per field that differs. Text is compared exactly;
+dates are compared as moments, so `18:00` and `18:00:00` are not a change. The
+event moves to Under Review only if it is assigned and still Submitted. An
+unassigned Submitted event stays in the Lead's queue; Under Review, Approved
+and Planning keep their statuses and carry the pending flag.
+The response carries:
+
+- `changeRequested` — the "change requested" flag, true while a request waits;
+- `pendingChanges` — each field's label, current and proposed value, and
+  whether it is `important`;
+- `changeRequestNote` — the Organiser's note while a request is pending;
+- `lastChangeReview` — the Coordinator's answer to the most recent request:
+  `approved` or `rejected`, when, the reason, and that request's Organiser note
+  in `requestNote`.
+
+**Important changes** follow US5.2's logging rule: date/time (`proposed_date`,
+`end_date`), attendance, venue and equipment. Venue and equipment are in the
+rule but are not columns on `events` yet, so no request can contain them until
+the booking work adds them.
+
+**Validation.** A request is checked as a submission, not as a draft, because a
+submitted event has to stay complete: title, purpose, a date that is not in the
+past, attendance of at least 1, and an end after the start. A request that
+changes nothing answers `400`.
+
+**Refusals** answer `409` with a `reason`:
+
+| Reason | When |
+| ------ | ---- |
+| `not-submitted` | The event is still a Draft — edit it directly instead |
+| `already-decided` | The event is Rejected, Confirmed, Completed or Cancelled |
+| `already-pending` | A request is already waiting; one at a time |
+| `nothing-pending` | Approve or reject was called with no request waiting |
+| `invalid-transition` | Someone else acted on the event first; refresh and retry |
+
+Another Organiser's event answers `404`, as everywhere else in this API.
+
+**Storage.** Everything about a request lives in its own table,
+`event_change_requests`: one row per proposed field, with `status`
+(`pending` → `approved` or `rejected`), who asked and when, and who answered,
+when and why. No other table's columns change:
+
+- `events` gets approved values. A request on an assigned Submitted event moves
+  it to Under Review; unassigned Submitted, Under Review, Approved and Planning
+  retain their status.
+- `status_changes` gets a row only when the status actually moves. The note is
+  also stored on the request rows, so it remains visible for flag-only requests.
+- `event_changes` stays a log of changes that were actually applied. An
+  approved request writes its fields there when it is applied, with the same
+  `important`/`routine` `change_type` as a US5.2 edit; the approving
+  Coordinator is recorded as `changed_by_user_id`. A pending or rejected
+  request never writes there.
+
+"Change requested" is worked out rather than stored: an event has a request
+waiting exactly when it has `pending` rows.
+
+Existing Supabase projects must run
+[`SUPABASE_ADD_CHANGE_REQUESTS.sql`](SUPABASE_ADD_CHANGE_REQUESTS.sql) before
+deploying this story; every events route reads the new table. Its two RPCs make
+each request and each answer atomic, and lock the event row so two requests or
+two answers cannot slip past each other. Validation stays in Python, in
+`app/change_requests.py` and `app/events.py`.
+
+US4.5 additionally requires [`SUPABASE_US4_5_LIFECYCLE.sql`](SUPABASE_US4_5_LIFECYCLE.sql)
+after the assignment, booking-needs and change-request scripts. Apply it before
+deploying the US4.5 backend, because event reads select `request_note` and the
+new writes use its atomic RPCs. The old round-robin backfill is retired; assign
+unassigned events through the Lead's queue.
+### Venue bookings (US14.1)
+
+An assigned Coordinator requests one or more venues for an event, so a bigger
+event can use a main hall and its breakout rooms at once (Week 7 change #3).
+
+```bash
+curl -X POST http://localhost:8000/events/12/bookings   -H "Authorization: Bearer <coordinator token>"   -H 'Content-Type: application/json'   -d '{"venueId":"1","startsAt":"2027-11-02T09:00","endsAt":"2027-11-02T17:00"}'
+```
+
+**Each booking is its own row** in `venue_bookings` (event, venue, start, end,
+status), and each request creates exactly one. A main hall and two breakout rooms
+are three calls, so a venue that is refused never takes another with it: the hall
+is already stored before the breakout room is sent. US15.1 (availability) and
+US18.1 (suitability) add their checks per booking, in `request_booking`. Existing
+Supabase projects must run
+[`SUPABASE_ADD_VENUE_BOOKINGS.sql`](SUPABASE_ADD_VENUE_BOOKINGS.sql) first. The
+story asks for a single venue column on `events` to be migrated if one existed;
+none ever did, so there was nothing to move.
+
+- **Who.** Only the assigned Coordinator (US8.6). The `bookings:request`
+  permission admits the role, and the event's readable check admits the
+  assignment, answering `404` to a Coordinator the event is not assigned to — the
+  same answer US8.1 gives for the event itself. The owning Organiser and the
+  assigned Coordinator can both read the bookings.
+- **Status.** Every new booking is `Requested` and waits for Venue Staff; the
+  `booking_status` enum holds only that value until the Venue Booking Approval
+  epic adds the rest.
+- **Which events.** Approved and Planning only. The first successful request
+  moves Approved to Planning with an audit entry; later requests leave Planning
+  unchanged. Submitted and Under Review answer `not-approved`; Confirmed,
+  Rejected, Cancelled and Completed answer `event-closed`.
+- **Validation.** A venue that is in the catalogue, and a start and an end as
+  `YYYY-MM-DDTHH:MM` (seconds optional), with the end after the start and the
+  start not on a past date. Each refusal is a `400` with `invalid_booking` and a
+  sentence naming one problem. The times need not match the event's own: a
+  breakout room may be wanted for the afternoon only, or the hall the night
+  before. Two bookings of the same venue are allowed; whether they clash is
+  US15.1's to judge.
+
+### Cancelling a booking (US14.2)
+
+The assigned Coordinator cancels one booking, with a reason, without touching
+anything else.
+
+```bash
+curl -X POST http://localhost:8000/events/12/bookings/31/cancel \
+  -H "Authorization: Bearer <coordinator token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"Numbers dropped, so the hall is too big."}'
+```
+
+- **What changes.** Only that booking's row: `Requested` → `Cancelled`, with
+  `cancelled_at`, `cancelled_by_id` and `cancellation_reason` set on it, and
+  `cancellation` (`at`, `byId`, `byName`, `reason`) in the response. The event's
+  status, its history and its other bookings are not written. A cancelled booking
+  stays on the event's list, so the Organiser can see what was dropped and why.
+  Existing Supabase projects must run
+  [`SUPABASE_CANCEL_VENUE_BOOKINGS.sql`](SUPABASE_CANCEL_VENUE_BOOKINGS.sql)
+  after the US14.1 script.
+- **The venue is freed.** `HOLDS_VENUE` in `app/booking_store.py` is the set of
+  statuses that hold a venue for their slot, and `Cancelled` is not in it, so
+  US15.1's conflict check will not count a cancelled booking. Requesting the same
+  venue for the same slot again is a new booking.
+- **Who and when.** The same rule as requesting (US8.6), under the same
+  `bookings:request` permission. Allowed whatever the event's status: cancelling
+  the hall for a Rejected event is how it is given back.
+- **Refusals.** A booking that is missing, or on another event, answers `404`
+  with `booking_not_found`. An already cancelled booking answers `409` with
+  `already-cancelled`, including when two cancels race: the update only matches
+  a booking that is still Requested. A blank reason, or one over 2,000
+  characters, answers `400` with `invalid_booking`.
+
+### Venue suitability (US18.1)
+
+Before a venue is requested, the system says whether it suits the booking:
+Suitable, or Not suitable with every reason. A venue that is not suitable cannot
+be requested.
+
+```bash
+curl -X POST http://localhost:8000/events/12/bookings/suitability \
+  -H "Authorization: Bearer <coordinator token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"venueId":"3","startsAt":"2027-11-02T13:00","endsAt":"2027-11-02T15:00",
+       "headcount":40,"layout":"Classroom","facilities":["projector"],
+       "accessibilityNeeds":["step-free access"]}'
+# {"venueId":"3","suitable":true,"reasons":[],"notes":[]}
+```
+
+- **What a booking needs** is on the booking, not the event: its own
+  `headcount`, and an optional `layout`, `facilities` and `accessibilityNeeds`.
+  The headcount defaults to the event's expected attendance when left out, so a
+  breakout room in a multi-venue event (Week 7 change #3) is checked against the
+  people in that room, not the whole event. All four are stored with the booking
+  and returned on it. Existing Supabase projects must run
+  [`SUPABASE_ADD_BOOKING_NEEDS.sql`](SUPABASE_ADD_BOOKING_NEEDS.sql), which also
+  copies each existing booking's headcount from its event.
+- **The rule** is [`app/suitability.py`](app/suitability.py), and it is pure: a
+  venue and a booking's needs in, a verdict out. Not suitable if the headcount is
+  more than the capacity (equal is suitable), the layout is not one the venue
+  supports, a facility or accessibility need is not listed, or the booking runs
+  outside the venue's operating hours on any day it touches.
+- **Matching.** Layouts match whole, ignoring case and spacing. Facilities and
+  accessibility needs match as a case-insensitive substring of a listed item, as
+  US9.3's filter does, so "projector" is met by "twin projectors". Venue fields
+  are read both as plain lists and as Postgres array literals (`{stage,"AV
+  system"}`), which is how the seeded catalogue holds them.
+- **Missing data.** A need is only met if the venue lists it, so a venue with no
+  layouts recorded supports none. Operating hours are a limit rather than a
+  feature, so hours that are not recorded, or that cannot be read, are not held
+  against the venue: the verdict carries a `note` saying the time was not
+  checked. Hours read as clauses like `08:00-22:00`, `Mon-Sat 08:00-22:00` or
+  `Weekdays 09:00-17:00`, comma-separated; a closing time of `23:59` means
+  midnight. Overnight hours (`22:00-02:00`) are not read.
+- **Enforced, not just shown.** `POST /events/{id}/bookings` runs the same
+  `assess` and answers `409` with `not-suitable` and the same `reasons` list
+  when it fails. The check takes exactly the request's body and is refused the
+  same ways (`404`, then `409`, then `400`), so the form and the rule agree.
 
 ## Venues
 
@@ -303,12 +526,13 @@ refused. `updated_at` is the system's too, and the store stamps it.
 the name in the message — a rule, not a constraint violation leaking out. A venue
 keeps its own name, so saving one unrenamed is not a clash.
 
-The delete is a hard delete with no referential check, because nothing books a
-venue yet and so no row can be orphaned by it. That check becomes necessary with
-Sprint 3's booking feature and belongs in `venue_store.delete_venue` when it
-does. Deleting a venue that is already gone answers `404` rather than a quiet
-`204`: the caller is usually working from a stale list, and saying so is more use
-than pretending it worked.
+The delete is a hard delete. A venue that any event has booked (US14.1) is in
+use and answers `409` with `venue_in_use` instead: deleting it would either take
+the event's booking with it or, since `venue_bookings.venue_id` has no cascade,
+fail in the database. A cancelled booking (US14.2) still counts. It frees the
+venue's slot, but it is still the event's record of what was asked for. Deleting a venue that is already gone answers `404` rather
+than a quiet `204`: the caller is usually working from a stale list, and saying
+so is more use than pretending it worked.
 
 ### Nullable columns
 
@@ -407,7 +631,7 @@ server put on the session.
 | Role              | May                                                   |
 | ----------------- | ----------------------------------------------------- |
 | Event Organiser   | create, read own, and submit events                   |
-| Event Coordinator | read submitted events, review and edit them, read the user directory, read the venue catalogue |
+| Event Coordinator | read submitted events, review and edit them, read the user directory, read the venue catalogue, request and cancel venue bookings for their events |
 | Venue Staff       | read the venue catalogue, and add, update and delete the records in it |
 
 Technical Support and Attendee are part of the wider plan and are deliberately
@@ -493,8 +717,10 @@ app/
   sessions.py       session store with a sliding inactivity window
   security.py       session-token generation
   supabase_client.py  the admin, anonymous and per-user Supabase clients
-  events.py         /events routes — US4.1 and US4.2
+  events.py         /events routes — US4.1, US4.2, and US14.1's /events/{id}/bookings
   event_store.py    event data access, over the events and status_changes tables
+  booking_store.py  venue booking data access, over the venue_bookings table
+  suitability.py    whether a venue suits one booking — US18.1, no I/O
   event_status.py   the status label set, the submit rule and the US7.3 review rule
   venues.py         /venues routes — US9.1a-c, US9.2 and US9.3
   venue_store.py    venue data access, over the venues table
@@ -513,4 +739,9 @@ tests/
   test_event_clarification.py US7.3, and the rule on its own
   test_venues.py              US9.1a-c, US9.2 and US9.3, through the routes
   test_venue_store.py         the Supabase venue queries, against a fake client
+  test_venue_bookings.py      US14.1, through the routes
+  test_venue_booking_cancellation.py  US14.2, through the routes
+  test_venue_suitability.py   US18.1, through the routes
+  test_suitability.py         the US18.1 rule on its own
+  test_booking_store.py       the Supabase booking queries, against a fake client
 ```

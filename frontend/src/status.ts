@@ -30,13 +30,16 @@ export const SPRINT_1_REACHABLE: readonly EventStatus[] = ['Draft', 'Submitted']
 /**
  * The roles the system knows about.
  *
- * The three that have features: an Organiser proposes events, a Coordinator
- * reviews them and reads the venue catalogue, and Venue Staff maintain that
- * catalogue (US9.1a-c). Technical Support and Attendee are still deliberately
- * absent — the server agrees, and this type is what makes a stray role name a
- * build error rather than a runtime surprise.
+ * US1.4 adds Coordinator Lead and Safety Officer. Technical Support and
+ * Attendee are still deliberately absent — the server agrees, and this type
+ * is what makes a stray role name a build error rather than a runtime surprise.
  */
-export type Role = 'Event Organiser' | 'Event Coordinator' | 'Venue Staff'
+export type Role =
+  | 'Event Organiser'
+  | 'Event Coordinator'
+  | 'Event Coordinator Lead'
+  | 'Venue Staff'
+  | 'Safety Officer'
 
 /**
  * US4.1: status is visible to the Organiser who owns the event. Coordinators
@@ -104,6 +107,11 @@ export type StatusChange = {
    * fixtures still type-check.
    */
   notes?: string
+  /**
+   * US11.1: 'change-request' on the entry an Organiser's change request wrote,
+   * so its note is labelled as theirs. Empty otherwise.
+   */
+  kind?: '' | 'change-request'
 }
 
 /**
@@ -148,13 +156,118 @@ export function clarificationRefusalMessage(reason: ClarificationRefusal): strin
   }
 }
 
+export type StatusNoteKind = 'clarification' | 'rejection' | 'change-request'
+/**
+ * US14.1: the statuses an event may have venues requested for.
+ *
+ * Every status a Coordinator can see except the ones that end an event. A
+ * booking is only a request until Venue Staff approve it, so asking while the
+ * event is under review costs nothing.
+ */
+export const BOOKABLE: readonly EventStatus[] = [
+  'Approved',
+  'Planning',
+]
+
+/** Why venues cannot be requested, so the UI can explain rather than deny. */
+export type BookingRefusal = 'not-yet-submitted' | 'not-approved' | 'event-closed'
+
+export type BookingCheck = { allowed: true } | { allowed: false; reason: BookingRefusal }
+
+/**
+ * US14.1: whether venues may be requested for an event at this status.
+ *
+ * Mirrors the server so the page can hide the form and say why. Assignment
+ * (US8.6) is enforced by the API before this page receives an event; the server
+ * re-checks both, and that refusal is the rule.
+ */
+export function checkBooking(event: { status: EventStatus }): BookingCheck {
+  if (event.status === 'Draft') return { allowed: false, reason: 'not-yet-submitted' }
+  if (event.status === 'Submitted' || event.status === 'Under Review') {
+    return { allowed: false, reason: 'not-approved' }
+  }
+  if (!BOOKABLE.includes(event.status)) return { allowed: false, reason: 'event-closed' }
+  return { allowed: true }
+}
+
+export function bookingRefusalMessage(reason: BookingRefusal): string {
+  switch (reason) {
+    case 'not-yet-submitted':
+      return 'This event has not been submitted yet, so no venues can be requested for it.'
+    case 'not-approved':
+      return 'Approve this event before requesting a venue.'
+    case 'event-closed':
+      return 'This event is closed, so no more venues can be requested for it.'
+  }
+}
+
 /** What kind of person-written note an audit entry carries. */
-export function statusNoteKind(
-  change: StatusChange,
-): 'clarification' | 'rejection' | null {
+export function statusNoteKind(change: StatusChange): StatusNoteKind | null {
   if (!(change.notes ?? '').trim()) return null
+  if (change.kind) return change.kind
   if (change.to === 'Rejected') return 'rejection'
   return 'clarification'
+}
+
+/** The heading the history shows above each kind of note. */
+export function statusNoteLabel(kind: StatusNoteKind): string {
+  switch (kind) {
+    case 'clarification':
+      return 'Requested by Coordinator'
+    case 'rejection':
+      return 'Rejection reason'
+    case 'change-request':
+      return 'Change requested by Organiser'
+  }
+}
+
+/**
+ * US11.1: where an Organiser may request changes. A Draft is still theirs to
+ * edit directly; a decided event is no longer under review.
+ */
+export const REQUESTABLE: readonly EventStatus[] = [
+  'Submitted', 'Under Review', 'Approved', 'Planning',
+]
+
+/** Why a change request is not available, so the page can say rather than hide. */
+export type ChangeRequestRefusal =
+  | 'not-owner'
+  | 'not-submitted'
+  | 'already-decided'
+  | 'already-pending'
+
+export type ChangeRequestCheck =
+  | { allowed: true }
+  | { allowed: false; reason: ChangeRequestRefusal }
+
+/**
+ * US11.1: may this Organiser propose changes to this event now?
+ *
+ * Mirrors the server's `check_change_request`, in the same order, so the page
+ * explains the same refusal the server would give. The server re-checks.
+ */
+export function checkChangeRequest(
+  event: { status: EventStatus; organiserId: string; changeRequested?: boolean },
+  actorId: string,
+): ChangeRequestCheck {
+  if (event.organiserId !== actorId) return { allowed: false, reason: 'not-owner' }
+  if (event.status === 'Draft') return { allowed: false, reason: 'not-submitted' }
+  if (!REQUESTABLE.includes(event.status)) return { allowed: false, reason: 'already-decided' }
+  if (event.changeRequested) return { allowed: false, reason: 'already-pending' }
+  return { allowed: true }
+}
+
+export function changeRequestRefusalMessage(reason: ChangeRequestRefusal): string {
+  switch (reason) {
+    case 'not-owner':
+      return 'Only the Organiser who owns this event can request changes to it.'
+    case 'not-submitted':
+      return 'This event is still a Draft. Edit it directly, then submit it.'
+    case 'already-decided':
+      return 'This event has already been decided, so changes can no longer be requested.'
+    case 'already-pending':
+      return "A change request for this event is already awaiting the Coordinator's review."
+  }
 }
 
 /** Whether an entry specifically contains a US7.3 clarification request. */

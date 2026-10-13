@@ -1,0 +1,250 @@
+/* US14.1's card sits under the event details and history, across the full
+   width: an event with a hall and several breakout rooms needs the room. */
+.event-bookings {
+  margin-top: 1.25rem;
+}
+
+.event-bookings-lede {
+  font-size: 0.86rem;
+  color: var(--muted);
+  margin-top: -0.7rem;
+  margin-bottom: 1rem;
+}
+
+.booking-none {
+  font-size: 0.92rem;
+}
+
+.booking-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.booking-row {
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+
+/* US14.2: a cancelled booking stays on the record but steps back from it. */
+.booking-row.is-cancelled {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+/* Venue, then when, then where it stands — the order a Coordinator scans for —
+   then the one thing they can do about it. */
+.booking-summary {
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) 1fr auto auto;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.booking-venue {
+  font-weight: 600;
+  color: var(--ink-strong);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.booking-times {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* Requested is a wait, not a result, so it reads in the accent rather than in
+   anything that looks like an approval. */
+.booking-status {
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-pill);
+  color: var(--accent);
+  border: 1px solid var(--accent-soft);
+  background: var(--accent-soft);
+  white-space: nowrap;
+}
+
+.booking-row.is-cancelled .booking-venue {
+  color: var(--muted);
+  font-weight: 500;
+  text-decoration: line-through;
+}
+
+.booking-status.is-cancelled {
+  color: var(--muted);
+  border-color: var(--line-strong);
+  background: var(--bg);
+}
+
+/* US18.1: what the booking was made for, under the line that says where. */
+.booking-needs {
+  margin-top: 0.35rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* Who, when and why, under the booking it explains. */
+.booking-cancellation {
+  margin-top: 0.45rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.booking-notice {
+  margin-bottom: 0.75rem;
+}
+
+/* The reason box opens under the one booking it would cancel, so it is never
+   in doubt which room is going. */
+.booking-cancel-form {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.6rem;
+}
+
+.booking-cancel-form .form-error {
+  margin-bottom: 0;
+}
+
+.booking-cancel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+/* US18.1: the verdict sits between the form and its button, because it is the
+   thing that decides whether the button can be pressed. Green and red use the
+   same colours as the page's other success and danger messages. */
+.booking-verdict {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  font-size: 0.9rem;
+}
+
+.booking-verdict.is-checking {
+  color: var(--muted);
+}
+
+.booking-verdict.is-suitable {
+  background: #eaf7ef;
+  border-color: #cfead9;
+  color: #1f6b3f;
+}
+
+.booking-verdict.is-unsuitable,
+.booking-verdict.is-error {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+.booking-verdict-title {
+  font-weight: 600;
+}
+
+.booking-verdict-reasons {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.booking-verdict-note {
+  margin-top: 0.4rem;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+/* The Coordinator's form, ruled off from the list it adds to. */
+.booking-form {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.85rem;
+  justify-items: start;
+}
+
+.booking-form-title {
+  font-size: 1rem;
+  color: var(--ink-strong);
+}
+
+.booking-form-hint {
+  font-size: 0.84rem;
+  color: var(--muted-soft);
+  margin-top: -0.5rem;
+}
+
+.booking-form .form-error,
+.booking-saved {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.booking-saved {
+  font-size: 0.9rem;
+  color: var(--ink-strong);
+  background: var(--bg-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+}
+
+.booking-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+/* Seven fields in three columns: where and when, then what for. The last one
+   takes the remaining width rather than leaving two empty cells. */
+.booking-access-field {
+  grid-column: span 2;
+}
+
+@media (max-width: 720px) {
+  .booking-summary {
+    grid-template-columns: 1fr auto;
+  }
+
+  .booking-times {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .booking-cancel {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .booking-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-access-field {
+    grid-column: auto;
+  }
+
+  .booking-form .btn {
+    width: 100%;
+  }
+}

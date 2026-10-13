@@ -2,19 +2,32 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import EventDetailPage from './EventDetailPage'
-import { getEvent, saveEvent, submitEvent, type EventRecord } from '../eventsStore'
+import { completeEvent, getEvent, listBookings, saveEvent, submitEvent, type EventRecord } from '../eventsStore'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../eventsStore')>()),
+  listBookings: vi.fn(async () => []),
   getEvent: vi.fn(),
   saveEvent: vi.fn(),
   submitEvent: vi.fn(),
+  completeEvent: vi.fn(),
+}))
+
+// US14.1: the venue bookings card loads its own data. These tests are not about
+// it, so it gets no bookings and an empty catalogue. The empty answers are the
+// mocks' own implementations rather than a beforeEach, because the card mounts
+// only once the event has loaded and its effect can run after this file's
+// resetAllMocks; a reset restores an implementation given to vi.fn.
+vi.mock('../venuesStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../venuesStore')>()),
+  listVenues: vi.fn(async () => []),
 }))
 
 const getEventMock = vi.mocked(getEvent)
 const saveEventMock = vi.mocked(saveEvent)
 const submitEventMock = vi.mocked(submitEvent)
+const completeEventMock = vi.mocked(completeEvent)
 const organiser = buildSession({ role: 'Event Organiser', id: '1', name: 'Dylan' })
 
 const event: EventRecord = {
@@ -179,4 +192,56 @@ it('shows the full status history, not just the current status', async () => {
   await screen.findByText('Faculty Welcome Night')
   expect(screen.getByText('Created as')).toBeInTheDocument()
   expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0)
+})
+
+it('shows the venue bookings for a submitted event under its details (US14.1)', async () => {
+  getEventMock.mockResolvedValue(submittedEvent)
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  expect(await screen.findByRole('heading', { name: 'Venue bookings' })).toBeInTheDocument()
+  await waitFor(() => expect(vi.mocked(listBookings)).toHaveBeenCalledWith('101', coordinator))
+})
+
+it('shows no venue bookings card on a Draft, which cannot have any', async () => {
+  getEventMock.mockResolvedValue(event)
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  await screen.findByLabelText('Title')
+  expect(screen.queryByRole('heading', { name: 'Venue bookings' })).not.toBeInTheDocument()
+  expect(vi.mocked(listBookings)).not.toHaveBeenCalled()
+})
+
+it('lets the assigned Coordinator complete an ended Confirmed event', async () => {
+  const user = userEvent.setup()
+  const confirmed = {
+    ...submittedEvent, status: 'Confirmed' as const,
+    coordinatorId: coordinator.id, endsAt: '2020-01-01T17:00',
+  }
+  getEventMock.mockResolvedValue(confirmed)
+  completeEventMock.mockResolvedValue({ ...confirmed, status: 'Completed' })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  await user.click(await screen.findByRole('button', { name: 'Mark Completed' }))
+  expect(completeEventMock).toHaveBeenCalledWith('101', coordinator)
+  expect(await screen.findByRole('status')).toHaveTextContent('Completed.')
+  expect(screen.queryByRole('button', { name: 'Mark Completed' })).not.toBeInTheDocument()
+})
+
+it('does not offer completion before the end time or to another Coordinator', async () => {
+  const future = {
+    ...submittedEvent, status: 'Confirmed' as const,
+    coordinatorId: coordinator.id, endsAt: '2099-01-01T17:00',
+  }
+  getEventMock.mockResolvedValue(future)
+  const view = render(<EventDetailPage eventId="101" session={coordinator} />)
+  expect(await screen.findByRole('button', { name: 'Mark Completed' })).toBeDisabled()
+
+  view.unmount()
+  getEventMock.mockResolvedValue({ ...future, coordinatorId: 'someone-else' })
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+  await screen.findByText('Faculty Welcome Night')
+  expect(screen.queryByRole('button', { name: 'Mark Completed' })).not.toBeInTheDocument()
 })

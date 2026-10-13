@@ -29,3 +29,32 @@ export function hasDraftContent(draft: DraftContent): boolean {
 export function displayEventTitle(title: string): string {
   return ALPHANUMERIC.test(title) ? title : 'Untitled event'
 }
+
+type SubmissionFields = {
+  title: string
+  purpose: string
+  startsAt: string
+  endsAt: string
+  expectedAttendance: string
+}
+
+/**
+ * What stops these form values being submitted, or null when nothing does.
+ *
+ * US4.2's submit and US11.1's change request apply the same rules: a change
+ * request must leave a submitted event as complete as submitting it required.
+ * `today` is `YYYY-MM-DD` in local time, passed in so the rule is testable.
+ */
+export function submissionError(draft: SubmissionFields, today: string): string | null {
+  if (!draft.title.trim()) return 'Give the event a title.'
+  if (!draft.startsAt.trim()) return 'Give the event a date.'
+  if (!draft.endsAt.trim()) return 'Give the event an end date.'
+  if (draft.endsAt <= draft.startsAt) return 'The end date must be after the start date.'
+  if (!draft.purpose.trim()) return 'Give the event a purpose.'
+  if (!draft.expectedAttendance.trim()) return 'Give the expected attendance.'
+  const trimmed = draft.expectedAttendance.trim()
+  if (!/^\d+$/.test(trimmed)) return 'Enter a whole number of people.'
+  if (Number(trimmed) < 1) return 'Expected attendance must be at least 1.'
+  if (draft.startsAt.slice(0, 10) < today) return 'The start date cannot be in the past.'
+  return null
+}

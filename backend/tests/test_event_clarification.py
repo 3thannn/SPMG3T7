@@ -28,14 +28,24 @@ MESSAGE = "Please confirm the catering budget and add a wet-weather plan."
 
 
 def submitted_event(client, auth_headers) -> dict:
-    """An event in the state US7.3 starts from: submitted, awaiting review."""
+    """An event in the state US7.3 starts from: submitted, awaiting review.
+    US8.6: Assigns the event to the coordinator so they can see it."""
     organiser = auth_headers("Event Organiser")
     created = client.post("/events", json=DRAFT, headers=organiser)
     assert created.status_code == 201, created.text
     event_id = created.json()["id"]
     submitted = client.post(f"/events/{event_id}/submit", headers=organiser)
     assert submitted.status_code == 200, submitted.text
-    return submitted.json()
+
+    # US8.6: Assign the event to the coordinator so they can interact with it
+    assigned = client.post(
+        f"/events/{event_id}/assign",
+        json={"coordinatorId": str(COORDINATOR_ID)},
+        headers=auth_headers("Event Coordinator Lead"),
+    )
+    assert assigned.status_code == 200, assigned.text
+
+    return assigned.json()
 
 
 def seed(event_repository, **overrides) -> Event:
@@ -87,7 +97,7 @@ class TestAsking:
 
         latest = response.json()["history"][-1]
         assert latest["notes"] == MESSAGE
-        assert latest["from"] == "Submitted"
+        assert latest["from"] == "Under Review"
         assert latest["to"] == "Under Review"
 
     def test_the_request_is_attributable_and_timestamped(self, client, auth_headers):
@@ -127,9 +137,11 @@ class TestAsking:
         response = request_clarification(client, auth_headers("Event Coordinator"), event["id"])
 
         history = response.json()["history"]
+        # Lead assignment records Submitted -> Under Review before clarification.
         assert [entry["to"] for entry in history] == [
             "Draft",
             "Submitted",
+            "Under Review",
             "Under Review",
         ]
 
@@ -200,7 +212,7 @@ class TestTheOrganiserSeesIt:
         """So a client can tell a request apart from a plain status change."""
         event = submitted_event(client, auth_headers)
 
-        assert [entry["notes"] for entry in event["history"]] == ["", ""]
+        assert [entry["notes"] for entry in event["history"]] == ["", "", ""]
 
 
 class TestWhoMayAsk:
@@ -292,8 +304,8 @@ class TestTheMessageIsRequired:
 
         after = client.get(f"/events/{event['id']}", headers=auth_headers("Event Organiser")).json()
 
-        assert after["status"] == "Submitted"
-        assert len(after["history"]) == 2
+        assert after["status"] == "Under Review"
+        assert len(after["history"]) == 3
 
 
 class TestWhenItIsRefused:

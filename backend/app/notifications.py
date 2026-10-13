@@ -1,7 +1,8 @@
 """Notification routes — US10.1 (receive and manage notifications).
 
-An Organiser is told when a Coordinator moves one of their events to Under
-Review, Approved or Rejected, and can mark each notice read or unread so the
+An Organiser is told when one of their events moves to Under Review (a Lead
+assigning a Coordinator, or a Coordinator asking a question), Approved or
+Rejected, and can mark each notice read or unread so the
 list stays manageable. There is no email or push yet; the list is the delivery.
 
 `notify_status_change` is the write side, called by the event routes after a

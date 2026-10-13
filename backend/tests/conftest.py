@@ -16,7 +16,15 @@ password is a column on the user.
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, event_store, notification_store, venue_store, venue_unavailability_store
+from app import (
+    auth,
+    booking_store,
+    event_store,
+    notification_store,
+    venue_store,
+    venue_unavailability_store,
+)
+from app.booking_store import InMemoryBookings
 from app.event_store import InMemoryEvents
 from app.main import app
 from app.notification_store import InMemoryNotifications
@@ -32,12 +40,16 @@ PASSWORD = "Sprint1!demo"
 ACCOUNTS = {
     "Event Organiser": "organiser@spmg3t7.edu",
     "Event Coordinator": "coordinator@spmg3t7.edu",
+    "Event Coordinator Lead": "coordinatorlead@spmg3t7.edu",  # US1.4
     "Venue Staff": "venuestaff@spmg3t7.edu",
+    "Safety Officer": "safetyofficer@spmg3t7.edu",  # US1.4
 }
 
 ORGANISER_ID = 1
 COORDINATOR_ID = 2
-VENUE_STAFF_ID = 3
+COORDINATOR_LEAD_ID = 3
+VENUE_STAFF_ID = 4
+SAFETY_OFFICER_ID = 5
 
 
 def fixture_users() -> list[User]:
@@ -55,6 +67,13 @@ def fixture_users() -> list[User]:
             name="Priya",
             role=Role.COORDINATOR,
         ),
+        # US1.4: Coordinator Lead manages the unassigned queue and assigns Coordinators.
+        User(
+            id=COORDINATOR_LEAD_ID,
+            email=ACCOUNTS["Event Coordinator Lead"],
+            name="Jordan",
+            role=Role.COORDINATOR_LEAD,
+        ),
         # US9.1a-c: the role that maintains the venue catalogue. It holds no
         # event permission, which is what makes it the useful fixture for
         # asserting that a venue route refuses everyone else.
@@ -63,6 +82,13 @@ def fixture_users() -> list[User]:
             email=ACCOUNTS["Venue Staff"],
             name="Sam",
             role=Role.VENUE_STAFF,
+        ),
+        # US1.4: Safety Officer role (features in US17.x).
+        User(
+            id=SAFETY_OFFICER_ID,
+            email=ACCOUNTS["Safety Officer"],
+            name="Alex",
+            role=Role.SAFETY_OFFICER,
         ),
     ]
 
@@ -83,7 +109,13 @@ def user_store():
 def event_repository():
     """An empty event store per test, knowing the fixture users' display names."""
     store = InMemoryEvents(
-        names={ORGANISER_ID: "Dylan", COORDINATOR_ID: "Priya", VENUE_STAFF_ID: "Sam"},
+        names={
+            ORGANISER_ID: "Dylan",
+            COORDINATOR_ID: "Priya",
+            COORDINATOR_LEAD_ID: "Jordan",  # US1.4
+            VENUE_STAFF_ID: "Sam",
+            SAFETY_OFFICER_ID: "Alex",  # US1.4
+        },
     )
     previous = event_store.use_repository(store)
     yield store
@@ -163,6 +195,15 @@ def notification_repository():
     previous = notification_store.use_repository(store)
     yield store
     notification_store.use_repository(previous)
+
+
+@pytest.fixture(autouse=True)
+def booking_repository():
+    """US14.1: no venue bookings until a test requests one."""
+    store = InMemoryBookings()
+    previous = booking_store.use_repository(store)
+    yield store
+    booking_store.use_repository(previous)
 
 
 @pytest.fixture

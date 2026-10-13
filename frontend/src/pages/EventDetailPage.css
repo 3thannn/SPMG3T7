@@ -156,3 +156,15 @@
   border-color: var(--navy);
   box-shadow: 0 0 0 3px var(--navy-ring);
 }
+
+/* US11.1: the Organiser's proposed changes and the Coordinator's answer to
+   them, ruled off like the other review actions in this panel. */
+.detail-change-review {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.detail-change-note {
+  margin-top: 1rem;
+}

@@ -26,7 +26,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import venue_store, venue_unavailability_store
+from app import booking_store, venue_store, venue_unavailability_store
 from app.auth import require_permission
 from app.permissions import Permission
 from app.users import User
@@ -42,6 +42,7 @@ class VenueError:
     INVALID = "invalid_venue"
     NAME_TAKEN = "venue_name_taken"
     INVALID_UNAVAILABILITY = "invalid_unavailability"
+    IN_USE = "venue_in_use"
 
 
 class VenueOut(BaseModel):
@@ -356,10 +357,25 @@ def delete_venue(
     404 for a venue that is not there, rather than a quiet 204. Deleting
     something that was already gone is usually a sign the caller is working
     from a stale list, and saying so is more use than pretending it worked.
+
+    409 for a venue an event has booked (US14.1). A venue with bookings is in
+    use, and deleting it would either take an event's booking with it or, as
+    `venue_bookings.venue_id` has no cascade, fail in the database.
     """
     existing = venue_store.repository().get_venue(_as_id(venue_id))
     if existing is None:
         raise _not_found()
+    if booking_store.repository().venue_has_bookings(existing.id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": VenueError.IN_USE,
+                "message": (
+                    f"{existing.name} has venue bookings, so it cannot be removed "
+                    "from the catalogue."
+                ),
+            },
+        )
     venue_store.repository().delete_venue(existing.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -372,8 +388,9 @@ def delete_venue(
 # its own — the same role holds both, and a second name for the same grant
 # would be one more thing for the frontend's copy of the catalogue to drift on.
 #
-# This only records and displays. Nothing here checks a range against events
-# or against other ranges: venue bookings do not exist until Sprint 3.
+# This only records and displays. Nothing here checks a range against venue
+# bookings or against other ranges: comparing a booking with the venue's
+# blackouts is US15.1's availability check, made per booking.
 
 
 class UnavailabilityOut(BaseModel):

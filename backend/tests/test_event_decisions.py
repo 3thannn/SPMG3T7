@@ -20,12 +20,23 @@ DRAFT = {
 
 
 def under_review_event(client, auth_headers) -> dict:
+    """Create an event in Under Review status.
+    US8.6: Assigns the event to the coordinator before requesting clarification."""
     organiser = auth_headers("Event Organiser")
     created = client.post("/events", json=DRAFT, headers=organiser)
     assert created.status_code == 201, created.text
     event_id = created.json()["id"]
     submitted = client.post(f"/events/{event_id}/submit", headers=organiser)
     assert submitted.status_code == 200, submitted.text
+
+    # US8.6: Assign the event to the coordinator before they can interact with it
+    assigned = client.post(
+        f"/events/{event_id}/assign",
+        json={"coordinatorId": str(COORDINATOR_ID)},
+        headers=auth_headers("Event Coordinator Lead"),
+    )
+    assert assigned.status_code == 200, assigned.text
+
     reviewed = client.post(
         f"/events/{event_id}/clarification",
         json={"message": "Please confirm the final plan."},
@@ -68,6 +79,8 @@ class TestTransitionRules:
             (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW),
             (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
             (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
+            (EventStatus.APPROVED, EventStatus.PLANNING),
+            (EventStatus.CONFIRMED, EventStatus.COMPLETED),
         ],
     )
     def test_allowed_transitions(self, before, after):
@@ -79,6 +92,8 @@ class TestTransitionRules:
             (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW),
             (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
             (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
+            (EventStatus.APPROVED, EventStatus.PLANNING),
+            (EventStatus.CONFIRMED, EventStatus.COMPLETED),
         }
         for before in EventStatus:
             for after in EventStatus:
@@ -135,6 +150,7 @@ class TestDecisionHappyPaths:
             "byId": str(COORDINATOR_ID),
             "byName": "Priya",
             "notes": notes,
+            "kind": "",
         }
         assert latest["at"]
 

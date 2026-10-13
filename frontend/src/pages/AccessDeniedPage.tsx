@@ -28,11 +28,6 @@ export default function AccessDeniedPage({ session, route }: AccessDeniedPagePro
           {denialMessage(session, route)}
         </p>
 
-        <p className="muted">
-          You are signed in as {session.name} ({session.role}). Signing in again will not
-          change this — ask an Event Coordinator if you think your role is wrong.
-        </p>
-
         <div className="access-denied-actions">
           <button type="button" className="btn btn-primary" onClick={() => navigate(session.home)}>
             Go to my dashboard

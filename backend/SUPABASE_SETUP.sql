@@ -23,6 +23,13 @@ CREATE TYPE event_status AS ENUM (
     'Rejected'
 );
 
+-- US14.1 and US14.2: a new booking is Requested and a Coordinator may cancel
+-- it. The Venue Booking Approval epic adds the statuses Venue Staff set.
+CREATE TYPE booking_status AS ENUM (
+    'Requested',
+    'Cancelled'
+);
+
 -- Create users table
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -137,6 +144,44 @@ CREATE TABLE notifications (
 CREATE INDEX ix_notifications_user_read_created
     ON notifications(user_id, is_read, created_at DESC);
 CREATE INDEX ix_notifications_event_id ON notifications(event_id);
+-- US14.1: one row per venue an event asks for; US14.2 adds cancelling one and
+-- US18.1 what it needs. See SUPABASE_ADD_VENUE_BOOKINGS.sql,
+-- SUPABASE_CANCEL_VENUE_BOOKINGS.sql and SUPABASE_ADD_BOOKING_NEEDS.sql for why
+-- each constraint is what it is.
+CREATE TABLE venue_bookings (
+    id SERIAL PRIMARY KEY,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    venue_id INTEGER NOT NULL REFERENCES venues(id),
+    start_at TIMESTAMP NOT NULL,
+    end_at TIMESTAMP NOT NULL,
+    status booking_status NOT NULL DEFAULT 'Requested',
+    requested_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    -- US18.1: what the booking needs of a venue. See SUPABASE_ADD_BOOKING_NEEDS.sql.
+    headcount INTEGER,
+    required_layout TEXT,
+    required_facilities TEXT[] NOT NULL DEFAULT '{}',
+    accessibility_needs TEXT[] NOT NULL DEFAULT '{}',
+    cancelled_at TIMESTAMP,
+    cancellation_reason TEXT,
+    cancelled_by_id INTEGER,
+    CONSTRAINT venue_bookings_end_after_start CHECK (end_at > start_at),
+    CONSTRAINT venue_bookings_headcount_positive CHECK (headcount IS NULL OR headcount >= 1),
+    CONSTRAINT venue_bookings_cancelled_by_id_fkey
+        FOREIGN KEY (cancelled_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT venue_bookings_cancellation_recorded CHECK (
+        (status = 'Cancelled') = (
+            cancelled_at IS NOT NULL
+            AND cancellation_reason IS NOT NULL
+            AND btrim(cancellation_reason) <> ''
+        )
+    )
+);
+
+CREATE INDEX ix_venue_bookings_event_start ON venue_bookings(event_id, start_at);
+CREATE INDEX ix_venue_bookings_venue_id ON venue_bookings(venue_id);
+CREATE INDEX ix_venue_bookings_requested_by_id ON venue_bookings(requested_by_id);
+CREATE INDEX ix_venue_bookings_cancelled_by_id ON venue_bookings(cancelled_by_id);
 
 -- US7.1: keep a Coordinator decision and its US4.2 audit row in one transaction.
 -- Transition validation remains in Python; this is not a status trigger.
@@ -233,9 +278,10 @@ ALTER TABLE venues ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
 ALTER TABLE venue_unavailability ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE venue_bookings ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON TABLE users, events, status_changes, venues, equipment,
-    venue_unavailability, notifications FROM anon, authenticated;
+    venue_unavailability, notifications, venue_bookings FROM anon, authenticated;
 
 -- Verify tables were created
 SELECT table_name FROM information_schema.tables

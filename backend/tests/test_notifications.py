@@ -42,8 +42,20 @@ def ask(client, auth_headers, event_id: str, message: str = "Please confirm cate
     return response
 
 
-def under_review_event(client, auth_headers) -> str:
+def assigned_event(client, auth_headers) -> str:
+    """US8.3: assigning a Coordinator moves the event to Under Review."""
     event_id = submitted_event(client, auth_headers)
+    assigned = client.post(
+        f"/events/{event_id}/assign",
+        json={"coordinatorId": str(COORDINATOR_ID)},
+        headers=auth_headers("Event Coordinator Lead"),
+    )
+    assert assigned.status_code == 200, assigned.text
+    return event_id
+
+
+def under_review_event(client, auth_headers) -> str:
+    event_id = assigned_event(client, auth_headers)
     ask(client, auth_headers, event_id)
     return event_id
 
@@ -95,33 +107,35 @@ class TestNotificationIsCreated:
         assert latest["status"] == "Rejected"
         assert "The hall is booked that week." in latest["message"]
 
-    def test_tc_n03_moving_under_review_notifies_with_the_request(self, client, auth_headers):
-        event_id = submitted_event(client, auth_headers)
-        ask(client, auth_headers, event_id, "How many vegetarian meals?")
+    def test_tc_n03_assignment_moves_under_review_and_notifies(self, client, auth_headers):
+        assigned_event(client, auth_headers)
 
         [notice] = notices(client, auth_headers)
         assert notice["status"] == "Under Review"
-        assert "How many vegetarian meals?" in notice["message"]
+        assert notice["message"] == '"Faculty Welcome Night" is under review.'
 
-    def test_tc_n04_a_follow_up_question_notifies_again(self, client, auth_headers):
-        event_id = under_review_event(client, auth_headers)
-        ask(client, auth_headers, event_id, "And the AV needs?")
+    def test_tc_n04_a_question_notifies_with_the_request(self, client, auth_headers):
+        event_id = assigned_event(client, auth_headers)
+        ask(client, auth_headers, event_id, "How many vegetarian meals?")
 
         listed = notices(client, auth_headers)
         assert len(listed) == 2
-        assert "And the AV needs?" in listed[0]["message"]
+        assert listed[0]["status"] == "Under Review"
+        assert "How many vegetarian meals?" in listed[0]["message"]
 
     def test_tc_n05_submitting_does_not_notify(self, client, auth_headers):
         submitted_event(client, auth_headers)
         assert notices(client, auth_headers) == []
 
     def test_tc_n06_a_refused_decision_does_not_notify(self, client, auth_headers):
-        event_id = submitted_event(client, auth_headers)
-        refused = client.post(
-            f"/events/{event_id}/approve", headers=auth_headers("Event Coordinator")
-        )
+        event_id = under_review_event(client, auth_headers)
+        coordinator = auth_headers("Event Coordinator")
+        client.post(f"/events/{event_id}/approve", headers=coordinator)
+        before = notices(client, auth_headers)
+
+        refused = client.post(f"/events/{event_id}/approve", headers=coordinator)
         assert refused.status_code == 409
-        assert notices(client, auth_headers) == []
+        assert notices(client, auth_headers) == before
 
     def test_tc_n07_a_failed_notice_does_not_fail_the_decision(
         self, client, auth_headers, notification_repository, monkeypatch
@@ -142,9 +156,8 @@ class TestNotificationIsCreated:
         self, client, auth_headers, notification_repository
     ):
         under_review_event(client, auth_headers)
-        [notice] = notification_repository.notifications
-        assert notice.user_id == ORGANISER_ID
-        assert all(item.user_id != COORDINATOR_ID for item in notification_repository.notifications)
+        assert notification_repository.notifications
+        assert all(item.user_id == ORGANISER_ID for item in notification_repository.notifications)
 
 
 class TestListAndReadState:
@@ -194,7 +207,7 @@ class TestListAndReadState:
         client.patch(f"/notifications/{newest}", json={"read": True}, headers=organiser)
         listed = notices(client, auth_headers)
         assert listed[-1]["id"] == newest
-        assert [item["read"] for item in listed] == [False, True]
+        assert [item["read"] for item in listed] == [False, False, True]
 
 
 class TestAccess:

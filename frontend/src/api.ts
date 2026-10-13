@@ -18,8 +18,10 @@ export type Permission =
   | 'events:create'
   | 'events:read:own'
   | 'events:read:submitted'
+  | 'events:read:all'
   | 'events:submit'
   | 'events:review'
+  | 'events:complete'
   | 'events:edit'
   | 'users:read'
   | 'venues:read'
@@ -27,6 +29,10 @@ export type Permission =
   | 'venues:edit'
   | 'venues:delete'
   | 'notifications:read'
+  | 'bookings:request'
+  | 'queue:view:unassigned'
+  | 'coordinators:assign'
+  | 'safety:review'
 
 /**
  * The signed-in user, exactly as the server issued it.

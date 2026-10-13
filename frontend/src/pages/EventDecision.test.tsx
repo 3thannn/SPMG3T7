@@ -14,10 +14,21 @@ import { buildSession } from '../test/sessions'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../eventsStore')>()),
+  listBookings: vi.fn(async () => []),
   approveEvent: vi.fn(),
   getEvent: vi.fn(),
   rejectEvent: vi.fn(),
   saveEvent: vi.fn(),
+}))
+
+// US14.1: the venue bookings card loads its own data. These tests are not about
+// it, so it gets no bookings and an empty catalogue. The empty answers are the
+// mocks' own implementations rather than a beforeEach, because the card mounts
+// only once the event has loaded and its effect can run after this file's
+// resetAllMocks; a reset restores an implementation given to vi.fn.
+vi.mock('../venuesStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../venuesStore')>()),
+  listVenues: vi.fn(async () => []),
 }))
 
 const getEventMock = vi.mocked(getEvent)
