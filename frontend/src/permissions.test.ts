@@ -18,6 +18,7 @@ const ROLES: Role[] = [
   'Event Coordinator Lead',
   'Venue Staff',
   'Safety Officer',
+  'Technical Support',
 ]
 
 /**
@@ -49,6 +50,16 @@ describe('can', () => {
 })
 
 describe('canOpen', () => {
+  it('lets Tech Support maintain equipment and see only its request queue and notices', () => {
+    const support = buildSession({ role: 'Technical Support' })
+    expect(canOpen(support, '/equipment')).toBe(true)
+    expect(canOpen(support, '/equipment/new')).toBe(true)
+    expect(canOpen(support, '/equipment/1/edit')).toBe(true)
+    expect(canOpen(support, '/equipment-requests/17')).toBe(true)
+    expect(canOpen(support, '/notifications')).toBe(true)
+    expect(canOpen(support, '/events/101')).toBe(false)
+    expect(canOpen(buildSession({ role: 'Event Coordinator' }), '/equipment/new')).toBe(false)
+  })
   it('lets an Organiser into the events screens', () => {
     const organiser = buildSession({ role: 'Event Organiser' })
     expect(canOpen(organiser, '/events')).toBe(true)

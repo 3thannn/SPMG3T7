@@ -20,6 +20,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'venues:read',
     // US14.1: request venues for the events assigned to them.
     'bookings:request',
+    'equipment:read',
+    'equipment:request',
   ],
   // US1.4 + US8.2/8.3/8.6: Coordinator Lead sees all events, manages assignments.
   'Event Coordinator Lead': [
@@ -28,11 +30,13 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'coordinators:assign',
     'users:read',
     'venues:read',
+    'equipment:read',
   ],
   // US9.1a-c: Venue Staff maintain the catalogue and hold nothing else.
   'Venue Staff': ['venues:read', 'venues:create', 'venues:edit', 'venues:delete'],
   // US1.4: Safety Officer reviews safety aspects.
   'Safety Officer': ['safety:review'],
+  'Technical Support': ['equipment:read', 'equipment:write', 'equipment:queue', 'notifications:read'],
 }
 
 const HOME: Record<Role, string> = {
@@ -44,6 +48,7 @@ const HOME: Record<Role, string> = {
   'Venue Staff': '/venues',
   // US1.4: Safety Officer lands on their review queue.
   'Safety Officer': '/safety-review',
+  'Technical Support': '/equipment-requests',
 }
 
 export function buildSession(overrides: Partial<Session> = {}): Session {

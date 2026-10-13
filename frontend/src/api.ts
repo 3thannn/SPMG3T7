@@ -33,6 +33,10 @@ export type Permission =
   | 'queue:view:unassigned'
   | 'coordinators:assign'
   | 'safety:review'
+  | 'equipment:read'
+  | 'equipment:write'
+  | 'equipment:request'
+  | 'equipment:queue'
 
 /**
  * The signed-in user, exactly as the server issued it.
@@ -98,7 +102,8 @@ export class ForbiddenError extends ApiError {
   }
 }
 
-type ErrorBody = { detail?: { code?: string; message?: string } | string }
+type ValidationIssue = { loc?: Array<string | number>; msg?: string }
+type ErrorBody = { detail?: { code?: string; message?: string } | string | ValidationIssue[] }
 
 /** Pull the API's {detail: {code, message}} out of a response, whatever it sent. */
 async function readError(response: Response): Promise<{ code: ErrorCode; message: string }> {
@@ -109,6 +114,9 @@ async function readError(response: Response): Promise<{ code: ErrorCode; message
     const body = (await response.json()) as ErrorBody
     if (typeof body.detail === 'string') {
       message = body.detail
+    } else if (Array.isArray(body.detail)) {
+      const first = body.detail[0]
+      if (first) message = `${String(first.loc?.at(-1) ?? 'Field')}: ${first.msg ?? 'invalid value'}.`
     } else if (body.detail) {
       code = (body.detail.code as ErrorCode) ?? 'unknown'
       message = body.detail.message ?? ''

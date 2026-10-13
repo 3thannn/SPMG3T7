@@ -20,13 +20,9 @@ A row in one without the other is a real state and is handled: someone in
 and a profile row with no Auth account cannot sign in either (nothing to prove
 themselves with). Both are refused the same way as a wrong password.
 
-**Roles.** `users.role` is a Postgres enum with five values. This project models
-the three that have features — an Event Organiser proposes events, an Event
-Coordinator reviews them and reads the venue catalogue, and Venue Staff
-maintain that catalogue. A row holding Technical Support or Attendee is not an
-error, it is an account this build has nothing to offer: it is skipped by the
-directory and refused at sign-in rather than being forced into a role it does
-not have. Venue Staff was in that group until US9.1a-c gave it something to do.
+**Roles.** `users.role` is a Postgres enum. Technical Support is active for US19
+equipment work. Attendee remains unavailable until its own features arrive;
+that role is skipped by the directory and refused at sign-in.
 
 The repository behind these functions is swappable. Tests install an in-memory
 one so the suite — and CI, which holds no Supabase credentials — runs without a

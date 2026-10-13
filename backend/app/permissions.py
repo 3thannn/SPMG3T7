@@ -17,11 +17,8 @@ class Role(StrEnum):
     roles. Lead manages the unassigned queue (US8.2) and assigns Coordinators
     (US8.3). Safety Officer runs the Operational Safety Check (US17.x).
 
-    Technical Support and Attendee are still deliberately absent — a role that
-    can sign in but can do nothing is a dead end for whoever holds it. They come
-    back with the epics that give them something to do, which is exactly how
-    Venue Staff arrived: it was unmodelled until there were venue records to
-    create, update and delete.
+    Technical Support joins with the US19 equipment catalogue and request queue.
+    Attendee remains unavailable until its own features arrive.
     """
 
     ORGANISER = "Event Organiser"
@@ -29,6 +26,7 @@ class Role(StrEnum):
     COORDINATOR_LEAD = "Event Coordinator Lead"
     VENUE_STAFF = "Venue Staff"
     SAFETY_OFFICER = "Safety Officer"
+    TECH_SUPPORT = "Technical Support"
 
 
 class Permission(StrEnum):
@@ -72,6 +70,10 @@ class Permission(StrEnum):
     QUEUE_VIEW_UNASSIGNED = "queue:view:unassigned"  # US8.2: Lead sees unassigned queue
     COORDINATORS_ASSIGN = "coordinators:assign"  # US8.3: Lead assigns Coordinators
     SAFETY_REVIEW = "safety:review"  # US17.x: Safety Officer (placeholder)
+    EQUIPMENT_READ = "equipment:read"
+    EQUIPMENT_WRITE = "equipment:write"
+    EQUIPMENT_REQUEST = "equipment:request"
+    EQUIPMENT_QUEUE = "equipment:queue"
 
 
 #: Said in the first person, to be dropped into a denial message.
@@ -94,6 +96,10 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.QUEUE_VIEW_UNASSIGNED: "view the unassigned event queue",
     Permission.COORDINATORS_ASSIGN: "assign events to Coordinators",
     Permission.SAFETY_REVIEW: "review event safety",
+    Permission.EQUIPMENT_READ: "view the equipment catalogue",
+    Permission.EQUIPMENT_WRITE: "maintain equipment",
+    Permission.EQUIPMENT_REQUEST: "request equipment for assigned events",
+    Permission.EQUIPMENT_QUEUE: "review equipment requests",
 }
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -117,6 +123,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             # US14.1. The role is the first half of US8.6's rule; the event
             # being assigned to them is the second, checked per event.
             Permission.BOOKINGS_REQUEST,
+            Permission.EQUIPMENT_READ,
+            Permission.EQUIPMENT_REQUEST,
         }
     ),
     # US1.4/US8.2/US8.3: Coordinator Lead manages the unassigned queue and
@@ -129,6 +137,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VENUES_READ,
             Permission.QUEUE_VIEW_UNASSIGNED,
             Permission.COORDINATORS_ASSIGN,
+            Permission.EQUIPMENT_READ,
         }
     ),
     # US9.1a-c: Venue Staff own the catalogue and nothing else. They read it
@@ -148,6 +157,14 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.SAFETY_REVIEW,
         }
     ),
+    Role.TECH_SUPPORT: frozenset(
+        {
+            Permission.EQUIPMENT_READ,
+            Permission.EQUIPMENT_WRITE,
+            Permission.EQUIPMENT_QUEUE,
+            Permission.NOTIFICATIONS_READ,
+        }
+    ),
 }
 
 #: Where each role lands after signing in — the "role-appropriate view" of
@@ -163,6 +180,7 @@ HOME_ROUTE: dict[Role, str] = {
     Role.COORDINATOR_LEAD: "/unassigned-queue",
     Role.VENUE_STAFF: "/venues",
     Role.SAFETY_OFFICER: "/safety-review",
+    Role.TECH_SUPPORT: "/equipment-requests",
 }
 
 

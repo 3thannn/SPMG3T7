@@ -5,3 +5,5 @@ pytest==9.1.1
 pytest-cov==7.0.0
 httpx==0.28.1
 ruff==0.16.6
+# Used by the rerunnable US19 database migration script.
+psycopg[binary]==3.3.6
