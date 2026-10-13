@@ -6,6 +6,7 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e',
+  testMatch: '**/*.spec.ts',  // Only match E2E test files, ignore Vitest tests
 
   /* Run tests in files in parallel */
   fullyParallel: false,
