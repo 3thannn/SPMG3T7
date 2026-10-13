@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import './TopNav.css'
 import { navigate } from '../router'
-import { canOpen } from '../permissions'
+import { can, canOpen } from '../permissions'
+import { listNotifications, NOTIFICATIONS_CHANGED, unreadCount } from '../notificationsStore'
 import type { Session } from '../api'
 
 type TopNavProps = {
@@ -24,6 +26,7 @@ const NAV_LINKS: NavLink[] = [
   { label: 'Safety Review', path: '/safety-review' },
   { label: 'Venues', path: '/venues' },
   { label: 'Add venue', path: '/venues/new' },
+  { label: 'Notifications', path: '/notifications' },
 ]
 
 /**
@@ -41,7 +44,44 @@ function initial(name: string): string {
   return name.trim().charAt(0).toUpperCase() || '?'
 }
 
+/**
+ * US10.1: how many notices are unread, re-read on every navigation and
+ * whenever the notifications page changes a read state. Null when the role has
+ * no notifications or the count could not be read — the link still works, it
+ * just carries no number.
+ */
+function useUnreadCount(session: Session | null, route: string): number | null {
+  const [count, setCount] = useState<number | null>(null)
+  const [changes, setChanges] = useState(0)
+  const allowed = can(session, 'notifications:read')
+
+  useEffect(() => {
+    const onChange = () => setChanges((value) => value + 1)
+    window.addEventListener(NOTIFICATIONS_CHANGED, onChange)
+    return () => window.removeEventListener(NOTIFICATIONS_CHANGED, onChange)
+  }, [])
+
+  useEffect(() => {
+    if (!session || !allowed) return
+    let cancelled = false
+    listNotifications(session)
+      .then((loaded) => {
+        if (!cancelled) setCount(unreadCount(loaded))
+      })
+      .catch(() => {
+        if (!cancelled) setCount(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session, allowed, route, changes])
+
+  return allowed ? count : null
+}
+
 export default function TopNav({ route, session, onSignOut }: TopNavProps) {
+  const unread = useUnreadCount(session, route)
+
   return (
     <header className="topnav">
       <div className="shell topnav-inner">
@@ -74,6 +114,11 @@ export default function TopNav({ route, session, onSignOut }: TopNavProps) {
                 }}
               >
                 {link.label}
+                {link.path === '/notifications' && unread !== null && unread > 0 && (
+                  <span className="topnav-count" aria-label={`${unread} unread`}>
+                    {unread}
+                  </span>
+                )}
               </a>
             ))}
           </nav>

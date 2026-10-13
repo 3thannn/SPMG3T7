@@ -28,6 +28,7 @@ export type Permission =
   | 'venues:create'
   | 'venues:edit'
   | 'venues:delete'
+  | 'notifications:read'
   | 'bookings:request'
   | 'queue:view:unassigned'
   | 'coordinators:assign'

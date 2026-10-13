@@ -199,3 +199,11 @@ describe('maintaining the catalogue (US9.1a-c)', () => {
     expect(denialMessage(coordinator, '/venues/1/edit')).toContain('editing a venue')
   })
 })
+
+describe('notifications (US10.1)', () => {
+  it('TC-F17 lets an Organiser open notifications and keeps other roles out', () => {
+    expect(canOpen(buildSession({ role: 'Event Organiser' }), '/notifications')).toBe(true)
+    expect(canOpen(buildSession({ role: 'Event Coordinator' }), '/notifications')).toBe(false)
+    expect(canOpen(buildSession({ role: 'Venue Staff' }), '/notifications')).toBe(false)
+  })
+})

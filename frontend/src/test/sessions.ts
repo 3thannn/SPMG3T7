@@ -11,7 +11,7 @@ import type { Permission, Session } from '../api'
 import type { Role } from '../status'
 
 const PERMISSIONS: Record<Role, Permission[]> = {
-  'Event Organiser': ['events:create', 'events:read:own', 'events:submit'],
+  'Event Organiser': ['events:create', 'events:read:own', 'events:submit', 'notifications:read'],
   'Event Coordinator': [
     'events:read:submitted',
     'events:review',

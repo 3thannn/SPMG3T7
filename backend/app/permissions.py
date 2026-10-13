@@ -67,6 +67,7 @@ class Permission(StrEnum):
     VENUES_CREATE = "venues:create"
     VENUES_EDIT = "venues:edit"
     VENUES_DELETE = "venues:delete"
+    NOTIFICATIONS_READ = "notifications:read"
     BOOKINGS_REQUEST = "bookings:request"
     QUEUE_VIEW_UNASSIGNED = "queue:view:unassigned"  # US8.2: Lead sees unassigned queue
     COORDINATORS_ASSIGN = "coordinators:assign"  # US8.3: Lead assigns Coordinators
@@ -88,6 +89,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.VENUES_CREATE: "add a venue to the catalogue",
     Permission.VENUES_EDIT: "update a venue record",
     Permission.VENUES_DELETE: "remove a venue from the catalogue",
+    Permission.NOTIFICATIONS_READ: "view and manage your notifications",
     Permission.BOOKINGS_REQUEST: "request and cancel venue bookings",
     Permission.QUEUE_VIEW_UNASSIGNED: "view the unassigned event queue",
     Permission.COORDINATORS_ASSIGN: "assign events to Coordinators",
@@ -100,6 +102,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.EVENTS_CREATE,
             Permission.EVENTS_READ_OWN,
             Permission.EVENTS_SUBMIT,
+            # US10.1: told when a Coordinator moves one of their events.
+            Permission.NOTIFICATIONS_READ,
         }
     ),
     Role.COORDINATOR: frozenset(

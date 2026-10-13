@@ -67,6 +67,11 @@ const GUARDED: Record<string, GuardedRoute> = {
     what: 'adding a venue',
     who: 'Venue Staff',
   },
+  '/notifications': {
+    anyOf: ['notifications:read'],
+    what: 'notifications',
+    who: 'Organisers',
+  },
 }
 
 /**

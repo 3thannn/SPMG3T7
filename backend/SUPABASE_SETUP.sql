@@ -128,6 +128,22 @@ CREATE INDEX ix_venue_unavailability_venue_start
 CREATE INDEX ix_venue_unavailability_created_by_id
     ON venue_unavailability(created_by_id);
 
+-- US10.1: an Organiser's in-app notices about their events' status changes.
+-- See SUPABASE_ADD_NOTIFICATIONS.sql for why each column is what it is.
+CREATE TABLE notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    status event_status NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    read_at TIMESTAMP
+);
+
+CREATE INDEX ix_notifications_user_read_created
+    ON notifications(user_id, is_read, created_at DESC);
+CREATE INDEX ix_notifications_event_id ON notifications(event_id);
 -- US14.1: one row per venue an event asks for; US14.2 adds cancelling one and
 -- US18.1 what it needs. See SUPABASE_ADD_VENUE_BOOKINGS.sql,
 -- SUPABASE_CANCEL_VENUE_BOOKINGS.sql and SUPABASE_ADD_BOOKING_NEEDS.sql for why
@@ -261,10 +277,11 @@ ALTER TABLE status_changes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE venues ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
 ALTER TABLE venue_unavailability ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE venue_bookings ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON TABLE users, events, status_changes, venues, equipment,
-    venue_unavailability, venue_bookings FROM anon, authenticated;
+    venue_unavailability, notifications, venue_bookings FROM anon, authenticated;
 
 -- Verify tables were created
 SELECT table_name FROM information_schema.tables

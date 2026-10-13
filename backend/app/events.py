@@ -41,6 +41,7 @@ from app.event_status import (
     transition_refusal_message,
 )
 from app.event_store import Event, StaleEventStatus
+from app.notifications import notify_status_change
 from app.permissions import Permission, Role, has_permission
 from app.suitability import BookingNeeds, Verdict
 from app.users import User
@@ -453,6 +454,8 @@ def assign_coordinator(
         )
     except StaleEventStatus:
         raise _stale_request() from None
+    # US10.1: assignment is what moves an event to Under Review now (US8.3).
+    notify_status_change(assigned, EventStatus.UNDER_REVIEW)
     return _to_out(assigned)
 
 
@@ -655,6 +658,9 @@ def request_clarification(
                 "reason": "invalid-transition",
             },
         ) from None
+    # US10.1: a follow-up question on an event already Under Review notifies
+    # too — it carries a new request the Organiser has to answer.
+    notify_status_change(reviewed, EventStatus.UNDER_REVIEW, message)
     return _to_out(reviewed)
 
 
@@ -715,6 +721,7 @@ def _decide_event(
                 "reason": "invalid-transition",
             },
         ) from None
+    notify_status_change(decided, to_status, reason)
     return _to_out(decided)
 
 
