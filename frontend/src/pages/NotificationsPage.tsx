@@ -139,7 +139,7 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
                     }}
                   >
                     {item.kind === 'equipment-request'
-                      ? 'Open request in queue'
+                      ? 'Open request'
                       : `Open ${displayEventTitle(item.eventTitle)}`}
                   </a>
                 </div>

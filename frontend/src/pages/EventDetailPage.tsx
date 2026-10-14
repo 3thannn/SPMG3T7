@@ -2,9 +2,6 @@ import { useEffect, useState } from 'react'
 import './EventDetailPage.css'
 import EventBookings from '../components/EventBookings'
 import EventEquipment from '../components/EventEquipment'
-import {
-  equipmentErrorMessage, listEventEquipmentHistory, type EquipmentHistoryEntry,
-} from '../equipmentStore'
 import StatusBadge from '../components/StatusBadge'
 import StatusTimeline from '../components/StatusTimeline'
 import ProposedChanges from '../components/ProposedChanges'
@@ -101,10 +98,6 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const [requesting, setRequesting] = useState(false)
   const [changeRejection, setChangeRejection] = useState('')
   const [answering, setAnswering] = useState<'approve' | 'reject' | null>(null)
-  const [equipmentHistoryRevision, setEquipmentHistoryRevision] = useState(0)
-  const [equipmentHistory, setEquipmentHistory] = useState<EquipmentHistoryEntry[]>([])
-  const [equipmentHistoryEventId, setEquipmentHistoryEventId] = useState('')
-  const [equipmentHistoryError, setEquipmentHistoryError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -136,24 +129,6 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     return () => window.clearInterval(timer)
   }, [page])
 
-  useEffect(() => {
-    if (page.state !== 'loaded') return
-    if (['Draft', 'Submitted', 'Under Review', 'Approved'].includes(page.event.status)) return
-    const visible = (session.role === 'Event Organiser' && page.event.organiserId === session.id)
-      || (session.role === 'Event Coordinator' && page.event.coordinatorId === session.id)
-    if (!visible) return
-    let cancelled = false
-    listEventEquipmentHistory(eventId, session).then((entries) => {
-      if (!cancelled) {
-        setEquipmentHistory(entries)
-        setEquipmentHistoryEventId(eventId)
-        setEquipmentHistoryError('')
-      }
-    }).catch((cause: unknown) => {
-      if (!cancelled) setEquipmentHistoryError(equipmentErrorMessage(cause, 'load equipment history'))
-    })
-    return () => { cancelled = true }
-  }, [eventId, session, page, equipmentHistoryRevision])
 
   if (page.state === 'loading') {
     return (
@@ -769,10 +744,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
           <aside className="card card-pad detail-side">
             <h2 className="detail-section-title">Status history</h2>
-            <p className="detail-side-lede">Who changed the event or its equipment requests, and when.</p>
-            {equipmentHistoryError && <p role="alert" className="form-error">{equipmentHistoryError}</p>}
-            <StatusTimeline history={event.history}
-              equipmentHistory={equipmentHistoryEventId === event.id ? equipmentHistory : []} />
+            <p className="detail-side-lede">Event status transitions and requested changes.</p>
+            <StatusTimeline history={event.history} />
 
             {/* US11.1: the Coordinator's answer to the last request. It is not a
                 status change, so it is not in the trail above; it is kept on
@@ -954,8 +927,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         {/* US14.1. Not on a Draft: nothing can be requested for one, so the
             card would only ever say so. */}
         {event.status !== 'Draft' && <EventBookings event={event} session={session} onBookingRequested={refreshAfterBooking} />}
-        <EventEquipment event={event} session={session}
-          onChanged={() => setEquipmentHistoryRevision((value) => value + 1)} />
+        <EventEquipment event={event} session={session} />
       </div>
     </div>
   )

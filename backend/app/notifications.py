@@ -68,7 +68,7 @@ def notify_status_change(event: Event, to_status: EventStatus, notes: str = "") 
         )
 
 
-def notify_equipment_request(event: Event, request: EquipmentRequest) -> None:
+def _notify_equipment(request: EquipmentRequest, message: str) -> None:
     """One best-effort notice per active Tech Support profile."""
     try:
         recipients = users.list_users()
@@ -83,12 +83,9 @@ def notify_equipment_request(event: Event, request: EquipmentRequest) -> None:
         try:
             notification_store.repository().create_equipment(
                 user_id=recipient.id,
-                event_id=event.id,
+                event_id=request.event_id,
                 request_id=request.id,
-                message=(
-                    f'New {request.equipment_type} request for "{event.title}" '
-                    f"({request.quantity} needed)."
-                ),
+                message=message,
             )
         except Exception:
             logger.exception(
@@ -96,6 +93,23 @@ def notify_equipment_request(event: Event, request: EquipmentRequest) -> None:
                 request.id,
                 recipient.id,
             )
+
+
+def notify_equipment_request(event: Event, request: EquipmentRequest) -> None:
+    _notify_equipment(
+        request,
+        f'New {request.equipment_type} request for "{event.title}" '
+        f"({request.quantity} needed).",
+    )
+
+
+def notify_equipment_change(request: EquipmentRequest, actor_name: str, action: str) -> None:
+    """A Coordinator edit or removal is a fresh unread notice for Tech Support."""
+    title = request.event_title or f"event {request.event_id}"
+    _notify_equipment(
+        request,
+        f'Coordinator {actor_name} {action} the {request.equipment_type} request for "{title}".',
+    )
 
 
 class NotificationOut(BaseModel):

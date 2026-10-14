@@ -9,6 +9,7 @@ import NewEventPage from './pages/NewEventPage'
 import NotificationsPage from './pages/NotificationsPage'
 import { EquipmentPage, EquipmentDetailPage, EquipmentFormPage } from './pages/EquipmentPage'
 import EquipmentQueuePage from './pages/EquipmentQueuePage'
+import EquipmentRequestDetailPage from './pages/EquipmentRequestDetailPage'
 import SafetyReviewPage from './pages/SafetyReviewPage'
 import SignInPage from './pages/SignInPage'
 import UnassignedQueuePage from './pages/UnassignedQueuePage'
@@ -209,8 +210,8 @@ export default function App() {
     const equipmentDetail = /^\/equipment\/([^/]+)$/.exec(route)
     if (equipmentDetail) return <EquipmentDetailPage session={session} id={equipmentDetail[1]} />
     if (route === '/equipment-requests') return <EquipmentQueuePage session={session} />
-    const queueFocus = /^\/equipment-requests\/([^/]+)$/.exec(route)
-    if (queueFocus) return <EquipmentQueuePage session={session} focusId={queueFocus[1]} />
+    const equipmentRequestDetail = /^\/equipment-requests\/([^/]+)$/.exec(route)
+    if (equipmentRequestDetail) return <EquipmentRequestDetailPage session={session} id={equipmentRequestDetail[1]} />
 
     if (route === '/venues') {
       return <VenuesPage session={session} />
