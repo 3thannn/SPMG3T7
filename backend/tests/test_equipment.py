@@ -166,6 +166,29 @@ def test_request_happy_path_and_notifications(
     )
 
 
+def test_request_requires_end_time_when_event_has_none(
+    client, actors, planning_event, item, event_repository
+):
+    event = event_repository.get_event(int(planning_event))
+    event_repository._replace(replace(event, ends_at=""))
+    path = f"/events/{planning_event}/equipment-requests"
+
+    missing = client.post(path, json=LINE, headers=actors["coord"])
+    assert missing.status_code == 400
+    assert missing.json()["detail"] == {
+        "code": "invalid_time",
+        "message": "Enter a needed end time for this equipment request.",
+    }
+    assert client.get(path, headers=actors["coord"]).json() == []
+
+    created = client.post(
+        path, json={**LINE, "endsAt": "2027-11-02T17:00"}, headers=actors["coord"]
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["startsAt"] == "2027-11-02T09:00"
+    assert created.json()["endsAt"] == "2027-11-02T17:00"
+
+
 def test_time_override_and_non_planning_refusal(
     client, actors, planning_event, item, event_repository
 ):
@@ -372,6 +395,22 @@ def test_notification_failure_does_not_fail_request(
         f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
     )
     assert response.status_code == 201
+
+
+def test_recipient_lookup_failure_does_not_fail_stored_request(
+    client, actors, planning_event, item, equipment_repository, monkeypatch
+):
+    from app import users
+
+    def fail():
+        raise RuntimeError("directory unavailable")
+
+    monkeypatch.setattr(users, "list_users", fail)
+    response = client.post(
+        f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
+    )
+    assert response.status_code == 201, response.text
+    assert [request.id for request in equipment_repository.requests] == [int(response.json()["id"])]
 
 
 def test_equipment_history_records_create_edit_and_remove(client, actors, planning_event, item):

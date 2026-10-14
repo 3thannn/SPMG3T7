@@ -274,8 +274,11 @@ def list_event_equipment_history(
 def create_request(event_id: str, payload: RequestInput, user: Coordinator) -> RequestOut:
     event = _assigned_event(_id(event_id), user)
     _planning(event)
+    end_raw = payload.ends_at or event.ends_at
+    if not end_raw or not end_raw.strip():
+        raise _error("invalid_time", "Enter a needed end time for this equipment request.")
     starts_at, ends_at = _times(
-        payload.starts_at or event.starts_at, payload.ends_at or event.ends_at
+        payload.starts_at or event.starts_at, end_raw
     )
     request = EquipmentRequest(
         0,

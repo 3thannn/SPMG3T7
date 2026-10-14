@@ -70,7 +70,14 @@ def notify_status_change(event: Event, to_status: EventStatus, notes: str = "") 
 
 def notify_equipment_request(event: Event, request: EquipmentRequest) -> None:
     """One best-effort notice per active Tech Support profile."""
-    for recipient in users.list_users():
+    try:
+        recipients = users.list_users()
+    except Exception:
+        logger.exception(
+            "Could not look up equipment request notification recipients for %s", request.id
+        )
+        return
+    for recipient in recipients:
         if recipient.role is not Role.TECH_SUPPORT:
             continue
         try:
