@@ -28,10 +28,12 @@ export type EquipmentRequest = {
   supportNotes: string
   startsAt: string
   endsAt: string
-  status: 'Requested'
+  status: 'Requested' | 'Removed'
   createdAt: string
   version: number
 }
+
+export type EquipmentRequestDetail = EquipmentRequest & { removedByName: string }
 
 export type RequestSnapshot = {
   equipment_type: string
@@ -93,6 +95,10 @@ export async function saveEquipment(
   return (await response.json()) as Equipment
 }
 
+export async function deleteEquipment(id: string, session: Session): Promise<void> {
+  await authorizedFetch(`/equipment/${id}`, session.token, { method: 'DELETE' })
+}
+
 export async function listEventEquipmentRequests(
   eventId: string,
   session: Session,
@@ -111,6 +117,11 @@ export async function listEventEquipmentHistory(
 
 export async function listEquipmentQueue(session: Session): Promise<EquipmentRequest[]> {
   return (await (await authorizedFetch('/equipment-requests', session.token)).json()) as EquipmentRequest[]
+}
+
+export async function getEquipmentRequest(id: string, session: Session): Promise<EquipmentRequestDetail> {
+  const response = await authorizedFetch(`/equipment-requests/${id}`, session.token)
+  return (await response.json()) as EquipmentRequestDetail
 }
 
 export type RequestChanges = {

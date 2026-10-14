@@ -1,42 +1,42 @@
 import { useEffect, useState } from 'react'
+import '../equipment.css'
 import type { Session } from '../api'
-import { RequestEditor } from '../components/EventEquipment'
-import { equipmentErrorMessage, listEquipmentQueue, updateEquipmentRequest, valuesFor, type EquipmentRequest } from '../equipmentStore'
+import { equipmentErrorMessage, listEquipmentQueue, type EquipmentRequest } from '../equipmentStore'
+import { formatBookingTimes } from '../eventsStore'
 import { formatTimestamp } from '../status'
 
-export default function EquipmentQueuePage({ session, focusId }: { session: Session; focusId?: string }) {
+export default function EquipmentQueuePage({ session }: { session: Session }) {
   const [lines, setLines] = useState<EquipmentRequest[] | null>(null)
-  const [editing, setEditing] = useState<string | null>(null)
   const [error, setError] = useState('')
-  async function reload() { setLines(await listEquipmentQueue(session)); setEditing(null) }
+
   useEffect(() => {
-    listEquipmentQueue(session).then(setLines)
-      .catch((e: unknown) => setError(equipmentErrorMessage(e, 'load equipment requests')))
+    let cancelled = false
+    listEquipmentQueue(session).then((loaded) => {
+      if (!cancelled) setLines(loaded)
+    }).catch((cause: unknown) => {
+      if (!cancelled) setError(equipmentErrorMessage(cause, 'load equipment requests'))
+    })
+    return () => { cancelled = true }
   }, [session])
-  useEffect(() => {
-    if (!lines || !focusId) return
-    const target = document.getElementById(`request-${focusId}`)
-    target?.scrollIntoView?.({ block: 'center' })
-    target?.focus()
-  }, [lines, focusId])
+
   return <div className="page shell">
     <header className="page-head"><div><h1 className="page-title">Equipment requests</h1>
       <p className="page-subtitle">Requested lines, oldest first.</p></div></header>
     {error && <p className="form-error" role="alert">{error}</p>}
     {lines === null && !error && <p>Loading requests…</p>}
-    {lines && focusId && !lines.some((line) => line.id === focusId) &&
-      <p role="status">This request is no longer in the Requested queue.</p>}
-    {lines?.length === 0 && <p>No equipment requests are waiting.</p>}
-    {lines?.map((line) => <section className="card card-pad equipment-line" id={`request-${line.id}`} tabIndex={-1} key={line.id}>
-      <h2>{line.equipmentType} · {line.quantity}</h2>
-      <p>{line.eventTitle || `Event ${line.eventId}`} · Requested {formatTimestamp(line.createdAt)}</p>
-      <p>Needed {line.startsAt.slice(0, 16)} to {line.endsAt.slice(0, 16)}</p>
-      <p>Technical requirements: {line.technicalRequirements || 'None'}</p>
-      {line.supportNotes && <p>Arrangement notes: {line.supportNotes}</p>}
-      {editing === line.id ? <RequestEditor key={line.version} initial={valuesFor(line)} types={[]} support
-        onSave={async (changes) => { await updateEquipmentRequest(line.id, { ...changes, version: line.version }, session); await reload() }}
-        onCancel={() => setEditing(null)} /> :
-        <button type="button" className="btn btn-secondary" onClick={() => setEditing(line.id)}>Update request</button>}
-    </section>)}
+    {lines?.length === 0 && <div className="card empty"><h2>No equipment requests are waiting</h2></div>}
+    {lines && lines.length > 0 && <ul className="equipment-queue-list" aria-label="Equipment request queue">
+      {lines.map((line) => <li key={line.id}><a className="equipment-queue-card" href={`#/equipment-requests/${line.id}`}>
+        <span className="equipment-queue-count"><strong>{line.quantity}</strong><span>{line.quantity === 1 ? 'unit' : 'units'}</span></span>
+        <span className="equipment-queue-content">
+          <strong className="equipment-queue-name">{line.equipmentType}</strong>
+          <span>{line.eventTitle || `Event ${line.eventId}`} · Requested {formatTimestamp(line.createdAt)}</span>
+          <span>Needed {formatBookingTimes(line.startsAt, line.endsAt)}</span>
+          {line.technicalRequirements && <span>Technical requirements: {line.technicalRequirements}</span>}
+        </span>
+        <span className="equipment-request-status">{line.status}</span>
+        <span className="equipment-queue-arrow" aria-hidden="true">›</span>
+      </a></li>)}
+    </ul>}
   </div>
 }

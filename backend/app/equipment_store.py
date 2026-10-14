@@ -97,6 +97,7 @@ class Repository(Protocol):
     def list_items(self) -> list[Equipment]: ...
     def get_item(self, item_id: int) -> Equipment | None: ...
     def save_item(self, item: Equipment) -> Equipment: ...
+    def delete_item(self, item_id: int) -> None: ...
     def list_for_event(self, event_id: int) -> list[EquipmentRequest]: ...
     def list_requested(self) -> list[EquipmentRequest]: ...
     def get_request(self, request_id: int) -> EquipmentRequest | None: ...
@@ -165,6 +166,9 @@ class SupabaseEquipment:
         saved = self.get_item(rows[0]["id"])
         assert saved is not None
         return saved
+
+    def delete_item(self, item_id: int) -> None:
+        supabase_client.admin().table("equipment").delete().eq("id", item_id).execute()
 
     def list_for_event(self, event_id: int) -> list[EquipmentRequest]:
         rows = (
@@ -349,6 +353,9 @@ class InMemoryEquipment:
             self.next_item_id += 1
         self.items = [old for old in self.items if old.id != item.id] + [item]
         return item
+
+    def delete_item(self, item_id: int) -> None:
+        self.items = [item for item in self.items if item.id != item_id]
 
     def list_for_event(self, event_id: int) -> list[EquipmentRequest]:
         return sorted(

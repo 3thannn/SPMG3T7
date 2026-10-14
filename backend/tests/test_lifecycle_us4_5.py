@@ -84,6 +84,13 @@ def test_draft_submission_assignment_decision_and_first_booking(
     assert second.status_code == 201
     assert len(booking_repository.bookings) == 2
     assert len(event_repository.get_event(int(submitted["id"])).history) == len(planned.history)
+    cancelled = client.post(
+        f"/events/{submitted['id']}/bookings/{first.json()['id']}/cancel",
+        json={"reason": "Using the other venue"}, headers=coordinator,
+    )
+    assert cancelled.status_code == 200
+    assert event_repository.get_event(int(submitted["id"])).status is EventStatus.PLANNING
+    assert len(event_repository.get_event(int(submitted["id"])).history) == len(planned.history)
 
 
 def test_unassigned_change_request_stays_in_lead_queue(client, auth_headers):

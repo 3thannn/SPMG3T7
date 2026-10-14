@@ -711,7 +711,8 @@ frontend URL.
    and can be overridden with `SEED_PASSWORD`. Existing passwords are not reset.
 4. Start the API, then run `.venv/Scripts/python.exe seed_equipment.py`. It
    signs in through `/auth/login`, creates ten sample items through `/equipment`,
-   and skips matching names on reruns. Set `SEED_API_URL` if the API is not on
+   and replaces their old generic demo descriptions on reruns. Other edits are
+   preserved. Set `SEED_API_URL` if the API is not on
    `http://localhost:8000`.
 
 Equipment requests do not reserve stock or change event status. US19.3 owns

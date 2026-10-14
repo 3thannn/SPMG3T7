@@ -4,7 +4,6 @@ import { afterEach, expect, it, vi } from 'vitest'
 import EventDetailPage from './EventDetailPage'
 import { completeEvent, getEvent, listBookings, saveEvent, submitEvent, type EventRecord } from '../eventsStore'
 import { buildSession } from '../test/sessions'
-import { listEventEquipmentHistory } from '../equipmentStore'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../eventsStore')>()),
@@ -27,7 +26,6 @@ vi.mock('../venuesStore', async (importOriginal) => ({
 
 vi.mock('../equipmentStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../equipmentStore')>()),
-  listEventEquipmentHistory: vi.fn(async () => []),
   listEventEquipmentRequests: vi.fn(async () => []),
   listEquipment: vi.fn(async () => []),
 }))
@@ -202,41 +200,15 @@ it('shows the full status history, not just the current status', async () => {
   expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0)
 })
 
-it('adds equipment changes to the existing history for the assigned Coordinator', async () => {
+it.each([coordinator, organiser])('keeps status history about event transitions for %s', async (session) => {
   getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Planning', coordinatorId: coordinator.id })
-  vi.mocked(listEventEquipmentHistory).mockResolvedValue([{
-    id: '1', requestId: '3', action: 'Created', at: '2026-10-13T09:00:00',
-    byName: 'Priya', before: null, after: {
-      equipment_type: 'Microphone', quantity: 1, technical_requirements: '',
-      support_notes: '', start_at: '2026-11-02T18:00', end_at: '2026-11-02T19:00',
-    },
-  }])
-  render(<EventDetailPage eventId="101" session={coordinator} />)
-  expect(await screen.findByText('Created Microphone request')).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Status history' })).toBeInTheDocument()
-  expect(screen.queryByRole('heading', { name: 'Equipment history' })).not.toBeInTheDocument()
+  render(<EventDetailPage eventId="101" session={session} />)
+  expect(await screen.findByRole('heading', { name: 'Status history' })).toBeInTheDocument()
+  expect(screen.getByText('Event status transitions and requested changes.')).toBeInTheDocument()
   const entries = document.querySelectorAll('ol.timeline > li')
   expect(entries[0]).toHaveTextContent('Created as')
   expect(entries[0]).toHaveTextContent('Status: Draft')
-  expect(entries[entries.length - 1]).toHaveTextContent('Created Microphone request')
-  expect(vi.mocked(listEventEquipmentHistory)).toHaveBeenCalledWith('101', coordinator)
-})
-
-it('shows the same event timeline to its Organiser', async () => {
-  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Planning' })
-  vi.mocked(listEventEquipmentHistory).mockResolvedValue([{
-    id: '2', requestId: '3', action: 'Removed', at: '2026-10-13T10:00:00',
-    byName: 'Priya', before: {
-      equipment_type: 'Microphone', quantity: 1, technical_requirements: '',
-      support_notes: '', start_at: '2026-11-02T18:00', end_at: '2026-11-02T19:00',
-    }, after: null,
-  }])
-  render(<EventDetailPage eventId="101" session={organiser} />)
-  expect(await screen.findByText('Removed Microphone request')).toBeInTheDocument()
-  const entries = document.querySelectorAll('ol.timeline > li')
-  expect(entries[0]).toHaveTextContent('Created as')
-  expect(entries[0]).toHaveTextContent('Status: Draft')
-  expect(entries[entries.length - 1]).toHaveTextContent('Removed Microphone request')
+  expect(screen.queryByText(/Microphone request/)).not.toBeInTheDocument()
 })
 
 it('shows the venue bookings for a submitted event under its details (US14.1)', async () => {
@@ -255,6 +227,7 @@ it('shows no venue bookings card on a Draft, which cannot have any', async () =>
 
   await screen.findByLabelText('Title')
   expect(screen.queryByRole('heading', { name: 'Venue bookings' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Equipment requests' })).not.toBeInTheDocument()
   expect(vi.mocked(listBookings)).not.toHaveBeenCalled()
 })
 

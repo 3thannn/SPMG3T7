@@ -12,7 +12,7 @@ from app.auth import require_any_permission, require_permission
 from app.equipment_store import Equipment, EquipmentRequest, RequestHistory
 from app.event_status import EventStatus
 from app.event_store import _now
-from app.notifications import notify_equipment_request
+from app.notifications import notify_equipment_change, notify_equipment_request
 from app.permissions import Permission, Role
 from app.users import User
 
@@ -107,14 +107,45 @@ def create_equipment(payload: EquipmentInput, _user: CatalogueWriter) -> Equipme
     return _equipment_out(equipment_store.repository().save_item(_validated_item(payload)))
 
 
+def _guard_last_type(item: Equipment) -> None:
+    repo = equipment_store.repository()
+    has_another = any(
+        other.id != item.id and other.equipment_type.casefold() == item.equipment_type.casefold()
+        for other in repo.list_items()
+    )
+    if not has_another and any(
+        request.equipment_type.casefold() == item.equipment_type.casefold()
+        for request in repo.list_requested()
+    ):
+        raise _error(
+            "equipment_in_use",
+            "Active equipment requests still need this type. "
+            "Remove or change those requests first.",
+            409,
+        )
+
+
 @router.put("/equipment/{item_id}", response_model=EquipmentOut)
 def update_equipment(item_id: str, payload: EquipmentInput, _user: CatalogueWriter) -> EquipmentOut:
     numeric_id = _id(item_id)
-    if equipment_store.repository().get_item(numeric_id) is None:
+    current = equipment_store.repository().get_item(numeric_id)
+    if current is None:
         raise _error("equipment_not_found", "That equipment item does not exist.", 404)
-    return _equipment_out(
-        equipment_store.repository().save_item(_validated_item(payload, numeric_id))
-    )
+    changed = _validated_item(payload, numeric_id)
+    if current.equipment_type.casefold() != changed.equipment_type.casefold():
+        _guard_last_type(current)
+    return _equipment_out(equipment_store.repository().save_item(changed))
+
+
+@router.delete("/equipment/{item_id}", status_code=204)
+def delete_equipment(item_id: str, _user: CatalogueWriter) -> Response:
+    numeric_id = _id(item_id)
+    current = equipment_store.repository().get_item(numeric_id)
+    if current is None:
+        raise _error("equipment_not_found", "That equipment item does not exist.", 404)
+    _guard_last_type(current)
+    equipment_store.repository().delete_item(numeric_id)
+    return Response(status_code=204)
 
 
 class RequestInput(BaseModel):
@@ -150,6 +181,10 @@ class RequestOut(BaseModel):
     status: str
     created_at: str = Field(serialization_alias="createdAt")
     version: int
+
+
+class RequestDetailOut(RequestOut):
+    removed_by_name: str = Field(default="", serialization_alias="removedByName")
 
 
 class RequestHistoryOut(BaseModel):
@@ -245,8 +280,26 @@ Editor = Annotated[
 
 
 @router.get("/events/{event_id}/equipment-requests", response_model=list[RequestOut])
-def list_event_requests(event_id: str, user: Coordinator) -> list[RequestOut]:
-    event = _assigned_event(_id(event_id), user)
+def list_event_requests(
+    event_id: str,
+    user: Annotated[
+        User,
+        Depends(require_any_permission(
+            Permission.EVENTS_READ_OWN,
+            Permission.EVENTS_READ_SUBMITTED,
+            Permission.EVENTS_READ_ALL,
+        )),
+    ],
+) -> list[RequestOut]:
+    event = event_store.repository().get_event(_id(event_id))
+    if event is None or not (
+        (user.role is Role.ORGANISER and event.organiser_id == user.id)
+        or (event.status is not EventStatus.DRAFT and (
+            (user.role is Role.COORDINATOR and event.coordinator_id == user.id)
+            or user.role is Role.COORDINATOR_LEAD
+        ))
+    ):
+        raise _error("event_not_found", "That event does not exist.", 404)
     return [_request_out(r) for r in equipment_store.repository().list_for_event(event.id)]
 
 
@@ -306,6 +359,21 @@ def create_request(event_id: str, payload: RequestInput, user: Coordinator) -> R
 @router.get("/equipment-requests", response_model=list[RequestOut])
 def list_queue(_user: Support) -> list[RequestOut]:
     return [_request_out(r) for r in equipment_store.repository().list_requested()]
+
+
+@router.get("/equipment-requests/{request_id}", response_model=RequestDetailOut)
+def get_request_detail(request_id: str, _user: Support) -> RequestDetailOut:
+    request = equipment_store.repository().get_request(_id(request_id))
+    if request is None:
+        raise _error("request_not_found", "That equipment request does not exist.", 404)
+    removed_by_name = ""
+    if request.status == "Removed":
+        actor = users.get_by_id(request.updated_by_id) if request.updated_by_id else None
+        removed_by_name = actor.name if actor else "A former Coordinator"
+    return RequestDetailOut(
+        **_request_out(request).model_dump(),
+        removed_by_name=removed_by_name,
+    )
 
 
 def _editable(request_id: str, user: User) -> EquipmentRequest:
@@ -370,6 +438,13 @@ def update_request(request_id: str, payload: RequestUpdate, user: Editor) -> Req
         _request_write_error(error)
     if updated is None:
         raise _error("stale_request", "This request changed. Reload it before editing.", 409)
+    if user.role is Role.COORDINATOR and any(
+        getattr(current, field) != getattr(updated, field)
+        for field in (
+            "equipment_type", "quantity", "technical_requirements", "starts_at", "ends_at"
+        )
+    ):
+        notify_equipment_change(updated, user.name, "updated")
     return _request_out(updated)
 
 
@@ -382,4 +457,5 @@ def delete_request(request_id: str, version: int, user: Coordinator) -> Response
         _request_write_error(error)
     if not removed:
         raise _error("stale_request", "This request changed. Reload it before removing it.", 409)
+    notify_equipment_change(current, user.name, "removed")
     return Response(status_code=status.HTTP_204_NO_CONTENT)

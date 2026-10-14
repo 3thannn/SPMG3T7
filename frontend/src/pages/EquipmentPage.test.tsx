@@ -2,18 +2,19 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import { EquipmentDetailPage, EquipmentFormPage, EquipmentPage } from './EquipmentPage'
-import { getEquipment, listEquipment, saveEquipment } from '../equipmentStore'
+import { deleteEquipment, getEquipment, listEquipment, saveEquipment } from '../equipmentStore'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../equipmentStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../equipmentStore')>()),
   listEquipment: vi.fn(), saveEquipment: vi.fn(),
-  getEquipment: vi.fn(),
+  getEquipment: vi.fn(), deleteEquipment: vi.fn(),
 }))
 
 const list = vi.mocked(listEquipment)
 const save = vi.mocked(saveEquipment)
 const get = vi.mocked(getEquipment)
+const remove = vi.mocked(deleteEquipment)
 const support = buildSession({ role: 'Technical Support' })
 const coordinator = buildSession({ role: 'Event Coordinator' })
 afterEach(() => vi.resetAllMocks())
@@ -24,10 +25,18 @@ it('shows usable stock and read-only access for Coordinators', async () => {
     totalQuantity: 4, outOfServiceQuantity: 4, outOfServiceReason: 'Maintenance', usableQuantity: 0,
   }])
   render(<EquipmentPage session={coordinator} />)
-  expect(await screen.findByText('Usable:', { exact: false })).toBeInTheDocument()
-  expect(screen.getByText('4 out of service: Maintenance')).toBeInTheDocument()
+  expect(await screen.findByRole('link', { name: /Projector.*AV Store/ })).toHaveAttribute('href', '#/equipment/1')
+  expect(screen.getByText('Usable of 4')).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'Edit equipment' })).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'Add equipment' })).not.toBeInTheDocument()
+})
+
+it('makes the whole catalogue card keyboard reachable', async () => {
+  list.mockResolvedValue([{ id: '1', name: 'Projector', type: 'Projector', description: '', location: 'AV Store', totalQuantity: 1, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 1 }])
+  render(<EquipmentPage session={coordinator} />)
+  const card = await screen.findByRole('link', { name: /Projector.*AV Store/ })
+  await userEvent.tab()
+  expect(card).toHaveFocus()
 })
 
 it('refuses an out-of-service count above total before saving', async () => {
@@ -44,6 +53,14 @@ it('refuses an out-of-service count above total before saving', async () => {
   expect(save).not.toHaveBeenCalled()
 })
 
+it('accepts equipment names through the backend 255-character limit', async () => {
+  render(<EquipmentFormPage session={support} />)
+  const name = screen.getByLabelText('Name')
+  expect(name).toHaveAttribute('maxLength', '255')
+  await userEvent.type(name, 'N'.repeat(255))
+  expect(name).toHaveValue('N'.repeat(255))
+})
+
 it('shows full item details to a Coordinator without edit controls', async () => {
   get.mockResolvedValue({
     id: '1', name: 'Projector', type: 'Projector', description: 'Laser', location: 'AV Store',
@@ -51,6 +68,39 @@ it('shows full item details to a Coordinator without edit controls', async () =>
   })
   render(<EquipmentDetailPage session={coordinator} id="1" />)
   expect(await screen.findByRole('heading', { name: 'Projector' })).toBeInTheDocument()
-  expect(screen.getByText('Reason: Maintenance')).toBeInTheDocument()
+  expect(screen.getByText('Maintenance')).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'Edit equipment' })).not.toBeInTheDocument()
+})
+
+it('shows no service reason is applicable when all units are usable', async () => {
+  get.mockResolvedValue({
+    id: '1', name: 'Projector', type: 'Projector', description: '', location: 'AV Store',
+    totalQuantity: 4, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 4,
+  })
+  render(<EquipmentDetailPage session={coordinator} id="1" />)
+  expect(await screen.findByText('Not applicable')).toBeInTheDocument()
+})
+
+it('confirms deletion and reports a conflict without leaving the detail page', async () => {
+  get.mockResolvedValue({ id: '1', name: 'Projector', type: 'Projector', description: '', location: 'Store', totalQuantity: 1, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 1 })
+  remove.mockRejectedValue(new Error('in use'))
+  render(<EquipmentDetailPage session={support} id="1" />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Delete equipment' }))
+  expect(remove).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole('button', { name: 'Yes, delete it' }))
+  expect(remove).toHaveBeenCalledWith('1', support)
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Projector' })).toBeInTheDocument()
+})
+
+it('deletes an unused item only after confirmation', async () => {
+  get.mockResolvedValue({ id: '1', name: 'Projector', type: 'Projector', description: '', location: 'Store', totalQuantity: 1, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 1 })
+  remove.mockResolvedValue()
+  render(<EquipmentDetailPage session={support} id="1" />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Delete equipment' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Keep it' }))
+  expect(remove).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole('button', { name: 'Delete equipment' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Yes, delete it' }))
+  expect(remove).toHaveBeenCalledWith('1', support)
 })

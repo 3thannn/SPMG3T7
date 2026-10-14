@@ -50,13 +50,13 @@ function group(name: 'Unread' | 'Read') {
   return screen.getByRole('region', { name: new RegExp(`^${name}`) })
 }
 
-it('opens an equipment notice in the Tech Support queue', async () => {
+it('opens an equipment notice at the specific request', async () => {
   listMock.mockResolvedValue([notice({
     status: null, kind: 'equipment-request', equipmentRequestId: '17',
     message: 'New microphone request.',
   })])
   render(<NotificationsPage session={support} />)
-  const link = await screen.findByRole('link', { name: 'Open request in queue' })
+  const link = await screen.findByRole('link', { name: 'Open request' })
   expect(link).toHaveAttribute('href', '#/equipment-requests/17')
   expect(screen.getByText('Equipment request')).toBeInTheDocument()
   expect(screen.queryByText('Approved')).not.toBeInTheDocument()

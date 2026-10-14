@@ -33,7 +33,7 @@ def actors(auth_headers):
 
 
 @pytest.fixture
-def planning_event(client, actors, event_repository):
+def approved_event(client, actors):
     created = client.post(
         "/events",
         json={
@@ -57,8 +57,13 @@ def planning_event(client, actors, event_repository):
         == 200
     )
     assert client.post(f"/events/{event_id}/approve", headers=actors["coord"]).status_code == 200
-    event_repository.plan_event(int(event_id), actor_id=COORDINATOR_ID)
     return event_id
+
+
+@pytest.fixture
+def planning_event(approved_event, event_repository):
+    event_repository.plan_event(int(approved_event), actor_id=COORDINATOR_ID)
+    return approved_event
 
 
 @pytest.fixture
@@ -79,6 +84,39 @@ def test_catalogue_happy_path_and_permissions(client, actors, item):
     )
     assert updated.status_code == 200
     assert updated.json()["usableQuantity"] == 0
+
+
+def test_catalogue_delete_missing_and_role_boundaries(client, actors, item):
+    path = f"/equipment/{item['id']}"
+    assert client.delete(path, headers=actors["coord"]).status_code == 403
+    assert client.delete("/equipment/999", headers=actors["tech"]).status_code == 404
+    assert client.delete(path, headers=actors["tech"]).status_code == 204
+    assert client.get(path, headers=actors["tech"]).status_code == 404
+
+
+def test_last_type_with_active_request_cannot_be_deleted_or_renamed(
+    client, actors, planning_event, item
+):
+    path = f"/equipment/{item['id']}"
+    created = client.post(
+        f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
+    ).json()
+    blocked = client.delete(path, headers=actors["tech"])
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"]["code"] == "equipment_in_use"
+    renamed = client.put(path, json={**ITEM, "type": "Speaker"}, headers=actors["tech"])
+    assert renamed.status_code == 409
+    assert client.get(path, headers=actors["tech"]).json()["type"] == "Microphone"
+
+    another = client.post(
+        "/equipment", json={**ITEM, "name": "Spare microphone"}, headers=actors["tech"]
+    ).json()
+    assert client.delete(path, headers=actors["tech"]).status_code == 204
+    assert client.delete(f"/equipment/{another['id']}", headers=actors["tech"]).status_code == 409
+    assert client.delete(
+        f"/equipment-requests/{created['id']}?version=1", headers=actors["coord"]
+    ).status_code == 204
+    assert client.delete(f"/equipment/{another['id']}", headers=actors["tech"]).status_code == 204
 
 
 @pytest.mark.parametrize(
@@ -123,6 +161,37 @@ def test_zero_usable_stock_can_still_be_requested_in_us19_2(client, actors, plan
     assert requested.status_code == 201
 
 
+def test_request_accepts_maximum_integer_quantity(client, actors, planning_event, item):
+    response = client.post(
+        f"/events/{planning_event}/equipment-requests",
+        json={**LINE, "quantity": 2_147_483_647},
+        headers=actors["coord"],
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["quantity"] == 2_147_483_647
+
+
+def test_first_venue_booking_opens_equipment_request_flow(
+    client, actors, approved_event, item
+):
+    event_path = f"/events/{approved_event}"
+    assert client.get(event_path, headers=actors["coord"]).json()["status"] == "Approved"
+    booking = client.post(
+        f"{event_path}/bookings",
+        json={
+            "venueId": "1", "startsAt": "2027-11-02T09:00", "endsAt": "2027-11-02T17:00",
+            "headcount": 40,
+        },
+        headers=actors["coord"],
+    )
+    assert booking.status_code == 201, booking.text
+    assert client.get(event_path, headers=actors["coord"]).json()["status"] == "Planning"
+    requested = client.post(
+        f"{event_path}/equipment-requests", json=LINE, headers=actors["coord"]
+    )
+    assert requested.status_code == 201, requested.text
+
+
 def test_request_happy_path_and_notifications(
     client, actors, planning_event, item, event_repository
 ):
@@ -137,6 +206,15 @@ def test_request_happy_path_and_notifications(
     assert line["endsAt"] == "2027-11-02T17:00"
     assert line["quantity"] == 1
     assert event_repository.get_event(int(event_id)).status is EventStatus.PLANNING
+    assert client.get(
+        f"/events/{event_id}/equipment-requests", headers=actors["organiser"]
+    ).json()[0]["id"] == line["id"]
+    assert client.get(
+        f"/events/{event_id}/equipment-requests", headers=actors["lead"]
+    ).json()[0]["id"] == line["id"]
+    assert client.get(
+        f"/events/{event_id}/equipment-requests", headers=actors["tech"]
+    ).status_code == 403
     assert (
         len(client.get(f"/events/{event_id}/equipment-requests", headers=actors["coord"]).json())
         == 1
@@ -164,6 +242,20 @@ def test_request_happy_path_and_notifications(
         ).status_code
         == 404
     )
+
+
+def test_other_organiser_cannot_read_event_equipment(
+    client, actors, planning_event, item, user_store
+):
+    user_store.users.append(User(8, "other@example.edu", "Other", Role.ORGANISER))
+    user_store.passwords["other@example.edu"] = "Sprint1!demo"
+    login = client.post(
+        "/auth/login", json={"email": "other@example.edu", "password": "Sprint1!demo"}
+    )
+    other = {"Authorization": f"Bearer {login.json()['token']}"}
+    assert client.get(
+        f"/events/{planning_event}/equipment-requests", headers=other
+    ).status_code == 404
 
 
 def test_request_requires_end_time_when_event_has_none(
@@ -310,7 +402,55 @@ def test_coordinator_and_support_edit_only_their_fields(client, actors, planning
     assert changed.json()["equipmentType"] == "Speaker"
     assert changed.json()["technicalRequirements"] == "Stereo"
     assert changed.json()["supportNotes"] == ""
-    assert len(client.get("/notifications", headers=actors["tech"]).json()) == 1
+    notices = client.get("/notifications", headers=actors["tech"]).json()
+    assert len(notices) == 2
+    assert any("updated the Speaker request" in notice["message"] for notice in notices)
+
+
+def test_read_request_notification_is_followed_by_edit_and_removal_notifications(
+    client, actors, planning_event, item
+):
+    created = client.post(
+        f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
+    ).json()
+    path = f"/equipment-requests/{created['id']}"
+    original = client.get("/notifications", headers=actors["tech"]).json()[0]
+    assert client.patch(
+        f"/notifications/{original['id']}", json={"read": True}, headers=actors["tech"]
+    ).status_code == 200
+
+    changed = client.patch(path, json={"version": 1, "quantity": 3}, headers=actors["coord"])
+    assert changed.status_code == 200, changed.text
+    notices = client.get("/notifications", headers=actors["tech"]).json()
+    assert len(notices) == 2
+    assert notices[0]["read"] is False
+    assert notices[0]["equipmentRequestId"] == created["id"]
+    assert "Priya updated" in notices[0]["message"]
+    assert next(notice for notice in notices if notice["id"] == original["id"])["read"] is True
+
+    no_change = client.patch(path, json={"version": 2, "quantity": 3}, headers=actors["coord"])
+    assert no_change.status_code == 200
+    assert len(client.get("/notifications", headers=actors["tech"]).json()) == 2
+    support_edit = client.patch(
+        path, json={"version": 3, "supportNotes": "Ready"}, headers=actors["tech"]
+    )
+    assert support_edit.status_code == 200
+    assert len(client.get("/notifications", headers=actors["tech"]).json()) == 2
+
+    assert client.delete(f"{path}?version=4", headers=actors["coord"]).status_code == 204
+    notices = client.get("/notifications", headers=actors["tech"]).json()
+    assert len(notices) == 3
+    assert notices[0]["read"] is False
+    assert "Priya removed" in notices[0]["message"]
+    assert notices[0]["equipmentRequestId"] == created["id"]
+    assert client.get("/equipment-requests", headers=actors["tech"]).json() == []
+    detail = client.get(path, headers=actors["tech"])
+    assert detail.status_code == 200
+    assert detail.json()["status"] == "Removed"
+    assert detail.json()["removedByName"] == "Priya"
+    assert client.get(path, headers=actors["coord"]).status_code == 403
+    assert client.get(path, headers=actors["organiser"]).status_code == 403
+    assert client.get("/equipment-requests/99999", headers=actors["tech"]).status_code == 404
 
 
 def test_unassigned_coordinator_cannot_see_or_change_requests(
