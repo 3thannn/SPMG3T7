@@ -70,7 +70,22 @@ const GUARDED: Record<string, GuardedRoute> = {
   '/notifications': {
     anyOf: ['notifications:read'],
     what: 'notifications',
-    who: 'Organisers',
+    who: 'Organisers and Technical Support',
+  },
+  '/equipment': {
+    anyOf: ['equipment:read'],
+    what: 'the equipment catalogue',
+    who: 'Event Coordinators, Coordinator Lead, and Technical Support',
+  },
+  '/equipment/new': {
+    anyOf: ['equipment:write'],
+    what: 'adding equipment',
+    who: 'Technical Support',
+  },
+  '/equipment-requests': {
+    anyOf: ['equipment:queue'],
+    what: 'the equipment request queue',
+    who: 'Technical Support',
   },
 }
 
@@ -80,6 +95,15 @@ const GUARDED: Record<string, GuardedRoute> = {
  */
 export function guardFor(route: string): GuardedRoute | null {
   if (GUARDED[route]) return GUARDED[route]
+  if (/^\/equipment\/[^/]+\/edit$/.test(route)) {
+    return { anyOf: ['equipment:write'], what: 'editing equipment', who: 'Technical Support' }
+  }
+  if (/^\/equipment-requests\/[^/]+$/.test(route)) {
+    return { anyOf: ['equipment:queue'], what: 'the equipment request queue', who: 'Technical Support' }
+  }
+  if (/^\/equipment\/[^/]+$/.test(route)) {
+    return { anyOf: ['equipment:read'], what: 'equipment details', who: 'Event Coordinators, Coordinator Lead, and Technical Support' }
+  }
   if (/^\/events\/[^/]+$/.test(route)) {
     return {
       anyOf: ['events:read:own', 'events:read:submitted', 'events:read:all'],

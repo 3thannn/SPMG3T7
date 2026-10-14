@@ -1,4 +1,4 @@
-"""Notification routes — US10.1 (receive and manage notifications).
+"""Shared notification routes for US10.1 and US19.
 
 An Organiser is told when one of their events moves to Under Review (a Lead
 assigning a Coordinator, or a Coordinator asking a question), Approved or
@@ -9,7 +9,8 @@ list stays manageable. There is no email or push yet; the list is the delivery.
 transition has been stored. It never fails the request that called it: the
 status change is the thing the Coordinator asked for and it has already
 happened, so a notice that could not be written is logged rather than turned
-into an error for a decision that in fact succeeded.
+into an error for a decision that in fact succeeded. US19 applies the same
+best-effort rule after an equipment request is stored.
 """
 
 import logging
@@ -18,12 +19,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app import notification_store
+from app import notification_store, users
 from app.auth import require_permission
+from app.equipment_store import EquipmentRequest
 from app.event_status import EventStatus
 from app.event_store import Event
 from app.notification_store import Notification
-from app.permissions import Permission
+from app.permissions import Permission, Role
 from app.users import User
 
 logger = logging.getLogger(__name__)
@@ -66,11 +68,43 @@ def notify_status_change(event: Event, to_status: EventStatus, notes: str = "") 
         )
 
 
+def notify_equipment_request(event: Event, request: EquipmentRequest) -> None:
+    """One best-effort notice per active Tech Support profile."""
+    try:
+        recipients = users.list_users()
+    except Exception:
+        logger.exception(
+            "Could not look up equipment request notification recipients for %s", request.id
+        )
+        return
+    for recipient in recipients:
+        if recipient.role is not Role.TECH_SUPPORT:
+            continue
+        try:
+            notification_store.repository().create_equipment(
+                user_id=recipient.id,
+                event_id=event.id,
+                request_id=request.id,
+                message=(
+                    f'New {request.equipment_type} request for "{event.title}" '
+                    f"({request.quantity} needed)."
+                ),
+            )
+        except Exception:
+            logger.exception(
+                "Could not write equipment request notification %s for user %s",
+                request.id,
+                recipient.id,
+            )
+
+
 class NotificationOut(BaseModel):
     id: str
     event_id: str = Field(serialization_alias="eventId")
     event_title: str = Field(serialization_alias="eventTitle")
-    status: EventStatus
+    status: EventStatus | None
+    kind: str = "event-status"
+    equipment_request_id: str | None = Field(default=None, serialization_alias="equipmentRequestId")
     message: str
     read: bool
     created_at: str = Field(serialization_alias="createdAt")
@@ -87,6 +121,12 @@ def _to_out(notification: Notification) -> NotificationOut:
         event_id=str(notification.event_id),
         event_title=notification.event_title,
         status=notification.status,
+        kind=notification.kind,
+        equipment_request_id=(
+            str(notification.equipment_request_id)
+            if notification.equipment_request_id is not None
+            else None
+        ),
         message=notification.message,
         read=notification.is_read,
         created_at=notification.created_at,

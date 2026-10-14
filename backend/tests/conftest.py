@@ -19,12 +19,14 @@ from fastapi.testclient import TestClient
 from app import (
     auth,
     booking_store,
+    equipment_store,
     event_store,
     notification_store,
     venue_store,
     venue_unavailability_store,
 )
 from app.booking_store import InMemoryBookings
+from app.equipment_store import InMemoryEquipment
 from app.event_store import InMemoryEvents
 from app.main import app
 from app.notification_store import InMemoryNotifications
@@ -43,6 +45,7 @@ ACCOUNTS = {
     "Event Coordinator Lead": "coordinatorlead@spmg3t7.edu",  # US1.4
     "Venue Staff": "venuestaff@spmg3t7.edu",
     "Safety Officer": "safetyofficer@spmg3t7.edu",  # US1.4
+    "Technical Support": "technicalsupport@spmg3t7.edu",
 }
 
 ORGANISER_ID = 1
@@ -50,6 +53,7 @@ COORDINATOR_ID = 2
 COORDINATOR_LEAD_ID = 3
 VENUE_STAFF_ID = 4
 SAFETY_OFFICER_ID = 5
+TECH_SUPPORT_ID = 6
 
 
 def fixture_users() -> list[User]:
@@ -90,6 +94,12 @@ def fixture_users() -> list[User]:
             name="Alex",
             role=Role.SAFETY_OFFICER,
         ),
+        User(
+            id=TECH_SUPPORT_ID,
+            email=ACCOUNTS["Technical Support"],
+            name="Bryan",
+            role=Role.TECH_SUPPORT,
+        ),
     ]
 
 
@@ -115,6 +125,7 @@ def event_repository():
             COORDINATOR_LEAD_ID: "Jordan",  # US1.4
             VENUE_STAFF_ID: "Sam",
             SAFETY_OFFICER_ID: "Alex",  # US1.4
+            TECH_SUPPORT_ID: "Bryan",
         },
     )
     previous = event_store.use_repository(store)
@@ -204,6 +215,14 @@ def booking_repository():
     previous = booking_store.use_repository(store)
     yield store
     booking_store.use_repository(previous)
+
+
+@pytest.fixture(autouse=True)
+def equipment_repository():
+    store = InMemoryEquipment()
+    previous = equipment_store.use_repository(store)
+    yield store
+    equipment_store.use_repository(previous)
 
 
 @pytest.fixture

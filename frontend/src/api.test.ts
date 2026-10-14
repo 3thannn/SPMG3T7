@@ -214,6 +214,15 @@ describe('fetchMe', () => {
 })
 
 describe('authorizedFetch', () => {
+  it('shows the field named by a validation error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 422,
+      json: async () => ({ detail: [{ loc: ['body', 'totalQuantity'], msg: 'Input should be a valid integer' }] }),
+    }))
+    await expect(authorizedFetch('/equipment', 'test-token')).rejects.toThrow(
+      'totalQuantity: Input should be a valid integer.',
+    )
+  })
   it('carries the session token', async () => {
     const fetchMock = vi.fn().mockResolvedValue(ok({}))
     vi.stubGlobal('fetch', fetchMock)

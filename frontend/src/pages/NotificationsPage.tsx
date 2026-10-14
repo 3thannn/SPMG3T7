@@ -16,7 +16,7 @@ type NotificationsPageProps = {
 }
 
 /**
- * US10.1: an Organiser's notices about their events' status changes.
+ * Organiser status notices and Tech Support equipment request notices.
  *
  * Unread notices come first so the list reads from the top, and each can be
  * marked read or unread so it never becomes a pile nobody can work through.
@@ -71,7 +71,9 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
           <div>
             <h1 className="page-title">Notifications</h1>
             <p className="page-subtitle">
-              Status changes on your events, unread first.
+              {session.role === 'Technical Support'
+                ? 'New equipment requests, unread first.'
+                : 'Status changes on your events, unread first.'}
             </p>
           </div>
         </header>
@@ -87,7 +89,9 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
         ) : loadError ? null : notifications.length === 0 ? (
           <div className="card empty">
             <h3>No notifications yet</h3>
-            <p>When a Coordinator reviews, approves or rejects one of your events, it shows up here.</p>
+            <p>{session.role === 'Technical Support'
+              ? 'New equipment requests will appear here.'
+              : 'When a Coordinator reviews, approves or rejects one of your events, it shows up here.'}</p>
           </div>
         ) : (
           <>
@@ -117,19 +121,26 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
               >
                 <div className="notification-main">
                   <div className="notification-meta">
-                    <StatusBadge status={item.status} />
+                    {item.status && <StatusBadge status={item.status} />}
+                    {item.kind === 'equipment-request' && <span>Equipment request</span>}
                     <span>{formatTimestamp(item.createdAt)}</span>
                   </div>
                   <p className="notification-message">{item.message}</p>
                   <a
                     className="notification-event"
-                    href={`#/events/${item.eventId}`}
+                    href={item.kind === 'equipment-request'
+                      ? `#/equipment-requests/${item.equipmentRequestId ?? 'missing'}`
+                      : `#/events/${item.eventId}`}
                     onClick={(clickEvent) => {
                       clickEvent.preventDefault()
-                      navigate(`/events/${item.eventId}`)
+                      navigate(item.kind === 'equipment-request'
+                        ? `/equipment-requests/${item.equipmentRequestId ?? 'missing'}`
+                        : `/events/${item.eventId}`)
                     }}
                   >
-                    Open {displayEventTitle(item.eventTitle)}
+                    {item.kind === 'equipment-request'
+                      ? 'Open request in queue'
+                      : `Open ${displayEventTitle(item.eventTitle)}`}
                   </a>
                 </div>
                 <button

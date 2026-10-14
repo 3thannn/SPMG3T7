@@ -1,9 +1,9 @@
-"""Organiser notifications, backed by the Supabase `notifications` table — US10.1.
+"""Recipient-scoped notifications, backed by the Supabase `notifications` table.
 
 A notification is written when a Coordinator moves an event to Under Review,
 Approved or Rejected, and read by the Organiser who owns that event. This
-module is only the access; when to write one and who may read it are decided
-in `app.notifications`.
+US19 adds equipment request notices for Tech Support. This module is only the
+access; when to write one and who may read it are decided in `app.notifications`.
 
 Two choices worth knowing:
 
@@ -23,7 +23,10 @@ from app.event_status import EventStatus
 from app.event_store import _now
 
 TABLE = "notifications"
-COLUMNS = "id, user_id, event_id, status, message, is_read, created_at, read_at, events(name)"
+COLUMNS = (
+    "id, user_id, event_id, status, kind, equipment_request_id, message, "
+    "is_read, created_at, read_at, events(name)"
+)
 
 
 @dataclass(frozen=True)
@@ -32,7 +35,7 @@ class Notification:
     user_id: int
     event_id: int
     #: The status the event moved to when this was written.
-    status: EventStatus
+    status: EventStatus | None
     message: str
     is_read: bool
     created_at: str
@@ -40,6 +43,8 @@ class Notification:
     event_title: str = ""
     #: Empty while unread.
     read_at: str = ""
+    kind: str = "event-status"
+    equipment_request_id: int | None = None
 
 
 def _embedded_title(row: dict) -> str:
@@ -54,12 +59,14 @@ def to_notification(row: dict) -> Notification:
         id=row["id"],
         user_id=row["user_id"],
         event_id=row["event_id"],
-        status=EventStatus(row["status"]),
+        status=EventStatus(row["status"]) if row.get("status") else None,
         message=row["message"],
         is_read=bool(row["is_read"]),
         created_at=str(row["created_at"]),
         event_title=_embedded_title(row),
         read_at=str(row["read_at"]) if row.get("read_at") else "",
+        kind=row.get("kind") or "event-status",
+        equipment_request_id=row.get("equipment_request_id"),
     )
 
 
@@ -80,6 +87,10 @@ class Repository(Protocol):
 
     def create(
         self, *, user_id: int, event_id: int, status: EventStatus, message: str
+    ) -> Notification: ...
+
+    def create_equipment(
+        self, *, user_id: int, event_id: int, request_id: int, message: str
     ) -> Notification: ...
 
     def set_read(self, notification_id: int, *, is_read: bool) -> Notification: ...
@@ -137,6 +148,29 @@ class SupabaseNotifications:
         assert created is not None  # noqa: S101 — the row was just inserted
         return created
 
+    def create_equipment(
+        self, *, user_id: int, event_id: int, request_id: int, message: str
+    ) -> Notification:
+        inserted = (
+            supabase_client.admin()
+            .table(TABLE)
+            .insert(
+                {
+                    "user_id": user_id,
+                    "event_id": event_id,
+                    "kind": "equipment-request",
+                    "equipment_request_id": request_id,
+                    "status": None,
+                    "message": message,
+                    "created_at": _now(),
+                }
+            )
+            .execute()
+        )
+        created = self.get(inserted.data[0]["id"])
+        assert created is not None
+        return created
+
     def set_read(self, notification_id: int, *, is_read: bool) -> Notification:
         supabase_client.admin().table(TABLE).update(
             {"is_read": is_read, "read_at": _now() if is_read else None}
@@ -176,6 +210,25 @@ class InMemoryNotifications:
             is_read=False,
             created_at=_now(),
             event_title=self._title(event_id),
+        )
+        self.next_id += 1
+        self.notifications.append(created)
+        return created
+
+    def create_equipment(
+        self, *, user_id: int, event_id: int, request_id: int, message: str
+    ) -> Notification:
+        created = Notification(
+            id=self.next_id,
+            user_id=user_id,
+            event_id=event_id,
+            status=None,
+            message=message,
+            is_read=False,
+            created_at=_now(),
+            event_title=self._title(event_id),
+            kind="equipment-request",
+            equipment_request_id=request_id,
         )
         self.next_id += 1
         self.notifications.append(created)

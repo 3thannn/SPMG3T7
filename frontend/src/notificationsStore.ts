@@ -1,10 +1,8 @@
 /**
- * Notification data access — US10.1.
+ * Notification data access — US10.1 and US19.
  *
- * The server writes a notification when a Coordinator moves one of the
- * Organiser's events to Under Review, Approved or Rejected, and returns the
- * list unread first, newest first. This module only reads that list and flips
- * the read state; it never decides what deserves a notice.
+ * The server writes Organiser status notices and Tech Support equipment request
+ * notices. This module reads each recipient's list and flips read state.
  */
 
 import { authorizedFetch, type Session } from './api'
@@ -15,7 +13,9 @@ export type NotificationRecord = {
   eventId: string
   eventTitle: string
   /** The status the event moved to when the notice was written. */
-  status: EventStatus
+  status: EventStatus | null
+  kind?: 'event-status' | 'equipment-request'
+  equipmentRequestId?: string | null
   message: string
   read: boolean
   createdAt: string

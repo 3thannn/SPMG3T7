@@ -1,0 +1,60 @@
+.equipment-list,
+.equipment-queue {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.equipment-card,
+.equipment-line {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.equipment-card h2,
+.equipment-line h3 {
+  margin: 0;
+}
+
+.equipment-card p,
+.equipment-line p {
+  margin: 0;
+}
+
+.equipment-form {
+  display: grid;
+  gap: 1rem;
+  max-width: 44rem;
+}
+
+.equipment-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.equipment-form input,
+.equipment-form select,
+.equipment-form textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--ink-strong);
+  font: inherit;
+}
+
+.equipment-form textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.equipment-form :is(input, select, textarea):focus-visible,
+.equipment-queue section:focus-visible {
+  outline: 3px solid var(--navy-ring);
+  outline-offset: 2px;
+}

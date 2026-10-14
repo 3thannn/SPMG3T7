@@ -30,6 +30,7 @@ afterEach(() => {
 })
 
 const organiser = buildSession({ role: 'Event Organiser', id: '1' })
+const support = buildSession({ role: 'Technical Support', id: '6' })
 
 function notice(overrides: Partial<NotificationRecord> = {}): NotificationRecord {
   return {
@@ -48,6 +49,18 @@ function notice(overrides: Partial<NotificationRecord> = {}): NotificationRecord
 function group(name: 'Unread' | 'Read') {
   return screen.getByRole('region', { name: new RegExp(`^${name}`) })
 }
+
+it('opens an equipment notice in the Tech Support queue', async () => {
+  listMock.mockResolvedValue([notice({
+    status: null, kind: 'equipment-request', equipmentRequestId: '17',
+    message: 'New microphone request.',
+  })])
+  render(<NotificationsPage session={support} />)
+  const link = await screen.findByRole('link', { name: 'Open request in queue' })
+  expect(link).toHaveAttribute('href', '#/equipment-requests/17')
+  expect(screen.getByText('Equipment request')).toBeInTheDocument()
+  expect(screen.queryByText('Approved')).not.toBeInTheDocument()
+})
 
 it('TC-F05 shows unread notices before read ones', async () => {
   listMock.mockResolvedValue([

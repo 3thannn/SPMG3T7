@@ -55,11 +55,10 @@ committed.
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API Keys → `service_role`      |
 | `SUPABASE_DB_URL`           | Connect → Session pooler (optional; see below)    |
 
-`SUPABASE_DB_URL` is optional and unused by the API, which goes through
-PostgREST. It is there for reading the schema directly — inspecting Row Level
-Security policies, say. If you do set it, use the **Session pooler** string
-rather than the direct connection, which is IPv6-only and fails on most home
-networks.
+`SUPABASE_DB_URL` is unused by the API, which goes through PostgREST. It is
+required when running the US19 migration script below or inspecting the schema
+directly. Use the **Session pooler** string rather than the direct connection,
+which is IPv6-only and fails on most home networks.
 
 For a new project, run [`SUPABASE_SETUP.sql`](SUPABASE_SETUP.sql) once. For the
 already-created project, run [`SUPABASE_HARDENING.sql`](SUPABASE_HARDENING.sql)
@@ -693,6 +692,34 @@ off.
 The default matches the Vite dev server, so the frontend works locally with no
 configuration. Deployed environments should set `CORS_ORIGINS` to the real
 frontend URL.
+
+## Continuous integration
+
+## US19 equipment setup
+
+1. Apply `SUPABASE_ADD_NOTIFICATIONS.sql` if US10.1 has not already been applied.
+2. Run the full contents of `SUPABASE_ADD_EQUIPMENT_REQUESTS.sql` in your
+   Supabase SQL Editor. The SQL is rerunnable and preserves existing equipment
+   rows. It also installs an atomic equipment-request audit trail. Alternatively,
+   put a Session Pooler connection string in the gitignored `backend/.env` as
+   `SUPABASE_DB_URL` and run `.venv/Scripts/python.exe apply_equipment_migration.py`.
+   `SUPABASE_DB_URL` is only for this optional migration runner; the API uses
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
+3. Run `.venv/Scripts/python.exe seed_new_users.py --tech-only`. It creates
+   Bryan's `technicalsupport@spmg3t7.edu` Auth login and `Technical Support`
+   profile. New Auth accounts use `PASSWORD`, which defaults to `Sprint1!demo`
+   and can be overridden with `SEED_PASSWORD`. Existing passwords are not reset.
+4. Start the API, then run `.venv/Scripts/python.exe seed_equipment.py`. It
+   signs in through `/auth/login`, creates ten sample items through `/equipment`,
+   and skips matching names on reruns. Set `SEED_API_URL` if the API is not on
+   `http://localhost:8000`.
+
+Equipment requests do not reserve stock or change event status. US19.3 owns
+availability checks and reservation. The migration prevents an event from
+leaving Planning while any equipment line remains Requested.
+The event's Organiser and assigned Coordinator see creation, edits, and
+removals in the existing right-hand status history, in time order from Draft,
+with actor, time, and changed values.
 
 ## Continuous integration
 
