@@ -37,6 +37,7 @@ export type Permission =
   | 'equipment:write'
   | 'equipment:request'
   | 'equipment:queue'
+  | 'holds:place'
 
 /**
  * The signed-in user, exactly as the server issued it.

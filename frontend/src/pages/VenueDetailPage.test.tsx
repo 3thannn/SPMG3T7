@@ -18,7 +18,14 @@ import {
   listUnavailability,
   type VenueRecord,
 } from '../venuesStore'
+import { listHoldableEvents, listHolds } from '../holdsStore'
 import { buildSession } from '../test/sessions'
+
+vi.mock('../holdsStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../holdsStore')>()),
+  listHolds: vi.fn(),
+  listHoldableEvents: vi.fn(),
+}))
 
 vi.mock('../venuesStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../venuesStore')>()),
@@ -31,10 +38,13 @@ const getVenueMock = vi.mocked(getVenue)
 const deleteVenueMock = vi.mocked(deleteVenue)
 const listUnavailabilityMock = vi.mocked(listUnavailability)
 
-// US12.1's card fetches on its own; its behaviour is covered in
-// VenueUnavailability.test.tsx. Here it only needs to answer.
+// US12.1's and US14.3's cards fetch on their own; their behaviour is covered
+// in VenueUnavailability.test.tsx and VenueHolds.test.tsx. Here they only need
+// to answer.
 beforeEach(() => {
   listUnavailabilityMock.mockResolvedValue([])
+  vi.mocked(listHolds).mockResolvedValue([])
+  vi.mocked(listHoldableEvents).mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -345,4 +355,17 @@ it('shows Venue Staff the same values', async () => {
   render(<VenueDetailPage venueId="1" session={venueStaff} />)
 
   expect((await screen.findByText('Setup time')).nextElementSibling).toHaveTextContent('1 minute')
+})
+
+// -- US14.3: the holds card is Venue Staff's alone ---------------------------------
+
+it('TC-HF18 shows Venue Staff the tentative holds card and a Coordinator none', async () => {
+  getVenueMock.mockResolvedValue(buildVenue())
+  const { unmount } = render(<VenueDetailPage venueId="1" session={venueStaff} />)
+  expect(await screen.findByRole('heading', { name: 'Tentative holds' })).toBeInTheDocument()
+  unmount()
+
+  render(<VenueDetailPage venueId="1" session={coordinator} />)
+  await screen.findByRole('heading', { name: 'Venue details' })
+  expect(screen.queryByRole('heading', { name: 'Tentative holds' })).not.toBeInTheDocument()
 })
