@@ -60,7 +60,7 @@ it('TC-F15 re-reads the count when read state changes', async () => {
   await waitFor(() => expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument())
 })
 
-it.each(['Event Coordinator', 'Venue Staff'] as const)(
+it.each(['Event Coordinator Lead', 'Venue Staff'] as const)(
   'TC-F16 offers no Notifications link to %s',
   (role) => {
     render(<TopNav route="/events" session={buildSession({ role })} onSignOut={() => {}} />)
@@ -68,3 +68,16 @@ it.each(['Event Coordinator', 'Venue Staff'] as const)(
     expect(listMock).not.toHaveBeenCalled()
   },
 )
+
+it('TC-CF06 gives a Coordinator the Notifications link and unread count', async () => {
+  listMock.mockResolvedValue([{ ...notice('1', false), status: null, kind: 'assigned' }])
+  render(
+    <TopNav
+      route="/events"
+      session={buildSession({ role: 'Event Coordinator' })}
+      onSignOut={() => {}}
+    />,
+  )
+  expect(await screen.findByLabelText('1 unread')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /Notifications/ })).toBeInTheDocument()
+})

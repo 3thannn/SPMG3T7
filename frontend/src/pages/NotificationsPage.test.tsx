@@ -135,3 +135,63 @@ it('TC-F12 links each notice to its event', async () => {
   await userEvent.click(await screen.findByRole('link', { name: 'Open Gala' }))
   expect(window.location.hash).toBe('#/events/101')
 })
+
+// US10.2: the Coordinator's notices share the page and the read toggle.
+
+const coordinator = buildSession({ role: 'Event Coordinator', id: '2' })
+
+it('TC-CF01 labels each Coordinator notice by what needs attention', async () => {
+  listMock.mockResolvedValue([
+    notice({ id: '1', status: null, kind: 'assigned', message: 'You were assigned "Gala".' }),
+    notice({ id: '2', status: null, kind: 'hold-expiring', message: 'Hold expires soon.' }),
+    notice({ id: '3', status: null, kind: 'hold-expired', message: 'Hold expired.' }),
+    notice({ id: '4', status: null, kind: 'booking-conflict', message: 'Booking hit.' }),
+    notice({ id: '5', status: null, kind: 'safety-changes', message: 'Safety changes.' }),
+    notice({ id: '6', status: null, kind: 'unassigned', message: 'No longer yours.' }),
+  ])
+  render(<NotificationsPage session={coordinator} />)
+  for (const label of [
+    'Assigned to you',
+    'Hold expiring',
+    'Hold expired',
+    'Booking problem',
+    'Safety changes',
+    'Reassigned',
+  ]) {
+    expect(await screen.findByText(label)).toBeInTheDocument()
+  }
+  expect(screen.queryByText('Approved')).not.toBeInTheDocument()
+})
+
+it('TC-CF02 links a Coordinator notice to its event', async () => {
+  listMock.mockResolvedValue([notice({ status: null, kind: 'booking-conflict' })])
+  render(<NotificationsPage session={coordinator} />)
+  await userEvent.click(await screen.findByRole('link', { name: 'Open Gala' }))
+  expect(window.location.hash).toBe('#/events/101')
+})
+
+it('TC-CF03 has no link for an event that was reassigned away', async () => {
+  listMock.mockResolvedValue([
+    notice({ status: null, kind: 'unassigned', message: '"Gala" is no longer assigned to you.' }),
+  ])
+  render(<NotificationsPage session={coordinator} />)
+  expect(await screen.findByText('"Gala" is no longer assigned to you.')).toBeInTheDocument()
+  expect(screen.queryByRole('link')).not.toBeInTheDocument()
+})
+
+it('TC-CF04 marks a Coordinator notice read', async () => {
+  const unread = notice({ status: null, kind: 'assigned' })
+  listMock.mockResolvedValue([unread])
+  setReadMock.mockResolvedValue({ ...unread, read: true, readAt: '2026-10-15T09:00:00' })
+  render(<NotificationsPage session={coordinator} />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Mark as read' }))
+  expect(setReadMock).toHaveBeenCalledWith('1', true, coordinator)
+  expect(within(group('Read')).getByText(unread.message)).toBeInTheDocument()
+})
+
+it('TC-CF05 tells a Coordinator what will show up here', async () => {
+  listMock.mockResolvedValue([])
+  render(<NotificationsPage session={coordinator} />)
+  expect(await screen.findByText(/When an event is assigned to you/)).toBeInTheDocument()
+  expect(screen.getByText(/Assignments and booking or safety problems/)).toBeInTheDocument()
+})

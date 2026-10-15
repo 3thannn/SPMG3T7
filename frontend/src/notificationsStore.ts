@@ -1,12 +1,35 @@
 /**
- * Notification data access — US10.1 and US19.
+ * Notification data access — US10.1, US10.2 and US19.
  *
- * The server writes Organiser status notices and Tech Support equipment request
- * notices. This module reads each recipient's list and flips read state.
+ * The server writes Organiser status notices, Coordinator notices about events
+ * needing their attention, and Tech Support equipment request notices. This
+ * module reads each recipient's list and flips read state.
  */
 
 import { authorizedFetch, type Session } from './api'
 import type { EventStatus } from './status'
+
+/** US10.2: what a Coordinator is told about, one kind per acceptance criterion. */
+export type CoordinatorNoticeKind =
+  | 'assigned'
+  | 'unassigned'
+  | 'hold-expiring'
+  | 'hold-expired'
+  | 'booking-conflict'
+  | 'safety-changes'
+
+export type NotificationKind = 'event-status' | 'equipment-request' | CoordinatorNoticeKind
+
+/** The label each non-status notice shows in place of a status badge. */
+export const KIND_LABELS: Record<Exclude<NotificationKind, 'event-status'>, string> = {
+  'equipment-request': 'Equipment request',
+  assigned: 'Assigned to you',
+  unassigned: 'Reassigned',
+  'hold-expiring': 'Hold expiring',
+  'hold-expired': 'Hold expired',
+  'booking-conflict': 'Booking problem',
+  'safety-changes': 'Safety changes',
+}
 
 export type NotificationRecord = {
   id: string
@@ -14,7 +37,7 @@ export type NotificationRecord = {
   eventTitle: string
   /** The status the event moved to when the notice was written. */
   status: EventStatus | null
-  kind?: 'event-status' | 'equipment-request'
+  kind?: NotificationKind
   equipmentRequestId?: string | null
   message: string
   read: boolean
