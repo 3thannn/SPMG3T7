@@ -17,7 +17,7 @@ import pytest
 from app.booking_store import BookingStatus
 from app.event_status import BOOKABLE, BookingRefusal, EventStatus, check_booking
 from app.event_store import Event
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 EVENT_ID = 900
 GREAT_HALL = "1"
@@ -575,10 +575,11 @@ def test_the_whole_journey_through_the_routes(client, organiser, coordinator, au
         json={
             "title": "Open Day",
             "purpose": "Show prospective students around.",
-            "description": "",
+            "description": "Campus tours and talks.",
             "startsAt": "2027-11-02T09:00",
             "endsAt": "2027-11-02T17:00",
             "expectedAttendance": 300,
+            **SUBMITTABLE_NEEDS,
         },
         headers=organiser,
     ).json()

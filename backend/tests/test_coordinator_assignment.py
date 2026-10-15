@@ -15,14 +15,16 @@ from app.event_status import EventStatus
 from app.event_store import Event
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Team Building Workshop",
     "purpose": "Improve team collaboration",
     "startsAt": "2026-11-15T14:00",
+    "endsAt": "2026-11-15T17:00",
     "description": "Interactive workshop for staff",
     "expectedAttendance": 30,
+    **SUBMITTABLE_NEEDS,
 }
 
 

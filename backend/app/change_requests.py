@@ -61,6 +61,12 @@ EDITABLE_FIELDS: tuple[EditableField, ...] = (
     EditableField("purpose", "purpose", "Purpose"),
     EditableField("expected_attendance", "expected_attendance", "Expected attendance", kind="int"),
     EditableField("description", "description", "Description"),
+    # US2.1 (Sprint 3): what the event needs. Text, as `app.event_needs` stores it.
+    EditableField("venue_requirements", "venue_requirements", "Venue requirements"),
+    EditableField("preferred_layout", "preferred_layout", "Preferred layout"),
+    EditableField("accessibility_needs", "accessibility_needs", "Accessibility needs"),
+    EditableField("equipment_needs", "equipment_needs", "Equipment needs"),
+    EditableField("registration_needs", "registration_needs", "Registration needs"),
 )
 
 _BY_COLUMN: dict[str, EditableField] = {field.column: field for field in EDITABLE_FIELDS}
@@ -71,8 +77,16 @@ _BY_COLUMN: dict[str, EditableField] = {field.column: field for field in EDITABL
 #: the booking epic — so no proposal can contain them today. They are listed so
 #: the rule is written once, as the story states it, and a proposal that does
 #: carry them is flagged without anyone having to remember to come back here.
+#: `equipment_needs` (US2.1, Sprint 3) is the equipment an event asks for.
 IMPORTANT_FIELDS: frozenset[str] = frozenset(
-    {"proposed_date", "end_date", "expected_attendance", "venue_id", "equipment"}
+    {
+        "proposed_date",
+        "end_date",
+        "expected_attendance",
+        "venue_id",
+        "equipment",
+        "equipment_needs",
+    }
 )
 
 

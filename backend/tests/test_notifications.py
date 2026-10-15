@@ -10,7 +10,7 @@ from app.event_status import EventStatus
 from app.event_store import Event
 from app.notification_store import Notification, ordered, to_notification
 from app.notifications import message_for
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Faculty Welcome Night",
@@ -19,6 +19,7 @@ DRAFT = {
     "startsAt": "2027-11-02T18:00",
     "endsAt": "2027-11-02T21:00",
     "expectedAttendance": 120,
+    **SUBMITTABLE_NEEDS,
 }
 
 

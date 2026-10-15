@@ -1,8 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import EventDetailPage from './EventDetailPage'
+import { MISSING_MESSAGES, NO_NEEDS, NOT_REQUIRED } from '../eventNeeds'
 import { completeEvent, getEvent, listBookings, saveEvent, submitEvent, type EventRecord } from '../eventsStore'
+import { ANSWERED_NEEDS } from '../test/eventNeeds'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
@@ -89,6 +91,7 @@ it('saves a description-only edit without trimming its whitespace', async () => 
       startsAt: '',
       endsAt: null,
       expectedAttendance: null,
+      ...NO_NEEDS,
     },
     organiser,
   )
@@ -262,4 +265,126 @@ it('does not offer completion before the end time or to another Coordinator', as
   render(<EventDetailPage eventId="101" session={coordinator} />)
   await screen.findByText('Faculty Welcome Night')
   expect(screen.queryByRole('button', { name: 'Mark Completed' })).not.toBeInTheDocument()
+})
+
+// --- US2.1 (Sprint 3): the customer's mandatory event needs ----------------------
+
+const answeredDraft: EventRecord = {
+  ...event,
+  description: 'Talks and a campus tour.',
+  endsAt: '2026-11-02T21:00',
+  ...ANSWERED_NEEDS,
+}
+
+it('shows each need as read-only text, and says when one is not stated', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, ...ANSWERED_NEEDS, equipmentNeeds: '' })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  expect(await screen.findByText('Venue requirements')).toBeInTheDocument()
+  expect(screen.getByText('Stage, Projector')).toBeInTheDocument()
+  expect(screen.getByText('Theatre')).toBeInTheDocument()
+  expect(screen.getByText('Wheelchair access')).toBeInTheDocument()
+  expect(screen.getByText(NOT_REQUIRED)).toBeInTheDocument()
+  const equipment = screen.getByText('Equipment needs')
+  expect(equipment.nextElementSibling).toHaveTextContent('Not stated.')
+})
+
+it('reads every need as not stated on an event saved before they existed', async () => {
+  getEventMock.mockResolvedValue(submittedEvent)
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  await screen.findByText('Registration needs')
+  expect(screen.getAllByText('Not stated.')).toHaveLength(5)
+})
+
+it('fills the draft form with the event’s needs and saves a changed one', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue(answeredDraft)
+  saveEventMock.mockResolvedValue({ ...answeredDraft, preferredLayout: 'Banquet' })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  const layout = await screen.findByLabelText('Preferred layout')
+  expect(layout).toHaveValue('Theatre')
+  // Nothing has changed yet, so there is nothing to save.
+  expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled()
+
+  await user.selectOptions(layout, 'Banquet')
+  await user.click(screen.getByRole('button', { name: 'Save draft' }))
+
+  await waitFor(() => expect(saveEventMock).toHaveBeenCalled())
+  expect(saveEventMock.mock.calls[0][1]).toEqual(
+    expect.objectContaining({ ...ANSWERED_NEEDS, preferredLayout: 'Banquet' }),
+  )
+  expect(await screen.findByRole('status')).toHaveTextContent('Saved. Status is still Draft.')
+})
+
+it('saves a draft with needs left unanswered', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue(event)
+  saveEventMock.mockResolvedValue(event)
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  const access = await screen.findByRole('group', { name: 'Accessibility needs' })
+  await user.click(within(access).getByLabelText('Lift'))
+  await user.click(screen.getByRole('button', { name: 'Save draft' }))
+
+  await waitFor(() => expect(saveEventMock).toHaveBeenCalled())
+  expect(saveEventMock.mock.calls[0][1]).toEqual(
+    expect.objectContaining({ ...NO_NEEDS, accessibilityNeeds: 'Lift' }),
+  )
+})
+
+it.each([
+  ['venueRequirements' as const],
+  ['preferredLayout' as const],
+  ['accessibilityNeeds' as const],
+  ['equipmentNeeds' as const],
+  ['registrationNeeds' as const],
+])('blocks submitting a draft whose %s is unanswered, and says so', async (key) => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue({ ...answeredDraft, [key]: '' })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  await user.click(await screen.findByRole('button', { name: 'Submit event' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(MISSING_MESSAGES[key])
+  expect(saveEventMock).not.toHaveBeenCalled()
+  expect(submitEventMock).not.toHaveBeenCalled()
+})
+
+it('blocks submitting a draft with no description', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue({ ...answeredDraft, description: '' })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  await user.click(await screen.findByRole('button', { name: 'Submit event' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Give the event a description.')
+  expect(submitEventMock).not.toHaveBeenCalled()
+})
+
+it('submits a complete draft with its needs, trimming the described ones', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue(answeredDraft)
+  saveEventMock.mockResolvedValue(answeredDraft)
+  submitEventMock.mockResolvedValue({ ...answeredDraft, status: 'Submitted' })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  const registration = await screen.findByRole('group', { name: 'Registration needs' })
+  await user.click(within(registration).getByLabelText(NOT_REQUIRED))
+  await user.type(within(registration).getByRole('textbox'), '  Online sign-up  ')
+  await user.click(screen.getByRole('button', { name: 'Submit event' }))
+
+  await waitFor(() => expect(submitEventMock).toHaveBeenCalledWith('101', organiser))
+  expect(saveEventMock.mock.calls[0][1]).toEqual(
+    expect.objectContaining({ ...ANSWERED_NEEDS, registrationNeeds: 'Online sign-up' }),
+  )
+  expect(await screen.findByRole('status')).toHaveTextContent('Submitted.')
 })

@@ -8,7 +8,7 @@ from postgrest.exceptions import APIError
 from app.event_status import EventStatus
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, TECH_SUPPORT_ID
+from tests.conftest import COORDINATOR_ID, SUBMITTABLE_NEEDS, TECH_SUPPORT_ID
 
 ITEM = {
     "name": "Wireless microphone",
@@ -39,9 +39,11 @@ def approved_event(client, actors):
         json={
             "title": "Open Day",
             "purpose": "Welcome new students",
+            "description": "Campus tours and talks.",
             "startsAt": "2027-11-02T09:00",
             "endsAt": "2027-11-02T17:00",
             "expectedAttendance": 40,
+            **SUBMITTABLE_NEEDS,
         },
         headers=actors["organiser"],
     )

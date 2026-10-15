@@ -48,6 +48,24 @@ ACCOUNTS = {
     "Technical Support": "technicalsupport@spmg3t7.edu",
 }
 
+#: US2.1 (Sprint 3): every need answered, so a fixture event can be submitted.
+#: Mixes fixed-list choices with a free-text answer and a "None / Not required".
+SUBMITTABLE_NEEDS = {
+    "venueRequirements": "Stage, Projector",
+    "preferredLayout": "Theatre",
+    "accessibilityNeeds": "Wheelchair access",
+    "equipmentNeeds": "Two wireless microphones",
+    "registrationNeeds": "None / Not required",
+}
+#: The same answers as `event_store.Event` attributes, for seeding the store.
+SUBMITTABLE_NEED_ATTRS = {
+    "venue_requirements": SUBMITTABLE_NEEDS["venueRequirements"],
+    "preferred_layout": SUBMITTABLE_NEEDS["preferredLayout"],
+    "accessibility_needs": SUBMITTABLE_NEEDS["accessibilityNeeds"],
+    "equipment_needs": SUBMITTABLE_NEEDS["equipmentNeeds"],
+    "registration_needs": SUBMITTABLE_NEEDS["registrationNeeds"],
+}
+
 ORGANISER_ID = 1
 COORDINATOR_ID = 2
 COORDINATOR_LEAD_ID = 3

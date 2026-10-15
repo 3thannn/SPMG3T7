@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import EventNeedsFields from '../components/EventNeedsFields'
 import StatusBadge from '../components/StatusBadge'
 import { createEvent, EventRuleError, parseAttendance, submitEvent } from '../eventsStore'
 import { DRAFT_CONTENT_ERROR, hasDraftContent } from '../draftRules'
+import { missingNeeds, NO_NEEDS, type EventNeeds } from '../eventNeeds'
 import { navigate } from '../router'
 import type { Session } from '../api'
 
@@ -13,6 +15,12 @@ type NewEventPageProps = {
  * The fields are the writable columns of the `events` table. A draft only
  * needs meaningful content in one of them; submitting still requires the
  * complete event details.
+ *
+ * US2.1 (reopened in Sprint 3): the customer clarified that submitting needs
+ * every one of name, description, purpose, date, start/end time, expected
+ * attendance, venue requirements, preferred layout, accessibility needs,
+ * equipment needs and registration needs. A need that does not apply is
+ * answered "None / Not required". Drafts still save without these checks.
  *
  * The lengths mirror VARCHAR(255) on `name` and VARCHAR(500) on `purpose`, so
  * an over-long entry is caught in the field rather than by a rejected write.
@@ -28,7 +36,7 @@ type DraftFields = {
   startsAt: string
   endsAt: string
   expectedAttendance: string
-}
+} & EventNeeds
 
 const EMPTY: DraftFields = {
   title: '',
@@ -37,7 +45,12 @@ const EMPTY: DraftFields = {
   startsAt: '',
   endsAt: '',
   expectedAttendance: '',
+  ...NO_NEEDS,
 }
+
+/** Shown above the form when Submit finds something to fix, which may be off-screen. */
+export const SUBMIT_BLOCKED =
+  'Some required details are missing or invalid. Fix the highlighted fields to submit.'
 
 type FieldErrors = Partial<Record<keyof DraftFields, string>>
 
@@ -75,6 +88,10 @@ function validate(fields: DraftFields, requireSubmit: boolean): FieldErrors {
   }
   if (attendance === 'invalid') {
     errors.expectedAttendance = 'Enter a whole number of people, or leave it blank.'
+  }
+  if (requireSubmit) {
+    if (!fields.description.trim()) errors.description = 'Give the event a description.'
+    Object.assign(errors, missingNeeds(fields))
   }
   return errors
 }
@@ -126,7 +143,10 @@ export default function NewEventPage({ session }: NewEventPageProps) {
 
     const found = validate(fields, action === 'submit')
     setErrors(found)
-    if (Object.values(found).some(Boolean)) return
+    if (Object.values(found).some(Boolean)) {
+      if (action === 'submit') setFormError(SUBMIT_BLOCKED)
+      return
+    }
 
     const attendance = parseAttendance(fields.expectedAttendance)
     setBusy(true)
@@ -139,6 +159,13 @@ export default function NewEventPage({ session }: NewEventPageProps) {
           startsAt: action === 'draft' ? fields.startsAt : fields.startsAt.trim(),
           endsAt: action === 'draft' ? fields.endsAt || null : fields.endsAt.trim() || null,
           expectedAttendance: attendance === 'invalid' ? null : attendance,
+          venueRequirements: fields.venueRequirements,
+          preferredLayout: fields.preferredLayout,
+          accessibilityNeeds: fields.accessibilityNeeds,
+          equipmentNeeds:
+            action === 'draft' ? fields.equipmentNeeds : fields.equipmentNeeds.trim(),
+          registrationNeeds:
+            action === 'draft' ? fields.registrationNeeds : fields.registrationNeeds.trim(),
         },
         session,
       )
@@ -312,9 +339,22 @@ export default function NewEventPage({ session }: NewEventPageProps) {
                 id="description"
                 value={fields.description}
                 onChange={(e) => set('description', e.target.value)}
+                aria-invalid={Boolean(errors.description)}
+                aria-describedby={errors.description ? 'description-error' : 'description-hint'}
                 disabled={busy}
               />
+              {errors.description ? (
+                <span className="field-error" id="description-error">
+                  {errors.description}
+                </span>
+              ) : (
+                <span className="field-hint" id="description-hint">
+                  Required when submitting. What happens at the event.
+                </span>
+              )}
             </div>
+
+            <EventNeedsFields needs={fields} onChange={set} errors={errors} disabled={busy} />
           </div>
 
           <div className="detail-actions">

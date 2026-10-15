@@ -29,8 +29,10 @@ from app.change_requests import (
     FieldChange,
     applied_values,
     change_type,
+    is_important,
     ordered,
 )
+from app.event_needs import NEED_FIELDS, NO_NEEDS, EventNeeds
 from app.event_status import EventStatus, check_completion
 
 EVENTS_TABLE = "events"
@@ -44,6 +46,8 @@ CHANGE_REQUESTS_TABLE = "event_change_requests"
 # so PostgREST requires explicit relationship qualification via constraint name.
 EVENT_COLUMNS = (
     "id, name, purpose, description, proposed_date, end_date, expected_attendance, "
+    "venue_requirements, preferred_layout, accessibility_needs, equipment_needs, "
+    "registration_needs, "
     "status, organiser_id, coordinator_id, created_at, updated_at, submitted_at, "
     "users!events_organiser_id_fkey(name)"
 )
@@ -106,6 +110,17 @@ class Event:
     change_request_note: str = ""
     #: US11.1: the Coordinator's answer to the most recent request, if any.
     last_change_review: ChangeReview | None = None
+    #: US2.1 (Sprint 3): what the event needs, as `app.event_needs` describes.
+    #: Empty means not answered yet, which only a draft may leave.
+    venue_requirements: str = ""
+    preferred_layout: str = ""
+    accessibility_needs: str = ""
+    equipment_needs: str = ""
+    registration_needs: str = ""
+
+    @property
+    def needs(self) -> EventNeeds:
+        return EventNeeds(**{name: getattr(self, name) for name in NEED_FIELDS})
 
 
 class StaleEventStatus(RuntimeError):
@@ -192,6 +207,7 @@ def to_event(
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
         coordinator_id=row.get("coordinator_id"),
+        **{name: row.get(name) or "" for name in NEED_FIELDS},
     )
     stored = sorted(
         (to_change(change) for change in changes or []),
@@ -234,6 +250,7 @@ class Repository(Protocol):
         ends_at: str | None,
         expected_attendance: int | None,
         organiser_id: int,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event: ...
 
     def save_event(
@@ -246,6 +263,7 @@ class Repository(Protocol):
         starts_at: str,
         ends_at: str | None,
         expected_attendance: int | None,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event: ...
 
     def save_event_with_tracking(
@@ -260,6 +278,7 @@ class Repository(Protocol):
         expected_attendance: int | None,
         editor_id: int,
         previous_event: Event,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event: ...
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event: ...
@@ -395,6 +414,7 @@ class SupabaseEvents:
         ends_at: str | None,
         expected_attendance: int | None,
         organiser_id: int,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         """US4.2: a new event always begins as a Draft."""
         at = _now()
@@ -409,6 +429,7 @@ class SupabaseEvents:
                     "proposed_date": starts_at if starts_at.strip() else None,
                     "end_date": ends_at if ends_at and ends_at.strip() else None,
                     "expected_attendance": expected_attendance,
+                    **needs.as_columns(),
                     "status": str(EventStatus.DRAFT),
                     "organiser_id": organiser_id,
                     "created_at": at,
@@ -433,6 +454,7 @@ class SupabaseEvents:
         starts_at: str,
         ends_at: str | None,
         expected_attendance: int | None,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         """US4.2: saving edits content and never moves the status."""
         supabase_client.admin().table(EVENTS_TABLE).update(
@@ -443,6 +465,7 @@ class SupabaseEvents:
                 "proposed_date": starts_at if starts_at.strip() else None,
                 "end_date": ends_at if ends_at and ends_at.strip() else None,
                 "expected_attendance": expected_attendance,
+                **needs.as_columns(),
                 "updated_at": _now(),
             }
         ).eq("id", event_id).execute()
@@ -462,6 +485,7 @@ class SupabaseEvents:
         expected_attendance: int | None,
         editor_id: int,
         previous_event: Event,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         """US5.2: coordinator edits with change tracking (important vs routine)."""
         at = _now()
@@ -542,6 +566,23 @@ class SupabaseEvents:
                 }
             )
 
+        # US2.1 (Sprint 3): each need is its own column, classified by the same
+        # rule a change request uses.
+        for name, value in needs.as_attrs().items():
+            old_value = getattr(previous_event, name)
+            if value != old_value:
+                changes_to_log.append(
+                    {
+                        "event_id": event_id,
+                        "changed_field": name,
+                        "old_value": old_value,
+                        "new_value": value,
+                        "change_type": "important" if is_important(name) else "routine",
+                        "changed_by_user_id": editor_id,
+                        "changed_at": at,
+                    }
+                )
+
         # Update the event
         supabase_client.admin().table(EVENTS_TABLE).update(
             {
@@ -551,6 +592,7 @@ class SupabaseEvents:
                 "proposed_date": starts_at,
                 "end_date": ends_at,
                 "expected_attendance": expected_attendance,
+                **needs.as_columns(),
                 "updated_at": at,
             }
         ).eq("id", event_id).execute()
@@ -875,6 +917,7 @@ class InMemoryEvents:
         ends_at: str | None,
         expected_attendance: int | None,
         organiser_id: int,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         at = _now()
         self.next_id += 1
@@ -891,6 +934,7 @@ class InMemoryEvents:
             organiser_name=self.names.get(organiser_id, ""),
             created_at=at,
             updated_at=at,
+            **needs.as_attrs(),
         )
         event = replace(event, history=(creation_entry(event),))
         self.events.insert(0, event)
@@ -906,6 +950,7 @@ class InMemoryEvents:
         starts_at: str,
         ends_at: str | None,
         expected_attendance: int | None,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 — the caller checked it exists
@@ -918,6 +963,7 @@ class InMemoryEvents:
                 starts_at=starts_at,
                 ends_at=ends_at or "",
                 expected_attendance=expected_attendance,
+                **needs.as_attrs(),
                 updated_at=_now(),
             )
         )
@@ -934,6 +980,7 @@ class InMemoryEvents:
         expected_attendance: int | None,
         editor_id: int,
         previous_event: Event,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         """In-memory version of coordinator edits. Change tracking is not implemented in memory."""
         return self.save_event(
@@ -944,6 +991,7 @@ class InMemoryEvents:
             starts_at=starts_at,
             ends_at=ends_at,
             expected_attendance=expected_attendance,
+            needs=needs,
         )
 
     def create_event_request(

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import './EventDetailPage.css'
 import EventBookings from '../components/EventBookings'
 import EventEquipment from '../components/EventEquipment'
+import EventNeedsFields from '../components/EventNeedsFields'
 import StatusBadge from '../components/StatusBadge'
 import StatusTimeline from '../components/StatusTimeline'
 import ProposedChanges from '../components/ProposedChanges'
@@ -27,6 +28,7 @@ import {
   hasDraftContent,
   submissionError,
 } from '../draftRules'
+import { NEED_KEYS, NO_NEEDS, needsOf, type EventNeeds } from '../eventNeeds'
 import { navigate } from '../router'
 import {
   canViewStatus,
@@ -68,7 +70,17 @@ function draftFrom(event: EventRecord) {
     startsAt: event.startsAt,
     endsAt: event.endsAt ?? '',
     expectedAttendance: attendanceField(event.expectedAttendance),
+    ...needsOf(event),
   }
+}
+
+/** US2.1 (Sprint 3): how each need reads on the event, in form order. */
+const NEED_LABELS: Record<keyof EventNeeds, string> = {
+  venueRequirements: 'Venue requirements',
+  preferredLayout: 'Preferred layout',
+  accessibilityNeeds: 'Accessibility needs',
+  equipmentNeeds: 'Equipment needs',
+  registrationNeeds: 'Registration needs',
 }
 
 export default function EventDetailPage({ eventId, session }: EventDetailPageProps) {
@@ -80,6 +92,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     startsAt: '',
     endsAt: '',
     expectedAttendance: '',
+    ...NO_NEEDS,
   })
   const [banner, setBanner] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -205,7 +218,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     draft.description !== event.description ||
     draft.startsAt !== event.startsAt ||
     draft.endsAt !== (event.endsAt ?? '') ||
-    draft.expectedAttendance !== attendanceField(event.expectedAttendance)
+    draft.expectedAttendance !== attendanceField(event.expectedAttendance) ||
+    NEED_KEYS.some((key) => draft[key] !== (event[key] ?? ''))
 
   /** US7.3: attach the message and move the event to Under Review. */
   async function handleRequestClarification() {
@@ -335,6 +349,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
           startsAt: draft.startsAt,
           endsAt: draft.endsAt,
           expectedAttendance: Number(draft.expectedAttendance.trim()),
+          ...needsOf(draft),
         },
         changeNote.trim(),
         session,
@@ -450,6 +465,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
           startsAt: draft.startsAt,
           endsAt: draft.endsAt || null,
           expectedAttendance: attendance,
+          ...needsOf(draft),
         },
         session,
       )
@@ -486,6 +502,9 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
           startsAt: draft.startsAt.trim(),
           endsAt: draft.endsAt.trim(),
           expectedAttendance: attendance,
+          ...needsOf(draft),
+          equipmentNeeds: draft.equipmentNeeds.trim(),
+          registrationNeeds: draft.registrationNeeds.trim(),
         },
         session,
       )
@@ -623,6 +642,14 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     disabled={writePending}
                   />
                 </div>
+                <EventNeedsFields
+                  needs={draft}
+                  onChange={(key, value) => {
+                    setDraft({ ...draft, [key]: value })
+                    setBanner(null)
+                  }}
+                  disabled={writePending}
+                />
               </div>
             ) : (
               <dl className="detail-readonly">
@@ -640,6 +667,12 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                 </dd>
                 <dt>Description</dt>
                 <dd>{event.description || 'No description.'}</dd>
+                {NEED_KEYS.map((key) => (
+                  <Fragment key={key}>
+                    <dt>{NEED_LABELS[key]}</dt>
+                    <dd>{event[key] || 'Not stated.'}</dd>
+                  </Fragment>
+                ))}
               </dl>
             )}
 

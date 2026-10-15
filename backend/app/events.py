@@ -24,9 +24,17 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import booking_store, change_requests, event_store, suitability, venue_store
+from app import (
+    booking_store,
+    change_requests,
+    event_needs,
+    event_store,
+    suitability,
+    venue_store,
+)
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
 from app.booking_store import Booking, BookingStatus, StaleBookingStatus
+from app.event_needs import EventNeeds
 from app.event_status import (
     EventStatus,
     booking_refusal_message,
@@ -134,6 +142,12 @@ class EventOut(BaseModel):
     last_change_review: ChangeReviewOut | None = Field(
         default=None, serialization_alias="lastChangeReview"
     )
+    #: US2.1 (Sprint 3): what the event needs. Empty until answered.
+    venue_requirements: str = Field(default="", serialization_alias="venueRequirements")
+    preferred_layout: str = Field(default="", serialization_alias="preferredLayout")
+    accessibility_needs: str = Field(default="", serialization_alias="accessibilityNeeds")
+    equipment_needs: str = Field(default="", serialization_alias="equipmentNeeds")
+    registration_needs: str = Field(default="", serialization_alias="registrationNeeds")
 
 
 class EventDraft(BaseModel):
@@ -158,6 +172,22 @@ class EventDraft(BaseModel):
     starts_at: str = Field(default="", alias="startsAt")
     ends_at: str | None = Field(default=None, alias="endsAt")
     expected_attendance: int | None = Field(default=None, alias="expectedAttendance")
+    #: US2.1 (Sprint 3): what the event needs, as `app.event_needs` describes.
+    #: Optional on a draft; all five are required to submit.
+    venue_requirements: str = Field(default="", alias="venueRequirements")
+    preferred_layout: str = Field(default="", alias="preferredLayout")
+    accessibility_needs: str = Field(default="", alias="accessibilityNeeds")
+    equipment_needs: str = Field(default="", alias="equipmentNeeds")
+    registration_needs: str = Field(default="", alias="registrationNeeds")
+
+    def needs(self) -> EventNeeds:
+        return EventNeeds(
+            venue_requirements=self.venue_requirements,
+            preferred_layout=self.preferred_layout,
+            accessibility_needs=self.accessibility_needs,
+            equipment_needs=self.equipment_needs,
+            registration_needs=self.registration_needs,
+        )
 
 
 def _to_out(event: Event) -> EventOut:
@@ -213,6 +243,7 @@ def _to_out(event: Event) -> EventOut:
             if event.last_change_review is not None
             else None
         ),
+        **event.needs.as_attrs(),
     )
 
 
@@ -266,6 +297,7 @@ def _has_draft_content(draft: EventDraft) -> bool:
         draft.starts_at,
         draft.ends_at or "",
         "" if draft.expected_attendance is None else str(draft.expected_attendance),
+        *draft.needs().as_attrs().values(),
     )
     return any(character.isalnum() for value in values for character in value)
 
@@ -279,6 +311,9 @@ def _validated(draft: EventDraft) -> EventDraft:
         raise _invalid(f"Keep the purpose to {PURPOSE_MAX} characters or fewer.")
     if draft.expected_attendance is not None and draft.expected_attendance < 0:
         raise _invalid("Expected attendance cannot be negative.")
+    needs_problem = event_needs.format_error(draft.needs())
+    if needs_problem:
+        raise _invalid(needs_problem)
 
     start = draft.starts_at.strip()
     end = (draft.ends_at or "").strip()
@@ -301,6 +336,8 @@ def _validate_submission(event: Event) -> None:
         raise _invalid("Give the event a date.")
     if not event.purpose.strip():
         raise _invalid("Give the event a purpose.")
+    if not event.description.strip():
+        raise _invalid("Give the event a description.")
     if event.expected_attendance is None:
         raise _invalid("Give the expected attendance.")
     if event.expected_attendance < 1:
@@ -319,6 +356,13 @@ def _validate_submission(event: Event) -> None:
             raise _invalid("Give the event a valid date.") from None
         if end_date <= start_date_time:
             raise _invalid("The end date must be after the start date.")
+    # US2.1 (Sprint 3): the customer made the end time and every need
+    # mandatory. Checked after the original rules so their messages stand.
+    if not event.ends_at.strip():
+        raise _invalid("Give the event an end date.")
+    missing = event_needs.missing_error(event.needs)
+    if missing:
+        raise _invalid(missing)
 
 
 def _readable(event_id: int, user: User) -> Event:
@@ -482,6 +526,7 @@ def create_event(
         ends_at=clean.ends_at,
         expected_attendance=clean.expected_attendance,
         organiser_id=user.id,
+        needs=clean.needs(),
     )
     return _to_out(created)
 
@@ -552,6 +597,7 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             expected_attendance=clean.expected_attendance,
             editor_id=user.id,
             previous_event=event,
+            needs=clean.needs(),
         )
     else:
         # Owner editing: no change tracking (original US4.2 behavior)
@@ -563,6 +609,7 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             starts_at=clean.starts_at,
             ends_at=clean.ends_at,
             expected_attendance=clean.expected_attendance,
+            needs=clean.needs(),
         )
     return _to_out(saved)
 
@@ -848,6 +895,7 @@ def request_change(
         starts_at=clean.starts_at,
         ends_at=clean.ends_at or "",
         expected_attendance=clean.expected_attendance,
+        **clean.needs().as_attrs(),
     )
     _validate_submission(proposed)
 

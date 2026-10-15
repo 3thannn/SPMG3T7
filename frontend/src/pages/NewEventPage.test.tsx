@@ -9,11 +9,13 @@
  * the right things and refusing what the columns cannot hold.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, it, vi } from 'vitest'
-import NewEventPage from './NewEventPage'
-import { createEvent, submitEvent, type EventRecord } from '../eventsStore'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import NewEventPage, { SUBMIT_BLOCKED } from './NewEventPage'
+import { createEvent, EventRuleError, submitEvent, type EventRecord } from '../eventsStore'
+import { MISSING_MESSAGES, NO_NEEDS, NOT_REQUIRED } from '../eventNeeds'
+import { ANSWERED_NEEDS } from '../test/eventNeeds'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
@@ -52,6 +54,19 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Starts'), '2026-11-02T18:00')
 }
 
+/** US2.1 (Sprint 3): answer all five needs, the way an Organiser would. */
+async function answerNeeds(user: ReturnType<typeof userEvent.setup>) {
+  const venue = screen.getByRole('group', { name: 'Venue requirements' })
+  await user.click(within(venue).getByLabelText('Projector'))
+  await user.click(within(venue).getByLabelText('Stage'))
+  await user.selectOptions(screen.getByLabelText('Preferred layout'), 'Theatre')
+  const access = screen.getByRole('group', { name: 'Accessibility needs' })
+  await user.click(within(access).getByLabelText('Wheelchair access'))
+  await user.type(screen.getByLabelText('Equipment needs'), 'Two wireless microphones')
+  const registration = screen.getByRole('group', { name: 'Registration needs' })
+  await user.click(within(registration).getByLabelText('None / Not required'))
+}
+
 it('offers a field for every writable column of the events table', () => {
   render(<NewEventPage session={organiser} />)
 
@@ -82,6 +97,7 @@ it('sends every field that was filled in', async () => {
     startsAt: '2026-11-02T18:00',
     endsAt: null,
     expectedAttendance: 120,
+    ...NO_NEEDS,
   })
 })
 
@@ -109,6 +125,8 @@ it('submits the newly created event when Submit is clicked', async () => {
   await user.type(screen.getByLabelText('Ends'), '2026-11-02T21:00')
   await user.type(screen.getByLabelText('Purpose'), 'Welcome the new intake.')
   await user.type(screen.getByLabelText('Expected attendance'), '120')
+  await user.type(screen.getByLabelText('Description'), 'Talks.')
+  await answerNeeds(user)
   await user.click(screen.getByRole('button', { name: 'Submit' }))
 
   await waitFor(() => expect(submitEventMock).toHaveBeenCalledWith('101', organiser))
@@ -191,6 +209,7 @@ it('allows a description-only draft and preserves its whitespace exactly', async
     startsAt: '',
     endsAt: null,
     expectedAttendance: null,
+    ...NO_NEEDS,
   })
 })
 
@@ -225,4 +244,203 @@ it('lets only an Organiser create an event', () => {
 
   expect(screen.getByText('Only Organisers create events')).toBeInTheDocument()
   expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+})
+
+// --- US2.1 reopened in Sprint 3: the customer's mandatory fields -----------------
+
+/** Every field filled in and valid, the needs included. */
+async function fillAll(user: ReturnType<typeof userEvent.setup>) {
+  await fillRequired(user)
+  await user.type(screen.getByLabelText('Ends'), '2026-11-02T21:00')
+  await user.type(screen.getByLabelText('Purpose'), 'Welcome the new intake.')
+  await user.type(screen.getByLabelText('Expected attendance'), '120')
+  await user.type(screen.getByLabelText('Description'), 'Talks and a campus tour.')
+  await answerNeeds(user)
+}
+
+// Typing every field is slow under coverage instrumentation, so allow longer.
+describe('US2.1 (Sprint 3) — mandatory fields on Submit', { timeout: 15_000 }, () => {
+  it('offers every field the customer listed', () => {
+    render(<NewEventPage session={organiser} />)
+
+    for (const label of [
+      'Title',
+      'Description',
+      'Purpose',
+      'Starts',
+      'Ends',
+      'Expected attendance',
+      'Preferred layout',
+      'Equipment needs',
+      'Registration needs',
+    ]) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument()
+    }
+    expect(screen.getByRole('group', { name: 'Venue requirements' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Accessibility needs' })).toBeInTheDocument()
+  })
+
+  it('blocks Submit on an empty form and names every missing field', async () => {
+    const user = userEvent.setup()
+
+    render(<NewEventPage session={organiser} />)
+    await user.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(SUBMIT_BLOCKED)
+    for (const message of [
+      'Give the event a title.',
+      'Give the event a date.',
+      'Give the event an end date.',
+      'Give the event a purpose.',
+      'Give the expected attendance.',
+      'Give the event a description.',
+      ...Object.values(MISSING_MESSAGES),
+    ]) {
+      expect(screen.getByText(message)).toHaveClass('field-error')
+    }
+    expect(screen.getByLabelText('Description')).toHaveAccessibleDescription(
+      'Give the event a description.',
+    )
+    expect(createEventMock).not.toHaveBeenCalled()
+    expect(submitEventMock).not.toHaveBeenCalled()
+  })
+
+  it('blocks Submit when only a need is unanswered', async () => {
+    const user = userEvent.setup()
+
+    render(<NewEventPage session={organiser} />)
+    await fillAll(user)
+    const registration = screen.getByRole('group', { name: 'Registration needs' })
+    await user.click(within(registration).getByLabelText(NOT_REQUIRED))
+    await user.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(SUBMIT_BLOCKED)
+    expect(screen.getByText(MISSING_MESSAGES.registrationNeeds)).toBeInTheDocument()
+    expect(screen.queryByText(MISSING_MESSAGES.venueRequirements)).not.toBeInTheDocument()
+    expect(createEventMock).not.toHaveBeenCalled()
+  })
+
+  it('clears a field’s error as soon as it is answered', async () => {
+    const user = userEvent.setup()
+
+    render(<NewEventPage session={organiser} />)
+    await user.click(screen.getByRole('button', { name: 'Submit' }))
+    await screen.findByText(MISSING_MESSAGES.venueRequirements)
+
+    const venue = screen.getByRole('group', { name: 'Venue requirements' })
+    await user.click(within(venue).getByLabelText('Lectern'))
+    await user.type(screen.getByLabelText('Description'), 'Talks.')
+
+    expect(screen.queryByText(MISSING_MESSAGES.venueRequirements)).not.toBeInTheDocument()
+    expect(screen.queryByText('Give the event a description.')).not.toBeInTheDocument()
+    expect(screen.getByText(MISSING_MESSAGES.preferredLayout)).toBeInTheDocument()
+  })
+
+  it('submits a complete request — every field written, described needs trimmed', async () => {
+    const user = userEvent.setup()
+    createEventMock.mockResolvedValue(created)
+    submitEventMock.mockResolvedValue({ ...created, status: 'Submitted' })
+
+    render(<NewEventPage session={organiser} />)
+    await fillAll(user)
+    await user.type(screen.getByLabelText('Equipment needs'), '  ')
+    await user.click(screen.getByRole('button', { name: 'Submit' }))
+
+    await waitFor(() => expect(submitEventMock).toHaveBeenCalledWith('101', organiser))
+    expect(createEventMock.mock.calls[0][0]).toEqual({
+      title: 'Faculty Welcome Night',
+      purpose: 'Welcome the new intake.',
+      description: 'Talks and a campus tour.',
+      startsAt: '2026-11-02T18:00',
+      endsAt: '2026-11-02T21:00',
+      expectedAttendance: 120,
+      ...ANSWERED_NEEDS,
+    })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('accepts None / Not required for every need', async () => {
+    const user = userEvent.setup()
+    createEventMock.mockResolvedValue(created)
+    submitEventMock.mockResolvedValue({ ...created, status: 'Submitted' })
+
+    render(<NewEventPage session={organiser} />)
+    await fillRequired(user)
+    await user.type(screen.getByLabelText('Ends'), '2026-11-02T21:00')
+    await user.type(screen.getByLabelText('Purpose'), 'Welcome the new intake.')
+    await user.type(screen.getByLabelText('Expected attendance'), '120')
+    await user.type(screen.getByLabelText('Description'), 'Talks.')
+    for (const name of [
+      'Venue requirements',
+      'Accessibility needs',
+      'Equipment needs',
+      'Registration needs',
+    ]) {
+      await user.click(within(screen.getByRole('group', { name })).getByLabelText(NOT_REQUIRED))
+    }
+    await user.selectOptions(screen.getByLabelText('Preferred layout'), NOT_REQUIRED)
+    await user.click(screen.getByRole('button', { name: 'Submit' }))
+
+    await waitFor(() => expect(submitEventMock).toHaveBeenCalled())
+    expect(createEventMock.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        venueRequirements: NOT_REQUIRED,
+        preferredLayout: NOT_REQUIRED,
+        accessibilityNeeds: NOT_REQUIRED,
+        equipmentNeeds: NOT_REQUIRED,
+        registrationNeeds: NOT_REQUIRED,
+      }),
+    )
+  })
+
+  it('shows the server’s refusal if it still finds something missing', async () => {
+    const user = userEvent.setup()
+    createEventMock.mockResolvedValue(created)
+    submitEventMock.mockRejectedValue(new EventRuleError(MISSING_MESSAGES.preferredLayout))
+
+    render(<NewEventPage session={organiser} />)
+    await fillAll(user)
+    await user.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(MISSING_MESSAGES.preferredLayout)
+  })
+})
+
+describe('US2.1 (Sprint 3) — drafts still save without these checks (US2.2)', () => {
+  it('saves a draft with every need unanswered and shows no errors', async () => {
+    const user = userEvent.setup()
+    createEventMock.mockResolvedValue(created)
+
+    render(<NewEventPage session={organiser} />)
+    await user.type(screen.getByLabelText('Title'), 'Faculty Welcome Night')
+    await user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+    await waitFor(() => expect(createEventMock).toHaveBeenCalled())
+    expect(createEventMock.mock.calls[0][0]).toEqual(expect.objectContaining(NO_NEEDS))
+    expect(submitEventMock).not.toHaveBeenCalled()
+    expect(screen.queryByText(MISSING_MESSAGES.venueRequirements)).not.toBeInTheDocument()
+  })
+
+  it('saves a draft holding only some needs, exactly as typed', async () => {
+    const user = userEvent.setup()
+    createEventMock.mockResolvedValue(created)
+
+    render(<NewEventPage session={organiser} />)
+    await user.selectOptions(screen.getByLabelText('Preferred layout'), 'Cabaret')
+    await user.type(screen.getByLabelText('Equipment needs'), ' 2 mics ')
+    await user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+    await waitFor(() => expect(createEventMock).toHaveBeenCalled())
+    expect(createEventMock.mock.calls[0][0]).toEqual({
+      title: '',
+      purpose: '',
+      description: '',
+      startsAt: '',
+      endsAt: null,
+      expectedAttendance: null,
+      ...NO_NEEDS,
+      preferredLayout: 'Cabaret',
+      equipmentNeeds: ' 2 mics ',
+    })
+  })
 })

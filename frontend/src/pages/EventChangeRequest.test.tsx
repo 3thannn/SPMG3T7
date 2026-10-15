@@ -31,6 +31,7 @@ import {
 } from '../eventsStore'
 import { ApiError } from '../api'
 import { formatTimestamp } from '../status'
+import { ANSWERED_NEEDS } from '../test/eventNeeds'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
@@ -77,6 +78,7 @@ function submitted(overrides: Partial<EventRecord> = {}): EventRecord {
     startsAt: '2027-11-02T18:00',
     endsAt: '2027-11-02T21:00',
     expectedAttendance: 120,
+    ...ANSWERED_NEEDS,
     status: 'Submitted',
     organiserId: '1',
     organiserName: 'Dylan',
@@ -336,6 +338,7 @@ describe('AC2 — submitting the proposed changes for review', () => {
         startsAt: '2027-11-02T18:00',
         endsAt: '2027-11-02T21:00',
         expectedAttendance: 150,
+        ...ANSWERED_NEEDS,
       },
       'Moved to 19:00.',
       organiser,

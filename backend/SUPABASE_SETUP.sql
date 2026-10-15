@@ -84,6 +84,12 @@ CREATE TABLE events (
     proposed_date TIMESTAMP,
     end_date TIMESTAMP,
     expected_attendance INTEGER,
+    -- US2.1 (Sprint 3): see SUPABASE_ADD_EVENT_NEEDS.sql.
+    venue_requirements TEXT,
+    preferred_layout TEXT,
+    accessibility_needs TEXT,
+    equipment_needs TEXT,
+    registration_needs TEXT,
     status event_status NOT NULL DEFAULT 'Draft',
     organiser_id INTEGER NOT NULL REFERENCES users(id),
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
