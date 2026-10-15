@@ -24,10 +24,12 @@ CREATE TYPE event_status AS ENUM (
 );
 
 -- US14.1 and US14.2: a new booking is Requested and a Coordinator may cancel
--- it. The Venue Booking Approval epic adds the statuses Venue Staff set.
+-- it. US14.3: Venue Staff may place a tentative Held booking. The Venue
+-- Booking Approval epic adds the statuses Venue Staff set.
 CREATE TYPE booking_status AS ENUM (
     'Requested',
-    'Cancelled'
+    'Cancelled',
+    'Held'
 );
 
 -- Create users table
@@ -176,10 +178,18 @@ CREATE TABLE venue_bookings (
     cancelled_at TIMESTAMP,
     cancellation_reason TEXT,
     cancelled_by_id INTEGER,
+    -- US14.3: a hold's expiry and who placed it. See SUPABASE_ADD_VENUE_HOLDS.sql.
+    hold_expires_at TIMESTAMP,
+    held_by_id INTEGER,
     CONSTRAINT venue_bookings_end_after_start CHECK (end_at > start_at),
     CONSTRAINT venue_bookings_headcount_positive CHECK (headcount IS NULL OR headcount >= 1),
     CONSTRAINT venue_bookings_cancelled_by_id_fkey
         FOREIGN KEY (cancelled_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT venue_bookings_held_by_id_fkey
+        FOREIGN KEY (held_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT venue_bookings_hold_has_expiry CHECK (
+        status <> 'Held' OR hold_expires_at IS NOT NULL
+    ),
     CONSTRAINT venue_bookings_cancellation_recorded CHECK (
         (status = 'Cancelled') = (
             cancelled_at IS NOT NULL
@@ -193,6 +203,7 @@ CREATE INDEX ix_venue_bookings_event_start ON venue_bookings(event_id, start_at)
 CREATE INDEX ix_venue_bookings_venue_id ON venue_bookings(venue_id);
 CREATE INDEX ix_venue_bookings_requested_by_id ON venue_bookings(requested_by_id);
 CREATE INDEX ix_venue_bookings_cancelled_by_id ON venue_bookings(cancelled_by_id);
+CREATE INDEX ix_venue_bookings_held_by_id ON venue_bookings(held_by_id);
 
 -- US7.1: keep a Coordinator decision and its US4.2 audit row in one transaction.
 -- Transition validation remains in Python; this is not a status trigger.
