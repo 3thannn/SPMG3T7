@@ -85,6 +85,10 @@ class FakeQuery:
         self.calls.append(("eq", column, value))
         return self
 
+    def in_(self, column: str, values: list):
+        self.calls.append(("in", column, values))
+        return self
+
     def order(self, column: str, desc: bool = False):
         self.calls.append(("order", column, desc))
         return self
@@ -314,14 +318,15 @@ class TestSupabaseCancel:
         assert changes["cancelled_at"]
         assert set(changes) == {"status", "cancelled_at", "cancelled_by_id", "cancellation_reason"}
 
-    def test_it_only_updates_the_one_booking_while_it_is_requested(self, query):
+    def test_it_only_updates_the_one_booking_while_it_is_requested_or_held(self, query):
         query.rows = [dict(CANCELLED_ROW)]
 
         SupabaseBookings().cancel(7, actor_id=2, reason="Numbers dropped.")
 
         eqs = query.named("eq")
         assert ("eq", "id", 7) in eqs
-        assert ("eq", "status", "Requested") in eqs
+        # US14.3: releasing a hold is a cancel too.
+        assert ("in", "status", ["Requested", "Held"]) in query.named("in")
         verbs = [call[0] for call in query.calls]
         assert verbs.index("update") < verbs.index("execute")
 
