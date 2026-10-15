@@ -31,7 +31,8 @@ TABLE = "venues"
 #: Exactly the columns the schema has, in the order the detail page reads them.
 COLUMNS = (
     "id, name, location, capacity, facilities, accessibility_features, "
-    "operating_hours, supported_layouts, created_at, updated_at"
+    "operating_hours, supported_layouts, setup_minutes, turnaround_minutes, "
+    "created_at, updated_at"
 )
 
 
@@ -148,6 +149,15 @@ class Venue:
     #: default: US9.1a names it as an optional field and it was added to the
     #: schema for that story, after the columns above.
     supported_layouts: str = ""
+    #: US9.4: minutes Venue Staff need before each event to prepare the room
+    #: and after it to reset the room. NOT NULL DEFAULT 0 in the schema.
+    setup_minutes: int = 0
+    turnaround_minutes: int = 0
+
+    @property
+    def buffers(self) -> tuple[int, int]:
+        """`(setup_minutes, turnaround_minutes)`, the pair US9.4's re-check compares."""
+        return (self.setup_minutes, self.turnaround_minutes)
 
 
 def to_venue(row: dict) -> Venue:
@@ -163,6 +173,8 @@ def to_venue(row: dict) -> Venue:
         accessibility_features=row.get("accessibility_features") or "",
         operating_hours=row.get("operating_hours") or "",
         supported_layouts=row.get("supported_layouts") or "",
+        setup_minutes=row.get("setup_minutes") or 0,
+        turnaround_minutes=row.get("turnaround_minutes") or 0,
         created_at=str(row["created_at"]) if row.get("created_at") else "",
         updated_at=str(row["updated_at"]) if row.get("updated_at") else "",
     )
@@ -185,6 +197,8 @@ class Repository(Protocol):
         accessibility_features: str,
         operating_hours: str,
         supported_layouts: str,
+        setup_minutes: int = 0,
+        turnaround_minutes: int = 0,
     ) -> Venue: ...
 
     def save_venue(
@@ -198,6 +212,8 @@ class Repository(Protocol):
         accessibility_features: str,
         operating_hours: str,
         supported_layouts: str,
+        setup_minutes: int = 0,
+        turnaround_minutes: int = 0,
     ) -> Venue: ...
 
     def delete_venue(self, venue_id: int) -> None: ...
@@ -251,6 +267,8 @@ class SupabaseVenues:
         accessibility_features: str,
         operating_hours: str,
         supported_layouts: str,
+        setup_minutes: int = 0,
+        turnaround_minutes: int = 0,
     ) -> dict:
         """The columns a write sends, in one place so create and update cannot drift.
 
@@ -271,6 +289,8 @@ class SupabaseVenues:
             "accessibility_features": accessibility_features or None,
             "operating_hours": operating_hours or None,
             "supported_layouts": supported_layouts or None,
+            "setup_minutes": setup_minutes,
+            "turnaround_minutes": turnaround_minutes,
         }
 
     def create_venue(
@@ -283,6 +303,8 @@ class SupabaseVenues:
         accessibility_features: str,
         operating_hours: str,
         supported_layouts: str,
+        setup_minutes: int = 0,
+        turnaround_minutes: int = 0,
     ) -> Venue:
         """US9.1a: add a venue to the catalogue."""
         at = _now()
@@ -295,6 +317,8 @@ class SupabaseVenues:
                 accessibility_features=accessibility_features,
                 operating_hours=operating_hours,
                 supported_layouts=supported_layouts,
+                setup_minutes=setup_minutes,
+                turnaround_minutes=turnaround_minutes,
             ),
             "created_at": at,
             "updated_at": at,
@@ -321,6 +345,8 @@ class SupabaseVenues:
         accessibility_features: str,
         operating_hours: str,
         supported_layouts: str,
+        setup_minutes: int = 0,
+        turnaround_minutes: int = 0,
     ) -> Venue:
         """US9.1b: every field is writable except the ones the system owns."""
         changes = {
@@ -332,6 +358,8 @@ class SupabaseVenues:
                 accessibility_features=accessibility_features,
                 operating_hours=operating_hours,
                 supported_layouts=supported_layouts,
+                setup_minutes=setup_minutes,
+                turnaround_minutes=turnaround_minutes,
             ),
             "updated_at": _now(),
         }
@@ -407,6 +435,8 @@ class InMemoryVenues:
         accessibility_features: str,
         operating_hours: str,
         supported_layouts: str,
+        setup_minutes: int = 0,
+        turnaround_minutes: int = 0,
     ) -> Venue:
         if self._taken(name):
             raise DuplicateVenueName(name)
@@ -421,6 +451,8 @@ class InMemoryVenues:
             accessibility_features=accessibility_features,
             operating_hours=operating_hours,
             supported_layouts=supported_layouts,
+            setup_minutes=setup_minutes,
+            turnaround_minutes=turnaround_minutes,
             created_at=at,
             updated_at=at,
         )
@@ -438,6 +470,8 @@ class InMemoryVenues:
         accessibility_features: str,
         operating_hours: str,
         supported_layouts: str,
+        setup_minutes: int = 0,
+        turnaround_minutes: int = 0,
     ) -> Venue:
         existing = self.get_venue(venue_id)
         assert existing is not None  # noqa: S101 — the caller checked it exists
@@ -454,6 +488,8 @@ class InMemoryVenues:
             accessibility_features=accessibility_features,
             operating_hours=operating_hours,
             supported_layouts=supported_layouts,
+            setup_minutes=setup_minutes,
+            turnaround_minutes=turnaround_minutes,
             updated_at=_now(),
         )
         self.venues = [saved if v.id == venue_id else v for v in self.venues]

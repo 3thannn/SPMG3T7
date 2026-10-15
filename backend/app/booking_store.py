@@ -144,6 +144,8 @@ class Repository(Protocol):
 
     def list_for_event(self, event_id: int) -> list[Booking]: ...
 
+    def list_for_venue(self, venue_id: int) -> list[Booking]: ...
+
     def get_booking(self, booking_id: int) -> Booking | None: ...
 
     def create(
@@ -287,6 +289,26 @@ class SupabaseBookings:
         assert booking is not None  # noqa: S101 — the row was just updated
         return booking
 
+    def list_for_venue(self, venue_id: int) -> list[Booking]:
+        """US9.4: every booking at a venue, soonest first, for its re-check.
+
+        Cancelled bookings come back too; the re-check is what decides they no
+        longer hold the venue, so the rule lives in one place.
+        """
+        rows = (
+            supabase_client.admin()
+            .table(TABLE)
+            .select(COLUMNS)
+            .eq("venue_id", venue_id)
+            .order("start_at")
+            .order("end_at")
+            .order("id")
+            .execute()
+            .data
+            or []
+        )
+        return [to_booking(row) for row in rows]
+
     def venue_has_bookings(self, venue_id: int) -> bool:
         """Whether anything books this venue — asked before US9.1c deletes it.
 
@@ -324,6 +346,9 @@ class InMemoryBookings:
 
     def list_for_event(self, event_id: int) -> list[Booking]:
         return sorted((b for b in self.bookings if b.event_id == event_id), key=_sort_key)
+
+    def list_for_venue(self, venue_id: int) -> list[Booking]:
+        return sorted((b for b in self.bookings if b.venue_id == venue_id), key=_sort_key)
 
     def get_booking(self, booking_id: int) -> Booking | None:
         return next((b for b in self.bookings if b.id == booking_id), None)

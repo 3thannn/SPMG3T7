@@ -444,3 +444,30 @@ describe('US2.1 (Sprint 3) — drafts still save without these checks (US2.2)', 
     })
   })
 })
+
+describe('US2.1 — expected attendance upper bound', () => {
+  it('refuses more people than the database column holds, even on a draft', async () => {
+    const user = userEvent.setup()
+
+    render(<NewEventPage session={organiser} />)
+    await user.type(screen.getByLabelText('Expected attendance'), '2147483648')
+    await user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+    expect(
+      await screen.findByText('Expected attendance must be 2,147,483,647 or fewer.'),
+    ).toBeInTheDocument()
+    expect(createEventMock).not.toHaveBeenCalled()
+  })
+
+  it('accepts the largest number the column holds', async () => {
+    const user = userEvent.setup()
+    createEventMock.mockResolvedValue(created)
+
+    render(<NewEventPage session={organiser} />)
+    await user.type(screen.getByLabelText('Expected attendance'), '2147483647')
+    await user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+    await waitFor(() => expect(createEventMock).toHaveBeenCalled())
+    expect(createEventMock.mock.calls[0][0].expectedAttendance).toBe(2147483647)
+  })
+})

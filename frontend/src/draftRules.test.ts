@@ -70,6 +70,7 @@ describe('submissionError — shared by US4.2 submit and US11.1 change requests'
     [{ expectedAttendance: '-1' }, 'Enter a whole number of people.'],
     [{ expectedAttendance: 'many' }, 'Enter a whole number of people.'],
     [{ expectedAttendance: '0' }, 'Expected attendance must be at least 1.'],
+    [{ expectedAttendance: '2147483648' }, 'Expected attendance must be 2,147,483,647 or fewer.'],
     [
       { startsAt: '2027-01-14T23:59', endsAt: '2027-01-15T01:00' },
       'The start date cannot be in the past.',
@@ -91,6 +92,7 @@ describe('submissionError — shared by US4.2 submit and US11.1 change requests'
   it.each([
     [{ expectedAttendance: '1' }],
     [{ expectedAttendance: ' 7 ' }],
+    [{ expectedAttendance: '2147483647' }],
     [{ endsAt: '2027-11-02T18:01' }],
     [{ startsAt: '2027-01-15T00:00', endsAt: '2027-01-15T01:00' }],
     [

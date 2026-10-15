@@ -286,6 +286,10 @@ def _not_found() -> HTTPException:
 #: lengths here turns a database error into a sentence the form can show.
 TITLE_MAX = 255
 PURPOSE_MAX = 500
+#: `events.expected_attendance` is INTEGER, so a larger number would fail the
+#: write. Refused here with a sentence instead (US2.1 boundary).
+ATTENDANCE_MAX = 2_147_483_647
+ATTENDANCE_TOO_LARGE = f"Expected attendance must be {ATTENDANCE_MAX:,} or fewer."
 DRAFT_CONTENT_ERROR = "Enter at least one letter or number in any field to save a draft."
 
 
@@ -311,6 +315,8 @@ def _validated(draft: EventDraft) -> EventDraft:
         raise _invalid(f"Keep the purpose to {PURPOSE_MAX} characters or fewer.")
     if draft.expected_attendance is not None and draft.expected_attendance < 0:
         raise _invalid("Expected attendance cannot be negative.")
+    if draft.expected_attendance is not None and draft.expected_attendance > ATTENDANCE_MAX:
+        raise _invalid(ATTENDANCE_TOO_LARGE)
     needs_problem = event_needs.format_error(draft.needs())
     if needs_problem:
         raise _invalid(needs_problem)

@@ -2,7 +2,12 @@ import { useState } from 'react'
 import EventNeedsFields from '../components/EventNeedsFields'
 import StatusBadge from '../components/StatusBadge'
 import { createEvent, EventRuleError, parseAttendance, submitEvent } from '../eventsStore'
-import { DRAFT_CONTENT_ERROR, hasDraftContent } from '../draftRules'
+import {
+  ATTENDANCE_MAX,
+  ATTENDANCE_TOO_LARGE,
+  DRAFT_CONTENT_ERROR,
+  hasDraftContent,
+} from '../draftRules'
 import { missingNeeds, NO_NEEDS, type EventNeeds } from '../eventNeeds'
 import { navigate } from '../router'
 import type { Session } from '../api'
@@ -88,6 +93,8 @@ function validate(fields: DraftFields, requireSubmit: boolean): FieldErrors {
   }
   if (attendance === 'invalid') {
     errors.expectedAttendance = 'Enter a whole number of people, or leave it blank.'
+  } else if ((attendance ?? 0) > ATTENDANCE_MAX) {
+    errors.expectedAttendance = ATTENDANCE_TOO_LARGE
   }
   if (requireSubmit) {
     if (!fields.description.trim()) errors.description = 'Give the event a description.'

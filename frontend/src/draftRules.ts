@@ -5,6 +5,10 @@ import { firstMissingNeed, type EventNeeds } from './eventNeeds'
 export const DRAFT_CONTENT_ERROR =
   'Enter at least one letter or number in any field to save a draft.'
 
+/** `events.expected_attendance` is INTEGER; the server refuses anything larger. */
+export const ATTENDANCE_MAX = 2_147_483_647
+export const ATTENDANCE_TOO_LARGE = 'Expected attendance must be 2,147,483,647 or fewer.'
+
 type DraftContent = {
   title: string
   purpose: string
@@ -61,6 +65,7 @@ export function submissionError(draft: SubmissionFields, today: string): string 
   const trimmed = draft.expectedAttendance.trim()
   if (!/^\d+$/.test(trimmed)) return 'Enter a whole number of people.'
   if (Number(trimmed) < 1) return 'Expected attendance must be at least 1.'
+  if (Number(trimmed) > ATTENDANCE_MAX) return ATTENDANCE_TOO_LARGE
   if (draft.startsAt.slice(0, 10) < today) return 'The start date cannot be in the past.'
   if (!draft.description.trim()) return 'Give the event a description.'
   return firstMissingNeed(draft)

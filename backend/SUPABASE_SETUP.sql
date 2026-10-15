@@ -54,6 +54,11 @@ CREATE TABLE venues (
     operating_hours VARCHAR(255),
     -- US9.1a names supported layouts as an optional field on a venue record.
     supported_layouts TEXT,
+    -- US9.4: see SUPABASE_ADD_VENUE_TURNAROUND.sql.
+    setup_minutes INTEGER NOT NULL DEFAULT 0
+        CONSTRAINT venues_setup_minutes_range CHECK (setup_minutes BETWEEN 0 AND 1440),
+    turnaround_minutes INTEGER NOT NULL DEFAULT 0
+        CONSTRAINT venues_turnaround_minutes_range CHECK (turnaround_minutes BETWEEN 0 AND 1440),
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMP DEFAULT NOW() NOT NULL
 );

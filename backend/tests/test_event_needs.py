@@ -30,6 +30,7 @@ from app.event_needs import (
 )
 from app.event_status import EventStatus
 from app.event_store import EVENT_COLUMNS, Event, SupabaseEvents, to_event
+from app.events import ATTENDANCE_TOO_LARGE
 from tests.conftest import (
     COORDINATOR_ID,
     ORGANISER_ID,
@@ -433,6 +434,27 @@ class TestSubmitting:
 
         assert response.status_code == 400
         assert response.json()["detail"]["message"] == MISSING_MESSAGES["venue_requirements"]
+
+
+class TestAttendanceUpperBound:
+    """`events.expected_attendance` is INTEGER: past its maximum the write would fail."""
+
+    def test_the_column_maximum_is_accepted(self, client, auth_headers):
+        event = create(client, auth_headers(ORGANISER), title="Big", expectedAttendance=2147483647)
+
+        assert event["expectedAttendance"] == 2147483647
+
+    @pytest.mark.parametrize("attendance", [2147483648, 10**20])
+    def test_one_past_it_is_refused_with_a_sentence(self, client, auth_headers, attendance):
+        response = client.post(
+            "/events",
+            json={"title": "Big", "expectedAttendance": attendance},
+            headers=auth_headers(ORGANISER),
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == ATTENDANCE_TOO_LARGE
+        assert ATTENDANCE_TOO_LARGE == "Expected attendance must be 2,147,483,647 or fewer."
 
 
 # --- Coordinator edits and reads -------------------------------------------------
