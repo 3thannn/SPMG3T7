@@ -14,14 +14,16 @@ it to the assigned one waits for US8.1.
 
 from app.event_status import ClarificationRefusal, EventStatus, check_clarification
 from app.event_store import Event
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Faculty Welcome Night",
     "purpose": "Welcome the new intake.",
     "startsAt": "2026-11-02T18:00",
+    "endsAt": "2026-11-02T21:00",
     "description": "Talks.",
     "expectedAttendance": 120,
+    **SUBMITTABLE_NEEDS,
 }
 
 MESSAGE = "Please confirm the catering budget and add a wet-weather plan."

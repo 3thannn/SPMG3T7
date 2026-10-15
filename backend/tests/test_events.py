@@ -6,14 +6,16 @@ refuses on its own account: every "cannot" here is asserted against a request,
 not against a disabled button.
 """
 
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Faculty Welcome Night",
     "purpose": "Welcome the new intake.",
     "startsAt": "2026-11-02T18:00",
+    "endsAt": "2026-11-02T21:00",
     "description": "Talks.",
     "expectedAttendance": 120,
+    **SUBMITTABLE_NEEDS,
 }
 
 
@@ -588,7 +590,7 @@ class TestCoordinatorEditing:
 
         response = client.put(
             f"/events/{submitted['id']}",
-            json={**DRAFT, "startsAt": "2026-12-15T20:00"},
+            json={**DRAFT, "startsAt": "2026-12-15T20:00", "endsAt": "2026-12-15T22:00"},
             headers=auth_headers("Event Coordinator"),
         )
 

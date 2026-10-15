@@ -60,7 +60,13 @@ from app.event_store import (
 from app.events import CHANGE_NOTE_MAX, DECISION_REASON_MAX, PURPOSE_MAX, TITLE_MAX
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID, PASSWORD
+from tests.conftest import (
+    COORDINATOR_ID,
+    ORGANISER_ID,
+    PASSWORD,
+    SUBMITTABLE_NEED_ATTRS,
+    SUBMITTABLE_NEEDS,
+)
 
 DRAFT = {
     "title": "Faculty Welcome Night",
@@ -69,6 +75,7 @@ DRAFT = {
     "startsAt": "2027-11-02T18:00",
     "endsAt": "2027-11-02T21:00",
     "expectedAttendance": 120,
+    **SUBMITTABLE_NEEDS,
 }
 
 ORGANISER = "Event Organiser"
@@ -211,6 +218,7 @@ class TestRules:
             "expected_attendance",
             "venue_id",
             "equipment",
+            "equipment_needs",
         }
 
     def test_change_type_uses_us5_2_s_column_values(self):
@@ -227,6 +235,11 @@ class TestRules:
             "Purpose",
             "Expected attendance",
             "Description",
+            "Venue requirements",
+            "Preferred layout",
+            "Accessibility needs",
+            "Equipment needs",
+            "Registration needs",
         ]
 
     def test_an_unknown_column_is_labelled_by_its_name(self):
@@ -700,6 +713,7 @@ class TestWhenAProposalIsRefused:
             starts_at="2027-11-02T18:00:00",
             ends_at="2027-11-02T21:00:00",
             expected_attendance=DRAFT["expectedAttendance"],
+            **SUBMITTABLE_NEED_ATTRS,
         )
 
         response = propose(client, auth_headers(ORGANISER), str(seeded.id))
@@ -763,6 +777,32 @@ class TestProposalValidation:
             ({"endsAt": "2027-11-02T18:00"}, "The end date must be after the start date."),
             ({"endsAt": "2027-11-02T17:00"}, "The end date must be after the start date."),
             ({"startsAt": "not-a-date", "endsAt": None}, "Give the event a valid date."),
+            # US2.1 (Sprint 3): the end time, description and every need are
+            # now required to submit, so a proposal cannot clear them either.
+            ({"endsAt": None}, "Give the event an end date."),
+            ({"description": ""}, "Give the event a description."),
+            ({"description": "  "}, "Give the event a description."),
+            (
+                {"venueRequirements": ""},
+                "Choose the venue requirements, or None / Not required.",
+            ),
+            ({"preferredLayout": ""}, "Choose a preferred layout, or None / Not required."),
+            (
+                {"accessibilityNeeds": ""},
+                "Choose the accessibility needs, or None / Not required.",
+            ),
+            (
+                {"equipmentNeeds": " "},
+                "Describe the equipment needs, or choose None / Not required.",
+            ),
+            (
+                {"registrationNeeds": ""},
+                "Describe the registration needs, or choose None / Not required.",
+            ),
+            (
+                {"preferredLayout": "Ballroom"},
+                "Choose a preferred layout from the list. Ballroom is not one of the options.",
+            ),
             (
                 {"title": "t" * (TITLE_MAX + 1)},
                 f"Keep the title to {TITLE_MAX} characters or fewer.",
@@ -779,6 +819,11 @@ class TestProposalValidation:
                     "startsAt": "",
                     "endsAt": None,
                     "expectedAttendance": None,
+                    "venueRequirements": "",
+                    "preferredLayout": "",
+                    "accessibilityNeeds": "",
+                    "equipmentNeeds": "",
+                    "registrationNeeds": "",
                 },
                 "Enter at least one letter or number in any field to save a draft.",
             ),
@@ -801,18 +846,19 @@ class TestProposalValidation:
             {"title": "t" * TITLE_MAX},
             {"purpose": "p" * PURPOSE_MAX},
             {"endsAt": "2027-11-02T18:01"},
-            {"endsAt": None},
-            {"description": ""},
-            {"startsAt": f"{date.today().isoformat()}T23:59", "endsAt": None},
+            {
+                "startsAt": f"{date.today().isoformat()}T23:00",
+                "endsAt": f"{date.today().isoformat()}T23:59",
+            },
+            {"venueRequirements": "None / Not required", "preferredLayout": "Banquet"},
         ],
         ids=[
             "attendance-at-least-one",
             "title-at-limit",
             "purpose-at-limit",
             "end-one-minute-after-start",
-            "end-cleared",
-            "description-cleared",
             "starts-today",
+            "needs-changed",
         ],
     )
     def test_a_proposal_at_the_boundary_is_accepted(self, client, auth_headers, changes):
@@ -1057,12 +1103,20 @@ class TestApproving:
         assert again["lastChangeReview"]["outcome"] == "rejected"
         assert again["lastChangeReview"]["note"] == "Keep the name."
 
-    def test_a_cleared_end_date_is_applied(self, client, auth_headers):
-        event = pending_event(client, auth_headers, endsAt=None)
+    def test_a_changed_need_is_applied(self, client, auth_headers):
+        """US2.1 (Sprint 3): the needs are proposed and applied like any field."""
+        event = pending_event(
+            client, auth_headers, preferredLayout="Banquet", equipmentNeeds="None / Not required"
+        )
+        assert [(change["field"], change["important"]) for change in event["pendingChanges"]] == [
+            ("preferred_layout", False),
+            ("equipment_needs", True),
+        ]
 
         approved = approve(client, auth_headers(COORDINATOR), event["id"]).json()
 
-        assert approved["endsAt"] == ""
+        assert approved["preferredLayout"] == "Banquet"
+        assert approved["equipmentNeeds"] == "None / Not required"
 
     def test_the_organiser_may_ask_again_once_answered(self, client, auth_headers):
         event = pending_event(client, auth_headers, title="Welcome Night")

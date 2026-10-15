@@ -7,7 +7,7 @@ from app.event_status import EventStatus, transition_allowed
 from app.event_store import Event, StaleEventStatus, SupabaseEvents
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Faculty Welcome Night",
@@ -16,6 +16,7 @@ DRAFT = {
     "startsAt": "2027-11-02T18:00",
     "endsAt": "2027-11-02T21:00",
     "expectedAttendance": 120,
+    **SUBMITTABLE_NEEDS,
 }
 
 

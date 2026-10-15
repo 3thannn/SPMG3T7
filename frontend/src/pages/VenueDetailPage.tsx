@@ -5,6 +5,7 @@ import {
   deleteVenue,
   detailOrNotRecorded,
   formatCapacity,
+  formatMinutes,
   getVenue,
   type VenueRecord,
 } from '../venuesStore'
@@ -26,8 +27,9 @@ type PageState =
   | { state: 'error' }
 
 /**
- * One venue record — US9.2 to read, US9.1b and US9.1c to act on, and US12.1's
- * unavailable dates for everyone to see and Venue Staff to add to.
+ * One venue record — US9.2 to read, US9.1b and US9.1c to act on, US9.4's setup
+ * and turnaround time, and US12.1's unavailable dates for everyone to see and
+ * Venue Staff to add to.
  *
  * A description list rather than a form, even for Venue Staff: editing happens
  * on its own page, so this one never has inputs and a Coordinator's view of it
@@ -169,6 +171,15 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
 
             <dt>Operating hours</dt>
             <dd>{detailOrNotRecorded(venue.operatingHours)}</dd>
+
+            {/* US9.4: shown to everyone who can open the venue, Coordinators
+                included, because each booking holds the room for this long
+                before and after its own times. */}
+            <dt>Setup time</dt>
+            <dd>{formatMinutes(venue.setupMinutes)}</dd>
+
+            <dt>Turnaround time</dt>
+            <dd>{formatMinutes(venue.turnaroundMinutes)}</dd>
           </dl>
 
           {venue.updatedAt && (

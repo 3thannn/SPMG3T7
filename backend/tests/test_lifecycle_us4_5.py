@@ -9,15 +9,16 @@ from app import supabase_client
 from app.booking_store import SupabaseBookings
 from app.event_status import CompletionRefusal, EventStatus, check_completion
 from app.event_store import Event, StaleEventStatus, SupabaseEvents, to_event
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 EVENT = {
     "title": "Welcome Night",
     "purpose": "Meet the cohort",
-    "description": "",
+    "description": "Games and introductions.",
     "startsAt": "2099-11-02T09:00",
     "endsAt": "2099-11-02T17:00",
     "expectedAttendance": 30,
+    **SUBMITTABLE_NEEDS,
 }
 BOOKING = {"venueId": "1", "startsAt": EVENT["startsAt"], "endsAt": EVENT["endsAt"]}
 

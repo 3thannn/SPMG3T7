@@ -315,3 +315,34 @@ it('says something useful when a delete fails for another reason', async () => {
 
   expect(await screen.findByRole('alert')).toHaveTextContent(/Could not delete this venue/)
 })
+
+// --- US9.4: setup and turnaround time ------------------------------------------
+
+it('shows a Coordinator the setup and turnaround time', async () => {
+  getVenueMock.mockResolvedValue(buildVenue({ setupMinutes: 30, turnaroundMinutes: 90 }))
+
+  render(<VenueDetailPage venueId="1" session={coordinator} />)
+
+  const setup = await screen.findByText('Setup time')
+  expect(setup.nextElementSibling).toHaveTextContent('30 minutes')
+  expect(screen.getByText('Turnaround time').nextElementSibling).toHaveTextContent(
+    '90 minutes (1 h 30 min)',
+  )
+})
+
+it('reads a venue with no setup or turnaround as None', async () => {
+  getVenueMock.mockResolvedValue(buildVenue())
+
+  render(<VenueDetailPage venueId="1" session={coordinator} />)
+
+  expect((await screen.findByText('Setup time')).nextElementSibling).toHaveTextContent('None')
+  expect(screen.getByText('Turnaround time').nextElementSibling).toHaveTextContent('None')
+})
+
+it('shows Venue Staff the same values', async () => {
+  getVenueMock.mockResolvedValue(buildVenue({ setupMinutes: 1, turnaroundMinutes: 0 }))
+
+  render(<VenueDetailPage venueId="1" session={venueStaff} />)
+
+  expect((await screen.findByText('Setup time')).nextElementSibling).toHaveTextContent('1 minute')
+})

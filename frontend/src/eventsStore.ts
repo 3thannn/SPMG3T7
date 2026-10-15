@@ -15,6 +15,7 @@
 
 import { ApiError, authorizedFetch, type Session } from './api'
 import { formatTimestamp, type EventStatus, type StatusChange } from './status'
+import type { EventNeeds } from './eventNeeds'
 
 export type EventRecord = {
   id: string
@@ -52,7 +53,7 @@ export type EventRecord = {
   pendingChanges?: ProposedChange[]
   /** US11.1: the Coordinator's answer to the most recent request, if any. */
   lastChangeReview?: ChangeReview | null
-}
+} & Partial<EventNeeds>
 
 /** US11.1: how a Coordinator answered a change request. */
 export type ChangeReview = {
@@ -77,6 +78,10 @@ export type ProposedChange = {
   important: boolean
 }
 
+/**
+ * US2.1 (Sprint 3): the needs are optional here so a caller that predates them
+ * still type-checks; the forms always send all five.
+ */
 export type EventDraft = {
   title: string
   purpose: string
@@ -84,7 +89,7 @@ export type EventDraft = {
   startsAt: string
   endsAt?: string | null
   expectedAttendance: number | null
-}
+} & Partial<EventNeeds>
 
 /**
  * Read an attendance field: the number the database will hold, or null for

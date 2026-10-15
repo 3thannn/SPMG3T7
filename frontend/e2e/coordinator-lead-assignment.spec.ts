@@ -137,6 +137,20 @@ test.describe('Coordinator Lead Assignment Flow', () => {
     // Fill in expected attendance (required for submission)
     await page.getByLabel('Expected attendance').fill('50')
 
+    // US2.1 (Sprint 3): description and every need are required for submission too
+    await page.getByLabel('Description').fill('E2E coverage of the assignment flow')
+    await page.getByRole('group', { name: 'Venue requirements' }).getByLabel('Projector').check()
+    await page.getByLabel('Preferred layout').selectOption('Classroom')
+    await page
+      .getByRole('group', { name: 'Accessibility needs' })
+      .getByLabel('Wheelchair access')
+      .check()
+    await page.getByLabel('Equipment needs').fill('One clicker')
+    await page
+      .getByRole('group', { name: 'Registration needs' })
+      .getByLabel('None / Not required')
+      .check()
+
     // Save the form as draft
     await page.getByRole('button', { name: 'Save as draft' }).click()
 
