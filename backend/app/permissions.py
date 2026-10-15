@@ -125,6 +125,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.BOOKINGS_REQUEST,
             Permission.EQUIPMENT_READ,
             Permission.EQUIPMENT_REQUEST,
+            # US10.2: told about assignments and booking or safety problems.
+            Permission.NOTIFICATIONS_READ,
         }
     ),
     # US1.4/US8.2/US8.3: Coordinator Lead manages the unassigned queue and

@@ -230,7 +230,7 @@ class TestAccess:
         )
         assert response.status_code == 404
 
-    @pytest.mark.parametrize("role", ["Event Coordinator", "Venue Staff"])
+    @pytest.mark.parametrize("role", ["Event Coordinator Lead", "Venue Staff"])
     def test_tc_n15_other_roles_are_refused(self, client, auth_headers, role):
         response = client.get("/notifications", headers=auth_headers(role))
         assert response.status_code == 403
