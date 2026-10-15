@@ -156,8 +156,12 @@ class TestNotificationIsCreated:
         self, client, auth_headers, notification_repository
     ):
         under_review_event(client, auth_headers)
-        assert notification_repository.notifications
-        assert all(item.user_id == ORGANISER_ID for item in notification_repository.notifications)
+        # US10.2's assignment notice goes to the Coordinator; status notices don't.
+        status_notices = [
+            item for item in notification_repository.notifications if item.kind == "event-status"
+        ]
+        assert status_notices
+        assert all(item.user_id == ORGANISER_ID for item in status_notices)
 
 
 class TestListAndReadState:
