@@ -136,6 +136,10 @@ class TestRequestingABooking:
             "requiredFacilities",
             "accessibilityNeeds",
             "cancellation",
+            # US14.3: empty and False on a booking that was never a hold.
+            "holdExpiresAt",
+            "holdExpired",
+            "heldByName",
         }
         assert isinstance(body["id"], str)
         # US14.2: only a cancelled booking says who cancelled it.

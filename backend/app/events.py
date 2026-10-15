@@ -33,7 +33,7 @@ from app import (
     venue_store,
 )
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
-from app.booking_store import Booking, BookingStatus, StaleBookingStatus
+from app.booking_store import Booking, BookingStatus, HoldExpired, StaleBookingStatus
 from app.event_needs import EventNeeds
 from app.event_status import (
     EventStatus,
@@ -1016,6 +1016,11 @@ class BookingOut(BaseModel):
     #: Null unless the booking is Cancelled, so "not cancelled" is one state
     #: rather than three empty fields.
     cancellation: CancellationOut | None = None
+    #: US14.3: when a hold lapses. Empty for a booking that was never a hold.
+    hold_expires_at: str = Field(default="", serialization_alias="holdExpiresAt")
+    #: US14.3: Held and past its expiry, so it no longer keeps the slot.
+    hold_expired: bool = Field(default=False, serialization_alias="holdExpired")
+    held_by_name: str = Field(default="", serialization_alias="heldByName")
 
 
 def _booking_out(booking: Booking) -> BookingOut:
@@ -1043,6 +1048,9 @@ def _booking_out(booking: Booking) -> BookingOut:
             if cancellation
             else None
         ),
+        hold_expires_at=booking.hold_expires_at,
+        hold_expired=booking.hold_expired,
+        held_by_name=booking.held_by_name,
     )
 
 
@@ -1422,3 +1430,84 @@ def cancel_booking(
         # Someone else cancelled it between the read above and this write.
         raise _already_cancelled() from None
     return _booking_out(cancelled)
+
+
+# -- US14.3: turning a tentative hold into a request -----------------------------
+
+
+@router.post("/{event_id}/bookings/{booking_id}/request", response_model=BookingOut)
+def request_held_booking(
+    event_id: str,
+    booking_id: str,
+    user: Annotated[User, Depends(require_permission(Permission.BOOKINGS_REQUEST))],
+) -> BookingOut:
+    """US14.3: the Coordinator asks for a venue Venue Staff held for them.
+
+    Held -> Requested, before the hold expires, and on the same terms as a new
+    request (US14.1): the assigned Coordinator, on an Approved or Planning
+    event, which a first request moves to Planning (US4.5). The times are the
+    ones held. 404, then 409, as for cancelling.
+    """
+    event = _readable(_as_id(event_id), user)
+    try:
+        booking = booking_store.repository().get_booking(int(booking_id))
+    except ValueError:
+        booking = None
+    if booking is None or booking.event_id != event.id:
+        raise _booking_not_found()
+    if booking.status is not BookingStatus.HELD:
+        raise _not_held(booking.status)
+    if booking.hold_expired:
+        raise _hold_expired(booking)
+    refusal = check_booking(status=event.status)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": booking_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+    try:
+        requested = booking_store.repository().request_hold(
+            booking.id, actor_id=user.id, expected_status=event.status
+        )
+    except HoldExpired:
+        raise _hold_expired(booking) from None
+    except StaleBookingStatus:
+        current = booking_store.repository().get_booking(booking.id)
+        raise _not_held(current.status if current else BookingStatus.CANCELLED) from None
+    except StaleEventStatus:
+        raise _stale_request() from None
+    return _booking_out(requested)
+
+
+def _not_held(current: BookingStatus) -> HTTPException:
+    message = (
+        "This hold has already been turned into a booking request."
+        if current is BookingStatus.REQUESTED
+        else "This hold has been cancelled."
+        if current is BookingStatus.CANCELLED
+        else "Only a hold can be turned into a booking request."
+    )
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"code": EventError.REFUSED, "message": message, "reason": "not-held"},
+    )
+
+
+def _hold_expired(booking: Booking) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": (
+                f"The hold on {booking.venue_name or 'this venue'} expired at "
+                f"{booking.hold_expires_at.replace('T', ' ')[:16]}. Ask Venue Staff to "
+                "hold it again, "
+                "or request the venue as a new booking."
+            ),
+            "reason": "hold-expired",
+        },
+    )
