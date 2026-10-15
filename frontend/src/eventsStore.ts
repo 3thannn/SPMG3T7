@@ -264,9 +264,11 @@ export type BookingRecord = {
   endsAt: string
   /**
    * Every new booking waits on Venue Staff, whose approval is a later epic. A
-   * Coordinator may cancel one (US14.2), which is final.
+   * Coordinator may cancel one (US14.2), which is final. US14.3: Venue Staff
+   * may hold a venue for the Coordinator, who turns it into a request before
+   * it expires. A hold is never Confirmed.
    */
-  status: 'Requested' | 'Cancelled'
+  status: 'Requested' | 'Cancelled' | 'Held'
   requestedAt: string
   /**
    * US18.1: how many people this booking is for. null only on a booking made
@@ -279,6 +281,12 @@ export type BookingRecord = {
   accessibilityNeeds: string[]
   /** US14.2: who cancelled, when and why. null unless the status is Cancelled. */
   cancellation: BookingCancellation | null
+  /** US14.3: when the hold lapses. Empty for a booking that was never a hold. */
+  holdExpiresAt?: string
+  /** US14.3: Held and past its expiry, so the slot is no longer kept. */
+  holdExpired?: boolean
+  /** US14.3: the Venue Staff member who placed the hold. */
+  heldByName?: string
 }
 
 export type BookingCancellation = {
@@ -443,6 +451,27 @@ export async function cancelBooking(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason }),
       },
+    )
+    return (await response.json()) as BookingRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/**
+ * US14.3: turn a hold Venue Staff placed into a booking request, before it
+ * expires. An expired or already-requested hold comes back as a refusal.
+ */
+export async function requestHeldBooking(
+  eventId: string,
+  bookingId: string,
+  session: Session,
+): Promise<BookingRecord> {
+  try {
+    const response = await authorizedFetch(
+      `/events/${eventId}/bookings/${bookingId}/request`,
+      session.token,
+      { method: 'POST' },
     )
     return (await response.json()) as BookingRecord
   } catch (error) {

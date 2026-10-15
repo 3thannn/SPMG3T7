@@ -9,6 +9,7 @@ import {
   formatBookingTimes,
   listBookings,
   requestBooking,
+  requestHeldBooking,
   validateBooking,
   type BookingInput,
   type BookingRecord,
@@ -104,6 +105,11 @@ function describeNeeds(booking: BookingRecord): string {
  * event's status, because giving back the hall for an event that will not run
  * is the point of it.
  *
+ * US14.3: Venue Staff may hold a venue for the Coordinator. A hold shows as
+ * Held with its expiry, never as Confirmed, and the Coordinator can request it
+ * until it expires; after that it is marked expired and no longer keeps the
+ * slot. A hold can be released with the same Cancel as a request.
+ *
  * Its own card and its own request, as US12.1's blackout card is, so a failure
  * to load the bookings says so here and leaves the event above it readable.
  */
@@ -133,6 +139,11 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
   )
   const [cancelError, setCancelError] = useState('')
   const [cancelBusy, setCancelBusy] = useState(false)
+  // US14.3: the hold being requested, and a refusal shown under its row.
+  const [holdBusy, setHoldBusy] = useState<string | null>(null)
+  const [holdError, setHoldError] = useState<{ bookingId: string; message: string } | null>(
+    null,
+  )
   const [notice, setNotice] = useState('')
   const [check, setCheck] = useState<Check | null>(null)
 
@@ -263,6 +274,41 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     setCancelError('')
   }
 
+  /** Swap one booking in place in the list, keeping the server's order. */
+  function replaceBooking(updated: BookingRecord) {
+    setBookings((current) =>
+      current.state === 'loaded'
+        ? {
+            state: 'loaded',
+            bookings: current.bookings.map((item) => (item.id === updated.id ? updated : item)),
+          }
+        : current,
+    )
+  }
+
+  /** US14.3: turn a hold into a request. The event may move to Planning. */
+  function requestHold(booking: BookingRecord) {
+    setHoldBusy(booking.id)
+    setHoldError(null)
+    setNotice('')
+    requestHeldBooking(event.id, booking.id, session)
+      .then((requested) => {
+        replaceBooking(requested)
+        setNotice(`Requested ${requested.venueName}. It now waits for Venue Staff to approve it.`)
+        onBookingRequested?.()
+      })
+      .catch((error: unknown) => {
+        setHoldError({
+          bookingId: booking.id,
+          message:
+            error instanceof EventRuleError
+              ? error.message
+              : unexpectedFailureMessage(error, 'request this venue'),
+        })
+      })
+      .finally(() => setHoldBusy(null))
+  }
+
   /** US14.2: cancel this one booking, then swap it in place in the list. */
   function confirmCancel(booking: BookingRecord) {
     const reason = cancelling?.reason.trim() ?? ''
@@ -274,16 +320,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     setCancelError('')
     cancelBooking(event.id, booking.id, reason, session)
       .then((cancelled) => {
-        setBookings((current) =>
-          current.state === 'loaded'
-            ? {
-                state: 'loaded',
-                bookings: current.bookings.map((item) =>
-                  item.id === cancelled.id ? cancelled : item,
-                ),
-              }
-            : current,
-        )
+        replaceBooking(cancelled)
         setCancelling(null)
         setNotice(
           `Cancelled ${cancelled.venueName}. The event and its other bookings are unchanged.`,
@@ -346,19 +383,37 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
 
   function renderBooking(booking: BookingRecord) {
     const isCancelled = booking.status === 'Cancelled'
+    const isHeld = booking.status === 'Held'
+    const holdExpired = isHeld && booking.holdExpired === true
     const venueName = booking.venueName || 'Unnamed venue'
     const cancelOpen = cancelling?.bookingId === booking.id
+    const rowClass = isCancelled ? ' is-cancelled' : holdExpired ? ' is-expired' : ''
     return (
-      <li key={booking.id} className={`booking-row${isCancelled ? ' is-cancelled' : ''}`}>
+      <li key={booking.id} className={`booking-row${rowClass}`}>
         <div className="booking-summary">
           <span className="booking-venue">{venueName}</span>
           <span className="booking-times">
             {formatBookingTimes(booking.startsAt, booking.endsAt)}
           </span>
-          <span className={`booking-status is-${booking.status.toLowerCase()}`}>
-            {booking.status}
+          <span
+            className={`booking-status is-${booking.status.toLowerCase()}${
+              holdExpired ? ' is-expired' : ''
+            }`}
+          >
+            {holdExpired ? 'Hold expired' : booking.status}
           </span>
-          {mayRequest && !isCancelled && !cancelOpen && (
+          {mayRequest && isHeld && !holdExpired && bookingCheck.allowed && !cancelOpen && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm booking-request-hold"
+              aria-label={`Request the held ${venueName}`}
+              onClick={() => requestHold(booking)}
+              disabled={holdBusy !== null || cancelBusy}
+            >
+              {holdBusy === booking.id ? 'Requesting…' : 'Request this venue'}
+            </button>
+          )}
+          {mayRequest && !isCancelled && !holdExpired && !cancelOpen && (
             <button
               type="button"
               className="btn btn-secondary btn-sm booking-cancel"
@@ -370,6 +425,22 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
             </button>
           )}
         </div>
+        {booking.holdExpiresAt && (isHeld || booking.status === 'Requested') && (
+          <p className={`booking-hold${holdExpired ? ' is-expired' : ''}`}>
+            {!isHeld
+              ? `Requested from a hold${booking.heldByName ? ` by ${booking.heldByName}` : ''}.`
+              : holdExpired
+                ? `Hold expired ${formatTimestamp(booking.holdExpiresAt)}. The venue is no longer kept for this event.`
+                : `Held${booking.heldByName ? ` by ${booking.heldByName}` : ''} until ${formatTimestamp(
+                    booking.holdExpiresAt,
+                  )}. Request it before then to keep the slot.`}
+          </p>
+        )}
+        {holdError?.bookingId === booking.id && (
+          <p className="form-error" role="alert">
+            {holdError.message}
+          </p>
+        )}
         {describeNeeds(booking) && <p className="booking-needs">{describeNeeds(booking)}</p>}
         {booking.cancellation && (
           <p className="booking-cancellation">
