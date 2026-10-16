@@ -129,6 +129,9 @@ class CoordinatorNotice(StrEnum):
     HOLD_EXPIRED = "hold-expired"
     BOOKING_CONFLICT = "booking-conflict"
     SAFETY_CHANGES = "safety-changes"
+    #: US16.1: Venue Staff decided one of the event's booking requests.
+    BOOKING_CONFIRMED = "booking-confirmed"
+    BOOKING_REJECTED = "booking-rejected"
 
 
 def _event_title(event: Event) -> str:
@@ -229,6 +232,31 @@ def notify_safety_changes(event: Event, notes: str = "") -> None:
         f'The Safety Officer requested changes to "{title}": {notes}'
         if notes
         else f'The Safety Officer requested changes to "{title}".',
+    )
+
+
+def notify_booking_decision(
+    event: Event,
+    venue_name: str,
+    *,
+    confirmed: bool,
+    reason: str = "",
+    suggestion: str = "",
+) -> None:
+    """US16.1: tell the assigned Coordinator Venue Staff decided a booking, and why."""
+    title = _event_title(event)
+    venue = venue_name or "a venue"
+    if confirmed:
+        message = f'Venue Staff confirmed {venue} for "{title}".'
+    else:
+        message = f'Venue Staff rejected {venue} for "{title}". Reason: {reason}'
+        if suggestion:
+            message += f" Suggested instead: {suggestion}"
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.BOOKING_CONFIRMED if confirmed else CoordinatorNotice.BOOKING_REJECTED,
+        message,
     )
 
 
