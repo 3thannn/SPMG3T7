@@ -21,9 +21,16 @@ Three choices worth knowing:
   which is why a breakout room is not checked against the whole event's
   attendance, and an optional layout, facilities and accessibility needs. They
   are stored so the event page can show what each room was booked for.
+* A tentative hold (US14.3) is a booking with status Held, placed by Venue
+  Staff for an event's Coordinator, with an expiry. It holds the venue only
+  until it expires, and the Coordinator can turn it into a request before
+  then. Nothing rewrites an expired hold: it stays Held, and `holds_venue`
+  reads the expiry, so it frees its slot the moment it passes without a job
+  having to run.
 """
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from typing import Protocol
 
@@ -41,8 +48,18 @@ COLUMNS = (
     "id, event_id, venue_id, start_at, end_at, status, requested_by_id, created_at, "
     "headcount, required_layout, required_facilities, accessibility_needs, "
     "cancelled_at, cancelled_by_id, cancellation_reason, venues(name), "
-    "cancelled_by:users!venue_bookings_cancelled_by_id_fkey(name)"
+    "cancelled_by:users!venue_bookings_cancelled_by_id_fkey(name), "
+    "hold_expires_at, held_by_id, held_by:users!venue_bookings_held_by_id_fkey(name)"
 )
+
+#: Booking times are naive Singapore local times, as event times are (see
+#: `event_status.check_completion`), so a hold's expiry is compared with this.
+SINGAPORE = timezone(timedelta(hours=8))
+
+
+def local_now() -> datetime:
+    """Now, as a naive Singapore local time, to compare with booking times."""
+    return datetime.now(SINGAPORE).replace(tzinfo=None)
 
 
 class BookingStatus(StrEnum):
@@ -51,12 +68,18 @@ class BookingStatus(StrEnum):
     REQUESTED = "Requested"
     #: US14.2. Final: nothing moves a cancelled booking on.
     CANCELLED = "Cancelled"
+    #: US14.3: a tentative hold Venue Staff placed. Becomes Requested when the
+    #: Coordinator asks for it, and is never Confirmed on its own.
+    HELD = "Held"
 
 
-#: The statuses that hold a venue for their slot. A cancelled booking does not
-#: (US14.2), which is what frees the venue: US15.1's conflict check counts only
-#: bookings in these statuses.
-HOLDS_VENUE: frozenset[BookingStatus] = frozenset({BookingStatus.REQUESTED})
+#: The statuses that can hold a venue for their slot. A cancelled booking does
+#: not (US14.2), which is what frees the venue: US15.1's conflict check counts
+#: only bookings in these statuses. A Held booking counts only until it expires
+#: (US14.3), which `Booking.holds_venue` checks.
+HOLDS_VENUE: frozenset[BookingStatus] = frozenset(
+    {BookingStatus.REQUESTED, BookingStatus.HELD}
+)
 
 
 @dataclass(frozen=True)
@@ -91,14 +114,44 @@ class Booking:
     accessibility_needs: tuple[str, ...] = ()
     #: Set exactly when the status is Cancelled; the table's CHECK holds that.
     cancellation: Cancellation | None = None
+    #: US14.3: when a hold lapses. Always set while Held, and kept once the hold
+    #: becomes a request, as the record of how it started. Empty otherwise.
+    hold_expires_at: str = ""
+    #: US14.3: the Venue Staff member who placed the hold.
+    held_by_id: int | None = None
+    held_by_name: str = ""
+
+    def hold_expired_at(self, now: datetime) -> bool:
+        """Whether this is a hold whose expiry has passed. Expiry itself counts.
+
+        An expiry that cannot be read is taken as passed: a hold must never
+        block a venue for longer than anyone agreed to.
+        """
+        if self.status is not BookingStatus.HELD:
+            return False
+        try:
+            return datetime.fromisoformat(self.hold_expires_at) <= now
+        except ValueError:
+            return True
+
+    @property
+    def hold_expired(self) -> bool:
+        return self.hold_expired_at(local_now())
+
+    def holds_venue_at(self, now: datetime) -> bool:
+        return self.status in HOLDS_VENUE and not self.hold_expired_at(now)
 
     @property
     def holds_venue(self) -> bool:
-        return self.status in HOLDS_VENUE
+        return self.holds_venue_at(local_now())
 
 
 class StaleBookingStatus(RuntimeError):
     """The booking changed after the route checked it, e.g. cancelled twice at once."""
+
+
+class HoldExpired(RuntimeError):
+    """US14.3: the hold lapsed before it could be turned into a request."""
 
 
 def _embedded_name(row: dict, key: str) -> str:
@@ -136,6 +189,9 @@ def to_booking(row: dict) -> Booking:
         required_facilities=tuple(row.get("required_facilities") or ()),
         accessibility_needs=tuple(row.get("accessibility_needs") or ()),
         cancellation=_cancellation(row),
+        hold_expires_at=str(row["hold_expires_at"]) if row.get("hold_expires_at") else "",
+        held_by_id=row.get("held_by_id"),
+        held_by_name=_embedded_name(row, "held_by"),
     )
 
 
@@ -164,6 +220,22 @@ class Repository(Protocol):
     ) -> Booking: ...
 
     def cancel(self, booking_id: int, *, actor_id: int, reason: str) -> Booking: ...
+
+    def place_hold(
+        self,
+        *,
+        event_id: int,
+        venue_id: int,
+        starts_at: str,
+        ends_at: str,
+        expires_at: str,
+        held_by_id: int,
+        headcount: int | None,
+    ) -> Booking: ...
+
+    def request_hold(
+        self, booking_id: int, *, actor_id: int, expected_status: EventStatus
+    ) -> Booking: ...
 
     def venue_has_bookings(self, venue_id: int) -> bool: ...
 
@@ -262,7 +334,8 @@ class SupabaseBookings:
     def cancel(self, booking_id: int, *, actor_id: int, reason: str) -> Booking:
         """US14.2: Requested -> Cancelled, with who, when and why on the row.
 
-        The update only matches a booking that is still Requested, so two
+        US14.3: a Held booking can be cancelled too, which releases the hold.
+        The update only matches a booking that is still Requested or Held, so two
         cancels racing each other cannot both succeed. The second finds no row
         and raises, as `event_store.request_clarification` does for an event
         that moved. Nothing else is written: the event and its other bookings
@@ -280,10 +353,77 @@ class SupabaseBookings:
                 }
             )
             .eq("id", booking_id)
-            .eq("status", str(BookingStatus.REQUESTED))
+            .in_("status", [str(BookingStatus.REQUESTED), str(BookingStatus.HELD)])
             .execute()
         )
         if not updated.data:
+            raise StaleBookingStatus
+        booking = self.get_booking(booking_id)
+        assert booking is not None  # noqa: S101 — the row was just updated
+        return booking
+
+    def place_hold(
+        self,
+        *,
+        event_id: int,
+        venue_id: int,
+        starts_at: str,
+        ends_at: str,
+        expires_at: str,
+        held_by_id: int,
+        headcount: int | None,
+    ) -> Booking:
+        """US14.3: record a tentative hold. Nobody has requested it yet."""
+        created = (
+            supabase_client.admin()
+            .table(TABLE)
+            .insert(
+                {
+                    "event_id": event_id,
+                    "venue_id": venue_id,
+                    "start_at": starts_at,
+                    "end_at": ends_at,
+                    "status": str(BookingStatus.HELD),
+                    "requested_by_id": None,
+                    "created_at": _now(),
+                    "headcount": headcount,
+                    "hold_expires_at": expires_at,
+                    "held_by_id": held_by_id,
+                }
+            )
+            .execute()
+        )
+        booking = self.get_booking(created.data[0]["id"])
+        assert booking is not None  # noqa: S101 — the row was just inserted
+        return booking
+
+    def request_hold(
+        self, booking_id: int, *, actor_id: int, expected_status: EventStatus
+    ) -> Booking:
+        """US14.3: Held -> Requested, in one transaction with US4.5's Planning move.
+
+        The RPC re-checks under row locks what the route already checked, so a
+        hold that expires, is cancelled, or whose event moves in between is
+        refused rather than half-applied.
+        """
+        outcome = (
+            supabase_client.admin()
+            .rpc(
+                "request_held_booking",
+                {
+                    "p_booking_id": booking_id,
+                    "p_expected_status": str(expected_status),
+                    "p_requested_by_id": actor_id,
+                },
+            )
+            .execute()
+            .data
+        )
+        if outcome == "expired":
+            raise HoldExpired
+        if outcome == "stale-event":
+            raise event_store.StaleEventStatus
+        if outcome != "requested":
             raise StaleBookingStatus
         booking = self.get_booking(booking_id)
         assert booking is not None  # noqa: S101 — the row was just updated
@@ -355,7 +495,10 @@ class InMemoryBookings:
 
     def cancel(self, booking_id: int, *, actor_id: int, reason: str) -> Booking:
         existing = self.get_booking(booking_id)
-        if existing is None or existing.status is not BookingStatus.REQUESTED:
+        if existing is None or existing.status not in (
+            BookingStatus.REQUESTED,
+            BookingStatus.HELD,
+        ):
             raise StaleBookingStatus
         actor = users.get_by_id(actor_id)
         cancelled = replace(
@@ -414,6 +557,60 @@ class InMemoryBookings:
         )
         self.bookings.append(booking)
         return booking
+
+    def place_hold(
+        self,
+        *,
+        event_id: int,
+        venue_id: int,
+        starts_at: str,
+        ends_at: str,
+        expires_at: str,
+        held_by_id: int,
+        headcount: int | None,
+    ) -> Booking:
+        venue = venue_store.repository().get_venue(venue_id)
+        holder = users.get_by_id(held_by_id)
+        self.next_id += 1
+        booking = Booking(
+            id=self.next_id,
+            event_id=event_id,
+            venue_id=venue_id,
+            venue_name=venue.name if venue else "",
+            starts_at=starts_at,
+            ends_at=ends_at,
+            status=BookingStatus.HELD,
+            requested_by_id=None,
+            requested_at=_now(),
+            headcount=headcount,
+            hold_expires_at=expires_at,
+            held_by_id=held_by_id,
+            held_by_name=holder.name if holder else "",
+        )
+        self.bookings.append(booking)
+        return booking
+
+    def request_hold(
+        self, booking_id: int, *, actor_id: int, expected_status: EventStatus
+    ) -> Booking:
+        existing = self.get_booking(booking_id)
+        if existing is None or existing.status is not BookingStatus.HELD:
+            raise StaleBookingStatus
+        if existing.hold_expired:
+            raise HoldExpired
+        event = event_store.repository().get_event(existing.event_id)
+        if (
+            event is None
+            or event.status is not expected_status
+            or event.status not in (EventStatus.APPROVED, EventStatus.PLANNING)
+            or event.coordinator_id != actor_id
+        ):
+            raise event_store.StaleEventStatus
+        if event.status is EventStatus.APPROVED:
+            event_store.repository().plan_event(event.id, actor_id=actor_id)
+        requested = replace(existing, status=BookingStatus.REQUESTED, requested_by_id=actor_id)
+        self.bookings = [requested if b.id == booking_id else b for b in self.bookings]
+        return requested
 
     def venue_has_bookings(self, venue_id: int) -> bool:
         return any(booking.venue_id == venue_id for booking in self.bookings)

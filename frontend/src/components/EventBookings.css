@@ -83,6 +83,41 @@
   background: var(--bg);
 }
 
+/* US14.3: a hold is tentative. A dashed outline keeps it apart from a request,
+   and nothing about it looks like a confirmation. */
+.booking-status.is-held {
+  color: var(--accent);
+  border: 1px dashed var(--accent);
+  background: var(--bg);
+}
+
+.booking-status.is-held.is-expired {
+  color: var(--muted);
+  border-color: var(--line-strong);
+}
+
+.booking-row.is-expired {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.booking-row.is-expired .booking-venue {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.booking-hold {
+  margin-top: 0.35rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* The summary grid has one action column; a hold can offer two. */
+.booking-summary:has(.booking-request-hold) {
+  grid-template-columns: minmax(10rem, 16rem) 1fr auto auto auto;
+}
+
 /* US18.1: what the booking was made for, under the line that says where. */
 .booking-needs {
   margin-top: 0.35rem;

@@ -20,6 +20,7 @@ import {
   formatBookingTimes,
   listBookings,
   requestBooking,
+  requestHeldBooking,
   type BookingRecord,
   type EventRecord,
   type Suitability,
@@ -33,6 +34,7 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../eventsStore')>()),
   listBookings: vi.fn(async () => []),
   requestBooking: vi.fn(),
+  requestHeldBooking: vi.fn(),
   cancelBooking: vi.fn(),
   // US18.1: Suitable unless a test says otherwise, so the US14.1 tests below
   // are about requesting rather than about the check.
@@ -837,4 +839,101 @@ it('suggests every layout the catalogue lists, once each', async () => {
     (option) => (option as HTMLOptionElement).value,
   )
   expect(options).toEqual(['breakout tables', 'cabaret', 'Theatre'])
+})
+
+// -- US14.3: tentative holds ---------------------------------------------------
+
+const requestHeldBookingMock = vi.mocked(requestHeldBooking)
+
+function held(overrides: Partial<BookingRecord> = {}): BookingRecord {
+  return booking({
+    status: 'Held',
+    holdExpiresAt: '2027-10-08T17:00:00',
+    holdExpired: false,
+    heldByName: 'Sam',
+    ...overrides,
+  })
+}
+
+it('TC-HF01 shows a hold as Held with who placed it and when it expires', async () => {
+  listBookingsMock.mockResolvedValue([held()])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const row = within(await screen.findByRole('list')).getByRole('listitem')
+  expect(row).toHaveTextContent('Held')
+  expect(row).toHaveTextContent(
+    `Held by Sam until ${formatTimestamp('2027-10-08T17:00:00')}. Request it before then`,
+  )
+  expect(row).not.toHaveTextContent('Confirmed')
+})
+
+it('TC-HF02 lets the Coordinator request a held venue', async () => {
+  const onBookingRequested = vi.fn()
+  listBookingsMock.mockResolvedValue([held()])
+  requestHeldBookingMock.mockResolvedValue(held({ status: 'Requested' }))
+  render(
+    <EventBookings event={event()} session={coordinator} onBookingRequested={onBookingRequested} />,
+  )
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Request the held Great Hall' }))
+
+  expect(requestHeldBookingMock).toHaveBeenCalledWith('900', '101', coordinator)
+  const row = within(bookingList()).getByRole('listitem')
+  await waitFor(() => expect(row).toHaveTextContent('Requested'))
+  expect(row).toHaveTextContent('Requested from a hold by Sam.')
+  expect(screen.getByRole('status')).toHaveTextContent('Requested Great Hall.')
+  expect(onBookingRequested).toHaveBeenCalled()
+})
+
+it('TC-HF03 shows an expired hold as expired, with nothing to do', async () => {
+  listBookingsMock.mockResolvedValue([held({ holdExpired: true })])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const row = within(await screen.findByRole('list')).getByRole('listitem')
+  expect(row).toHaveTextContent('Hold expired')
+  expect(row).toHaveTextContent('The venue is no longer kept for this event.')
+  expect(within(row).queryByRole('button')).not.toBeInTheDocument()
+})
+
+it('TC-HF04 shows the server refusal under the hold', async () => {
+  listBookingsMock.mockResolvedValue([held()])
+  requestHeldBookingMock.mockRejectedValue(
+    new EventRuleError('The hold on Great Hall expired at 2027-10-08 17:00.'),
+  )
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Request the held Great Hall' }))
+
+  const row = within(bookingList()).getByRole('listitem')
+  expect(await within(row).findByRole('alert')).toHaveTextContent(
+    'The hold on Great Hall expired at 2027-10-08 17:00.',
+  )
+})
+
+it('TC-HF05 offers the Organiser no way to request a hold', async () => {
+  listBookingsMock.mockResolvedValue([held()])
+  render(<EventBookings event={event()} session={organiser} />)
+
+  const row = within(await screen.findByRole('list')).getByRole('listitem')
+  expect(row).toHaveTextContent('Held')
+  expect(within(row).queryByRole('button')).not.toBeInTheDocument()
+})
+
+it('TC-HF06 offers no request on an event that cannot take bookings', async () => {
+  listBookingsMock.mockResolvedValue([held()])
+  render(<EventBookings event={event({ status: 'Cancelled' })} session={coordinator} />)
+
+  const row = within(await screen.findByRole('list')).getByRole('listitem')
+  expect(
+    within(row).queryByRole('button', { name: 'Request the held Great Hall' }),
+  ).not.toBeInTheDocument()
+})
+
+it('TC-HF07 lets the Coordinator release a hold with Cancel', async () => {
+  listBookingsMock.mockResolvedValue([held()])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  expect(
+    await screen.findByRole('button', { name: 'Cancel the Great Hall booking' }),
+  ).toBeInTheDocument()
 })

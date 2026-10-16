@@ -70,6 +70,7 @@ class Permission(StrEnum):
     QUEUE_VIEW_UNASSIGNED = "queue:view:unassigned"  # US8.2: Lead sees unassigned queue
     COORDINATORS_ASSIGN = "coordinators:assign"  # US8.3: Lead assigns Coordinators
     SAFETY_REVIEW = "safety:review"  # US17.x: Safety Officer (placeholder)
+    HOLDS_PLACE = "holds:place"  # US14.3: Venue Staff keep a slot for a Coordinator
     EQUIPMENT_READ = "equipment:read"
     EQUIPMENT_WRITE = "equipment:write"
     EQUIPMENT_REQUEST = "equipment:request"
@@ -96,6 +97,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.QUEUE_VIEW_UNASSIGNED: "view the unassigned event queue",
     Permission.COORDINATORS_ASSIGN: "assign events to Coordinators",
     Permission.SAFETY_REVIEW: "review event safety",
+    Permission.HOLDS_PLACE: "place tentative venue holds",
     Permission.EQUIPMENT_READ: "view the equipment catalogue",
     Permission.EQUIPMENT_WRITE: "maintain equipment",
     Permission.EQUIPMENT_REQUEST: "request equipment for assigned events",
@@ -149,6 +151,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VENUES_CREATE,
             Permission.VENUES_EDIT,
             Permission.VENUES_DELETE,
+            # US14.3: tentative holds, which expire on their own.
+            Permission.HOLDS_PLACE,
         }
     ),
     # US1.4: Safety Officer placeholder. Features arrive in US17.x.

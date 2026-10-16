@@ -33,7 +33,14 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'equipment:read',
   ],
   // US9.1a-c: Venue Staff maintain the catalogue and hold nothing else.
-  'Venue Staff': ['venues:read', 'venues:create', 'venues:edit', 'venues:delete'],
+  'Venue Staff': [
+    'venues:read',
+    'venues:create',
+    'venues:edit',
+    'venues:delete',
+    // US14.3: tentative holds for a Coordinator.
+    'holds:place',
+  ],
   // US1.4: Safety Officer reviews safety aspects.
   'Safety Officer': ['safety:review'],
   'Technical Support': ['equipment:read', 'equipment:write', 'equipment:queue', 'notifications:read'],

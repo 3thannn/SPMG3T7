@@ -13,6 +13,7 @@ import { navigate } from '../router'
 import { formatTimestamp } from '../status'
 import { can } from '../permissions'
 import { unexpectedFailureMessage, type Session } from '../api'
+import VenueHolds from '../components/VenueHolds'
 import VenueUnavailability from '../components/VenueUnavailability'
 
 type VenueDetailPageProps = {
@@ -49,6 +50,8 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
   const [busy, setBusy] = useState(false)
 
   const mayEdit = can(session, 'venues:edit')
+  // US14.3: Venue Staff keep a slot for a Coordinator.
+  const mayHold = can(session, 'holds:place')
   const mayDelete = can(session, 'venues:delete')
 
   useEffect(() => {
@@ -190,6 +193,8 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
         </section>
 
         <VenueUnavailability venueId={venue.id} session={session} mayMark={mayEdit} />
+
+        {mayHold && <VenueHolds venueId={venue.id} session={session} />}
 
         {(mayEdit || mayDelete) && (
           <section className="card venue-actions">
