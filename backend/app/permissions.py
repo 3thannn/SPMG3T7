@@ -71,6 +71,7 @@ class Permission(StrEnum):
     COORDINATORS_ASSIGN = "coordinators:assign"  # US8.3: Lead assigns Coordinators
     SAFETY_REVIEW = "safety:review"  # US17.x: Safety Officer (placeholder)
     HOLDS_PLACE = "holds:place"  # US14.3: Venue Staff keep a slot for a Coordinator
+    BOOKINGS_DECIDE = "bookings:decide"  # US16.1: Venue Staff approve or reject requests
     EQUIPMENT_READ = "equipment:read"
     EQUIPMENT_WRITE = "equipment:write"
     EQUIPMENT_REQUEST = "equipment:request"
@@ -98,6 +99,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.COORDINATORS_ASSIGN: "assign events to Coordinators",
     Permission.SAFETY_REVIEW: "review event safety",
     Permission.HOLDS_PLACE: "place tentative venue holds",
+    Permission.BOOKINGS_DECIDE: "approve or reject venue booking requests",
     Permission.EQUIPMENT_READ: "view the equipment catalogue",
     Permission.EQUIPMENT_WRITE: "maintain equipment",
     Permission.EQUIPMENT_REQUEST: "request equipment for assigned events",
@@ -155,6 +157,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VENUES_DELETE,
             # US14.3: tentative holds, which expire on their own.
             Permission.HOLDS_PLACE,
+            # US16.1: only Venue Staff confirm or turn down a booking request.
+            Permission.BOOKINGS_DECIDE,
         }
     ),
     # US1.4: Safety Officer placeholder. Features arrive in US17.x.

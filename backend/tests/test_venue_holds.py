@@ -438,8 +438,17 @@ class TestTurningAHoldIntoARequest:
 class TestNeverConfirmed:
     """AC5: a Held booking is never shown or counted as Confirmed."""
 
-    def test_tc_h41_there_is_no_confirmed_booking_status(self):
-        assert "Confirmed" not in {str(item) for item in BookingStatus}
+    def test_tc_h41_venue_staff_cannot_confirm_a_hold(
+        self, client, staff, event, booking_repository
+    ):
+        # US16.1 added Confirmed. A hold must be requested by the Coordinator
+        # before Venue Staff can confirm it, so it is never Confirmed as a hold.
+        hold = place(client, staff).json()
+
+        response = client.post(f"/booking-requests/{hold['id']}/approve", headers=staff)
+
+        assert refused(response)["reason"] == "not-requested"
+        assert booking_repository.bookings[0].status is BookingStatus.HELD
 
     def test_tc_h42_a_hold_is_reported_as_held_however_long_it_waits(
         self, client, staff, coordinator, event, frozen_now

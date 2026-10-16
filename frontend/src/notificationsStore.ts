@@ -17,6 +17,8 @@ export type CoordinatorNoticeKind =
   | 'hold-expired'
   | 'booking-conflict'
   | 'safety-changes'
+  | 'booking-confirmed'
+  | 'booking-rejected'
 
 export type NotificationKind = 'event-status' | 'equipment-request' | CoordinatorNoticeKind
 
@@ -29,6 +31,8 @@ export const KIND_LABELS: Record<Exclude<NotificationKind, 'event-status'>, stri
   'hold-expired': 'Hold expired',
   'booking-conflict': 'Booking problem',
   'safety-changes': 'Safety changes',
+  'booking-confirmed': 'Booking confirmed',
+  'booking-rejected': 'Booking rejected',
 }
 
 export type NotificationRecord = {

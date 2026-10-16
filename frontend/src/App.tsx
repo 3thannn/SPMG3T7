@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import TopNav from './components/TopNav'
+import BookingRequestsPage from './pages/BookingRequestsPage'
 import AccessDeniedPage from './pages/AccessDeniedPage'
 import EventDetailPage from './pages/EventDetailPage'
 import EventsPage from './pages/EventsPage'
@@ -215,6 +216,10 @@ export default function App() {
 
     if (route === '/venues') {
       return <VenuesPage session={session} />
+    }
+
+    if (route === '/booking-requests') {
+      return <BookingRequestsPage session={session} />
     }
 
     if (route === '/venues/new') {

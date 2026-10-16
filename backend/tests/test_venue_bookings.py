@@ -140,6 +140,8 @@ class TestRequestingABooking:
             "holdExpiresAt",
             "holdExpired",
             "heldByName",
+            # US16.1: null until Venue Staff decide it.
+            "decision",
         }
         assert isinstance(body["id"], str)
         # US14.2: only a cancelled booking says who cancelled it.

@@ -220,3 +220,18 @@ describe('notifications (US10.1)', () => {
     expect(canOpen(buildSession({ role: 'Venue Staff' }), '/notifications')).toBe(false)
   })
 })
+
+describe('booking requests (US16.1)', () => {
+  it('TC-DF18 lets only Venue Staff open the booking requests', () => {
+    expect(canOpen(buildSession({ role: 'Venue Staff' }), '/booking-requests')).toBe(true)
+    for (const role of [
+      'Event Organiser',
+      'Event Coordinator',
+      'Event Coordinator Lead',
+      'Safety Officer',
+      'Technical Support',
+    ] as const) {
+      expect(canOpen(buildSession({ role }), '/booking-requests')).toBe(false)
+    }
+  })
+})

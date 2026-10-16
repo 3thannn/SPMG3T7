@@ -199,9 +199,15 @@ class TestTheVenueIsFreed:
 
         assert not booking_repository.bookings[0].holds_venue
 
-    def test_only_requested_and_held_can_hold_a_venue(self):
+    def test_only_requested_held_and_confirmed_can_hold_a_venue(self):
         # US14.3: a Held booking holds the venue too, until it expires.
-        assert HOLDS_VENUE == {BookingStatus.REQUESTED, BookingStatus.HELD}
+        # US16.1: so does a Confirmed one; a Rejected one frees it.
+        assert HOLDS_VENUE == {
+            BookingStatus.REQUESTED,
+            BookingStatus.HELD,
+            BookingStatus.CONFIRMED,
+        }
+        assert BookingStatus.REJECTED not in HOLDS_VENUE
         assert BookingStatus.CANCELLED not in HOLDS_VENUE
 
     def test_the_same_venue_and_slot_can_be_requested_again(

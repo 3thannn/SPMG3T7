@@ -230,7 +230,7 @@ All with "now" pinned to 2027-10-01 09:00.
 ### AC5: Never Confirmed
 | Case | Expected | Automated |
 | --- | --- | --- |
-| TC-H41 | There is no Confirmed booking status at all | `test_tc_h41_…` |
+| TC-H41 | Venue Staff cannot approve a hold straight to Confirmed (US16.1): it must be requested first | `test_tc_h41_…` |
 | TC-H42 | A hold reads "Held" before expiry, at expiry, and after the event date | `test_tc_h42_…` |
 | TC-H43 | A requested hold is Requested, not Confirmed | `test_tc_h43_…` |
 | TC-HF01 | The event page never shows "Confirmed" for a hold | `EventBookings.test.tsx` |

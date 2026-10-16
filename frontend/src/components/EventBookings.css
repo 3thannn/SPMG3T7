@@ -118,6 +118,35 @@
   grid-template-columns: minmax(10rem, 16rem) 1fr auto auto auto;
 }
 
+/* US16.1: Confirmed is the one result here, so it alone reads as settled. */
+.booking-status.is-confirmed {
+  color: var(--ink-strong);
+  border-color: var(--line-strong);
+  background: var(--bg);
+  font-weight: 700;
+}
+
+.booking-status.is-rejected {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.booking-decision {
+  margin-top: 0.45rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.booking-decision.is-rejected {
+  color: var(--ink);
+}
+
+.booking-suggestion {
+  font-weight: 600;
+}
+
 /* US18.1: what the booking was made for, under the line that says where. */
 .booking-needs {
   margin-top: 0.35rem;

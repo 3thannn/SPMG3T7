@@ -81,3 +81,21 @@ it('TC-CF06 gives a Coordinator the Notifications link and unread count', async 
   expect(await screen.findByLabelText('1 unread')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /Notifications/ })).toBeInTheDocument()
 })
+
+it('TC-DF19 offers Venue Staff the Booking Requests link and a Coordinator none', () => {
+  listMock.mockResolvedValue([])
+  const { unmount } = render(
+    <TopNav route="/venues" session={buildSession({ role: 'Venue Staff' })} onSignOut={() => {}} />,
+  )
+  expect(screen.getByRole('link', { name: 'Booking Requests' })).toBeInTheDocument()
+  unmount()
+
+  render(
+    <TopNav
+      route="/events"
+      session={buildSession({ role: 'Event Coordinator' })}
+      onSignOut={() => {}}
+    />,
+  )
+  expect(screen.queryByRole('link', { name: 'Booking Requests' })).not.toBeInTheDocument()
+})

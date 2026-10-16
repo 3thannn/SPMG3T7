@@ -29,7 +29,10 @@ CREATE TYPE event_status AS ENUM (
 CREATE TYPE booking_status AS ENUM (
     'Requested',
     'Cancelled',
-    'Held'
+    'Held',
+    -- US16.1: Venue Staff decide a request.
+    'Confirmed',
+    'Rejected'
 );
 
 -- Create users table
@@ -181,6 +184,11 @@ CREATE TABLE venue_bookings (
     -- US14.3: a hold's expiry and who placed it. See SUPABASE_ADD_VENUE_HOLDS.sql.
     hold_expires_at TIMESTAMP,
     held_by_id INTEGER,
+    -- US16.1: the decision. See SUPABASE_ADD_BOOKING_DECISIONS.sql.
+    decided_at TIMESTAMP,
+    decided_by_id INTEGER,
+    rejection_reason TEXT,
+    suggested_alternative TEXT,
     CONSTRAINT venue_bookings_end_after_start CHECK (end_at > start_at),
     CONSTRAINT venue_bookings_headcount_positive CHECK (headcount IS NULL OR headcount >= 1),
     CONSTRAINT venue_bookings_cancelled_by_id_fkey
@@ -189,6 +197,15 @@ CREATE TABLE venue_bookings (
         FOREIGN KEY (held_by_id) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT venue_bookings_hold_has_expiry CHECK (
         status <> 'Held' OR hold_expires_at IS NOT NULL
+    ),
+    CONSTRAINT venue_bookings_decided_by_id_fkey
+        FOREIGN KEY (decided_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT venue_bookings_decision_recorded CHECK (
+        (status IN ('Confirmed', 'Rejected')) = (decided_at IS NOT NULL)
+    ),
+    CONSTRAINT venue_bookings_rejection_has_reason CHECK (
+        status <> 'Rejected'
+        OR (rejection_reason IS NOT NULL AND btrim(rejection_reason) <> '')
     ),
     CONSTRAINT venue_bookings_cancellation_recorded CHECK (
         (status = 'Cancelled') = (
@@ -204,6 +221,8 @@ CREATE INDEX ix_venue_bookings_venue_id ON venue_bookings(venue_id);
 CREATE INDEX ix_venue_bookings_requested_by_id ON venue_bookings(requested_by_id);
 CREATE INDEX ix_venue_bookings_cancelled_by_id ON venue_bookings(cancelled_by_id);
 CREATE INDEX ix_venue_bookings_held_by_id ON venue_bookings(held_by_id);
+CREATE INDEX ix_venue_bookings_decided_by_id ON venue_bookings(decided_by_id);
+CREATE INDEX ix_venue_bookings_status_created ON venue_bookings(status, created_at);
 
 -- US7.1: keep a Coordinator decision and its US4.2 audit row in one transaction.
 -- Transition validation remains in Python; this is not a status trigger.
