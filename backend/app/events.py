@@ -1023,6 +1023,24 @@ class BookingOut(BaseModel):
     #: US14.3: Held and past its expiry, so it no longer keeps the slot.
     hold_expired: bool = Field(default=False, serialization_alias="holdExpired")
     held_by_name: str = Field(default="", serialization_alias="heldByName")
+    #: US16.1: who approved or rejected it, when, and for a rejection why.
+    decision: "DecisionOut | None" = None
+
+
+class DecisionOut(BaseModel):
+    """Venue Staff's decision on a booking request (US16.1)."""
+
+    at: str
+    #: Null once the user who decided has been removed; the record stays.
+    by_id: str | None = Field(serialization_alias="byId")
+    by_name: str = Field(serialization_alias="byName")
+    #: Empty for an approval.
+    reason: str = ""
+    #: An alternative venue or time Venue Staff suggest. Empty when none.
+    suggestion: str = ""
+
+
+BookingOut.model_rebuild()
 
 
 def _booking_out(booking: Booking) -> BookingOut:
@@ -1053,6 +1071,17 @@ def _booking_out(booking: Booking) -> BookingOut:
         hold_expires_at=booking.hold_expires_at,
         hold_expired=booking.hold_expired,
         held_by_name=booking.held_by_name,
+        decision=(
+            DecisionOut(
+                at=booking.decision.at,
+                by_id=str(booking.decision.by_id) if booking.decision.by_id is not None else None,
+                by_name=booking.decision.by_name,
+                reason=booking.decision.reason,
+                suggestion=booking.decision.suggestion,
+            )
+            if booking.decision
+            else None
+        ),
     )
 
 

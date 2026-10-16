@@ -27,6 +27,10 @@ Three choices worth knowing:
   then. Nothing rewrites an expired hold: it stays Held, and `holds_venue`
   reads the expiry, so it frees its slot the moment it passes without a job
   having to run.
+* Venue Staff decide a request (US16.1): Confirmed or Rejected, with who
+  decided and when on the row, and for a rejection the reason and an optional
+  suggested alternative. A rejected booking is kept, like a cancelled one, and
+  frees its slot.
 """
 
 from dataclasses import dataclass, field, replace
@@ -49,7 +53,9 @@ COLUMNS = (
     "headcount, required_layout, required_facilities, accessibility_needs, "
     "cancelled_at, cancelled_by_id, cancellation_reason, venues(name), "
     "cancelled_by:users!venue_bookings_cancelled_by_id_fkey(name), "
-    "hold_expires_at, held_by_id, held_by:users!venue_bookings_held_by_id_fkey(name)"
+    "hold_expires_at, held_by_id, held_by:users!venue_bookings_held_by_id_fkey(name), "
+    "decided_at, decided_by_id, rejection_reason, suggested_alternative, "
+    "decided_by:users!venue_bookings_decided_by_id_fkey(name)"
 )
 
 #: Booking times are naive Singapore local times, as event times are (see
@@ -71,6 +77,10 @@ class BookingStatus(StrEnum):
     #: US14.3: a tentative hold Venue Staff placed. Becomes Requested when the
     #: Coordinator asks for it, and is never Confirmed on its own.
     HELD = "Held"
+    #: US16.1: Venue Staff approved the request. Final.
+    CONFIRMED = "Confirmed"
+    #: US16.1: Venue Staff turned the request down, with a reason. Final.
+    REJECTED = "Rejected"
 
 
 #: The statuses that can hold a venue for their slot. A cancelled booking does
@@ -78,7 +88,7 @@ class BookingStatus(StrEnum):
 #: only bookings in these statuses. A Held booking counts only until it expires
 #: (US14.3), which `Booking.holds_venue` checks.
 HOLDS_VENUE: frozenset[BookingStatus] = frozenset(
-    {BookingStatus.REQUESTED, BookingStatus.HELD}
+    {BookingStatus.REQUESTED, BookingStatus.HELD, BookingStatus.CONFIRMED}
 )
 
 
@@ -91,6 +101,20 @@ class Cancellation:
     by_id: int | None
     by_name: str
     reason: str
+
+
+@dataclass(frozen=True)
+class Decision:
+    """Who decided a request, when, and for a rejection why — US16.1."""
+
+    at: str
+    #: Nullable so removing a user keeps the decision on record.
+    by_id: int | None
+    by_name: str
+    #: Empty for an approval.
+    reason: str = ""
+    #: US16.1: an alternative venue or time Venue Staff suggest. Free text, optional.
+    suggestion: str = ""
 
 
 @dataclass(frozen=True)
@@ -120,6 +144,8 @@ class Booking:
     #: US14.3: the Venue Staff member who placed the hold.
     held_by_id: int | None = None
     held_by_name: str = ""
+    #: US16.1: set once Venue Staff approve or reject the request.
+    decision: Decision | None = None
 
     def hold_expired_at(self, now: datetime) -> bool:
         """Whether this is a hold whose expiry has passed. Expiry itself counts.
@@ -154,6 +180,11 @@ class HoldExpired(RuntimeError):
     """US14.3: the hold lapsed before it could be turned into a request."""
 
 
+class SlotTaken(RuntimeError):
+    """US16.1: approving would clash with a booking that already takes the slot."""
+
+
+
 def _embedded_name(row: dict, key: str) -> str:
     """A joined `name`, which PostgREST returns as an object or a list."""
     joined = row.get(key)
@@ -170,6 +201,18 @@ def _cancellation(row: dict) -> Cancellation | None:
         by_id=row.get("cancelled_by_id"),
         by_name=_embedded_name(row, "cancelled_by"),
         reason=row.get("cancellation_reason") or "",
+    )
+
+
+def _decision(row: dict) -> Decision | None:
+    if not row.get("decided_at"):
+        return None
+    return Decision(
+        at=str(row["decided_at"]),
+        by_id=row.get("decided_by_id"),
+        by_name=_embedded_name(row, "decided_by"),
+        reason=row.get("rejection_reason") or "",
+        suggestion=row.get("suggested_alternative") or "",
     )
 
 
@@ -192,6 +235,7 @@ def to_booking(row: dict) -> Booking:
         hold_expires_at=str(row["hold_expires_at"]) if row.get("hold_expires_at") else "",
         held_by_id=row.get("held_by_id"),
         held_by_name=_embedded_name(row, "held_by"),
+        decision=_decision(row),
     )
 
 
@@ -238,6 +282,14 @@ class Repository(Protocol):
     ) -> Booking: ...
 
     def venue_has_bookings(self, venue_id: int) -> bool: ...
+
+    def list_requested(self) -> list[Booking]: ...
+
+    def approve(self, booking_id: int, *, actor_id: int) -> Booking: ...
+
+    def reject(
+        self, booking_id: int, *, actor_id: int, reason: str, suggestion: str = ""
+    ) -> Booking: ...
 
 
 class SupabaseBookings:
@@ -449,6 +501,73 @@ class SupabaseBookings:
         )
         return [to_booking(row) for row in rows]
 
+    def list_requested(self) -> list[Booking]:
+        """US16.1: every Requested booking, oldest request first, then by id."""
+        rows = (
+            supabase_client.admin()
+            .table(TABLE)
+            .select(COLUMNS)
+            .eq("status", str(BookingStatus.REQUESTED))
+            .order("created_at")
+            .order("id")
+            .execute()
+            .data
+            or []
+        )
+        return [to_booking(row) for row in rows]
+
+    def approve(self, booking_id: int, *, actor_id: int) -> Booking:
+        """US16.1: Requested -> Confirmed, unless the slot is taken by then.
+
+        The RPC locks the venue, so two approvals for one venue run one at a
+        time, and re-checks the clash in SQL under that lock: the route's own
+        check is what explains a clash, this is what makes two approvals for
+        the same slot impossible.
+        """
+        outcome = (
+            supabase_client.admin()
+            .rpc("approve_venue_booking", {"p_booking_id": booking_id, "p_actor_id": actor_id})
+            .execute()
+            .data
+        )
+        if outcome == "clash":
+            raise SlotTaken
+        if outcome != "confirmed":
+            raise StaleBookingStatus
+        booking = self.get_booking(booking_id)
+        assert booking is not None  # noqa: S101 — the row was just updated
+        return booking
+
+    def reject(
+        self, booking_id: int, *, actor_id: int, reason: str, suggestion: str = ""
+    ) -> Booking:
+        """US16.1: Requested -> Rejected, with who, when, why and any suggestion.
+
+        Matches only a booking still Requested, so a request decided twice at
+        once is decided once. Nothing else is written.
+        """
+        updated = (
+            supabase_client.admin()
+            .table(TABLE)
+            .update(
+                {
+                    "status": str(BookingStatus.REJECTED),
+                    "decided_at": _now(),
+                    "decided_by_id": actor_id,
+                    "rejection_reason": reason,
+                    "suggested_alternative": suggestion or None,
+                }
+            )
+            .eq("id", booking_id)
+            .eq("status", str(BookingStatus.REQUESTED))
+            .execute()
+        )
+        if not updated.data:
+            raise StaleBookingStatus
+        booking = self.get_booking(booking_id)
+        assert booking is not None  # noqa: S101 — the row was just updated
+        return booking
+
     def venue_has_bookings(self, venue_id: int) -> bool:
         """Whether anything books this venue — asked before US9.1c deletes it.
 
@@ -614,6 +733,53 @@ class InMemoryBookings:
 
     def venue_has_bookings(self, venue_id: int) -> bool:
         return any(booking.venue_id == venue_id for booking in self.bookings)
+
+    def list_requested(self) -> list[Booking]:
+        requested = [b for b in self.bookings if b.status is BookingStatus.REQUESTED]
+        return sorted(requested, key=lambda b: (b.requested_at, b.id))
+
+    def _decide(self, booking_id: int, decided: Booking) -> Booking:
+        self.bookings = [decided if b.id == booking_id else b for b in self.bookings]
+        return decided
+
+    def _decision(self, actor_id: int, reason: str = "", suggestion: str = "") -> Decision:
+        actor = users.get_by_id(actor_id)
+        return Decision(
+            at=_now(),
+            by_id=actor_id,
+            by_name=actor.name if actor else "",
+            reason=reason,
+            suggestion=suggestion,
+        )
+
+    def approve(self, booking_id: int, *, actor_id: int) -> Booking:
+        from app import availability  # the US15.1 rule, as the RPC applies it in SQL
+
+        existing = self.get_booking(booking_id)
+        if existing is None or existing.status is not BookingStatus.REQUESTED:
+            raise StaleBookingStatus
+        venue = venue_store.repository().get_venue(existing.venue_id)
+        if availability.find_clashes(existing, venue, self.list_for_venue(existing.venue_id)):
+            raise SlotTaken
+        return self._decide(
+            booking_id,
+            replace(existing, status=BookingStatus.CONFIRMED, decision=self._decision(actor_id)),
+        )
+
+    def reject(
+        self, booking_id: int, *, actor_id: int, reason: str, suggestion: str = ""
+    ) -> Booking:
+        existing = self.get_booking(booking_id)
+        if existing is None or existing.status is not BookingStatus.REQUESTED:
+            raise StaleBookingStatus
+        return self._decide(
+            booking_id,
+            replace(
+                existing,
+                status=BookingStatus.REJECTED,
+                decision=self._decision(actor_id, reason, suggestion),
+            ),
+        )
 
 
 _repository: Repository = SupabaseBookings()
