@@ -266,9 +266,10 @@ export type BookingRecord = {
    * Every new booking waits on Venue Staff, whose approval is a later epic. A
    * Coordinator may cancel one (US14.2), which is final. US14.3: Venue Staff
    * may hold a venue for the Coordinator, who turns it into a request before
-   * it expires. A hold is never Confirmed.
+   * it expires. A hold is never Confirmed. US16.1: Venue Staff approve a
+   * request (Confirmed) or reject it with a reason (Rejected).
    */
-  status: 'Requested' | 'Cancelled' | 'Held'
+  status: 'Requested' | 'Cancelled' | 'Held' | 'Confirmed' | 'Rejected'
   requestedAt: string
   /**
    * US18.1: how many people this booking is for. null only on a booking made
@@ -287,6 +288,20 @@ export type BookingRecord = {
   holdExpired?: boolean
   /** US14.3: the Venue Staff member who placed the hold. */
   heldByName?: string
+  /** US16.1: who approved or rejected it, when, and why. null until decided. */
+  decision?: BookingDecision | null
+}
+
+/** US16.1: Venue Staff's decision on a booking request. */
+export type BookingDecision = {
+  at: string
+  /** null once the user who decided has been removed; the record stays. */
+  byId: string | null
+  byName: string
+  /** Empty for an approval. */
+  reason: string
+  /** An alternative venue or time Venue Staff suggest. Empty when none. */
+  suggestion: string
 }
 
 export type BookingCancellation = {

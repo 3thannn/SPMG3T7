@@ -105,6 +105,10 @@ function describeNeeds(booking: BookingRecord): string {
  * event's status, because giving back the hall for an event that will not run
  * is the point of it.
  *
+ * US16.1: Venue Staff confirm or reject each request. A decision shows who
+ * made it and when; a rejection shows the reason and any suggested
+ * alternative. Only a Requested or still-active Held booking can be cancelled.
+ *
  * US14.3: Venue Staff may hold a venue for the Coordinator. A hold shows as
  * Held with its expiry, never as Confirmed, and the Coordinator can request it
  * until it expires; after that it is marked expired and no longer keeps the
@@ -387,7 +391,10 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     const holdExpired = isHeld && booking.holdExpired === true
     const venueName = booking.venueName || 'Unnamed venue'
     const cancelOpen = cancelling?.bookingId === booking.id
-    const rowClass = isCancelled ? ' is-cancelled' : holdExpired ? ' is-expired' : ''
+    const isRejected = booking.status === 'Rejected'
+    const cancellable = booking.status === 'Requested' || (isHeld && !holdExpired)
+    const rowClass =
+      isCancelled || isRejected ? ' is-cancelled' : holdExpired ? ' is-expired' : ''
     return (
       <li key={booking.id} className={`booking-row${rowClass}`}>
         <div className="booking-summary">
@@ -413,7 +420,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
               {holdBusy === booking.id ? 'Requesting…' : 'Request this venue'}
             </button>
           )}
-          {mayRequest && !isCancelled && !holdExpired && !cancelOpen && (
+          {mayRequest && cancellable && !cancelOpen && (
             <button
               type="button"
               className="btn btn-secondary btn-sm booking-cancel"
@@ -434,6 +441,24 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
                 : `Held${booking.heldByName ? ` by ${booking.heldByName}` : ''} until ${formatTimestamp(
                     booking.holdExpiresAt,
                   )}. Request it before then to keep the slot.`}
+          </p>
+        )}
+        {booking.decision && booking.status === 'Confirmed' && (
+          <p className="booking-decision">
+            Confirmed by {booking.decision.byName || 'a former user'},{' '}
+            {formatTimestamp(booking.decision.at)}.
+          </p>
+        )}
+        {booking.decision && isRejected && (
+          <p className="booking-decision is-rejected">
+            Rejected by {booking.decision.byName || 'a former user'},{' '}
+            {formatTimestamp(booking.decision.at)}: {booking.decision.reason}
+            {booking.decision.suggestion && (
+              <span className="booking-suggestion">
+                {' '}
+                Suggested instead: {booking.decision.suggestion}
+              </span>
+            )}
           </p>
         )}
         {holdError?.bookingId === booking.id && (

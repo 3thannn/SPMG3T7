@@ -937,3 +937,56 @@ it('TC-HF07 lets the Coordinator release a hold with Cancel', async () => {
     await screen.findByRole('button', { name: 'Cancel the Great Hall booking' }),
   ).toBeInTheDocument()
 })
+
+// -- US16.1: Venue Staff's decision, as the Coordinator sees it ---------------------
+
+it('TC-DF21 shows a confirmed booking with who confirmed it, and no Cancel', async () => {
+  listBookingsMock.mockResolvedValue([
+    booking({
+      status: 'Confirmed',
+      decision: { at: '2027-10-01T01:00:00', byId: '4', byName: 'Sam', reason: '', suggestion: '' },
+    }),
+  ])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const row = within(await screen.findByRole('list')).getByRole('listitem')
+  expect(row).toHaveTextContent('Confirmed')
+  expect(row).toHaveTextContent(`Confirmed by Sam, ${formatTimestamp('2027-10-01T01:00:00')}.`)
+  expect(within(row).queryByRole('button')).not.toBeInTheDocument()
+})
+
+it('TC-DF22 shows a rejection with its reason and suggestion, and no Cancel', async () => {
+  listBookingsMock.mockResolvedValue([
+    booking({
+      status: 'Rejected',
+      decision: {
+        at: '2027-10-01T01:00:00',
+        byId: '4',
+        byName: 'Sam',
+        reason: 'Closed that week.',
+        suggestion: 'Bertha Room on 9 Nov',
+      },
+    }),
+  ])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const row = within(await screen.findByRole('list')).getByRole('listitem')
+  expect(row).toHaveTextContent('Rejected')
+  expect(row).toHaveTextContent('Closed that week.')
+  expect(row).toHaveTextContent('Suggested instead: Bertha Room on 9 Nov')
+  expect(within(row).queryByRole('button')).not.toBeInTheDocument()
+})
+
+it('TC-DF23 shows a rejection without a suggestion as just the reason', async () => {
+  listBookingsMock.mockResolvedValue([
+    booking({
+      status: 'Rejected',
+      decision: { at: '2027-10-01T01:00:00', byId: null, byName: '', reason: 'Closed.', suggestion: '' },
+    }),
+  ])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const row = within(await screen.findByRole('list')).getByRole('listitem')
+  expect(row).toHaveTextContent('Rejected by a former user')
+  expect(row).not.toHaveTextContent('Suggested instead')
+})

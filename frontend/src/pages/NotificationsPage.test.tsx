@@ -195,3 +195,14 @@ it('TC-CF05 tells a Coordinator what will show up here', async () => {
   expect(await screen.findByText(/When an event is assigned to you/)).toBeInTheDocument()
   expect(screen.getByText(/Assignments and booking or safety problems/)).toBeInTheDocument()
 })
+
+it('TC-DF20 labels the booking decision notices', async () => {
+  listMock.mockResolvedValue([
+    notice({ id: '1', status: null, kind: 'booking-confirmed', message: 'Confirmed.' }),
+    notice({ id: '2', status: null, kind: 'booking-rejected', message: 'Rejected.' }),
+  ])
+  render(<NotificationsPage session={coordinator} />)
+  expect(await screen.findByText('Booking confirmed')).toBeInTheDocument()
+  expect(screen.getByText('Booking rejected')).toBeInTheDocument()
+  expect(screen.getAllByRole('link', { name: 'Open Gala' })).toHaveLength(2)
+})
