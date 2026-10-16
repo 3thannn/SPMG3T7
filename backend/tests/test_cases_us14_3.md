@@ -290,5 +290,24 @@ the Coordinator requests the active one (Requested, event → Planning), cannot
 request it twice, and cannot request the expired one; no booking is ever
 Confirmed.
 
-**Still to do once the migration is run on Supabase:** the same walkthrough
-against the shared project.
+### Live verification against the shared Supabase project (2026-10-16)
+After running `SUPABASE_ADD_VENUE_HOLDS.sql` (booking_status: Requested,
+Cancelled, Held), through the running app as the real accounts, on event 30
+(Planning, Coordinator Ethan) at Ethan's House, June 2027 slots:
+
+| Step | Result |
+| --- | --- |
+| No expiry / expiry in the past | HTTP 400 with the sentence |
+| Coordinator places a hold | HTTP 403 |
+| Venue Staff place hold A | HTTP 201, Held, held by Sam, expires in a day |
+| Coordinator sees it on event 30 | Listed as Held |
+| Organiser requests it | HTTP 403 |
+| Coordinator requests hold A | HTTP 200, Requested; event stays Planning |
+| Requests it again | HTTP 409 "already been turned into a booking request" |
+| Hold C placed, then released with Cancel | HTTP 200 Cancelled; requesting it → 409 "has been cancelled" |
+| Hold B placed to expire 2 minutes later | Not flagged before; flagged `holdExpired` after |
+| Coordinator requests expired hold B | HTTP 409 "expired at 2026-10-16 22:57" |
+| `request_held_booking` called on hold B directly | `'expired'`: Postgres's Singapore clock agrees with the API's |
+| Bookings made before US14.3 (events 18, 30) | Still load, HTTP 200, with empty hold fields |
+
+The three test bookings were deleted afterwards.
