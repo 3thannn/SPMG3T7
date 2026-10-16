@@ -225,4 +225,25 @@ main's `SUPABASE_SETUP.sql` and every migration in README order. 25 of 25 checks
 | Only `service_role` may call `approve_venue_booking` | ✅ |
 | The updated `SUPABASE_SETUP.sql` builds a fresh database with the decision columns | ✅ |
 
-**Still to do once the migration is run on Supabase:** a live check against the shared project.
+### Live verification against the shared Supabase project (2026-10-16)
+After running `SUPABASE_ADD_BOOKING_DECISIONS.sql`, through the running app as
+the real accounts, on event 30 ("random", Planning, Coordinator Ethan) at
+Ethan's House, June 2027 slots. The three requests already in the queue
+(bookings 1, 4, 5) were left untouched.
+
+| Step | Result |
+| --- | --- |
+| Coordinator requests A (09:00–11:00) and B (10:00–12:00), same venue and day | HTTP 201, both Requested |
+| Venue Staff open the queue | Oldest first (1, 4, 5, then A, B), with event, venue, times, occupied window, headcount, layout and Coordinator |
+| Coordinator opens the queue / approves A | HTTP 403 both |
+| Venue Staff approve A | HTTP 200, Confirmed |
+| Venue Staff approve B | HTTP 409 "Ethan's House is already taken for this slot by "random" (Confirmed, occupying 09:00 to 11:00)…"; the queue now shows B's clash with A |
+| Reject B with a blank reason | HTTP 400 "Give the Coordinator a reason…" |
+| Reject B with reason and suggestion | HTTP 200, Rejected, "Same room from 12:00" |
+| Approve A again | HTTP 409 "already been confirmed" |
+| Coordinator's event page | A Confirmed by Sam; B Rejected by Sam with the reason and suggestion |
+| Coordinator's notifications | `booking-confirmed` and `booking-rejected` with the reason and suggestion |
+| Event 30's other bookings and status; requests 1, 4, 5 | Unchanged |
+| Database rows | Who (`decided_by_id`) and when (`decided_at`) on both; reason and suggestion on B |
+
+The two test bookings and two notifications were deleted afterwards.
