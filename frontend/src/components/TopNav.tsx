@@ -25,6 +25,7 @@ const NAV_LINKS: NavLink[] = [
   { label: 'Unassigned Queue', path: '/unassigned-queue' },
   { label: 'Safety Review', path: '/safety-review' },
   { label: 'Venues', path: '/venues' },
+  { label: 'Booking Requests', path: '/booking-requests' },
   { label: 'Equipment', path: '/equipment' },
   { label: 'Equipment Requests', path: '/equipment-requests' },
   { label: 'Add venue', path: '/venues/new' },

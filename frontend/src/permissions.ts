@@ -82,6 +82,11 @@ const GUARDED: Record<string, GuardedRoute> = {
     what: 'adding equipment',
     who: 'Technical Support',
   },
+  '/booking-requests': {
+    anyOf: ['bookings:decide'],
+    what: 'the venue booking requests',
+    who: 'Venue Staff',
+  },
   '/equipment-requests': {
     anyOf: ['equipment:queue'],
     what: 'the equipment request queue',

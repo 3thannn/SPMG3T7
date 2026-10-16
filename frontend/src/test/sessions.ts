@@ -42,6 +42,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'venues:delete',
     // US14.3: tentative holds for a Coordinator.
     'holds:place',
+    // US16.1: approve or reject booking requests.
+    'bookings:decide',
   ],
   // US1.4: Safety Officer reviews safety aspects.
   'Safety Officer': ['safety:review'],
