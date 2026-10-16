@@ -168,6 +168,7 @@ class TestPlacingAHold:
         [
             ({"venueId": None}, "Choose a venue."),
             ({"venueId": "999"}, "That venue is not in the catalogue."),
+            ({"venueId": "abc"}, "That venue is not in the catalogue."),
             ({"eventId": None}, "Choose the event to hold this venue for."),
             ({"eventId": "999"}, "That event does not exist."),
             ({"eventId": "abc"}, "That event does not exist."),
@@ -178,8 +179,8 @@ class TestPlacingAHold:
                 "The start time 2027-02-30T09:00 is not a real date and time.",
             ),
         ],
-        ids=["no-venue", "unknown-venue", "no-event", "unknown-event", "bad-event-id",
-             "no-start", "end-before-start", "impossible-date"],
+        ids=["no-venue", "unknown-venue", "bad-venue-id", "no-event", "unknown-event",
+             "bad-event-id", "no-start", "end-before-start", "impossible-date"],
     )
     def test_tc_h09_a_bad_hold_is_refused_with_a_sentence(
         self, client, staff, event, overrides, message
@@ -618,4 +619,66 @@ class TestTheSupabaseStore:
         with pytest.raises(error):
             booking_store.SupabaseBookings().request_hold(
                 41, actor_id=COORDINATOR_ID, expected_status=EventStatus.APPROVED
+            )
+
+
+class TestRacesAndBadData:
+    """What happens when something changes between the route's check and the write."""
+
+    def test_tc_h52_an_unreadable_expiry_counts_as_expired(self, booking_repository):
+        hold = booking_repository.place_hold(
+            event_id=EVENT_ID, venue_id=1, starts_at="2027-11-02T09:00",
+            ends_at="2027-11-02T17:00", expires_at="not a time",
+            held_by_id=VENUE_STAFF_ID, headcount=30,
+        )
+        # A hold must never block a venue longer than anyone agreed to.
+        assert hold.hold_expired is True
+        assert hold.holds_venue is False
+
+    def test_tc_h53_a_hold_released_during_the_request_says_so(
+        self, client, staff, coordinator, event, booking_repository, monkeypatch
+    ):
+        hold = place(client, staff).json()
+        real_request = booking_repository.request_hold
+
+        def released_first(booking_id, **kwargs):
+            booking_repository.cancel(booking_id, actor_id=COORDINATOR_ID, reason="Released.")
+            return real_request(booking_id, **kwargs)
+
+        monkeypatch.setattr(booking_repository, "request_hold", released_first)
+        detail = refused(to_request(client, coordinator, hold["id"]))
+        assert detail["reason"] == "not-held"
+        assert detail["message"] == "This hold has been cancelled."
+
+    def test_tc_h54_an_event_that_moves_during_the_request_is_refused(
+        self, client, staff, coordinator, event, event_repository, booking_repository,
+        monkeypatch,
+    ):
+        hold = place(client, staff).json()
+        real_request = booking_repository.request_hold
+
+        def moved_first(booking_id, **kwargs):
+            event_repository.events = [
+                replace(item, status=EventStatus.CANCELLED) if item.id == EVENT_ID else item
+                for item in event_repository.events
+            ]
+            return real_request(booking_id, **kwargs)
+
+        monkeypatch.setattr(booking_repository, "request_hold", moved_first)
+        detail = refused(to_request(client, coordinator, hold["id"]))
+        assert detail["message"].startswith("This event changed while you were working on it.")
+        assert booking_repository.bookings[0].status is BookingStatus.HELD
+
+    def test_tc_h55_the_store_rechecks_the_hold_itself(
+        self, client, staff, event, booking_repository, frozen_now
+    ):
+        hold = int(place(client, staff).json()["id"])
+        frozen_now(datetime(2027, 10, 9, 9, 0))
+        with pytest.raises(HoldExpired):
+            booking_repository.request_hold(
+                hold, actor_id=COORDINATOR_ID, expected_status=EventStatus.APPROVED
+            )
+        with pytest.raises(booking_store.StaleBookingStatus):
+            booking_repository.request_hold(
+                999, actor_id=COORDINATOR_ID, expected_status=EventStatus.APPROVED
             )

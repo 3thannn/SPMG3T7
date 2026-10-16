@@ -58,8 +58,9 @@ Venue Staff ──► Venue page ──► "Tentative holds" card
 
 | Layer | File |
 | --- | --- |
-| Backend | `backend/tests/test_venue_holds.py` (TC-H01–H51) |
-| Frontend | `frontend/src/components/EventBookings.test.tsx` (TC-HF01–HF07), `frontend/src/holdsStore.test.ts` (TC-HF08–HF10), `frontend/src/components/VenueHolds.test.tsx` (TC-HF11–HF17), `frontend/src/pages/VenueDetailPage.test.tsx` (TC-HF18) |
+| Backend | `backend/tests/test_venue_holds.py` (TC-H01–H55) |
+| Frontend | `frontend/src/components/EventBookings.test.tsx` (TC-HF01–HF07), `frontend/src/holdsStore.test.ts` (TC-HF08–HF10, HF19–HF25, HF30), `frontend/src/components/VenueHolds.test.tsx` (TC-HF11–HF17, HF26–HF29, HF31), `frontend/src/pages/VenueDetailPage.test.tsx` (TC-HF18) |
+| Database | Run against real PostgreSQL; see §6 |
 | Updated for US14.3 | `test_booking_store.py` (cancel also matches Held), `test_venue_booking_cancellation.py` (Held is in `HOLDS_VENUE`), `test_venue_bookings.py` (three new response fields) |
 
 ---
@@ -137,6 +138,18 @@ Venue Staff ──► Venue page ──► "Tentative holds" card
 ### TC-HF18: Only Venue Staff see the Tentative holds card
 - **Automated**: `VenueDetailPage.test.tsx` › TC-HF18
 
+### TC-H53 / TC-H54: Something changes between the check and the write
+- **Expected Result**: A hold released in between → 409 "This hold has been cancelled."; an event that moves in between → 409 "This event changed while you were working on it. Refresh it and try again." and the hold stays Held
+- **Automated**: `test_tc_h53_…`, `test_tc_h54_…`, `test_tc_h55_the_store_rechecks_the_hold_itself`
+
+### TC-HF19 to TC-HF25: The frontend's API calls
+- **Expected Result**: `GET /holds/events`, `GET /holds?venueId=1` and `POST /holds` (venue id plus the form values) with the session token; `POST /events/900/bookings/101/request`; a 400, 403 or 409 becomes a sentence on the page; a 401 is passed on so the session ends
+- **Automated**: `holdsStore.test.ts` › TC-HF19–HF25
+
+### TC-HF26, TC-HF27, TC-HF29: The holds card when something fails
+- **Expected Result**: Holds that cannot load say so and the form still works; events that cannot load say so and the form stays shut; an unexpected failure placing a hold shows "Could not place this hold…"
+- **Automated**: `VenueHolds.test.tsx` › TC-HF26, HF27, HF29
+
 ---
 
 ## 3. NEGATIVE TEST CASES
@@ -177,6 +190,10 @@ Venue Staff ──► Venue page ──► "Tentative holds" card
 - **Expected Result**: Another Coordinator → 404; Venue Staff and Organiser → 403; a hold on another event or an unknown id → 404; a Cancelled event → 409 `event-closed`
 - **Automated**: TC-H35–H39; frontend TC-HF05, TC-HF06
 
+### TC-H52: An unreadable expiry counts as expired
+- **Expected Result**: The hold is flagged expired and does not keep the slot; a hold must never block a venue longer than anyone agreed to
+- **Automated**: `test_tc_h52_an_unreadable_expiry_counts_as_expired`
+
 ### TC-H47 / TC-H48: Listing holds
 - **Expected Result**: A missing or non-numeric venue id → 400; a Coordinator → 403 on both list routes
 - **Automated**: TC-H47, TC-H48
@@ -199,6 +216,8 @@ All with "now" pinned to 2027-10-01 09:00.
 | TC-H31 | request at expiry − 1 min | Accepted | `test_tc_h31_…` |
 | TC-H30 | request at expiry | Refused `hold-expired` | `test_tc_h30_…` |
 | TC-HF10 | form: expiry now + 1 min, and = start | Accepted | `holdsStore.test.ts` |
+| TC-HF28 | form: times edited after choosing the event | The edited times are sent | `VenueHolds.test.tsx` |
+| TC-HF31 | a hold placed before an existing later one | Listed first | `VenueHolds.test.tsx` |
 
 ### AC3: The slot counts as taken
 | Case | Expected | Automated |
@@ -223,9 +242,9 @@ All with "now" pinned to 2027-10-01 09:00.
 | AC | Test cases | Status |
 | --- | --- | --- |
 | AC1 Held booking linked to event and Coordinator | TC-H01–H10, H45, HF01, HF11–HF14 | ✅ |
-| AC2 Expiry required and in the future | TC-H11–H20, HF08–HF10, HF15 | ✅ |
+| AC2 Expiry required and in the future | TC-H11–H20, H52, HF08–HF10, HF15; database checks | ✅ |
 | AC3 Slot taken while Held and not expired | TC-H21–H26 | ✅ through `holds_venue`, used by US9.4 today and US15.1 once built |
-| AC4 Coordinator turns hold into a request | TC-H27–H40, HF02–HF07 | ✅ |
+| AC4 Coordinator turns hold into a request | TC-H27–H40, H53–H55, HF02–HF07, HF24, HF25; database checks | ✅ |
 | AC5 Never shown or counted as Confirmed | TC-H41–H43, HF01, HF03 | ✅ |
 | AC6 Venue Staff place holds | TC-H06, H36, H48, HF18 | ✅ |
 
@@ -233,5 +252,43 @@ All with "now" pinned to 2027-10-01 09:00.
 
 | Run | Date | Result |
 | --- | --- | --- |
-| Backend `ruff check`, `compileall`, `pytest` | 2026-10-15 | 1288 passed (70 in `test_venue_holds.py`) |
-| Frontend `lint`, `tsc`, `build`, `vitest` | 2026-10-15 | 733 passed (25 for US14.3) |
+| Backend `ruff check`, `compileall`, `pytest` | 2026-10-16 | 1293 passed (75 in `test_venue_holds.py`) |
+| Frontend `lint`, `tsc`, `build`, `vitest` | 2026-10-16 | 748 passed (40 for US14.3) |
+| Coverage, `app/holds.py` | 2026-10-16 | 100% |
+| Coverage, US14.3 lines in `booking_store.py` and `events.py` | 2026-10-16 | 100% (the only uncovered lines belong to US14.1/US4.5) |
+| Coverage, `holdsStore.ts`, `VenueHolds.tsx` | 2026-10-16 | 100% of lines |
+
+### Database verification against real PostgreSQL (2026-10-16)
+The shared Supabase project did not have the migration yet, so the SQL was
+run on a throwaway local PostgreSQL built from main's `SUPABASE_SETUP.sql`
+and main's migrations in README order. 19 of 19 checks passed:
+
+| Check | Result |
+| --- | --- |
+| `SUPABASE_ADD_VENUE_HOLDS.sql` applies on top of main's schema, and again (idempotent) | ✅ |
+| `booking_status` gains Held | ✅ Requested, Cancelled, Held |
+| Active hold → `requested`; booking Requested by the Coordinator; Approved event → Planning; status change recorded | ✅ |
+| Requesting it again → `not-held` | ✅ |
+| Planning event → `requested`, stays Planning, no status change written | ✅ |
+| Expired hold → `expired`; booking stays Held; event unchanged | ✅ |
+| Another Coordinator, an event that moved, or a closed event → `stale-event`; nothing written | ✅ |
+| Unknown booking → `not-held` | ✅ |
+| A Held booking with no expiry is refused by `venue_bookings_hold_has_expiry` | ✅ |
+| A hold can be cancelled (released), and is then `not-held` | ✅ |
+| Removing the Venue Staff user keeps the hold (`held_by_id` set null) | ✅ |
+| Only `service_role` may call `request_held_booking`; `anon` and `authenticated` may not | ✅ |
+| The updated `SUPABASE_SETUP.sql` builds a fresh database with the hold columns | ✅ |
+
+### API walkthrough (2026-10-16)
+Through the real routes and sign-in, with in-memory storage and the clock
+pinned: Venue Staff are offered only assigned Approved/Planning events; a
+missing, past, or after-start expiry and an event with no Coordinator are
+refused; a Coordinator cannot place a hold; two holds are placed and both
+take the slot (one clash under US9.4's rule); when one expires it frees the
+slot (no clash) and is flagged expired; the Organiser cannot request a hold;
+the Coordinator requests the active one (Requested, event → Planning), cannot
+request it twice, and cannot request the expired one; no booking is ever
+Confirmed.
+
+**Still to do once the migration is run on Supabase:** the same walkthrough
+against the shared project.
