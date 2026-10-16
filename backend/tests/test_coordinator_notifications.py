@@ -14,7 +14,7 @@ from app.event_status import EventStatus
 from app.event_store import Event
 from app.notification_store import TABLE, SupabaseNotifications
 from app.notifications import CoordinatorNotice
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 OTHER_COORDINATOR_ID = 99
 
@@ -25,6 +25,8 @@ DRAFT = {
     "startsAt": "2027-11-02T18:00",
     "endsAt": "2027-11-02T21:00",
     "expectedAttendance": 120,
+    # US2.1: an event cannot be submitted without its needs.
+    **SUBMITTABLE_NEEDS,
 }
 
 
