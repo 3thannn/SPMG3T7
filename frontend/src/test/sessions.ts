@@ -22,6 +22,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'bookings:request',
     'equipment:read',
     'equipment:request',
+    // US10.2: told about assignments and booking or safety problems.
+    'notifications:read',
   ],
   // US1.4 + US8.2/8.3/8.6: Coordinator Lead sees all events, manages assignments.
   'Event Coordinator Lead': [

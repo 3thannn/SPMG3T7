@@ -157,8 +157,12 @@ class TestNotificationIsCreated:
         self, client, auth_headers, notification_repository
     ):
         under_review_event(client, auth_headers)
-        assert notification_repository.notifications
-        assert all(item.user_id == ORGANISER_ID for item in notification_repository.notifications)
+        # US10.2's assignment notice goes to the Coordinator; status notices don't.
+        status_notices = [
+            item for item in notification_repository.notifications if item.kind == "event-status"
+        ]
+        assert status_notices
+        assert all(item.user_id == ORGANISER_ID for item in status_notices)
 
 
 class TestListAndReadState:
@@ -231,7 +235,7 @@ class TestAccess:
         )
         assert response.status_code == 404
 
-    @pytest.mark.parametrize("role", ["Event Coordinator", "Venue Staff"])
+    @pytest.mark.parametrize("role", ["Event Coordinator Lead", "Venue Staff"])
     def test_tc_n15_other_roles_are_refused(self, client, auth_headers, role):
         response = client.get("/notifications", headers=auth_headers(role))
         assert response.status_code == 403

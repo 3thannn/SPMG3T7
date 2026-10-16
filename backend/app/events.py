@@ -49,7 +49,7 @@ from app.event_status import (
     transition_refusal_message,
 )
 from app.event_store import Event, StaleEventStatus
-from app.notifications import notify_status_change
+from app.notifications import notify_assigned, notify_status_change
 from app.permissions import Permission, Role, has_permission
 from app.suitability import BookingNeeds, Verdict
 from app.users import User
@@ -506,6 +506,8 @@ def assign_coordinator(
         raise _stale_request() from None
     # US10.1: assignment is what moves an event to Under Review now (US8.3).
     notify_status_change(assigned, EventStatus.UNDER_REVIEW)
+    # US10.2: and the Coordinator learns the event is theirs.
+    notify_assigned(assigned)
     return _to_out(assigned)
 
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import './NotificationsPage.css'
 import StatusBadge from '../components/StatusBadge'
 import {
+  KIND_LABELS,
   listNotifications,
   setNotificationRead,
   type NotificationRecord,
@@ -16,7 +17,8 @@ type NotificationsPageProps = {
 }
 
 /**
- * Organiser status notices and Tech Support equipment request notices.
+ * Organiser status notices, Coordinator attention notices (US10.2) and Tech
+ * Support equipment request notices.
  *
  * Unread notices come first so the list reads from the top, and each can be
  * marked read or unread so it never becomes a pile nobody can work through.
@@ -24,6 +26,27 @@ type NotificationsPageProps = {
  * and keeps a toggled notice in place until the next load, so a click does not
  * make the row jump out from under the pointer.
  */
+const SUBTITLES: Partial<Record<Session['role'], string>> = {
+  'Technical Support': 'New equipment requests, unread first.',
+  'Event Coordinator': 'Assignments and booking or safety problems on your events, unread first.',
+}
+
+const EMPTY_TEXT: Partial<Record<Session['role'], string>> = {
+  'Technical Support': 'New equipment requests will appear here.',
+  'Event Coordinator':
+    'When an event is assigned to you, or one of yours has a hold, booking or safety problem, it shows up here.',
+}
+
+/** Where a notice leads, or null when there is nothing the reader can open. */
+function target(item: NotificationRecord): { path: string; label: string } | null {
+  if (item.kind === 'equipment-request') {
+    return { path: `/equipment-requests/${item.equipmentRequestId ?? 'missing'}`, label: 'Open request' }
+  }
+  // US10.2: the event was taken off this Coordinator, so they can no longer open it.
+  if (item.kind === 'unassigned') return null
+  return { path: `/events/${item.eventId}`, label: `Open ${displayEventTitle(item.eventTitle)}` }
+}
+
 export default function NotificationsPage({ session }: NotificationsPageProps) {
   const [notifications, setNotifications] = useState<NotificationRecord[] | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -71,9 +94,7 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
           <div>
             <h1 className="page-title">Notifications</h1>
             <p className="page-subtitle">
-              {session.role === 'Technical Support'
-                ? 'New equipment requests, unread first.'
-                : 'Status changes on your events, unread first.'}
+              {SUBTITLES[session.role] ?? 'Status changes on your events, unread first.'}
             </p>
           </div>
         </header>
@@ -89,9 +110,10 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
         ) : loadError ? null : notifications.length === 0 ? (
           <div className="card empty">
             <h3>No notifications yet</h3>
-            <p>{session.role === 'Technical Support'
-              ? 'New equipment requests will appear here.'
-              : 'When a Coordinator reviews, approves or rejects one of your events, it shows up here.'}</p>
+            <p>
+              {EMPTY_TEXT[session.role] ??
+                'When a Coordinator reviews, approves or rejects one of your events, it shows up here.'}
+            </p>
           </div>
         ) : (
           <>
@@ -114,7 +136,9 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
           <p className="muted">{empty}</p>
         ) : (
           <ul className="notification-list">
-            {items.map((item) => (
+            {items.map((item) => {
+              const link = target(item)
+              return (
               <li
                 key={item.id}
                 className={`notification-row card${item.read ? '' : ' is-unread'}`}
@@ -122,26 +146,24 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
                 <div className="notification-main">
                   <div className="notification-meta">
                     {item.status && <StatusBadge status={item.status} />}
-                    {item.kind === 'equipment-request' && <span>Equipment request</span>}
+                    {item.kind && item.kind !== 'event-status' && (
+                      <span>{KIND_LABELS[item.kind]}</span>
+                    )}
                     <span>{formatTimestamp(item.createdAt)}</span>
                   </div>
                   <p className="notification-message">{item.message}</p>
-                  <a
-                    className="notification-event"
-                    href={item.kind === 'equipment-request'
-                      ? `#/equipment-requests/${item.equipmentRequestId ?? 'missing'}`
-                      : `#/events/${item.eventId}`}
-                    onClick={(clickEvent) => {
-                      clickEvent.preventDefault()
-                      navigate(item.kind === 'equipment-request'
-                        ? `/equipment-requests/${item.equipmentRequestId ?? 'missing'}`
-                        : `/events/${item.eventId}`)
-                    }}
-                  >
-                    {item.kind === 'equipment-request'
-                      ? 'Open request'
-                      : `Open ${displayEventTitle(item.eventTitle)}`}
-                  </a>
+                  {link && (
+                    <a
+                      className="notification-event"
+                      href={`#${link.path}`}
+                      onClick={(clickEvent) => {
+                        clickEvent.preventDefault()
+                        navigate(link.path)
+                      }}
+                    >
+                      {link.label}
+                    </a>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -152,7 +174,8 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
                   {item.read ? 'Mark as unread' : 'Mark as read'}
                 </button>
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
       </section>

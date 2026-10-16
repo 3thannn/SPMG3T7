@@ -1,4 +1,4 @@
-"""Shared notification routes for US10.1 and US19.
+"""Shared notification routes for US10.1, US10.2 and US19.
 
 An Organiser is told when one of their events moves to Under Review (a Lead
 assigning a Coordinator, or a Coordinator asking a question), Approved or
@@ -11,9 +11,17 @@ status change is the thing the Coordinator asked for and it has already
 happened, so a notice that could not be written is logged rather than turned
 into an error for a decision that in fact succeeded. US19 applies the same
 best-effort rule after an equipment request is stored.
+
+US10.2 tells the Coordinator an event is assigned to about the things that
+need their attention: being assigned or unassigned, a tentative hold running
+out, a booking hit by venue unavailability or a setup change, and the Safety
+Officer asking for changes. Only assignment (US8.3) exists yet; the other
+`notify_*` functions are ready for US8.4, US14.4, US12.2/US15.2 and US17.2 to
+call once the change they describe has been stored. Same best-effort rule.
 """
 
 import logging
+from enum import StrEnum
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -109,6 +117,118 @@ def notify_equipment_change(request: EquipmentRequest, actor_name: str, action: 
     _notify_equipment(
         request,
         f'Coordinator {actor_name} {action} the {request.equipment_type} request for "{title}".',
+    )
+
+
+class CoordinatorNotice(StrEnum):
+    """US10.2: the `kind` of a Coordinator notice, one per acceptance criterion."""
+
+    ASSIGNED = "assigned"
+    UNASSIGNED = "unassigned"
+    HOLD_EXPIRING = "hold-expiring"
+    HOLD_EXPIRED = "hold-expired"
+    BOOKING_CONFLICT = "booking-conflict"
+    SAFETY_CHANGES = "safety-changes"
+
+
+def _event_title(event: Event) -> str:
+    return event.title.strip() or "an untitled event"
+
+
+def _notify_coordinator(
+    coordinator_id: int | None, event: Event, kind: CoordinatorNotice, message: str
+) -> None:
+    """Write one notice for a Coordinator. Nobody to tell is not an error."""
+    if coordinator_id is None:
+        return
+    try:
+        notification_store.repository().create_notice(
+            user_id=coordinator_id, event_id=event.id, kind=str(kind), message=message
+        )
+    except Exception:
+        logger.exception(
+            "Could not write the US10.2 %s notification for event %s to user %s",
+            kind,
+            event.id,
+            coordinator_id,
+        )
+
+
+def notify_assigned(event: Event, coordinator_id: int | None = None) -> None:
+    """US8.3/US8.4: tell a Coordinator an event is now theirs.
+
+    Defaults to the event's current Coordinator, which is who an assignment just
+    stored.
+    """
+    recipient = coordinator_id if coordinator_id is not None else event.coordinator_id
+    _notify_coordinator(
+        recipient,
+        event,
+        CoordinatorNotice.ASSIGNED,
+        f'You were assigned "{_event_title(event)}".',
+    )
+
+
+def notify_unassigned(event: Event, coordinator_id: int) -> None:
+    """US8.4: tell the previous Coordinator an event was taken off them."""
+    _notify_coordinator(
+        coordinator_id,
+        event,
+        CoordinatorNotice.UNASSIGNED,
+        f'"{_event_title(event)}" is no longer assigned to you.',
+    )
+
+
+def notify_reassigned(event: Event, previous_id: int | None, new_id: int | None) -> None:
+    """US8.4: both sides of a reassignment, each told only their half."""
+    if previous_id == new_id:
+        return
+    if previous_id is not None:
+        notify_unassigned(event, previous_id)
+    notify_assigned(event, new_id)
+
+
+def notify_hold_expiring(event: Event, venue_name: str, expires_at: str) -> None:
+    """US14.4: a tentative hold is about to lapse. `expires_at` is shown as given."""
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.HOLD_EXPIRING,
+        f'The tentative hold on {venue_name} for "{_event_title(event)}" '
+        f"expires {expires_at}.",
+    )
+
+
+def notify_hold_expired(event: Event, venue_name: str) -> None:
+    """US14.4: a tentative hold lapsed and the venue is no longer held."""
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.HOLD_EXPIRED,
+        f'The tentative hold on {venue_name} for "{_event_title(event)}" has expired.',
+    )
+
+
+def notify_booking_conflict(event: Event, venue_name: str, reason: str) -> None:
+    """US12.2/US15.2: a booking is hit by venue unavailability or a setup change."""
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.BOOKING_CONFLICT,
+        f'The booking of {venue_name} for "{_event_title(event)}" needs attention: {reason}',
+    )
+
+
+def notify_safety_changes(event: Event, notes: str = "") -> None:
+    """US17.2: the Safety Officer asked for changes. Their words travel with it."""
+    title = _event_title(event)
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.SAFETY_CHANGES,
+        f'The Safety Officer requested changes to "{title}": {notes}'
+        if notes
+        else f'The Safety Officer requested changes to "{title}".',
     )
 
 
