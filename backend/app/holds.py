@@ -19,6 +19,10 @@ Assumptions, not customer-confirmed:
   assigned, and Approved or Planning (US14.1's `check_booking`).
 * A hold expires no later than the booking starts. Keeping a slot past the
   moment it is used would mean nothing.
+
+US15.1: a hold is placed only where the slot is free under the same rule a
+request is checked with, setup and turnaround included. Venue Staff see every
+event, so a clash names the other event too.
 """
 
 import re
@@ -40,6 +44,8 @@ from app.events import (
     _booking_time,
     _invalid_booking,
     _venue_missing,
+    not_available,
+    slot_check,
 )
 from app.permissions import Permission
 from app.users import User
@@ -198,6 +204,11 @@ def place_hold(payload: HoldInput, user: PlacesHolds) -> HoldOut:
             "Assign a Coordinator to this event before holding a venue for it.",
             "no-coordinator",
         )
+    # US15.1: a hold takes its slot, so it is placed only where the slot is free.
+    found = slot_check(venue.id, starts_at, ends_at, venue=venue)
+    if not found.available:
+        titles = {item.booking.id: _event_title(item.booking.event_id) for item in found.bookings}
+        raise not_available(venue.name, found, titles)
 
     hold = booking_store.repository().place_hold(
         event_id=event.id,

@@ -101,6 +101,13 @@ export type VenueRecheck = {
   turnaroundMinutes: number
   checkedBookings: number
   conflicts: VenueConflict[]
+  /**
+   * US15.2: bookings this change marked "Conflict – review needed", with their
+   * Coordinators notified. Optional so an older server's answer reads as none.
+   */
+  flaggedBookingIds?: string[]
+  /** US15.2: flagged bookings whose clash this change resolved. */
+  clearedBookingIds?: string[]
 }
 
 /** What saving a venue returns: the record, plus the re-check when one ran. */

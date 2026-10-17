@@ -99,3 +99,24 @@ it('TC-DF19 offers Venue Staff the Booking Requests link and a Coordinator none'
   )
   expect(screen.queryByRole('link', { name: 'Booking Requests' })).not.toBeInTheDocument()
 })
+
+it('TC-FF22 offers Venue Staff the Booking Conflicts link and a Coordinator none', () => {
+  listMock.mockResolvedValue([])
+  const { unmount } = render(
+    <TopNav route="/venues" session={buildSession({ role: 'Venue Staff' })} onSignOut={() => {}} />,
+  )
+  expect(screen.getByRole('link', { name: 'Booking Conflicts' })).toHaveAttribute(
+    'href',
+    '#/booking-conflicts',
+  )
+  unmount()
+
+  render(
+    <TopNav
+      route="/events"
+      session={buildSession({ role: 'Event Coordinator' })}
+      onSignOut={() => {}}
+    />,
+  )
+  expect(screen.queryByRole('link', { name: 'Booking Conflicts' })).not.toBeInTheDocument()
+})

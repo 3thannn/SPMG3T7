@@ -72,7 +72,17 @@ class TestShownWhenAVenueIsPicked:
     def test_a_suitable_venue(self, client, coordinator, event):
         body = verdict(check(client, coordinator))
 
-        assert body == {"venueId": GREAT_HALL, "suitable": True, "reasons": [], "notes": []}
+        assert body == {
+            "venueId": GREAT_HALL,
+            "suitable": True,
+            "reasons": [],
+            "notes": [],
+            # US15.1: the slot is free too, and this is the window it would occupy.
+            "available": True,
+            "clashes": [],
+            "occupiedFrom": "2027-11-02T09:00",
+            "occupiedTo": "2027-11-02T17:00",
+        }
 
     def test_a_venue_that_is_not_suitable_says_why(self, client, coordinator, event):
         body = verdict(check(client, coordinator, venueId=BERTHA_ROOM, headcount=41))

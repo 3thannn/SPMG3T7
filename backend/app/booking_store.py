@@ -31,6 +31,14 @@ Three choices worth knowing:
   decided and when on the row, and for a rejection the reason and an optional
   suggested alternative. A rejected booking is kept, like a cancelled one, and
   frees its slot.
+* A request is refused when its slot is not free (US15.1, `app.availability`).
+  `request_venue_and_plan` re-checks under a lock on the venue, so two requests
+  for one slot at once cannot both be stored.
+* A booking that clashes after its venue's setup or turnaround time changes is
+  flagged "Conflict - review needed" (US15.2): when, and why, on the row. The
+  flag is a mark beside the status, never a status of its own, so a flagged
+  booking is still Requested, Held or Confirmed, and nothing is deleted or
+  cancelled to clear it.
 """
 
 from dataclasses import dataclass, field, replace
@@ -55,8 +63,13 @@ COLUMNS = (
     "cancelled_by:users!venue_bookings_cancelled_by_id_fkey(name), "
     "hold_expires_at, held_by_id, held_by:users!venue_bookings_held_by_id_fkey(name), "
     "decided_at, decided_by_id, rejection_reason, suggested_alternative, "
-    "decided_by:users!venue_bookings_decided_by_id_fkey(name)"
+    "decided_by:users!venue_bookings_decided_by_id_fkey(name), "
+    "conflict_flagged_at, conflict_reason"
 )
+
+#: What `request_venue_and_plan` returns when the slot is taken (US15.1). Ids
+#: are SERIAL, so they are never negative, and NULL already means a stale event.
+RPC_CLASH = -1
 
 #: Booking times are naive Singapore local times, as event times are (see
 #: `event_status.check_completion`), so a hold's expiry is compared with this.
@@ -118,6 +131,16 @@ class Decision:
 
 
 @dataclass(frozen=True)
+class ConflictFlag:
+    """US15.2: a booking that clashes since its venue's setup or turnaround changed."""
+
+    #: Naive UTC, as the other `_at` columns are.
+    flagged_at: str
+    #: What it clashes with, in words the event's Coordinator may read.
+    reason: str
+
+
+@dataclass(frozen=True)
 class Booking:
     id: int
     event_id: int
@@ -146,6 +169,8 @@ class Booking:
     held_by_name: str = ""
     #: US16.1: set once Venue Staff approve or reject the request.
     decision: Decision | None = None
+    #: US15.2: set while the booking is flagged "Conflict - review needed".
+    conflict: ConflictFlag | None = None
 
     def hold_expired_at(self, now: datetime) -> bool:
         """Whether this is a hold whose expiry has passed. Expiry itself counts.
@@ -216,6 +241,15 @@ def _decision(row: dict) -> Decision | None:
     )
 
 
+def _conflict(row: dict) -> ConflictFlag | None:
+    if not row.get("conflict_flagged_at"):
+        return None
+    return ConflictFlag(
+        flagged_at=str(row["conflict_flagged_at"]),
+        reason=row.get("conflict_reason") or "",
+    )
+
+
 def to_booking(row: dict) -> Booking:
     return Booking(
         id=row["id"],
@@ -236,6 +270,7 @@ def to_booking(row: dict) -> Booking:
         held_by_id=row.get("held_by_id"),
         held_by_name=_embedded_name(row, "held_by"),
         decision=_decision(row),
+        conflict=_conflict(row),
     )
 
 
@@ -291,6 +326,12 @@ class Repository(Protocol):
         self, booking_id: int, *, actor_id: int, reason: str, suggestion: str = ""
     ) -> Booking: ...
 
+    def flag_conflict(self, booking_id: int, *, reason: str) -> Booking: ...
+
+    def clear_conflict(self, booking_id: int) -> Booking: ...
+
+    def list_flagged(self) -> list[Booking]: ...
+
 
 class SupabaseBookings:
     """The real store. Goes through the service role client, like the others."""
@@ -345,6 +386,8 @@ class SupabaseBookings:
 
         The status is sent rather than left to the column default, so the row
         says what this code meant instead of what the database happened to do.
+        US15.1: the RPC locks the venue and refuses a slot that is not free
+        (`SlotTaken`), so the route's own check cannot be raced.
         The insert response carries no embedded venue name, so the row is read
         back, as `event_store` does after an insert.
         """
@@ -376,6 +419,8 @@ class SupabaseBookings:
                  "p_required_facilities": list(required_facilities),
                  "p_accessibility_needs": list(accessibility_needs)},
             ).execute()
+            if result.data == RPC_CLASH:
+                raise SlotTaken
             if not result.data:
                 raise event_store.StaleEventStatus
             booking_id = result.data
@@ -568,6 +613,41 @@ class SupabaseBookings:
         assert booking is not None  # noqa: S101 — the row was just updated
         return booking
 
+    def _write_conflict(self, booking_id: int, changes: dict) -> Booking:
+        supabase_client.admin().table(TABLE).update(changes).eq("id", booking_id).execute()
+        booking = self.get_booking(booking_id)
+        if booking is None:
+            raise StaleBookingStatus
+        return booking
+
+    def flag_conflict(self, booking_id: int, *, reason: str) -> Booking:
+        """US15.2: mark the booking "Conflict - review needed". Status untouched."""
+        return self._write_conflict(
+            booking_id, {"conflict_flagged_at": _now(), "conflict_reason": reason}
+        )
+
+    def clear_conflict(self, booking_id: int) -> Booking:
+        """US15.2: the clash is resolved, so the flag goes. Status untouched."""
+        return self._write_conflict(
+            booking_id, {"conflict_flagged_at": None, "conflict_reason": None}
+        )
+
+    def list_flagged(self) -> list[Booking]:
+        """US15.2: every flagged booking, soonest first, for Venue Staff to review."""
+        rows = (
+            supabase_client.admin()
+            .table(TABLE)
+            .select(COLUMNS)
+            .not_.is_("conflict_flagged_at", "null")
+            .order("start_at")
+            .order("end_at")
+            .order("id")
+            .execute()
+            .data
+            or []
+        )
+        return [to_booking(row) for row in rows]
+
     def venue_has_bookings(self, venue_id: int) -> bool:
         """Whether anything books this venue — asked before US9.1c deletes it.
 
@@ -655,6 +735,7 @@ class InMemoryBookings:
                 or event.coordinator_id != requested_by_id
             ):
                 raise event_store.StaleEventStatus
+            self._refuse_taken_slot(venue_id, starts_at, ends_at)
             if event.status is EventStatus.APPROVED:
                 event_store.repository().plan_event(event_id, actor_id=requested_by_id)
         venue = venue_store.repository().get_venue(venue_id)
@@ -731,8 +812,37 @@ class InMemoryBookings:
         self.bookings = [requested if b.id == booking_id else b for b in self.bookings]
         return requested
 
+    def _refuse_taken_slot(self, venue_id: int, starts_at: str, ends_at: str) -> None:
+        """US15.1, as `request_venue_and_plan` re-checks it in SQL under its lock."""
+        from app import availability, venue_unavailability_store
+
+        found = availability.check_slot(
+            venue_store.repository().get_venue(venue_id),
+            starts_at,
+            ends_at,
+            bookings_at_venue=self.list_for_venue(venue_id),
+            unavailability=venue_unavailability_store.repository().list_for_venue(venue_id),
+        )
+        if not found.available:
+            raise SlotTaken
+
     def venue_has_bookings(self, venue_id: int) -> bool:
         return any(booking.venue_id == venue_id for booking in self.bookings)
+
+    def _set_conflict(self, booking_id: int, flag: ConflictFlag | None) -> Booking:
+        existing = self.get_booking(booking_id)
+        if existing is None:
+            raise StaleBookingStatus
+        return self._decide(booking_id, replace(existing, conflict=flag))
+
+    def flag_conflict(self, booking_id: int, *, reason: str) -> Booking:
+        return self._set_conflict(booking_id, ConflictFlag(flagged_at=_now(), reason=reason))
+
+    def clear_conflict(self, booking_id: int) -> Booking:
+        return self._set_conflict(booking_id, None)
+
+    def list_flagged(self) -> list[Booking]:
+        return sorted((b for b in self.bookings if b.conflict is not None), key=_sort_key)
 
     def list_requested(self) -> list[Booking]:
         requested = [b for b in self.bookings if b.status is BookingStatus.REQUESTED]
@@ -753,13 +863,20 @@ class InMemoryBookings:
         )
 
     def approve(self, booking_id: int, *, actor_id: int) -> Booking:
-        from app import availability  # the US15.1 rule, as the RPC applies it in SQL
+        # The US15.1 rule at approval, as the RPC applies it in SQL.
+        from app import availability, venue_unavailability_store
 
         existing = self.get_booking(booking_id)
         if existing is None or existing.status is not BookingStatus.REQUESTED:
             raise StaleBookingStatus
-        venue = venue_store.repository().get_venue(existing.venue_id)
-        if availability.find_clashes(existing, venue, self.list_for_venue(existing.venue_id)):
+        found = availability.check_booking(
+            existing,
+            venue_store.repository().get_venue(existing.venue_id),
+            self.list_for_venue(existing.venue_id),
+            venue_unavailability_store.repository().list_for_venue(existing.venue_id),
+            counting_requests=False,
+        )
+        if not found.available:
             raise SlotTaken
         return self._decide(
             booking_id,

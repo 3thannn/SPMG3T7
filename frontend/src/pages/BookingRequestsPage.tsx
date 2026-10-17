@@ -3,11 +3,12 @@ import './BookingRequestsPage.css'
 import {
   DECISION_TEXT_MAX,
   approveBookingRequest,
+  describePeriod,
   listBookingRequests,
   rejectBookingRequest,
   type BookingRequest,
 } from '../bookingRequestsStore'
-import { EventRuleError, formatBookingTimes } from '../eventsStore'
+import { CONFLICT_LABEL, EventRuleError, formatBookingTimes } from '../eventsStore'
 import { displayEventTitle } from '../draftRules'
 import { unexpectedFailureMessage, type Session } from '../api'
 
@@ -33,7 +34,9 @@ function minutes(value: number): string {
  * venue, booking time, the full occupied window including setup and turnaround,
  * headcount and layout. A request that already clashes with a booking taking
  * its slot says so and cannot be approved; the server checks again at approval
- * either way. Rejecting needs a reason and may suggest an alternative. A
+ * either way. US15.1: so does one that overlaps a venue unavailability period.
+ * US15.2: a request flagged "Conflict – review needed" after a setup or
+ * turnaround change says so, with the reason. Rejecting needs a reason and may suggest an alternative. A
  * decided request leaves the queue, and its Coordinator is notified.
  */
 export default function BookingRequestsPage({ session }: BookingRequestsPageProps) {
@@ -170,7 +173,8 @@ export default function BookingRequestsPage({ session }: BookingRequestsPageProp
   function renderRequest(request: BookingRequest) {
     const venueName = request.venueName || 'Unnamed venue'
     const title = displayEventTitle(request.eventTitle)
-    const blocked = request.clashes.length > 0
+    const unavailable = request.unavailable ?? []
+    const blocked = request.clashes.length > 0 || unavailable.length > 0
     const rejectOpen = rejecting?.bookingId === request.id
     const working = busy === request.id
     return (
@@ -214,16 +218,30 @@ export default function BookingRequestsPage({ session }: BookingRequestsPageProp
           </div>
         </dl>
 
+        {request.conflict && (
+          <p className="booking-request-flag" role="note">
+            <span className="booking-request-flag-tag">{CONFLICT_LABEL}</span>
+            {request.conflict.reason}
+          </p>
+        )}
+
         {blocked && (
           <div className="booking-request-clash" role="note">
-            <strong>Clashes with a booking that already takes this slot.</strong> It cannot be
-            approved while this remains:
+            <strong>
+              {request.clashes.length > 0
+                ? 'Clashes with a booking that already takes this slot.'
+                : 'The venue is unavailable for this slot.'}
+            </strong>{' '}
+            It cannot be approved while this remains:
             <ul>
               {request.clashes.map((clash) => (
                 <li key={clash.bookingId}>
                   {displayEventTitle(clash.eventTitle)} ({clash.status}), occupying{' '}
                   {formatBookingTimes(clash.occupiedFrom, clash.occupiedTo)}
                 </li>
+              ))}
+              {unavailable.map((period) => (
+                <li key={`unavailable-${period.id}`}>Venue unavailable {describePeriod(period)}</li>
               ))}
             </ul>
           </div>

@@ -189,6 +189,9 @@ CREATE TABLE venue_bookings (
     decided_by_id INTEGER,
     rejection_reason TEXT,
     suggested_alternative TEXT,
+    -- US15.2: flagged "Conflict - review needed". See SUPABASE_ADD_BOOKING_CONFLICTS.sql.
+    conflict_flagged_at TIMESTAMP,
+    conflict_reason TEXT,
     CONSTRAINT venue_bookings_end_after_start CHECK (end_at > start_at),
     CONSTRAINT venue_bookings_headcount_positive CHECK (headcount IS NULL OR headcount >= 1),
     CONSTRAINT venue_bookings_cancelled_by_id_fkey
@@ -213,6 +216,10 @@ CREATE TABLE venue_bookings (
             AND cancellation_reason IS NOT NULL
             AND btrim(cancellation_reason) <> ''
         )
+    ),
+    CONSTRAINT venue_bookings_conflict_has_reason CHECK (
+        conflict_flagged_at IS NULL
+        OR (conflict_reason IS NOT NULL AND btrim(conflict_reason) <> '')
     )
 );
 
@@ -223,6 +230,8 @@ CREATE INDEX ix_venue_bookings_cancelled_by_id ON venue_bookings(cancelled_by_id
 CREATE INDEX ix_venue_bookings_held_by_id ON venue_bookings(held_by_id);
 CREATE INDEX ix_venue_bookings_decided_by_id ON venue_bookings(decided_by_id);
 CREATE INDEX ix_venue_bookings_status_created ON venue_bookings(status, created_at);
+CREATE INDEX ix_venue_bookings_conflict_flagged
+    ON venue_bookings(start_at) WHERE conflict_flagged_at IS NOT NULL;
 
 -- US7.1: keep a Coordinator decision and its US4.2 audit row in one transaction.
 -- Transition validation remains in Python; this is not a status trigger.

@@ -594,11 +594,12 @@ class TestRecheckOnChange:
     def test_problem_bookings_are_identified_not_removed(
         self, client, auth_headers, hall_bookings
     ):
-        before = list(hall_bookings.bookings)
+        before = [(b.id, b.status) for b in hall_bookings.bookings]
 
         put_hall(client, auth_headers, turnaroundMinutes=120)
 
-        assert hall_bookings.bookings == before
+        # US15.2 flags them, but nothing is removed and no status changes.
+        assert [(b.id, b.status) for b in hall_bookings.bookings] == before
         assert all(
             b.status is BookingStatus.REQUESTED for b in hall_bookings.bookings if b.id != 3
         )
@@ -614,6 +615,8 @@ class TestRecheckOnChange:
             "turnaroundMinutes": 0,
             "checkedBookings": 0,
             "conflicts": [],
+            "flaggedBookingIds": [],
+            "clearedBookingIds": [],
         }
 
     def test_a_refused_change_does_not_recheck_or_save(

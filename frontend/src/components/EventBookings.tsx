@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import './EventBookings.css'
 import {
   CANCELLATION_REASON_MAX,
+  CONFLICT_LABEL,
   EventRuleError,
   attendanceField,
   cancelBooking,
@@ -109,6 +110,15 @@ function describeNeeds(booking: BookingRecord): string {
  * made it and when; a rejection shows the reason and any suggested
  * alternative. Only a Requested or still-active Held booking can be cancelled.
  *
+ * US15.1: the check also says whether the slot is free, counting the venue's
+ * setup and turnaround time and its unavailability periods. A taken slot shows
+ * the window it would occupy and what it clashes with, and cannot be
+ * requested; the server refuses it anyway, naming the same clashes.
+ *
+ * US15.2: a booking that clashes since its venue's setup or turnaround time
+ * changed is marked "Conflict – review needed" with the reason. It keeps its
+ * status; nothing was cancelled.
+ *
  * US14.3: Venue Staff may hold a venue for the Coordinator. A hold shows as
  * Held with its expiry, never as Confirmed, and the Coordinator can request it
  * until it expires; after that it is marked expired and no longer keeps the
@@ -157,6 +167,8 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     showForm && fields.venueId && !validateBooking(fields) ? JSON.stringify(fields) : ''
   const verdict = check !== null && check.key === checkKey ? check : null
   const notSuitable = verdict?.state === 'done' && !verdict.result.suitable
+  // US15.1: `available` is absent from an older server's answer, which reads as free.
+  const notAvailable = verdict?.state === 'done' && verdict.result.available === false
 
   useEffect(() => {
     let cancelled = false
@@ -443,6 +455,14 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
                   )}. Request it before then to keep the slot.`}
           </p>
         )}
+        {booking.conflict && (
+          <p className="booking-conflict" role="note">
+            <span className="booking-conflict-tag">{CONFLICT_LABEL}</span>
+            Flagged {formatTimestamp(booking.conflict.flaggedAt)}: {booking.conflict.reason}{' '}
+            Nothing has been cancelled. Sort out the clash with Venue Staff, or cancel this
+            booking.
+          </p>
+        )}
         {booking.decision && booking.status === 'Confirmed' && (
           <p className="booking-decision">
             Confirmed by {booking.decision.byName || 'a former user'},{' '}
@@ -654,8 +674,14 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
         <button
           type="submit"
           className="btn btn-primary"
-          disabled={busy || !venuesReady || notSuitable}
-          title={notSuitable ? 'This venue is not suitable for this booking.' : undefined}
+          disabled={busy || !venuesReady || notSuitable || notAvailable}
+          title={
+            notSuitable
+              ? 'This venue is not suitable for this booking.'
+              : notAvailable
+                ? 'This venue is already taken for this slot.'
+                : undefined
+          }
         >
           {busy ? 'Requesting…' : 'Request venue'}
         </button>
@@ -682,23 +708,59 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     }
     const { suitable, reasons, notes } = verdict.result
     return (
-      <div
-        className={`booking-verdict ${suitable ? 'is-suitable' : 'is-unsuitable'}`}
-        role="status"
-      >
-        <p className="booking-verdict-title">{suitable ? 'Suitable' : 'Not suitable'}</p>
-        {reasons.length > 0 && (
-          <ul className="booking-verdict-reasons">
-            {reasons.map((reason) => (
-              <li key={reason}>{reason}</li>
-            ))}
-          </ul>
-        )}
-        {notes.map((note) => (
-          <p key={note} className="booking-verdict-note">
-            {note}
+      <>
+        <div
+          className={`booking-verdict ${suitable ? 'is-suitable' : 'is-unsuitable'}`}
+          role="status"
+        >
+          <p className="booking-verdict-title">{suitable ? 'Suitable' : 'Not suitable'}</p>
+          {reasons.length > 0 && (
+            <ul className="booking-verdict-reasons">
+              {reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          )}
+          {notes.map((note) => (
+            <p key={note} className="booking-verdict-note">
+              {note}
+            </p>
+          ))}
+        </div>
+        {renderAvailability(verdict.result)}
+      </>
+    )
+  }
+
+  /** US15.1: free or taken, over the full window the booking would occupy. */
+  function renderAvailability(result: Suitability) {
+    if (result.available === undefined) return null
+    const window =
+      result.occupiedFrom && result.occupiedTo
+        ? formatBookingTimes(result.occupiedFrom, result.occupiedTo)
+        : ''
+    if (result.available) {
+      return (
+        <p className="booking-verdict booking-availability is-available" role="status">
+          {window
+            ? `Available: the venue would be occupied ${window}, setup and turnaround included.`
+            : 'Available'}
+        </p>
+      )
+    }
+    return (
+      <div className="booking-verdict booking-availability is-unavailable" role="status">
+        <p className="booking-verdict-title">Not available</p>
+        {window && (
+          <p className="booking-verdict-note">
+            With setup and turnaround it would occupy {window}, which overlaps:
           </p>
-        ))}
+        )}
+        <ul className="booking-verdict-reasons">
+          {(result.clashes ?? []).map((clash) => (
+            <li key={clash}>{clash}</li>
+          ))}
+        </ul>
       </div>
     )
   }

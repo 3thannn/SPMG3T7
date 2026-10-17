@@ -174,7 +174,12 @@ export default function VenueFormPage({ venueId, session }: VenueFormPageProps) 
         // bookings. Clashes it found are shown here before moving on, because
         // nothing else will have told Venue Staff — nothing was cancelled.
         const recheck = venue.recheck
-        if (recheck && recheck.conflicts.length > 0) {
+        // US15.2: a booking pushed into an unavailability period is flagged
+        // without being one of US9.4's pairs, so either one shows the result.
+        if (
+          recheck &&
+          (recheck.conflicts.length > 0 || (recheck.flaggedBookingIds ?? []).length > 0)
+        ) {
           setBusy(false)
           setPage({ state: 'rechecked', venueId: venue.id, recheck })
           return
@@ -227,10 +232,13 @@ export default function VenueFormPage({ venueId, session }: VenueFormPageProps) 
     if (page.state === 'rechecked') {
       const { recheck } = page
       const count = recheck.conflicts.length
+      const flagged = recheck.flaggedBookingIds ?? []
       return (
         <section className="card venue-recheck" aria-labelledby="venue-recheck-title">
           <h1 className="page-title" id="venue-recheck-title">
-            Saved — {count} booking {count === 1 ? 'clash needs' : 'clashes need'} attention
+            {count > 0
+              ? `Saved — ${count} booking ${count === 1 ? 'clash needs' : 'clashes need'} attention`
+              : `Saved — ${flagged.length} ${flagged.length === 1 ? 'booking needs' : 'bookings need'} attention`}
           </h1>
           <p className="page-subtitle" role="status">
             With {recheck.setupMinutes} minutes' setup and {recheck.turnaroundMinutes}{' '}
@@ -255,6 +263,16 @@ export default function VenueFormPage({ venueId, session }: VenueFormPageProps) 
               </li>
             ))}
           </ul>
+          {flagged.length > 0 && (
+            <p className="venue-recheck-flagged" role="status">
+              {flagged.length === 1
+                ? `Booking #${flagged[0]} is`
+                : `Bookings ${flagged.map((id) => `#${id}`).join(', ')} are`}{' '}
+              now marked “Conflict – review needed”, and{' '}
+              {flagged.length === 1 ? 'its Coordinator has' : 'their Coordinators have'} been
+              notified.
+            </p>
+          )}
           <div className="venue-form-actions">
             <button
               type="button"
@@ -263,6 +281,15 @@ export default function VenueFormPage({ venueId, session }: VenueFormPageProps) 
             >
               View venue
             </button>
+            {flagged.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => navigate('/booking-conflicts')}
+              >
+                Review booking conflicts
+              </button>
+            )}
           </div>
         </section>
       )
