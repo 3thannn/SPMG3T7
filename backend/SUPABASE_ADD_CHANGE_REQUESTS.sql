@@ -218,6 +218,8 @@ BEGIN
             -- writes for a direct edit. The approving Coordinator is recorded
             -- as the one who changed the event; the Organiser who asked is on
             -- the request row.
+            -- event_changes.change_type is the public.change_type enum in Supabase, and
+            -- Postgres will not assign a VARCHAR to an enum column without a cast.
             INSERT INTO public.event_changes (
                 event_id,
                 changed_field,
@@ -232,7 +234,7 @@ BEGIN
                 proposed.changed_field,
                 proposed.old_value,
                 proposed.new_value,
-                proposed.change_type,
+                proposed.change_type::public.change_type,
                 p_changed_by_id,
                 review_at
             );

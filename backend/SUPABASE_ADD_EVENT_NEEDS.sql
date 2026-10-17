@@ -76,11 +76,14 @@ BEGIN
             ELSE
                 RAISE EXCEPTION 'Unsupported change field: %', proposed.changed_field;
             END IF;
+            -- event_changes.change_type is the public.change_type enum in Supabase, and
+            -- Postgres will not assign a VARCHAR to an enum column without a cast.
             INSERT INTO public.event_changes
                 (event_id, changed_field, old_value, new_value, change_type,
                  changed_by_user_id, changed_at)
             VALUES (p_event_id, proposed.changed_field, proposed.old_value,
-                    proposed.new_value, proposed.change_type, p_changed_by_id,
+                    proposed.new_value, proposed.change_type::public.change_type,
+                    p_changed_by_id,
                     review_at);
         END LOOP;
     END IF;
