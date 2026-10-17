@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import router as auth_router
+from app.booking_conflicts import router as booking_conflicts_router
 from app.booking_decisions import router as booking_decisions_router
 from app.config import cors_origins
 from app.equipment import router as equipment_router
@@ -27,6 +28,7 @@ app.include_router(venues_router)
 app.include_router(notifications_router)
 app.include_router(holds_router)
 app.include_router(booking_decisions_router)
+app.include_router(booking_conflicts_router)
 
 
 @app.get("/health")

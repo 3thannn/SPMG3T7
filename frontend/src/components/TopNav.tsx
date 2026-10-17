@@ -26,6 +26,7 @@ const NAV_LINKS: NavLink[] = [
   { label: 'Safety Review', path: '/safety-review' },
   { label: 'Venues', path: '/venues' },
   { label: 'Booking Requests', path: '/booking-requests' },
+  { label: 'Booking Conflicts', path: '/booking-conflicts' },
   { label: 'Equipment', path: '/equipment' },
   { label: 'Equipment Requests', path: '/equipment-requests' },
   { label: 'Add venue', path: '/venues/new' },

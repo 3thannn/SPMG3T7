@@ -142,6 +142,8 @@ class TestRequestingABooking:
             "heldByName",
             # US16.1: null until Venue Staff decide it.
             "decision",
+            # US15.2: null unless flagged "Conflict – review needed".
+            "conflict",
         }
         assert isinstance(body["id"], str)
         # US14.2: only a cancelled booking says who cancelled it.

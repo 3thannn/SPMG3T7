@@ -95,6 +95,14 @@
   gap: 1rem;
 }
 
+/* US15.2: which of them are now flagged for review, and that their
+   Coordinators were told. */
+.venue-recheck-flagged {
+  margin: 1rem 0 0;
+  font-size: 0.92rem;
+  color: var(--ink-strong);
+}
+
 .venue-recheck-list {
   margin: 0;
   padding: 0;

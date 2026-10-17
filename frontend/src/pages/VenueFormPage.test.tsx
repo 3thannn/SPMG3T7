@@ -535,3 +535,78 @@ describe('US9.4 — setup and turnaround time', () => {
     expect(screen.getByRole('status')).toHaveTextContent('1 active booking was checked again.')
   })
 })
+
+// --- US15.2: bookings flagged by a setup or turnaround change --------------------
+
+describe('US15.2: flagged bookings after a setup or turnaround change', () => {
+  it('TC-FF18 names the flagged bookings and links to the review list', async () => {
+    window.location.hash = '#/venues/1/edit'
+    getVenueMock.mockResolvedValue(buildVenue())
+    saveVenueMock.mockResolvedValue({
+      ...buildVenue(),
+      recheck: { ...recheckWith([clash(true)]), flaggedBookingIds: ['1', '2'] },
+    })
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    expect(
+      await screen.findByText(
+        /^Bookings #1, #2 are now marked “Conflict – review needed”, and their Coordinators have been notified\.$/,
+      ),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Review booking conflicts' }))
+    expect(window.location.hash).toBe('#/booking-conflicts')
+  })
+
+  it('TC-FF19 shows a booking flagged only by an unavailability period, in the singular', async () => {
+    window.location.hash = '#/venues/1/edit'
+    getVenueMock.mockResolvedValue(buildVenue())
+    saveVenueMock.mockResolvedValue({
+      ...buildVenue(),
+      recheck: { ...recheckWith([], 1), flaggedBookingIds: ['5'], clearedBookingIds: [] },
+    })
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Saved — 1 booking needs attention' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /^Booking #5 is now marked “Conflict – review needed”, and its Coordinator has been notified\.$/,
+      ),
+    ).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/venues/1/edit')
+  })
+
+  it('TC-FF20 counts several bookings flagged by periods in the plural', async () => {
+    getVenueMock.mockResolvedValue(buildVenue())
+    saveVenueMock.mockResolvedValue({
+      ...buildVenue(),
+      recheck: { ...recheckWith([], 2), flaggedBookingIds: ['5', '6'] },
+    })
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Saved — 2 bookings need attention' }),
+    ).toBeInTheDocument()
+  })
+
+  it('TC-FF21 goes straight to the venue when the change only cleared flags', async () => {
+    getVenueMock.mockResolvedValue(buildVenue({ id: '7' }))
+    saveVenueMock.mockResolvedValue({
+      ...buildVenue({ id: '7' }),
+      recheck: { ...recheckWith([]), flaggedBookingIds: [], clearedBookingIds: ['5'] },
+    })
+
+    render(<VenueFormPage venueId="7" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(window.location.hash).toBe('#/venues/7'))
+    expect(screen.queryByRole('button', { name: 'Review booking conflicts' })).not.toBeInTheDocument()
+  })
+})

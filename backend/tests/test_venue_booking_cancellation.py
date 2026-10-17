@@ -146,7 +146,8 @@ class TestOtherBookingsAreUnchanged:
     ):
         seed_event(event_repository, event_id=901)
         here = request(client, coordinator).json()
-        there = request(client, coordinator, event_id=901).json()
+        # US15.1: the Great Hall's slot is taken by `here`, so `there` is elsewhere.
+        there = request(client, coordinator, event_id=901, venueId=SEMINAR_ROOM).json()
 
         cancel(client, coordinator, here["id"])
 

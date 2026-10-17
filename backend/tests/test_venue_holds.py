@@ -275,20 +275,25 @@ class TestTheSlotIsTaken:
     def test_tc_h24_a_hold_clashes_with_a_request_for_the_same_slot(
         self, client, staff, coordinator, event, booking_repository
     ):
-        place(client, staff)
-        request(client, coordinator)
+        hold = place(client, staff).json()
 
-        conflicts = find_conflicts(
-            booking_repository.list_for_venue(1), setup_minutes=0, turnaround_minutes=0
-        )
-        assert len(conflicts) == 1
+        # US15.1: the held slot is taken, so a request for it is refused outright.
+        response = request(client, coordinator)
+
+        assert response.status_code == 409, response.text
+        detail = response.json()["detail"]
+        assert detail["reason"] == "not-available"
+        assert f"booking #{hold['id']}" in detail["clashes"][0]
+        assert "Held" in detail["clashes"][0]
+        assert len(booking_repository.bookings) == 1
 
     def test_tc_h25_an_expired_hold_clashes_with_nothing(
         self, client, staff, coordinator, event, booking_repository, frozen_now
     ):
         place(client, staff)
-        request(client, coordinator)
         frozen_now(datetime(2027, 10, 9, 9, 0))
+        # US15.1: once the hold has expired the slot is free to request.
+        assert request(client, coordinator).status_code == 201
 
         conflicts = find_conflicts(
             booking_repository.list_for_venue(1), setup_minutes=0, turnaround_minutes=0

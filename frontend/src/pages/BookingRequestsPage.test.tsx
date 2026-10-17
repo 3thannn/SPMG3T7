@@ -222,3 +222,71 @@ it('TC-DF17 a refused rejection is shown on its card', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Reject booking' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('already been rejected')
 })
+
+// -- US15.1 / US15.2 ------------------------------------------------------------------
+
+it('TC-CF08 a request overlapping an unavailability period cannot be approved', async () => {
+  listMock.mockResolvedValue([
+    request({
+      unavailable: [{ id: '5', startDate: '2027-11-02', endDate: '2027-11-02', reason: 'Flooded' }],
+    }),
+  ])
+  render(<BookingRequestsPage session={staff} />)
+  const row = await card()
+
+  const note = within(row).getByRole('note')
+  expect(note).toHaveTextContent(
+    'The venue is unavailable for this slot. It cannot be approved while this remains:',
+  )
+  expect(note).toHaveTextContent('Venue unavailable 2027-11-02 (Flooded)')
+  expect(within(row).getByRole('button', { name: /^Approve/ })).toBeDisabled()
+  expect(within(row).getByRole('button', { name: /^Reject/ })).toBeEnabled()
+})
+
+it('TC-CF09 names a booking clash first when there are both', async () => {
+  listMock.mockResolvedValue([
+    request({
+      clashes: [
+        {
+          bookingId: '10',
+          eventTitle: 'Careers Fair',
+          status: 'Confirmed',
+          startsAt: '2027-11-02T06:00',
+          endsAt: '2027-11-02T08:00',
+          occupiedFrom: '2027-11-02T05:30',
+          occupiedTo: '2027-11-02T08:45',
+        },
+      ],
+      unavailable: [
+        { id: '5', startDate: '2027-11-01', endDate: '2027-11-03', reason: '' },
+      ],
+    }),
+  ])
+  render(<BookingRequestsPage session={staff} />)
+  const note = within(await card()).getByRole('note')
+
+  expect(note).toHaveTextContent('Clashes with a booking that already takes this slot.')
+  expect(note).toHaveTextContent('Careers Fair (Confirmed)')
+  expect(note).toHaveTextContent('Venue unavailable 2027-11-01 to 2027-11-03')
+})
+
+it('TC-FF17 shows a request flagged after a setup or turnaround change', async () => {
+  listMock.mockResolvedValue([
+    request({
+      conflict: {
+        label: 'Conflict – review needed',
+        flaggedAt: '2027-10-01T01:00:00',
+        reason: 'With 30 minutes setup and 45 minutes turnaround it occupies …',
+      },
+    }),
+  ])
+  render(<BookingRequestsPage session={staff} />)
+  const row = await card()
+
+  const [flag] = within(row).getAllByRole('note')
+  expect(flag).toHaveTextContent('Conflict – review needed')
+  expect(flag).toHaveTextContent('With 30 minutes setup and 45 minutes turnaround it occupies')
+  // The flag alone does not block approval: the server's check does.
+  expect(within(row).getByRole('button', { name: /^Approve/ })).toBeEnabled()
+})
+

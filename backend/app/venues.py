@@ -26,7 +26,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import booking_store, venue_store, venue_turnaround, venue_unavailability_store
+from app import (
+    booking_store,
+    conflict_flags,
+    venue_store,
+    venue_turnaround,
+    venue_unavailability_store,
+)
 from app.auth import require_permission
 from app.permissions import Permission
 from app.users import User
@@ -371,6 +377,15 @@ class RecheckOut(BaseModel):
     turnaround_minutes: int = Field(serialization_alias="turnaroundMinutes")
     checked_bookings: int = Field(serialization_alias="checkedBookings")
     conflicts: list[ConflictOut]
+    #: US15.2: bookings this change marked "Conflict – review needed". Their
+    #: Coordinators have been notified. Already-flagged bookings are not repeated.
+    flagged_booking_ids: list[str] = Field(
+        default_factory=list, serialization_alias="flaggedBookingIds"
+    )
+    #: US15.2: flagged bookings whose clash this change resolved.
+    cleared_booking_ids: list[str] = Field(
+        default_factory=list, serialization_alias="clearedBookingIds"
+    )
 
 
 class VenueSavedOut(VenueOut):
@@ -397,12 +412,14 @@ def _conflict_out(conflict: BookingConflict) -> ConflictOut:
     )
 
 
-def _recheck_out(result: Recheck) -> RecheckOut:
+def _recheck_out(result: Recheck, review: conflict_flags.Review | None) -> RecheckOut:
     return RecheckOut(
         setup_minutes=result.setup_minutes,
         turnaround_minutes=result.turnaround_minutes,
         checked_bookings=result.checked,
         conflicts=[_conflict_out(conflict) for conflict in result.conflicts],
+        flagged_booking_ids=[str(b.id) for b in review.flagged] if review else [],
+        cleared_booking_ids=[str(b.id) for b in review.cleared] if review else [],
     )
 
 
@@ -421,6 +438,11 @@ def save_venue(
     US9.4: changing the setup or turnaround time re-checks every booking that
     holds the venue under the new values. Bookings that now clash are reported
     in `recheck` - identified, not removed or cancelled.
+
+    US15.2: each future active booking that now clashes, with another booking
+    or an unavailability period, is also marked "Conflict – review needed" and
+    its Coordinator notified; flags whose clash the change resolved are cleared.
+    The save has already happened, so a failure here is logged, not returned.
     """
     existing = venue_store.repository().get_venue(_as_id(venue_id))
     if existing is None:
@@ -449,7 +471,8 @@ def save_venue(
                 booking_store.repository().list_for_venue(saved.id),
                 before=existing.buffers,
                 after=saved.buffers,
-            )
+            ),
+            conflict_flags.recheck_quietly(saved),
         )
     return VenueSavedOut(**_to_out(saved).model_dump(), recheck=result)
 

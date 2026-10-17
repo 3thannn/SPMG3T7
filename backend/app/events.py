@@ -25,15 +25,25 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app import (
+    availability,
     booking_store,
     change_requests,
+    conflict_flags,
     event_needs,
     event_store,
     suitability,
     venue_store,
+    venue_unavailability_store,
 )
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
-from app.booking_store import Booking, BookingStatus, HoldExpired, StaleBookingStatus
+from app.availability import SlotCheck
+from app.booking_store import (
+    Booking,
+    BookingStatus,
+    HoldExpired,
+    SlotTaken,
+    StaleBookingStatus,
+)
 from app.event_needs import EventNeeds
 from app.event_status import (
     EventStatus,
@@ -1025,6 +1035,17 @@ class BookingOut(BaseModel):
     held_by_name: str = Field(default="", serialization_alias="heldByName")
     #: US16.1: who approved or rejected it, when, and for a rejection why.
     decision: "DecisionOut | None" = None
+    #: US15.2: set while the booking is flagged "Conflict – review needed".
+    conflict: "ConflictFlagOut | None" = None
+
+
+class ConflictFlagOut(BaseModel):
+    """US15.2: why a booking clashes since its venue's setup or turnaround changed."""
+
+    #: Always "Conflict – review needed": the label the acceptance criteria name.
+    label: str = conflict_flags.LABEL
+    flagged_at: str = Field(serialization_alias="flaggedAt")
+    reason: str
 
 
 class DecisionOut(BaseModel):
@@ -1080,6 +1101,11 @@ def _booking_out(booking: Booking) -> BookingOut:
                 suggestion=booking.decision.suggestion,
             )
             if booking.decision
+            else None
+        ),
+        conflict=(
+            ConflictFlagOut(flagged_at=booking.conflict.flagged_at, reason=booking.conflict.reason)
+            if booking.conflict
             else None
         ),
     )
@@ -1273,8 +1299,70 @@ def _prepared_booking(
     return event, venue, valid
 
 
+# -- US15.1: is the slot free? ---------------------------------------------------
+#
+# A request is checked against the full time the venue is occupied, setup and
+# turnaround included, and against the venue's unavailability periods. The rule
+# is `availability.check_slot`; these helpers read what it needs and say what it
+# found in a 409 the form can show.
+
+
+def _iso_minutes(moment: datetime) -> str:
+    return moment.isoformat(timespec="minutes")
+
+
+def slot_check(
+    venue_id: int,
+    starts_at: str,
+    ends_at: str,
+    *,
+    venue: Venue | None = None,
+    exclude_id: int | None = None,
+) -> SlotCheck:
+    """US15.1's rule for one slot at one venue, counting Held, Requested and Confirmed."""
+    return availability.check_slot(
+        venue if venue is not None else venue_store.repository().get_venue(venue_id),
+        starts_at,
+        ends_at,
+        bookings_at_venue=booking_store.repository().list_for_venue(venue_id),
+        unavailability=venue_unavailability_store.repository().list_for_venue(venue_id),
+        exclude_id=exclude_id,
+    )
+
+
+def coordinator_titles(found: SlotCheck, user: User) -> dict[int, str]:
+    """Titles of the clashing bookings' events that this user is assigned to, by booking id.
+
+    A Coordinator sees only the events assigned to them (US8.6), so a clash with
+    someone else's event is named by its booking number, status and times alone.
+    """
+    titles: dict[int, str] = {}
+    for item in found.bookings:
+        event = event_store.repository().get_event(item.booking.event_id)
+        if event is not None and event.coordinator_id == user.id:
+            titles[item.booking.id] = event.title
+    return titles
+
+
+def not_available(venue_name: str, found: SlotCheck, titles: dict[int, str]) -> HTTPException:
+    """US15.1: 409 saying which bookings and periods the slot clashes with."""
+    # Empty only when another write took the slot and has gone again since.
+    phrases = availability.describe(found, titles=titles) or ["a booking made a moment ago"]
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": availability.unavailable_message(venue_name, found, phrases),
+            "reason": "not-available",
+            "clashes": phrases,
+            "occupiedFrom": _iso_minutes(found.occupied_from),
+            "occupiedTo": _iso_minutes(found.occupied_to),
+        },
+    )
+
+
 class SuitabilityOut(BaseModel):
-    """US18.1: Suitable or Not suitable, with every reason."""
+    """US18.1: Suitable or Not suitable, with every reason. US15.1: and whether it is free."""
 
     venue_id: str = Field(serialization_alias="venueId")
     suitable: bool
@@ -1282,14 +1370,27 @@ class SuitabilityOut(BaseModel):
     reasons: list[str]
     #: What could not be checked, such as hours nobody has recorded.
     notes: list[str]
+    #: US15.1: whether the slot is free, setup and turnaround included.
+    available: bool = True
+    #: US15.1: each booking or unavailability period it clashes with, as a phrase.
+    clashes: list[str] = Field(default_factory=list)
+    #: US15.1: the full window the booking would occupy.
+    occupied_from: str = Field(default="", serialization_alias="occupiedFrom")
+    occupied_to: str = Field(default="", serialization_alias="occupiedTo")
 
 
-def _suitability_out(venue: Venue, verdict: Verdict) -> SuitabilityOut:
+def _suitability_out(
+    venue: Venue, verdict: Verdict, found: SlotCheck, titles: dict[int, str]
+) -> SuitabilityOut:
     return SuitabilityOut(
         venue_id=str(venue.id),
         suitable=verdict.suitable,
         reasons=list(verdict.reasons),
         notes=list(verdict.notes),
+        available=found.available,
+        clashes=availability.describe(found, titles=titles),
+        occupied_from=_iso_minutes(found.occupied_from),
+        occupied_to=_iso_minutes(found.occupied_to),
     )
 
 
@@ -1328,6 +1429,11 @@ def request_booking(
     US18.1: a venue that is not suitable cannot be requested. The refusal is a
     409 with `not-suitable` and every reason, from the same `assess` the
     suitability check shows, so the form and the rule agree.
+
+    US15.1: nor can a slot that is not free, setup and turnaround included. The
+    refusal is a 409 with `not-available`, naming each booking and period it
+    clashes with. The store checks again under a lock on the venue, so two
+    requests for one slot at once cannot both be stored.
     """
     event, venue, valid = _prepared_booking(event_id, payload, user)
 
@@ -1344,6 +1450,10 @@ def request_booking(
             },
         )
 
+    found = slot_check(venue.id, valid.starts_at, valid.ends_at, venue=venue)
+    if not found.available:
+        raise not_available(venue.name, found, coordinator_titles(found, user))
+
     try:
         created = booking_store.repository().create(
             event_id=event.id,
@@ -1359,6 +1469,10 @@ def request_booking(
         )
     except StaleEventStatus:
         raise _stale_request() from None
+    except SlotTaken:
+        # Another request took the slot between the check above and the write.
+        found = slot_check(venue.id, valid.starts_at, valid.ends_at, venue=venue)
+        raise not_available(venue.name, found, coordinator_titles(found, user)) from None
     return _booking_out(created)
 
 
@@ -1376,7 +1490,10 @@ def check_suitability(
     events and the same validation.
     """
     _, venue, valid = _prepared_booking(event_id, payload, user)
-    return _suitability_out(venue, suitability.assess(venue, valid.needs))
+    found = slot_check(venue.id, valid.starts_at, valid.ends_at, venue=venue)
+    return _suitability_out(
+        venue, suitability.assess(venue, valid.needs), found, coordinator_titles(found, user)
+    )
 
 
 # -- US14.2: cancelling one booking ----------------------------------------------
@@ -1460,6 +1577,11 @@ def cancel_booking(
     except StaleBookingStatus:
         # Someone else cancelled it between the read above and this write.
         raise _already_cancelled() from None
+    # US15.2: a cancelled booking frees its slot, which may resolve a flagged
+    # clash at this venue, its own included.
+    conflict_flags.resolve_quietly(cancelled.venue_id)
+    if cancelled.conflict is not None:
+        cancelled = booking_store.repository().get_booking(cancelled.id) or cancelled
     return _booking_out(cancelled)
 
 
@@ -1478,6 +1600,10 @@ def request_held_booking(
     request (US14.1): the assigned Coordinator, on an Approved or Planning
     event, which a first request moves to Planning (US4.5). The times are the
     ones held. 404, then 409, as for cancelling.
+
+    US15.1: the hold's own slot is left out of the check, but a hold that has
+    clashed since it was placed (a setup or turnaround change, US15.2) cannot
+    become a request until the clash is resolved.
     """
     event = _readable(_as_id(event_id), user)
     try:
@@ -1500,6 +1626,9 @@ def request_held_booking(
                 "reason": str(refusal),
             },
         )
+    found = slot_check(booking.venue_id, booking.starts_at, booking.ends_at, exclude_id=booking.id)
+    if not found.available:
+        raise not_available(booking.venue_name, found, coordinator_titles(found, user))
     try:
         requested = booking_store.repository().request_hold(
             booking.id, actor_id=user.id, expected_status=event.status

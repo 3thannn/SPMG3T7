@@ -235,3 +235,21 @@ describe('booking requests (US16.1)', () => {
     }
   })
 })
+
+describe('booking conflicts (US15.2)', () => {
+  it('TC-FF23 lets only Venue Staff open the flagged booking conflicts', () => {
+    expect(canOpen(buildSession({ role: 'Venue Staff' }), '/booking-conflicts')).toBe(true)
+    for (const role of [
+      'Event Organiser',
+      'Event Coordinator',
+      'Event Coordinator Lead',
+      'Safety Officer',
+      'Technical Support',
+    ] as const) {
+      expect(canOpen(buildSession({ role }), '/booking-conflicts')).toBe(false)
+    }
+    expect(denialMessage(buildSession({ role: 'Event Coordinator' }), '/booking-conflicts')).toBe(
+      'The Event Coordinator role cannot open the flagged booking conflicts. That is available to Venue Staff.',
+    )
+  })
+})

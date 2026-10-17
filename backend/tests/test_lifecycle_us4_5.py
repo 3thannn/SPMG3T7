@@ -81,7 +81,12 @@ def test_draft_submission_assignment_decision_and_first_booking(
     assert [(h.from_status, h.to_status, h.by_id) for h in planned.history[-1:]] == [
         (EventStatus.APPROVED, EventStatus.PLANNING, COORDINATOR_ID)
     ]
-    second = client.post(f"/events/{submitted['id']}/bookings", json=BOOKING, headers=coordinator)
+    # US15.1: the first booking holds the Great Hall for this slot, so the
+    # second one is for another venue.
+    second = client.post(
+        f"/events/{submitted['id']}/bookings", json={**BOOKING, "venueId": "3"},
+        headers=coordinator,
+    )
     assert second.status_code == 201
     assert len(booking_repository.bookings) == 2
     assert len(event_repository.get_event(int(submitted["id"])).history) == len(planned.history)

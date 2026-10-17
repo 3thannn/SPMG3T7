@@ -87,6 +87,12 @@ const GUARDED: Record<string, GuardedRoute> = {
     what: 'the venue booking requests',
     who: 'Venue Staff',
   },
+  // US15.2: reviewing a clash is part of deciding what a venue can support.
+  '/booking-conflicts': {
+    anyOf: ['bookings:decide'],
+    what: 'the flagged booking conflicts',
+    who: 'Venue Staff',
+  },
   '/equipment-requests': {
     anyOf: ['equipment:queue'],
     what: 'the equipment request queue',

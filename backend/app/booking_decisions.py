@@ -7,9 +7,11 @@ where they stand:
   Staff need to decide: the event, venue, booking time, the full occupied
   window including setup and turnaround (US9.4, used by US15.1), headcount and
   layout, and any booking already taking an overlapping slot.
-* Approve -> Confirmed. The conflict check (`availability.find_clashes`, the
-  US15.1 placeholder) runs again at approval. A clash blocks it and is shown,
-  so two requests for the same slot cannot both be approved.
+* Approve -> Confirmed. The conflict check (US15.1, `availability`) runs again
+  at approval: a Confirmed or unexpired Held booking whose occupied window
+  overlaps, or a venue unavailability period, blocks it and is shown, so two
+  requests for the same slot cannot both be approved. Another Requested booking
+  does not block it; see `availability` for why.
 * Reject -> Rejected, with a required reason and an optional suggested
   alternative venue or time. A rejected booking frees its slot.
 * Only that booking's row is written. The event and its other bookings are
@@ -23,8 +25,17 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app import availability, booking_store, event_store, users, venue_store
+from app import (
+    availability,
+    booking_store,
+    conflict_flags,
+    event_store,
+    users,
+    venue_store,
+    venue_unavailability_store,
+)
 from app.auth import require_permission
+from app.availability import SlotCheck
 from app.booking_store import Booking, BookingStatus, SlotTaken, StaleBookingStatus
 from app.events import BookingOut, EventError, _booking_out, _invalid_booking
 from app.notifications import notify_booking_decision
@@ -32,6 +43,7 @@ from app.permissions import Permission
 from app.users import User
 from app.venue_store import Venue
 from app.venue_turnaround import OccupiedBooking
+from app.venue_unavailability_store import Unavailability
 
 router = APIRouter(prefix="/booking-requests", tags=["booking-requests"])
 
@@ -53,6 +65,16 @@ class ClashOut(BaseModel):
     occupied_to: str = Field(serialization_alias="occupiedTo")
 
 
+class UnavailableOut(BaseModel):
+    """US15.1: a venue unavailability period (US12.1) the booking overlaps."""
+
+    id: str
+    #: "YYYY-MM-DD", inclusive at both ends.
+    start_date: str = Field(serialization_alias="startDate")
+    end_date: str = Field(serialization_alias="endDate")
+    reason: str
+
+
 class BookingRequestOut(BookingOut):
     """A booking as Venue Staff decide it: Venue Staff cannot open the event."""
 
@@ -65,6 +87,8 @@ class BookingRequestOut(BookingOut):
     turnaround_minutes: int = Field(serialization_alias="turnaroundMinutes")
     #: Bookings already taking an overlapping slot. Approval is blocked while any remain.
     clashes: list[ClashOut]
+    #: US15.1: unavailability periods it overlaps. Approval is blocked by these too.
+    unavailable: list[UnavailableOut] = Field(default_factory=list)
 
 
 class Rejection(BaseModel):
@@ -83,6 +107,7 @@ class _Context:
         self._titles: dict[int, str] = {}
         self._venues: dict[int, Venue | None] = {}
         self._at_venue: dict[int, list[Booking]] = {}
+        self._blackouts: dict[int, list[Unavailability]] = {}
         self._names: dict[int, str] | None = None
 
     def title(self, event_id: int) -> str:
@@ -109,9 +134,29 @@ class _Context:
             self._at_venue[venue_id] = booking_store.repository().list_for_venue(venue_id)
         return self._at_venue[venue_id]
 
-    def clashes(self, booking: Booking) -> list[OccupiedBooking]:
-        return availability.find_clashes(
-            booking, self.venue(booking.venue_id), self.bookings_at(booking.venue_id)
+    def unavailability(self, venue_id: int) -> list[Unavailability]:
+        if venue_id not in self._blackouts:
+            self._blackouts[venue_id] = venue_unavailability_store.repository().list_for_venue(
+                venue_id
+            )
+        return self._blackouts[venue_id]
+
+    def check(self, booking: Booking, *, counting_requests: bool = False) -> SlotCheck:
+        """US15.1 for a booking on record. Approval's rule unless told to count requests."""
+        return availability.check_booking(
+            booking,
+            self.venue(booking.venue_id),
+            self.bookings_at(booking.venue_id),
+            self.unavailability(booking.venue_id),
+            counting_requests=counting_requests,
+        )
+
+    def unavailable_out(self, entry: Unavailability) -> UnavailableOut:
+        return UnavailableOut(
+            id=str(entry.id),
+            start_date=entry.start_date.isoformat(),
+            end_date=entry.end_date.isoformat(),
+            reason=entry.reason,
         )
 
     def clash_out(self, clash: OccupiedBooking) -> ClashOut:
@@ -126,10 +171,22 @@ class _Context:
             occupied_to=_iso(clash.occupied_to),
         )
 
-    def request_out(self, booking: Booking) -> BookingRequestOut:
+    def request_out(
+        self, booking: Booking, *, counting_requests: bool = False
+    ) -> BookingRequestOut:
+        """A booking with its window and what it clashes with now.
+
+        The queue checks Requested bookings under approval's rule. US15.2's
+        flagged list passes `counting_requests` to check any booking that still
+        holds its venue under US15.1's own rule.
+        """
         venue = self.venue(booking.venue_id)
         window = availability.occupied(booking, venue)
-        setup, turnaround = venue.buffers if venue is not None else (0, 0)
+        setup, turnaround = availability.buffers(venue)
+        checked = booking.status is BookingStatus.REQUESTED or (
+            counting_requests and booking.holds_venue
+        )
+        found = self.check(booking, counting_requests=counting_requests) if checked else None
         return BookingRequestOut(
             **_booking_out(booking).model_dump(),
             event_title=self.title(booking.event_id),
@@ -138,11 +195,8 @@ class _Context:
             occupied_to=_iso(window.occupied_to),
             setup_minutes=setup,
             turnaround_minutes=turnaround,
-            clashes=(
-                [self.clash_out(clash) for clash in self.clashes(booking)]
-                if booking.status is BookingStatus.REQUESTED
-                else []
-            ),
+            clashes=[self.clash_out(clash) for clash in found.bookings] if found else [],
+            unavailable=[self.unavailable_out(entry) for entry in found.blackouts] if found else [],
         )
 
 
@@ -173,24 +227,38 @@ def _not_requested(current: BookingStatus) -> HTTPException:
 
 
 def _slot_taken(booking: Booking, context: _Context) -> HTTPException:
-    clashes = [context.clash_out(clash) for clash in context.clashes(booking)]
+    found = context.check(booking)
+    clashes = [context.clash_out(clash) for clash in found.bookings]
     venue = context.venue(booking.venue_id)
+    name = venue.name if venue else "This venue"
     named = "; ".join(
         f'"{clash.event_title or "another event"}" ({clash.status}, occupying '
         f"{clash.occupied_from.replace('T', ' ')} to {clash.occupied_to.replace('T', ' ')})"
         for clash in clashes
     )
+    sentences: list[str] = []
+    if named or not found.blackouts:
+        by = f" by {named}." if named else "."
+        sentences.append(f"{name} is already taken for this slot{by}")
+    if found.blackouts:
+        # US15.1: a venue unavailability period blocks approval as a booking does.
+        sentences.append(
+            f"{name} is unavailable for this slot: "
+            + "; ".join(availability.describe_blackout(entry) for entry in found.blackouts)
+            + "."
+        )
+    sentences.append("Reject this request, or resolve the clash first.")
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={
             "code": EventError.REFUSED,
-            "message": (
-                f"{venue.name if venue else 'This venue'} is already taken for this slot"
-                + (f" by {named}." if named else ".")
-                + " Reject this request, or resolve the clash first."
-            ),
+            "message": " ".join(sentences),
             "reason": "slot-taken",
             "clashes": [clash.model_dump(by_alias=True) for clash in clashes],
+            "unavailable": [
+                context.unavailable_out(entry).model_dump(by_alias=True)
+                for entry in found.blackouts
+            ],
         },
     )
 
@@ -230,7 +298,7 @@ def approve_booking_request(booking_id: str, user: DecidesBookings) -> BookingRe
     """Requested -> Confirmed, unless the slot is already taken (US15.1, again)."""
     booking = _requested(booking_id)
     context = _Context()
-    if context.clashes(booking):
+    if not context.check(booking).available:
         raise _slot_taken(booking, context)
     try:
         confirmed = booking_store.repository().approve(booking.id, actor_id=user.id)
@@ -266,4 +334,8 @@ def reject_booking_request(
     except StaleBookingStatus:
         raise _not_requested(_current_status(booking.id)) from None
     _notify(rejected, confirmed=False, reason=reason, suggestion=suggestion)
+    # US15.2: a rejected booking frees its slot, which may resolve a flagged clash.
+    conflict_flags.resolve_quietly(rejected.venue_id)
+    if rejected.conflict is not None:
+        rejected = booking_store.repository().get_booking(rejected.id) or rejected
     return _Context().request_out(rejected)

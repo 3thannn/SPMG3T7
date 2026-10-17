@@ -14,6 +14,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import EventBookings from './EventBookings'
 import {
+  CONFLICT_LABEL,
   EventRuleError,
   cancelBooking,
   checkSuitability,
@@ -990,3 +991,175 @@ it('TC-DF23 shows a rejection without a suggestion as just the reason', async ()
   expect(row).toHaveTextContent('Rejected by a former user')
   expect(row).not.toHaveTextContent('Suggested instead')
 })
+
+// -- US15.1: is the slot free, setup and turnaround included -------------------------
+
+it('TC-CF01 says Available with the full window the booking would occupy', async () => {
+  const user = userEvent.setup()
+  checkSuitabilityMock.mockResolvedValue(
+    verdictOf({
+      available: true,
+      clashes: [],
+      occupiedFrom: '2027-11-02T08:30',
+      occupiedTo: '2027-11-02T17:45',
+    }),
+  )
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+
+  expect(
+    await screen.findByText(
+      `Available: the venue would be occupied ${formatBookingTimes(
+        '2027-11-02T08:30',
+        '2027-11-02T17:45',
+      )}, setup and turnaround included.`,
+    ),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Request venue' })).toBeEnabled()
+})
+
+it('TC-CF02 says Not available with each clash, and will not request it', async () => {
+  const user = userEvent.setup()
+  checkSuitabilityMock.mockResolvedValue(
+    verdictOf({
+      available: false,
+      clashes: [
+        'booking #12 (Confirmed) occupying 2027-11-02 16:00 to 2027-11-02 19:45',
+        "the venue's unavailable period 2027-11-02 (Maintenance)",
+      ],
+      occupiedFrom: '2027-11-02T08:30',
+      occupiedTo: '2027-11-02T17:45',
+    }),
+  )
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+
+  expect(await screen.findByText('Not available')).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      `With setup and turnaround it would occupy ${formatBookingTimes(
+        '2027-11-02T08:30',
+        '2027-11-02T17:45',
+      )}, which overlaps:`,
+    ),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText('booking #12 (Confirmed) occupying 2027-11-02 16:00 to 2027-11-02 19:45'),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText("the venue's unavailable period 2027-11-02 (Maintenance)"),
+  ).toBeInTheDocument()
+  const button = screen.getByRole('button', { name: 'Request venue' })
+  expect(button).toBeDisabled()
+  expect(button).toHaveAttribute('title', 'This venue is already taken for this slot.')
+  expect(requestBookingMock).not.toHaveBeenCalled()
+})
+
+it('TC-CF03 still names the clashes when the window is missing', async () => {
+  const user = userEvent.setup()
+  checkSuitabilityMock.mockResolvedValue(
+    verdictOf({ available: false, clashes: ['booking #12 (Held) occupying x to y'] }),
+  )
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+
+  expect(await screen.findByText('Not available')).toBeInTheDocument()
+  expect(screen.getByText('booking #12 (Held) occupying x to y')).toBeInTheDocument()
+  expect(screen.queryByText(/which overlaps:/)).not.toBeInTheDocument()
+})
+
+it('TC-CF04 reads a bare Available when the window is missing', async () => {
+  const user = userEvent.setup()
+  checkSuitabilityMock.mockResolvedValue(verdictOf({ available: true }))
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+
+  expect(await screen.findByText('Available')).toBeInTheDocument()
+})
+
+it('TC-CF05 reads an answer without availability as free, and says nothing about it', async () => {
+  const user = userEvent.setup()
+  checkSuitabilityMock.mockResolvedValue(verdictOf())
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+
+  await screen.findByText('Suitable')
+  expect(screen.queryByText(/Available/)).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Request venue' })).toBeEnabled()
+})
+
+it('TC-CF06 an unsuitable venue explains that first, even when the slot is taken too', async () => {
+  const user = userEvent.setup()
+  checkSuitabilityMock.mockResolvedValue({ ...NOT_SUITABLE, available: false, clashes: ['x'] })
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '3')
+
+  await screen.findByText('Not available')
+  expect(screen.getByRole('button', { name: 'Request venue' })).toHaveAttribute(
+    'title',
+    'This venue is not suitable for this booking.',
+  )
+})
+
+it('TC-CF07 shows the server refusal naming the clash at request time', async () => {
+  const user = userEvent.setup()
+  const message =
+    'Great Hall is not available for this booking. With setup and turnaround it would occupy ' +
+    '2027-11-02 08:30 to 2027-11-02 17:45, which overlaps booking #12 (Confirmed) occupying ' +
+    '2027-11-02 16:00 to 2027-11-02 19:45.'
+  requestBookingMock.mockRejectedValue(new EventRuleError(message))
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+  await screen.findByText('Suitable')
+
+  await user.click(screen.getByRole('button', { name: 'Request venue' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(message)
+})
+
+// -- US15.2: a booking flagged after a setup or turnaround change -----------------
+
+it('TC-FF01 shows the flag with its reason, keeping the status', async () => {
+  const reason =
+    'With 30 minutes setup and 45 minutes turnaround it occupies 2027-11-02 08:30 to ' +
+    '2027-11-02 17:45, which overlaps booking #12 (Requested) occupying 2027-11-02 17:00 to ' +
+    '2027-11-02 19:45.'
+  listBookingsMock.mockResolvedValue([
+    booking({
+      status: 'Confirmed',
+      conflict: { label: CONFLICT_LABEL, flaggedAt: '2027-10-01T01:00:00', reason },
+    }),
+  ])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const row = within(await screen.findByRole('list')).getByRole('listitem')
+  expect(row).toHaveTextContent('Confirmed')
+  const note = within(row).getByRole('note')
+  expect(note).toHaveTextContent('Conflict – review needed')
+  expect(note).toHaveTextContent(
+    `Flagged ${formatTimestamp('2027-10-01T01:00:00')}: ${reason} Nothing has been cancelled.`,
+  )
+})
+
+it('TC-FF02 shows no flag on a booking that has none', async () => {
+  listBookingsMock.mockResolvedValue([booking({ conflict: null })])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const row = within(await screen.findByRole('list')).getByRole('listitem')
+  expect(row).not.toHaveTextContent('Conflict – review needed')
+  expect(within(row).queryByRole('note')).not.toBeInTheDocument()
+})
+

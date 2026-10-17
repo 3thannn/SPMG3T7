@@ -21,6 +21,24 @@ export type BookingClash = {
   occupiedTo: string
 }
 
+/** US15.1: a venue unavailability period (US12.1) a booking overlaps. */
+export type UnavailablePeriod = {
+  id: string
+  /** "YYYY-MM-DD", inclusive at both ends. */
+  startDate: string
+  endDate: string
+  reason: string
+}
+
+/** "2027-11-02" for one day, "2027-11-01 to 2027-11-03" for several, with any reason. */
+export function describePeriod(period: UnavailablePeriod): string {
+  const span =
+    period.startDate === period.endDate
+      ? period.startDate
+      : `${period.startDate} to ${period.endDate}`
+  return period.reason ? `${span} (${period.reason})` : span
+}
+
 /** A booking as Venue Staff decide it: they cannot open the event itself. */
 export type BookingRequest = BookingRecord & {
   eventTitle: string
@@ -32,6 +50,11 @@ export type BookingRequest = BookingRecord & {
   turnaroundMinutes: number
   /** Approval is blocked while any remain. */
   clashes: BookingClash[]
+  /**
+   * US15.1: unavailability periods it overlaps. Approval is blocked by these
+   * too. Optional so an older server's answer reads as none.
+   */
+  unavailable?: UnavailablePeriod[]
 }
 
 /** The server's cap on a reason or suggestion, mirrored so the form can say so. */

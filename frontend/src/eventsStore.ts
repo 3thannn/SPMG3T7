@@ -290,7 +290,25 @@ export type BookingRecord = {
   heldByName?: string
   /** US16.1: who approved or rejected it, when, and why. null until decided. */
   decision?: BookingDecision | null
+  /**
+   * US15.2: set while the booking is flagged "Conflict – review needed" because
+   * it clashes since its venue's setup or turnaround time changed. The status
+   * is unchanged; nothing was cancelled. null once the clash is resolved.
+   */
+  conflict?: BookingConflictFlag | null
 }
+
+/** US15.2: why a booking clashes since its venue's setup or turnaround changed. */
+export type BookingConflictFlag = {
+  /** Always "Conflict – review needed". */
+  label: string
+  flaggedAt: string
+  /** The window it occupies and what it overlaps, by booking number and times. */
+  reason: string
+}
+
+/** The label US15.2's acceptance criteria give a flagged booking. */
+export const CONFLICT_LABEL = 'Conflict – review needed'
 
 /** US16.1: Venue Staff's decision on a booking request. */
 export type BookingDecision = {
@@ -360,6 +378,16 @@ export type Suitability = {
   reasons: string[]
   /** What could not be checked, such as hours nobody has recorded. */
   notes: string[]
+  /**
+   * US15.1: whether the slot is free at this venue, with setup and turnaround
+   * counted. Optional so an older server's answer still reads as available.
+   */
+  available?: boolean
+  /** US15.1: each booking or unavailability period it clashes with, as a phrase. */
+  clashes?: string[]
+  /** US15.1: the full window the booking would occupy. */
+  occupiedFrom?: string
+  occupiedTo?: string
 }
 
 /**

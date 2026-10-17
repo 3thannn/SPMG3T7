@@ -101,3 +101,29 @@
   padding-top: 0.75rem;
   border-top: 1px solid var(--line);
 }
+
+/* US15.2: a request flagged after a setup or turnaround change. The flag is a
+   note beside the facts, not a status: the request is still a request. */
+.booking-request-flag {
+  margin: 0 0 0.9rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.88rem;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
+.booking-request-flag-tag {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--danger-border);
+  background: var(--bg);
+  white-space: nowrap;
+}
