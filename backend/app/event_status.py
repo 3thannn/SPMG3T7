@@ -19,6 +19,9 @@ class EventStatus(StrEnum):
     UNDER_REVIEW = "Under Review"
     APPROVED = "Approved"
     PLANNING = "Planning"
+    #: US4.4 (Week 7 change #6): between planning and preparation, so that no
+    #: event reaches Confirmed without the Safety Officer's sign-off.
+    PENDING_SAFETY_CHECK = "Pending Safety Check"
     CONFIRMED = "Confirmed"
     COMPLETED = "Completed"
     CANCELLED = "Cancelled"
@@ -54,6 +57,14 @@ VALID_TRANSITIONS: frozenset[tuple[EventStatus, EventStatus]] = frozenset(
         (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
         (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
         (EventStatus.APPROVED, EventStatus.PLANNING),
+        # US4.4: Planning -> Pending Safety Check once every active venue
+        # booking is Confirmed and every equipment line is reserved
+        # (`app.safety_check`), then the Safety Officer either signs it off or
+        # sends it back to Planning. Pending Safety Check is the only way into
+        # Confirmed; the database refuses any other route there as well.
+        (EventStatus.PLANNING, EventStatus.PENDING_SAFETY_CHECK),
+        (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
+        (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
         (EventStatus.CONFIRMED, EventStatus.COMPLETED),
     }
 )

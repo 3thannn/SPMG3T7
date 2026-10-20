@@ -232,6 +232,71 @@ export async function completeEvent(id: string, session: Session): Promise<Event
   }
 }
 
+/**
+ * US4.4: whether the assigned Coordinator can send the event for its safety
+ * check now, and if not, the server's sentence saying what is outstanding.
+ */
+export type SafetyReadiness = {
+  ready: boolean
+  /** A refusal code such as 'venue-not-confirmed', or empty when ready. */
+  reason: string
+  message: string
+}
+
+/** US4.4: the readiness the Send for safety check button depends on. */
+export async function getSafetyReadiness(id: string, session: Session): Promise<SafetyReadiness> {
+  const response = await authorizedFetch(`/events/${id}/safety-check`, session.token)
+  return (await response.json()) as SafetyReadiness
+}
+
+/** US4.4: Planning -> Pending Safety Check, by the assigned Coordinator. */
+export async function sendForSafetyCheck(id: string, session: Session): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/safety-check`, session.token, {
+      method: 'POST',
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/** US4.4: the events waiting for the Safety Officer, longest-waiting first. */
+export async function listSafetyQueue(session: Session): Promise<EventRecord[]> {
+  const response = await authorizedFetch('/events/safety-check', session.token)
+  return (await response.json()) as EventRecord[]
+}
+
+/** US4.4: the Safety Officer signs the event off. Pending Safety Check -> Confirmed. */
+export async function approveSafetyCheck(id: string, session: Session): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/safety-check/approve`, session.token, {
+      method: 'POST',
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/** US4.4: back to Planning, with a note the Coordinator reads. */
+export async function returnSafetyCheck(
+  id: string,
+  note: string,
+  session: Session,
+): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/safety-check/return`, session.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note }),
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
 /** US7.1: reject an assigned event and make the reason visible in its history. */
 export async function rejectEvent(
   id: string,

@@ -3,7 +3,18 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import EventDetailPage from './EventDetailPage'
 import { MISSING_MESSAGES, NO_NEEDS, NOT_REQUIRED } from '../eventNeeds'
-import { completeEvent, getEvent, listBookings, saveEvent, submitEvent, type EventRecord } from '../eventsStore'
+import {
+  EventRuleError,
+  approveSafetyCheck,
+  completeEvent,
+  getEvent,
+  getSafetyReadiness,
+  listBookings,
+  saveEvent,
+  sendForSafetyCheck,
+  submitEvent,
+  type EventRecord,
+} from '../eventsStore'
 import { ANSWERED_NEEDS } from '../test/eventNeeds'
 import { buildSession } from '../test/sessions'
 
@@ -14,6 +25,10 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   saveEvent: vi.fn(),
   submitEvent: vi.fn(),
   completeEvent: vi.fn(),
+  // US4.4: the safety check panel loads its own readiness.
+  getSafetyReadiness: vi.fn(async () => ({ ready: true, reason: '', message: '' })),
+  sendForSafetyCheck: vi.fn(),
+  approveSafetyCheck: vi.fn(),
 }))
 
 // US14.1: the venue bookings card loads its own data. These tests are not about
@@ -387,4 +402,100 @@ it('submits a complete draft with its needs, trimming the described ones', async
     expect.objectContaining({ ...ANSWERED_NEEDS, registrationNeeds: 'Online sign-up' }),
   )
   expect(await screen.findByRole('status')).toHaveTextContent('Submitted.')
+})
+
+/* ---------- US4.4: Pending Safety Check ---------- */
+
+const officer = buildSession({ role: 'Safety Officer', id: '5', name: 'Alex' })
+
+it('lets the assigned Coordinator send a ready Planning event for its safety check', async () => {
+  const user = userEvent.setup()
+  const planning = { ...submittedEvent, status: 'Planning' as const, coordinatorId: coordinator.id }
+  getEventMock.mockResolvedValue(planning)
+  vi.mocked(sendForSafetyCheck).mockResolvedValue({
+    ...planning,
+    status: 'Pending Safety Check',
+  })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  await user.click(await screen.findByRole('button', { name: 'Send for safety check' }))
+
+  expect(vi.mocked(getSafetyReadiness)).toHaveBeenCalledWith('101', coordinator)
+  expect(await screen.findByText(/The event is now Pending Safety Check\./)).toBeInTheDocument()
+  expect(screen.getByText(/Waiting for the Safety Officer/)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Send for safety check' })).not.toBeInTheDocument()
+})
+
+it('shows the Safety Officer the decision, but not the bookings or equipment cards', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+
+  expect(await screen.findByRole('heading', { name: 'Safety check decision' })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '← Safety review' })).toHaveAttribute(
+    'href',
+    '#/safety-review',
+  )
+  expect(screen.queryByRole('heading', { name: 'Venue bookings' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Equipment requests' })).not.toBeInTheDocument()
+  expect(vi.mocked(listBookings)).not.toHaveBeenCalled()
+})
+
+it('takes the Safety Officer back to their queue', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+  await user.click(await screen.findByRole('link', { name: '← Safety review' }))
+
+  expect(window.location.hash).toBe('#/safety-review')
+})
+
+it('shows the Safety Officer the outcome of their approval', async () => {
+  const user = userEvent.setup()
+  const pending = { ...submittedEvent, status: 'Pending Safety Check' as const }
+  getEventMock.mockResolvedValue(pending)
+  vi.mocked(approveSafetyCheck).mockResolvedValue({ ...pending, status: 'Confirmed' })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+  await user.click(await screen.findByRole('button', { name: 'Approve safety check' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Approved. The event is now Confirmed.',
+  )
+  expect(screen.queryByRole('heading', { name: 'Safety check decision' })).not.toBeInTheDocument()
+})
+
+it('shows the Safety Officer why a decision was refused', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })
+  vi.mocked(approveSafetyCheck).mockRejectedValue(
+    new EventRuleError('This safety check was already decided. Refresh it and try again.'),
+  )
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+  await user.click(await screen.findByRole('button', { name: 'Approve safety check' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'This safety check was already decided. Refresh it and try again.',
+  )
+})
+
+it('refuses the Safety Officer an event that is no longer waiting for them', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Confirmed' })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+
+  expect(await screen.findByRole('heading', { name: 'Not available for your role' })).toBeInTheDocument()
+})
+
+it('sends the Safety Officer back to their queue from a missing event', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue(null)
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+  await user.click(await screen.findByRole('button', { name: 'Back to safety review' }))
+
+  expect(window.location.hash).toBe('#/safety-review')
 })

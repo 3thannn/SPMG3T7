@@ -33,6 +33,7 @@ export type Permission =
   | 'queue:view:unassigned'
   | 'coordinators:assign'
   | 'safety:review'
+  | 'safety:submit'
   | 'equipment:read'
   | 'equipment:write'
   | 'equipment:request'

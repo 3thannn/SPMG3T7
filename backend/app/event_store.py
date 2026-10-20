@@ -319,6 +319,12 @@ class Repository(Protocol):
 
     def plan_event(self, event_id: int, *, actor_id: int) -> Event: ...
 
+    def send_to_safety_check(self, event_id: int, *, actor_id: int) -> Event: ...
+
+    def decide_safety_check(
+        self, event_id: int, *, actor_id: int, to_status: EventStatus, note: str
+    ) -> Event: ...
+
 class SupabaseEvents:
     """The real store. Goes through the service role client, like the user store."""
 
@@ -865,6 +871,48 @@ class SupabaseEvents:
             to_status=EventStatus.PLANNING, reason="",
         )
 
+    def send_to_safety_check(self, event_id: int, *, actor_id: int) -> Event:
+        """US4.4: Planning -> Pending Safety Check, with its audit entry.
+
+        The RPC locks the event and re-checks readiness — every active booking
+        Confirmed and unflagged, no outstanding equipment line, no pending
+        change request — so a booking or line that changed after the route's
+        check is reported as stale rather than slipping through.
+        """
+        result = supabase_client.admin().rpc(
+            "send_event_to_safety_check",
+            {"p_event_id": event_id, "p_coordinator_id": actor_id},
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
+        sent = self.get_event(event_id)
+        assert sent is not None  # noqa: S101 - the row was just updated
+        return sent
+
+    def decide_safety_check(
+        self, event_id: int, *, actor_id: int, to_status: EventStatus, note: str
+    ) -> Event:
+        """US4.4: Pending Safety Check -> Confirmed or back to Planning, audited.
+
+        The RPC only moves an event that is still Pending Safety Check, and
+        only for a Safety Officer, so a second decision on the same check
+        fails rather than overwriting the first.
+        """
+        result = supabase_client.admin().rpc(
+            "decide_safety_check",
+            {
+                "p_event_id": event_id,
+                "p_new_status": str(to_status),
+                "p_officer_id": actor_id,
+                "p_notes": note or None,
+            },
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
+        decided = self.get_event(event_id)
+        assert decided is not None  # noqa: S101 - the row was just updated
+        return decided
+
 @dataclass
 class InMemoryEvents:
     """A stand-in for tests, with the same visibility and audit behaviour."""
@@ -1240,6 +1288,25 @@ class InMemoryEvents:
         return self.decide_event(
             event_id, actor_id=actor_id, from_status=EventStatus.APPROVED,
             to_status=EventStatus.PLANNING, reason="",
+        )
+
+    def send_to_safety_check(self, event_id: int, *, actor_id: int) -> Event:
+        """Readiness is the route's check here; the real store's RPC repeats it."""
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        if existing.status is not EventStatus.PLANNING or existing.coordinator_id != actor_id:
+            raise StaleEventStatus
+        return self.decide_event(
+            event_id, actor_id=actor_id, from_status=EventStatus.PLANNING,
+            to_status=EventStatus.PENDING_SAFETY_CHECK, reason="",
+        )
+
+    def decide_safety_check(
+        self, event_id: int, *, actor_id: int, to_status: EventStatus, note: str
+    ) -> Event:
+        return self.decide_event(
+            event_id, actor_id=actor_id, from_status=EventStatus.PENDING_SAFETY_CHECK,
+            to_status=to_status, reason=note,
         )
 
 

@@ -117,9 +117,10 @@ export function guardFor(route: string): GuardedRoute | null {
   }
   if (/^\/events\/[^/]+$/.test(route)) {
     return {
-      anyOf: ['events:read:own', 'events:read:submitted', 'events:read:all'],
+      // US4.4: the Safety Officer opens the events waiting for their check.
+      anyOf: ['events:read:own', 'events:read:submitted', 'events:read:all', 'safety:review'],
       what: 'event details',
-      who: 'Organisers, Event Coordinators, and Coordinator Lead',
+      who: 'Organisers, Event Coordinators, Coordinator Lead, and Safety Officer',
     }
   }
   // Checked before the detail route, which would otherwise match the id and

@@ -50,6 +50,10 @@ class Permission(StrEnum):
 
     US1.4/US8.2/US8.3: Coordinator Lead permissions for managing assignments.
     US1.4/US17.x: Safety Officer permissions (placeholder for now).
+
+    US4.4: the assigned Coordinator sends a ready event for its safety check
+    (`safety:submit`), and the Safety Officer signs it off or sends it back
+    (`safety:review`). Two names because two different roles hold them.
     """
 
     EVENTS_CREATE = "events:create"
@@ -69,7 +73,8 @@ class Permission(StrEnum):
     BOOKINGS_REQUEST = "bookings:request"
     QUEUE_VIEW_UNASSIGNED = "queue:view:unassigned"  # US8.2: Lead sees unassigned queue
     COORDINATORS_ASSIGN = "coordinators:assign"  # US8.3: Lead assigns Coordinators
-    SAFETY_REVIEW = "safety:review"  # US17.x: Safety Officer (placeholder)
+    SAFETY_REVIEW = "safety:review"  # US4.4/US17.x: Safety Officer decides the check
+    SAFETY_SUBMIT = "safety:submit"  # US4.4: Coordinator sends a ready event for it
     HOLDS_PLACE = "holds:place"  # US14.3: Venue Staff keep a slot for a Coordinator
     BOOKINGS_DECIDE = "bookings:decide"  # US16.1: Venue Staff approve or reject requests
     EQUIPMENT_READ = "equipment:read"
@@ -98,6 +103,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.QUEUE_VIEW_UNASSIGNED: "view the unassigned event queue",
     Permission.COORDINATORS_ASSIGN: "assign events to Coordinators",
     Permission.SAFETY_REVIEW: "review event safety",
+    Permission.SAFETY_SUBMIT: "send events for a safety check",
     Permission.HOLDS_PLACE: "place tentative venue holds",
     Permission.BOOKINGS_DECIDE: "approve or reject venue booking requests",
     Permission.EQUIPMENT_READ: "view the equipment catalogue",
@@ -129,6 +135,9 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.BOOKINGS_REQUEST,
             Permission.EQUIPMENT_READ,
             Permission.EQUIPMENT_REQUEST,
+            # US4.4: Planning -> Pending Safety Check, on the events assigned
+            # to them (US8.6, checked per event).
+            Permission.SAFETY_SUBMIT,
             # US10.2: told about assignments and booking or safety problems.
             Permission.NOTIFICATIONS_READ,
         }
@@ -161,7 +170,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.BOOKINGS_DECIDE,
         }
     ),
-    # US1.4: Safety Officer placeholder. Features arrive in US17.x.
+    # US1.4: Safety Officer. US4.4 lets them read and decide events that are
+    # Pending Safety Check; the queue and detail view grow in US17.1/US17.2.
     Role.SAFETY_OFFICER: frozenset(
         {
             Permission.SAFETY_REVIEW,

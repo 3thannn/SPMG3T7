@@ -1,5 +1,5 @@
 /*
- * The nine US4.1 statuses. Each pairs a tinted ground with a darker ink so the
+ * The US4.1 statuses, and US4.4's Pending Safety Check. Each pairs a tinted ground with a darker ink so the
  * label carries its own contrast, and a dot so the badge is distinguishable
  * without relying on colour.
  */
@@ -57,6 +57,13 @@
   background: #f2f0ff;
   border-color: #e0dbff;
   color: #4c3ca8;
+}
+
+/* US4.4: waiting on someone else's sign-off, like Under Review, but a step later. */
+.status-badge-safety {
+  background: #fff1f6;
+  border-color: #fbd3e2;
+  color: #9c2a5a;
 }
 
 /* Positive outcomes */

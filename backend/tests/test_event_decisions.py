@@ -81,6 +81,10 @@ class TestTransitionRules:
             (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
             (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
             (EventStatus.APPROVED, EventStatus.PLANNING),
+            # US4.4: the Pending Safety Check stage.
+            (EventStatus.PLANNING, EventStatus.PENDING_SAFETY_CHECK),
+            (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
+            (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
             (EventStatus.CONFIRMED, EventStatus.COMPLETED),
         ],
     )
@@ -94,6 +98,10 @@ class TestTransitionRules:
             (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
             (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
             (EventStatus.APPROVED, EventStatus.PLANNING),
+            # US4.4: the Pending Safety Check stage.
+            (EventStatus.PLANNING, EventStatus.PENDING_SAFETY_CHECK),
+            (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
+            (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
             (EventStatus.CONFIRMED, EventStatus.COMPLETED),
         }
         for before in EventStatus:

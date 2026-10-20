@@ -13,6 +13,7 @@ const MODIFIER: Record<EventStatus, string> = {
   'Under Review': 'review',
   Approved: 'approved',
   Planning: 'planning',
+  'Pending Safety Check': 'safety',
   Confirmed: 'confirmed',
   Completed: 'completed',
   Cancelled: 'cancelled',

@@ -16,13 +16,15 @@ import {
 const owned = { status: 'Draft' as EventStatus, organiserId: 'user_1' }
 
 describe('US4.1 — the fixed label set', () => {
-  it('carries exactly the nine agreed statuses, in order', () => {
+  it('carries exactly the agreed statuses, in order', () => {
     expect(EVENT_STATUSES).toEqual([
       'Draft',
       'Submitted',
       'Under Review',
       'Approved',
       'Planning',
+      // US4.4: added between Planning and Confirmed.
+      'Pending Safety Check',
       'Confirmed',
       'Completed',
       'Cancelled',
@@ -178,5 +180,45 @@ describe('US11.1 — who may request changes, and when', () => {
     ],
   ] as [ChangeRequestRefusal, string][])('explains %s as the server does', (reason, message) => {
     expect(changeRequestRefusalMessage(reason)).toBe(message)
+  })
+})
+
+describe('US4.4 — Pending Safety Check', () => {
+  const pending = { status: 'Pending Safety Check' as EventStatus, organiserId: 'user_1' }
+
+  it('sits between Planning and Confirmed in the label set', () => {
+    expect(EVENT_STATUSES.indexOf('Pending Safety Check')).toBe(
+      EVENT_STATUSES.indexOf('Planning') + 1,
+    )
+    expect(EVENT_STATUSES.indexOf('Confirmed')).toBe(
+      EVENT_STATUSES.indexOf('Pending Safety Check') + 1,
+    )
+  })
+
+  it('shows the Safety Officer only the events waiting for their check', () => {
+    expect(canViewStatus('Safety Officer', 'officer', pending)).toBe(true)
+    for (const status of EVENT_STATUSES.filter((item) => item !== 'Pending Safety Check')) {
+      expect(canViewStatus('Safety Officer', 'officer', { ...pending, status })).toBe(false)
+    }
+  })
+
+  it('stays visible to the owning Organiser and to Coordinators', () => {
+    expect(canViewStatus('Event Organiser', 'user_1', pending)).toBe(true)
+    expect(canViewStatus('Event Coordinator', 'user_2', pending)).toBe(true)
+  })
+
+  it('labels the note the Safety Officer wrote when sending an event back', () => {
+    const change = {
+      from: 'Pending Safety Check' as EventStatus,
+      to: 'Planning' as EventStatus,
+      at: 'now',
+      byId: '5',
+      byName: 'Alex',
+      notes: 'Add a second fire marshal.',
+      kind: 'safety-return' as const,
+    }
+    expect(statusNoteKind(change)).toBe('safety-return')
+    expect(statusNoteLabel('safety-return')).toBe('Sent back by Safety Officer')
+    expect(statusNoteKind({ ...change, notes: '' })).toBeNull()
   })
 })
