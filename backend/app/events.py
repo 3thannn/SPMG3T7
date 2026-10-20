@@ -33,6 +33,7 @@ from app import (
     event_needs,
     event_store,
     safety_check,
+    safety_review,
     suitability,
     venue_store,
     venue_unavailability_store,
@@ -45,6 +46,7 @@ from app.booking_store import (
     HoldExpired,
     SlotTaken,
     StaleBookingStatus,
+    local_now,
 )
 from app.event_needs import EventNeeds
 from app.event_status import (
@@ -551,16 +553,12 @@ def list_pending_safety_check(
         for event in event_store.repository().list_events(organiser_id=None, include_drafts=False)
         if event.status is EventStatus.PENDING_SAFETY_CHECK
     ]
-    return [_to_out(event) for event in sorted(events, key=_entered_safety_check)]
-
-
-def _entered_safety_check(event: Event) -> tuple[str, int]:
-    entered = [
-        change.at
-        for change in event.history
-        if change.to_status is EventStatus.PENDING_SAFETY_CHECK
+    return [
+        _to_out(event)
+        for event in sorted(
+            events, key=lambda event: (safety_review.entered_safety_check(event), event.id)
+        )
     ]
-    return (entered[-1] if entered else event.updated_at, event.id)
 
 
 @router.get("/{event_id}", response_model=EventOut)
@@ -946,6 +944,148 @@ def send_for_safety_check(event_id: str, user: SafetySender) -> EventOut:
     except StaleEventStatus:
         raise _stale_request() from None
     return _to_out(sent)
+
+
+# -- US17.1: what the Safety Officer reviews ------------------------------------
+
+
+class ClosureOut(BaseModel):
+    """A venue unavailability period that has not ended yet (US12.1)."""
+
+    start_date: str = Field(serialization_alias="startDate")
+    end_date: str = Field(serialization_alias="endDate")
+    reason: str
+
+
+class ReviewedVenueOut(BaseModel):
+    """One booked venue: what the booking asks beside what the venue offers."""
+
+    booking_id: str = Field(serialization_alias="bookingId")
+    venue_id: str = Field(serialization_alias="venueId")
+    venue_name: str = Field(serialization_alias="venueName")
+    location: str
+    status: str
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+    capacity: int | None
+    headcount: int | None
+    over_capacity: bool = Field(serialization_alias="overCapacity")
+    required_layout: str = Field(serialization_alias="requiredLayout")
+    supported_layouts: str = Field(serialization_alias="supportedLayouts")
+    facilities: str
+    accessibility_features: str = Field(serialization_alias="accessibilityFeatures")
+    accessibility_needs: list[str] = Field(serialization_alias="accessibilityNeeds")
+    operating_hours: str = Field(serialization_alias="operatingHours")
+    setup_minutes: int = Field(serialization_alias="setupMinutes")
+    turnaround_minutes: int = Field(serialization_alias="turnaroundMinutes")
+    closures: list[ClosureOut]
+
+
+class ReviewedEquipmentOut(BaseModel):
+    id: str
+    equipment_type: str = Field(serialization_alias="type")
+    quantity: int
+    technical_requirements: str = Field(serialization_alias="technicalRequirements")
+    support_notes: str = Field(serialization_alias="supportNotes")
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+
+
+class SafetyReviewOut(BaseModel):
+    """US17.1: everything the Safety Officer needs to assess one event."""
+
+    event_id: str = Field(serialization_alias="eventId")
+    title: str
+    status: EventStatus
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+    expected_attendance: int | None = Field(serialization_alias="expectedAttendance")
+    #: The event's own accessibility requirements, as the Organiser gave them.
+    accessibility_needs: str = Field(serialization_alias="accessibilityNeeds")
+    preferred_layout: str = Field(serialization_alias="preferredLayout")
+    venue_requirements: str = Field(serialization_alias="venueRequirements")
+    waiting_since: str = Field(serialization_alias="waitingSince")
+    venues: list[ReviewedVenueOut]
+    equipment: list[ReviewedEquipmentOut]
+
+
+def _review_out(review: safety_review.SafetyReview) -> SafetyReviewOut:
+    event = review.event
+    return SafetyReviewOut(
+        event_id=str(event.id),
+        title=event.title,
+        status=event.status,
+        starts_at=event.starts_at,
+        ends_at=event.ends_at,
+        expected_attendance=event.expected_attendance,
+        accessibility_needs=event.accessibility_needs,
+        preferred_layout=event.preferred_layout,
+        venue_requirements=event.venue_requirements,
+        waiting_since=review.waiting_since,
+        venues=[
+            ReviewedVenueOut(
+                booking_id=str(venue.booking_id),
+                venue_id=str(venue.venue_id),
+                venue_name=venue.venue_name,
+                location=venue.location,
+                status=venue.status,
+                starts_at=venue.starts_at,
+                ends_at=venue.ends_at,
+                capacity=venue.capacity,
+                headcount=venue.headcount,
+                over_capacity=venue.over_capacity,
+                required_layout=venue.required_layout,
+                supported_layouts=venue.supported_layouts,
+                facilities=venue.facilities,
+                accessibility_features=venue.accessibility_features,
+                accessibility_needs=list(venue.accessibility_needs),
+                operating_hours=venue.operating_hours,
+                setup_minutes=venue.setup_minutes,
+                turnaround_minutes=venue.turnaround_minutes,
+                closures=[
+                    ClosureOut(
+                        start_date=closure.start_date.isoformat(),
+                        end_date=closure.end_date.isoformat(),
+                        reason=closure.reason,
+                    )
+                    for closure in venue.closures
+                ],
+            )
+            for venue in review.venues
+        ],
+        equipment=[
+            ReviewedEquipmentOut(
+                id=str(line.id),
+                equipment_type=line.equipment_type,
+                quantity=line.quantity,
+                technical_requirements=line.technical_requirements,
+                support_notes=line.support_notes,
+                starts_at=line.starts_at,
+                ends_at=line.ends_at,
+            )
+            for line in review.equipment
+        ],
+    )
+
+
+@router.get("/{event_id}/safety-review", response_model=SafetyReviewOut)
+def get_safety_review(event_id: str, user: SafetyOfficer) -> SafetyReviewOut:
+    """US17.1: the detail view behind the queue. Read-only, Safety Officer only.
+
+    `_readable` lets the Safety Officer reach an event only while it is
+    Pending Safety Check; anything else is 404, as it is for any event that is
+    not the caller's to see.
+    """
+    event = _readable(_as_id(event_id), user)
+    review = safety_review.build_review(
+        event,
+        bookings=booking_store.repository().list_for_event(event.id),
+        venue_for=venue_store.repository().get_venue,
+        closures_for=venue_unavailability_store.repository().list_for_venue,
+        equipment=equipment_store.repository().list_reserved_for_event(event.id),
+        today=local_now().date(),
+    )
+    return _review_out(review)
 
 
 class SafetyReturn(BaseModel):

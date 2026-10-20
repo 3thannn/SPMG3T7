@@ -149,7 +149,8 @@ button is a courtesy and a refused request is the rule.
 | `POST /events/{id}/bookings/suitability` | assigned Coordinator | Whether a venue suits a booking; stores nothing (US18.1) |
 | `GET /events/{id}/safety-check` | assigned Coordinator | Whether the event is ready for its safety check, and if not why (US4.4) |
 | `POST /events/{id}/safety-check` | assigned Coordinator | Planning → Pending Safety Check, once ready (US4.4) |
-| `GET /events/safety-check` | Safety Officer | Events Pending Safety Check, longest-waiting first (US4.4) |
+| `GET /events/safety-check` | Safety Officer | Events Pending Safety Check, oldest first (US4.4/US17.1) |
+| `GET /events/{id}/safety-review` | Safety Officer | Read-only review of a waiting event: attendance, venues, restrictions, reserved equipment (US17.1) |
 | `POST /events/{id}/safety-check/approve` | Safety Officer | Pending Safety Check → Confirmed (US4.4) |
 | `POST /events/{id}/safety-check/return` | Safety Officer | Pending Safety Check → Planning, with a note (US4.4) |
 
@@ -270,6 +271,27 @@ and Pending Safety Check only from Planning.
 
 Until US19.3 adds reserving equipment, an event with any equipment request
 cannot be sent; remove the lines it does not need, or wait for US19.3.
+
+### Safety Officer review (US17.1)
+
+`GET /events/{id}/safety-review` is everything the Safety Officer needs to
+assess an event, so they do not have to chase anyone for it
+(`app/safety_review.py`):
+
+- the event's expected attendance and accessibility requirements (plus its
+  preferred layout, venue requirements, and when it started waiting);
+- each **booked** venue — bookings that hold their venue; Cancelled, Rejected
+  and expired ones are history — with its capacity against the booking's
+  headcount (`overCapacity`), the layout asked for against the ones it supports,
+  its accessibility features against what the booking asked for, and its
+  **known restrictions**: operating hours, setup and turnaround minutes (US9.4),
+  and unavailability periods (US12.1) that have not ended yet;
+- the **reserved** equipment lines (`Reserved`, set by US19.3; empty until then).
+
+It is read-only (GET only; anything else answers `405`) and Safety Officer only
+(`403` for every other role). As with the event itself, the Safety Officer can
+reach it only while the event is Pending Safety Check; otherwise `404`. No
+migration is needed.
 
 ### Requesting changes to a submitted event (US11.1)
 

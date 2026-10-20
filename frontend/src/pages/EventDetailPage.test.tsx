@@ -9,6 +9,7 @@ import {
   completeEvent,
   getEvent,
   getSafetyReadiness,
+  getSafetyReview,
   listBookings,
   saveEvent,
   sendForSafetyCheck,
@@ -29,6 +30,8 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   getSafetyReadiness: vi.fn(async () => ({ ready: true, reason: '', message: '' })),
   sendForSafetyCheck: vi.fn(),
   approveSafetyCheck: vi.fn(),
+  // US17.1: the Safety Officer's review loads its own data; left pending here.
+  getSafetyReview: vi.fn(() => new Promise(() => {})),
 }))
 
 // US14.1: the venue bookings card loads its own data. These tests are not about
@@ -498,4 +501,29 @@ it('sends the Safety Officer back to their queue from a missing event', async ()
   await user.click(await screen.findByRole('button', { name: 'Back to safety review' }))
 
   expect(window.location.hash).toBe('#/safety-review')
+})
+
+/* ---------- US17.1: the Safety Officer's read-only review ---------- */
+
+it('shows the Safety Officer the safety review of a waiting event', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+
+  expect(await screen.findByRole('heading', { name: 'Safety review' })).toBeInTheDocument()
+  expect(vi.mocked(getSafetyReview)).toHaveBeenCalledWith('101', officer)
+  // Read-only: the details are not an editable form for them.
+  expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+})
+
+it('shows no safety review to anyone else', async () => {
+  getEventMock.mockResolvedValue({
+    ...submittedEvent, status: 'Pending Safety Check', coordinatorId: coordinator.id,
+  })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  await screen.findByRole('heading', { name: 'Safety check' })
+  expect(screen.queryByRole('heading', { name: 'Safety review' })).not.toBeInTheDocument()
+  expect(vi.mocked(getSafetyReview)).not.toHaveBeenCalled()
 })
