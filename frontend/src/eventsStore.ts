@@ -39,6 +39,10 @@ export type EventRecord = {
   organiserName: string
   createdAt: string
   updatedAt: string
+  /** US8.1: The assigned Event Coordinator's ID, or null if unassigned. */
+  coordinatorId: string | null
+  /** US8.4: The assigned Event Coordinator's name, or empty if unassigned. */
+  coordinatorName: string
   history: StatusChange[]
 }
 
@@ -317,7 +321,12 @@ export function formatBookingTimes(startsAt: string, endsAt: string): string {
   }
   const end = new Date(endsAt)
   if (Number.isNaN(end.getTime())) return `${start} – ${endsAt}`
-  return `${start} – ${end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+  return `${start} – ${end.toLocaleTimeString('en-SG', {
+    timeZone: 'Asia/Singapore',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })}`
 }
 
 /** US14.1: every venue booking for the event, soonest first — the server's order. */

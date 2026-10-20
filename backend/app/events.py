@@ -95,6 +95,8 @@ class EventOut(BaseModel):
     updated_at: str = Field(serialization_alias="updatedAt")
     #: US8.1: The assigned Event Coordinator's ID, or None if unassigned.
     coordinator_id: str | None = Field(default=None, serialization_alias="coordinatorId")
+    #: US8.4: The assigned Event Coordinator's name, or empty if unassigned.
+    coordinator_name: str = Field(default="", serialization_alias="coordinatorName")
     history: list[StatusChangeOut]
 
 
@@ -137,6 +139,7 @@ def _to_out(event: Event) -> EventOut:
         created_at=event.created_at,
         updated_at=event.updated_at,
         coordinator_id=str(event.coordinator_id) if event.coordinator_id is not None else None,
+        coordinator_name=event.coordinator_name,
         history=[
             StatusChangeOut(
                 from_status=change.from_status,
@@ -376,6 +379,54 @@ def assign_coordinator(
         event.id, coordinator_id, assigned_by_id=user.id
     )
     return _to_out(assigned)
+
+
+@router.post("/{event_id}/reassign", response_model=EventOut)
+def reassign_coordinator(
+    event_id: str,
+    payload: AssignmentPayload,
+    user: Annotated[User, Depends(require_permission(Permission.COORDINATORS_ASSIGN))],
+) -> EventOut:
+    """US8.4: Lead reassigns an already-assigned event to a different Coordinator.
+
+    The new Coordinator gains access and the previous Coordinator loses access.
+    This allows workload redistribution and coverage when coordinators are unavailable."""
+    from app import users
+
+    event = event_store.repository().get_event(_as_id(event_id))
+    if event is None:
+        raise _not_found()
+
+    # Must already be assigned (cannot reassign an unassigned event)
+    if event.coordinator_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": "This event is not assigned to any coordinator. Use /assign instead.",
+                "reason": "not-assigned",
+            },
+        )
+
+    # Validate the coordinator ID
+    try:
+        coordinator_id = int(payload.coordinator_id)
+    except ValueError:
+        raise _invalid("The coordinator ID must be a valid number.") from None
+
+    # Check that the coordinator exists and is a Coordinator
+    all_users = users.list_users()
+    coordinator = next((u for u in all_users if u.id == coordinator_id), None)
+    if coordinator is None:
+        raise _invalid("That coordinator does not exist.")
+    if coordinator.role != Role.COORDINATOR:
+        raise _invalid("That user is not a Coordinator.")
+
+    # Reassign the coordinator (reuses the same assign_coordinator method)
+    reassigned = event_store.repository().assign_coordinator(
+        event.id, coordinator_id, assigned_by_id=user.id
+    )
+    return _to_out(reassigned)
 
 
 @router.get("/{event_id}", response_model=EventOut)

@@ -1,5 +1,5 @@
 /**
- * US8.2 + US8.3: Unassigned queue and coordinator assignment for Lead.
+ * US8.2, US8.3, US8.4: Unassigned queue, coordinator assignment, and reassignment for Lead.
  */
 
 import { authorizedFetch, type Session, unexpectedFailureMessage } from './api'
@@ -55,6 +55,26 @@ export async function assignCoordinator(
     })
   } catch (error) {
     throw new Error(unexpectedFailureMessage(error, 'assign coordinator'))
+  }
+}
+
+/**
+ * US8.4: Reassign an already-assigned event to a different coordinator.
+ * Only accessible to Coordinator Lead.
+ */
+export async function reassignCoordinator(
+  session: Session,
+  eventId: string,
+  coordinatorId: string,
+): Promise<void> {
+  try {
+    await authorizedFetch(`/events/${eventId}/reassign`, session.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coordinatorId }),
+    })
+  } catch (error) {
+    throw new Error(unexpectedFailureMessage(error, 'reassign coordinator'))
   }
 }
 

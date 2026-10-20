@@ -16,6 +16,7 @@ class EventStatus(StrEnum):
     DRAFT = "Draft"
     SUBMITTED = "Submitted"
     UNDER_REVIEW = "Under Review"
+    PENDING_SAFETY_CHECK = "Pending Safety Check"
     APPROVED = "Approved"
     PLANNING = "Planning"
     CONFIRMED = "Confirmed"

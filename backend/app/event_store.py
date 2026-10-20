@@ -32,10 +32,12 @@ EVENT_CHANGES_TABLE = "event_changes"
 
 # US8.1: Two foreign keys to users now exist (organiser_id, coordinator_id),
 # so PostgREST requires explicit relationship qualification via constraint name.
+# US8.4: Fetch both organiser and coordinator names via separate joins.
 EVENT_COLUMNS = (
     "id, name, purpose, description, proposed_date, end_date, expected_attendance, "
     "status, organiser_id, coordinator_id, created_at, updated_at, submitted_at, "
-    "users!events_organiser_id_fkey(name)"
+    "organiser:users!events_organiser_id_fkey(name), "
+    "coordinator:users!events_coordinator_id_fkey(name)"
 )
 CHANGE_COLUMNS = "id, old_status, new_status, changed_at, notes, changed_by_id, users(name)"
 
@@ -78,6 +80,8 @@ class Event:
     updated_at: str
     #: US8.1: The assigned Event Coordinator's ID, or None if unassigned.
     coordinator_id: int | None = None
+    #: US8.4: The assigned Event Coordinator's name, or empty if unassigned.
+    coordinator_name: str = ""
     history: tuple[StatusChange, ...] = ()
 
 
@@ -121,6 +125,13 @@ def creation_entry(event: "Event") -> StatusChange:
 
 
 def to_event(row: dict, changes: list[dict] | None = None) -> Event:
+    # US8.4: Extract both organiser and coordinator names from aliased joins
+    organiser_joined = row.get("organiser")
+    organiser_name = organiser_joined.get("name", "") if isinstance(organiser_joined, dict) else ""
+
+    coordinator_joined = row.get("coordinator")
+    coordinator_name = coordinator_joined.get("name", "") if isinstance(coordinator_joined, dict) else ""
+
     event = Event(
         id=row["id"],
         title=row.get("name") or "",
@@ -131,10 +142,11 @@ def to_event(row: dict, changes: list[dict] | None = None) -> Event:
         expected_attendance=row.get("expected_attendance"),
         status=EventStatus(row["status"]),
         organiser_id=row["organiser_id"],
-        organiser_name=_embedded_name(row),
+        organiser_name=organiser_name,
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
         coordinator_id=row.get("coordinator_id"),
+        coordinator_name=coordinator_name,
     )
     stored = sorted(
         (to_change(change) for change in changes or []),
