@@ -6,6 +6,9 @@ from typing import Protocol
 from app import supabase_client
 from app.event_store import _now
 
+#: The line status US19.3 sets when Technical Support reserve stock for an event.
+RESERVED = "Reserved"
+
 
 @dataclass(frozen=True)
 class Equipment:
@@ -99,6 +102,7 @@ class Repository(Protocol):
     def save_item(self, item: Equipment) -> Equipment: ...
     def delete_item(self, item_id: int) -> None: ...
     def list_for_event(self, event_id: int) -> list[EquipmentRequest]: ...
+    def list_reserved_for_event(self, event_id: int) -> list[EquipmentRequest]: ...
     def list_requested(self) -> list[EquipmentRequest]: ...
     def get_request(self, request_id: int) -> EquipmentRequest | None: ...
     def create_request(self, request: EquipmentRequest) -> EquipmentRequest: ...
@@ -177,6 +181,22 @@ class SupabaseEquipment:
             .select(self.request_columns)
             .eq("event_id", event_id)
             .eq("status", "Requested")
+            .order("created_at")
+            .order("id")
+            .execute()
+            .data
+            or []
+        )
+        return [_request(row) for row in rows]
+
+    def list_reserved_for_event(self, event_id: int) -> list[EquipmentRequest]:
+        """US17.1: what the Safety Officer reviews. US19.3 sets `Reserved`."""
+        rows = (
+            supabase_client.admin()
+            .table("equipment_requests")
+            .select(self.request_columns)
+            .eq("event_id", event_id)
+            .eq("status", RESERVED)
             .order("created_at")
             .order("id")
             .execute()
@@ -360,6 +380,12 @@ class InMemoryEquipment:
     def list_for_event(self, event_id: int) -> list[EquipmentRequest]:
         return sorted(
             (r for r in self.requests if r.event_id == event_id and r.status == "Requested"),
+            key=lambda r: (r.created_at, r.id),
+        )
+
+    def list_reserved_for_event(self, event_id: int) -> list[EquipmentRequest]:
+        return sorted(
+            (r for r in self.requests if r.event_id == event_id and r.status == RESERVED),
             key=lambda r: (r.created_at, r.id),
         )
 

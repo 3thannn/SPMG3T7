@@ -267,6 +267,65 @@ export async function listSafetyQueue(session: Session): Promise<EventRecord[]> 
   return (await response.json()) as EventRecord[]
 }
 
+/** US17.1: a venue unavailability period that has not ended yet (US12.1). */
+export type VenueClosure = { startDate: string; endDate: string; reason: string }
+
+/** US17.1: one booked venue — what the booking asks beside what the venue offers. */
+export type ReviewedVenue = {
+  bookingId: string
+  venueId: string
+  venueName: string
+  location: string
+  status: string
+  startsAt: string
+  endsAt: string
+  /** Null only if the venue record has gone. */
+  capacity: number | null
+  headcount: number | null
+  overCapacity: boolean
+  requiredLayout: string
+  supportedLayouts: string
+  facilities: string
+  accessibilityFeatures: string
+  accessibilityNeeds: string[]
+  operatingHours: string
+  setupMinutes: number
+  turnaroundMinutes: number
+  closures: VenueClosure[]
+}
+
+export type ReviewedEquipment = {
+  id: string
+  type: string
+  quantity: number
+  technicalRequirements: string
+  supportNotes: string
+  startsAt: string
+  endsAt: string
+}
+
+/** US17.1: everything the Safety Officer needs to assess one event. */
+export type SafetyReview = {
+  eventId: string
+  title: string
+  status: EventStatus
+  startsAt: string
+  endsAt: string
+  expectedAttendance: number | null
+  accessibilityNeeds: string
+  preferredLayout: string
+  venueRequirements: string
+  waitingSince: string
+  venues: ReviewedVenue[]
+  equipment: ReviewedEquipment[]
+}
+
+/** US17.1: the read-only review behind the Safety Officer's queue. */
+export async function getSafetyReview(id: string, session: Session): Promise<SafetyReview> {
+  const response = await authorizedFetch(`/events/${id}/safety-review`, session.token)
+  return (await response.json()) as SafetyReview
+}
+
 /** US4.4: the Safety Officer signs the event off. Pending Safety Check -> Confirmed. */
 export async function approveSafetyCheck(id: string, session: Session): Promise<EventRecord> {
   try {

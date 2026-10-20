@@ -17,6 +17,7 @@ import {
   approveEventChange,
   approveSafetyCheck,
   getSafetyReadiness,
+  getSafetyReview,
   listSafetyQueue,
   returnSafetyCheck,
   sendForSafetyCheck,
@@ -398,5 +399,21 @@ describe('US4.4 safety check', () => {
     await expect(sendForSafetyCheck('101', session)).rejects.toBeInstanceOf(ApiError)
     await expect(approveSafetyCheck('101', session)).rejects.toBeInstanceOf(ApiError)
     await expect(returnSafetyCheck('101', 'x', session)).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('US17.1 safety review', () => {
+  it('reads the review for one event', async () => {
+    const review = { eventId: '101', venues: [], equipment: [] }
+    const spy = stubFetch(ok(review))
+
+    expect(await getSafetyReview('101', session)).toEqual(review)
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-review')
+    expect(spy.mock.calls[0][1].method).toBeUndefined()
+  })
+
+  it('lets a refusal through as an ApiError', async () => {
+    stubFetch(failure(403, 'forbidden', 'The Event Coordinator role cannot review event safety.'))
+    await expect(getSafetyReview('101', session)).rejects.toBeInstanceOf(ApiError)
   })
 })

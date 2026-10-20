@@ -25,10 +25,9 @@ function waitingSince(event: EventRecord): string {
 /**
  * The Safety Officer's landing page (US1.4): events Pending Safety Check.
  *
- * US4.4 makes the queue real: every event waiting for sign-off, longest
- * waiting first as the server orders them. Opening one shows the approve and
- * send-back controls. US17.1 adds the venue and equipment detail a review
- * needs to this view.
+ * US4.4/US17.1: every event waiting for sign-off, oldest first as the server
+ * orders them. Opening one shows the read-only safety review (US17.1) and the
+ * approve and send-back controls (US4.4).
  */
 export default function SafetyReviewPage({ session }: Props) {
   const [queue, setQueue] = useState<Queue>({ state: 'loading' })

@@ -30,13 +30,13 @@ from datetime import datetime
 from enum import StrEnum
 
 from app.booking_store import Booking, BookingStatus, local_now
-from app.equipment_store import EquipmentRequest
+from app.equipment_store import RESERVED, EquipmentRequest
 from app.event_status import EventStatus
 
 #: The equipment line status US19.3 sets when Technical Support reserve stock.
 #: Every other active status — Requested today, Unavailable once US19.3 adds
 #: it — is an arrangement still outstanding.
-EQUIPMENT_RESERVED = "Reserved"
+EQUIPMENT_RESERVED = RESERVED
 
 #: `status_changes.notes` is unbounded TEXT; like the other notes, this cap is
 #: about keeping the Safety Officer's message readable.

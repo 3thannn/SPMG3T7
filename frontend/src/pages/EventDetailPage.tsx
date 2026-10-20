@@ -7,6 +7,7 @@ import StatusBadge from '../components/StatusBadge'
 import StatusTimeline from '../components/StatusTimeline'
 import ProposedChanges from '../components/ProposedChanges'
 import SafetyCheckPanel from '../components/SafetyCheckPanel'
+import SafetyReviewDetails from '../components/SafetyReviewDetails'
 import {
   EventRuleError,
   approveEvent,
@@ -198,8 +199,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const { event } = page
   const isOwner = event.organiserId === session.id
   const backTo = backRoute(session)
-  // US4.4: the Safety Officer cannot load an event's bookings or equipment;
-  // US17.1 adds the venue and equipment detail they review.
+  // US4.4: the Safety Officer cannot load an event's bookings or equipment
+  // cards; US17.1 shows them the read-only safety review instead.
   const readsEvents = backTo.path === '/events'
   const canEdit = can(session, 'events:edit')
   const submitCheck = checkSubmit(event, session.id)
@@ -987,6 +988,9 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             card would only ever say so. */}
         {readsEvents && event.status !== 'Draft' && <EventBookings event={event} session={session} onBookingRequested={refreshAfterBooking} />}
         {readsEvents && <EventEquipment event={event} session={session} />}
+        {can(session, 'safety:review') && (
+          <SafetyReviewDetails eventId={event.id} session={session} />
+        )}
       </div>
     </div>
   )
