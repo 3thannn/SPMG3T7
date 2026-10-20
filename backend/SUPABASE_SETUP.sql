@@ -17,6 +17,8 @@ CREATE TYPE event_status AS ENUM (
     'Under Review',
     'Approved',
     'Planning',
+    -- US4.4: see SUPABASE_ADD_SAFETY_CHECK_STATUS.sql for its transitions.
+    'Pending Safety Check',
     'Confirmed',
     'Completed',
     'Cancelled',

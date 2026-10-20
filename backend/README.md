@@ -147,6 +147,11 @@ button is a courtesy and a refused request is the rule.
 | `POST /events/{id}/bookings` | assigned Coordinator        | Request one venue; it starts Requested (US14.1) |
 | `POST /events/{id}/bookings/{bookingId}/cancel` | assigned Coordinator | Cancel one booking with a reason (US14.2) |
 | `POST /events/{id}/bookings/suitability` | assigned Coordinator | Whether a venue suits a booking; stores nothing (US18.1) |
+| `GET /events/{id}/safety-check` | assigned Coordinator | Whether the event is ready for its safety check, and if not why (US4.4) |
+| `POST /events/{id}/safety-check` | assigned Coordinator | Planning → Pending Safety Check, once ready (US4.4) |
+| `GET /events/safety-check` | Safety Officer | Events Pending Safety Check, longest-waiting first (US4.4) |
+| `POST /events/{id}/safety-check/approve` | Safety Officer | Pending Safety Check → Confirmed (US4.4) |
+| `POST /events/{id}/safety-check/return` | Safety Officer | Pending Safety Check → Planning, with a note (US4.4) |
 
 An event that belongs to another Organiser answers `404`, not `403`. Telling
 someone an event exists but is not theirs tells them something about another
@@ -235,6 +240,36 @@ and audit insert atomic; it does not decide which transitions are valid.
 While a change request is waiting (US11.1, below), approving or rejecting the
 event answers `409` with `change-pending`: the Coordinator reviews the proposed
 changes before deciding.
+
+### Pending Safety Check (US4.4)
+
+A ninth step sits between Planning and Confirmed. The allowlist in
+`app/event_status.py` gains Planning → Pending Safety Check, Pending Safety
+Check → Confirmed and Pending Safety Check → Planning; nothing else leads to
+Confirmed.
+
+- **Sending.** The assigned Coordinator sends the event once it is ready
+  (`app/safety_check.py`): at least one Confirmed venue booking, no booking
+  still Requested or Held, no Confirmed booking flagged “Conflict – review
+  needed”, every equipment line Reserved, and no change request waiting.
+  `GET /events/{id}/safety-check` says which of those is outstanding, so the
+  page can explain rather than just disable the button. A refused send answers
+  `409` with the same `reason`.
+- **Deciding.** The Safety Officer can open an event only while it is Pending
+  Safety Check. Approve moves it to Confirmed; sending it back moves it to
+  Planning and needs a note (at most 2,000 characters), which lands in the
+  audit trail and is sent to the assigned Coordinator (US10.2). US17.2 splits
+  that into separate reject and request-changes outcomes.
+- **Audit.** Every move is a `status_changes` row with who and when (US4.2).
+
+Run [`SUPABASE_ADD_SAFETY_CHECK_STATUS.sql`](SUPABASE_ADD_SAFETY_CHECK_STATUS.sql)
+first. Its two RPCs make each move and its audit row atomic, and the send RPC
+re-checks readiness with the event locked. Its trigger is the backstop for any
+other status write: an event becomes Confirmed only from Pending Safety Check,
+and Pending Safety Check only from Planning.
+
+Until US19.3 adds reserving equipment, an event with any equipment request
+cannot be sent; remove the lines it does not need, or wait for US19.3.
 
 ### Requesting changes to a submitted event (US11.1)
 

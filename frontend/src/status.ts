@@ -12,6 +12,9 @@ export const EVENT_STATUSES = [
   'Under Review',
   'Approved',
   'Planning',
+  // US4.4: between planning and preparation; only the Safety Officer's
+  // sign-off moves an event on to Confirmed.
+  'Pending Safety Check',
   'Confirmed',
   'Completed',
   'Cancelled',
@@ -52,6 +55,8 @@ export function canViewStatus(
 ): boolean {
   if (role === 'Event Coordinator') return event.status !== 'Draft'
   if (role === 'Event Organiser') return event.organiserId === viewerId
+  // US4.4: the Safety Officer sees an event only while it waits for their check.
+  if (role === 'Safety Officer') return event.status === 'Pending Safety Check'
   // Venue Staff hold no event permission, so this is their answer, and it
   // stays the safe one for any role added later that has not been considered
   // here — which is how it already covered Venue Staff before US9.1a-c.
@@ -108,9 +113,10 @@ export type StatusChange = {
   notes?: string
   /**
    * US11.1: 'change-request' on the entry an Organiser's change request wrote,
-   * so its note is labelled as theirs. Empty otherwise.
+   * so its note is labelled as theirs. US4.4: 'safety-return' on the entry the
+   * Safety Officer wrote sending an event back to Planning. Empty otherwise.
    */
-  kind?: '' | 'change-request'
+  kind?: '' | 'change-request' | 'safety-return'
 }
 
 /**
@@ -155,7 +161,7 @@ export function clarificationRefusalMessage(reason: ClarificationRefusal): strin
   }
 }
 
-export type StatusNoteKind = 'clarification' | 'rejection' | 'change-request'
+export type StatusNoteKind = 'clarification' | 'rejection' | 'change-request' | 'safety-return'
 /**
  * US14.1: the statuses an event may have venues requested for.
  *
@@ -217,6 +223,8 @@ export function statusNoteLabel(kind: StatusNoteKind): string {
       return 'Rejection reason'
     case 'change-request':
       return 'Change requested by Organiser'
+    case 'safety-return':
+      return 'Sent back by Safety Officer'
   }
 }
 

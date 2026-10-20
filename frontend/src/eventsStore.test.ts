@@ -15,6 +15,11 @@ import {
   validateBooking,
   approveEvent,
   approveEventChange,
+  approveSafetyCheck,
+  getSafetyReadiness,
+  listSafetyQueue,
+  returnSafetyCheck,
+  sendForSafetyCheck,
   createEvent,
   getEvent,
   listEvents,
@@ -339,5 +344,59 @@ describe('US18.1: the booking form as the API reads it', () => {
     )
     expect(validateBooking({ ...form, headcount: '0' })).toBe('The headcount must be at least 1.')
     expect(validateBooking(form)).toBe('')
+  })
+})
+describe('US4.4 safety check', () => {
+  it('reads whether the event is ready to send', async () => {
+    const readiness = { ready: false, reason: 'venue-not-confirmed', message: 'Wait.' }
+    const spy = stubFetch(ok(readiness))
+
+    expect(await getSafetyReadiness('101', session)).toEqual(readiness)
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check')
+    expect(spy.mock.calls[0][1].method).toBeUndefined()
+  })
+
+  it('posts to send the event for its check', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Pending Safety Check' }))
+
+    const sent = await sendForSafetyCheck('101', session)
+
+    expect(sent.status).toBe('Pending Safety Check')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+  })
+
+  it('lists the Safety Officer queue', async () => {
+    const spy = stubFetch(ok([{ ...EVENT, status: 'Pending Safety Check' }]))
+
+    const queue = await listSafetyQueue(session)
+
+    expect(queue.map((item) => item.id)).toEqual(['101'])
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/safety-check')
+  })
+
+  it('posts the sign-off and the send-back with its note', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Confirmed' }))
+    expect((await approveSafetyCheck('101', session)).status).toBe('Confirmed')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check/approve')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+
+    const back = stubFetch(ok({ ...EVENT, status: 'Planning' }))
+    expect((await returnSafetyCheck('101', 'Fix exits', session)).status).toBe('Planning')
+    expect(back.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check/return')
+    expect(back.mock.calls[0][1].method).toBe('POST')
+    expect(JSON.parse(back.mock.calls[0][1].body)).toEqual({ note: 'Fix exits' })
+  })
+
+  it('turns refusals into rule errors and lets a lapsed session through', async () => {
+    stubFetch(failure(409, 'rule_refused', 'Every active venue booking must be Confirmed.'))
+    await expect(sendForSafetyCheck('101', session)).rejects.toBeInstanceOf(EventRuleError)
+    await expect(approveSafetyCheck('101', session)).rejects.toBeInstanceOf(EventRuleError)
+    await expect(returnSafetyCheck('101', 'x', session)).rejects.toBeInstanceOf(EventRuleError)
+
+    stubFetch(failure(401, 'session_expired', 'Sign in again.'))
+    await expect(sendForSafetyCheck('101', session)).rejects.toBeInstanceOf(ApiError)
+    await expect(approveSafetyCheck('101', session)).rejects.toBeInstanceOf(ApiError)
+    await expect(returnSafetyCheck('101', 'x', session)).rejects.toBeInstanceOf(ApiError)
   })
 })

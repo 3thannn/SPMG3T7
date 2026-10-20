@@ -29,8 +29,10 @@ from app import (
     booking_store,
     change_requests,
     conflict_flags,
+    equipment_store,
     event_needs,
     event_store,
+    safety_check,
     suitability,
     venue_store,
     venue_unavailability_store,
@@ -59,7 +61,7 @@ from app.event_status import (
     transition_refusal_message,
 )
 from app.event_store import Event, StaleEventStatus
-from app.notifications import notify_assigned, notify_status_change
+from app.notifications import notify_assigned, notify_safety_changes, notify_status_change
 from app.permissions import Permission, Role, has_permission
 from app.suitability import BookingNeeds, Verdict
 from app.users import User
@@ -72,6 +74,9 @@ READ_ANY = (
     Permission.EVENTS_READ_SUBMITTED,
     Permission.EVENTS_READ_ALL,
 )
+#: US4.4: opening one event. The Safety Officer reads only the events waiting
+#: for their check (see `_readable`), so they are not on the list routes.
+READ_ONE = (*READ_ANY, Permission.SAFETY_REVIEW)
 
 
 class EventError:
@@ -98,8 +103,9 @@ class StatusChangeOut(BaseModel):
     by_name: str = Field(serialization_alias="byName")
     notes: str = ""
     #: US11.1: "change-request" on the entry an Organiser's change request
-    #: wrote, so the history can label its note. Worked out, not stored; empty
-    #: on every other entry.
+    #: wrote, so the history can label its note. US4.4: "safety-return" on the
+    #: entry the Safety Officer wrote sending an event back to Planning.
+    #: Worked out, not stored; empty on every other entry.
     kind: str = ""
 
 
@@ -223,7 +229,10 @@ def _to_out(event: Event) -> EventOut:
                 by_id=str(change.by_id),
                 by_name=change.by_name,
                 notes=change.notes,
-                kind=change_requests.history_kind(
+                kind=safety_check.history_kind(
+                    from_status=change.from_status, to_status=change.to_status
+                )
+                or change_requests.history_kind(
                     by_id=change.by_id,
                     organiser_id=event.organiser_id,
                     to_status=change.to_status,
@@ -385,10 +394,16 @@ def _readable(event_id: int, user: User) -> Event:
     """Fetch an event the caller is allowed to see, or 404.
 
     US8.1: Coordinators can only see events assigned to them.
-    US8.6: Lead can see all events (not just assigned ones)."""
+    US8.6: Lead can see all events (not just assigned ones).
+    US4.4: the Safety Officer sees an event while it waits for their check."""
     event = event_store.repository().get_event(event_id)
     if event is None:
         raise _not_found()
+    if (
+        has_permission(user.role, Permission.SAFETY_REVIEW)
+        and event.status is EventStatus.PENDING_SAFETY_CHECK
+    ):
+        return event
     sees_own = has_permission(user.role, Permission.EVENTS_READ_OWN)
     owns_event = sees_own and event.organiser_id == user.id
     sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
@@ -521,10 +536,37 @@ def assign_coordinator(
     return _to_out(assigned)
 
 
+@router.get("/safety-check", response_model=list[EventOut])
+def list_pending_safety_check(
+    _user: Annotated[User, Depends(require_permission(Permission.SAFETY_REVIEW))],
+) -> list[EventOut]:
+    """US4.4: the events waiting for the Safety Officer, longest-waiting first.
+
+    The order is by when each event entered Pending Safety Check, so an event
+    sent back and sent again joins the end of the queue rather than jumping it.
+    US17.1 builds the full review queue on this.
+    """
+    events = [
+        event
+        for event in event_store.repository().list_events(organiser_id=None, include_drafts=False)
+        if event.status is EventStatus.PENDING_SAFETY_CHECK
+    ]
+    return [_to_out(event) for event in sorted(events, key=_entered_safety_check)]
+
+
+def _entered_safety_check(event: Event) -> tuple[str, int]:
+    entered = [
+        change.at
+        for change in event.history
+        if change.to_status is EventStatus.PENDING_SAFETY_CHECK
+    ]
+    return (entered[-1] if entered else event.updated_at, event.id)
+
+
 @router.get("/{event_id}", response_model=EventOut)
 def get_event(
     event_id: str,
-    user: Annotated[User, Depends(require_any_permission(*READ_ANY))],
+    user: Annotated[User, Depends(require_any_permission(*READ_ONE))],
 ) -> EventOut:
     return _to_out(_readable(_as_id(event_id), user))
 
@@ -837,6 +879,125 @@ def complete_event(
     except StaleEventStatus:
         raise _stale_request() from None
     return _to_out(completed)
+
+
+# -- US4.4: Pending Safety Check -----------------------------------------------
+#
+# Planning -> Pending Safety Check is the assigned Coordinator's to ask for, and
+# only once the event is ready (`app.safety_check`). The Safety Officer then
+# signs it off (-> Confirmed) or sends it back to Planning with a note. That is
+# the only way into Confirmed; US17.2 adds the separate reject and
+# request-changes outcomes and the re-review flags on top of these routes.
+
+
+class SafetyReadinessOut(BaseModel):
+    """Whether the assigned Coordinator can send the event for its check now."""
+
+    ready: bool
+    #: A `SafetyCheckRefusal` value, or empty when ready.
+    reason: str = ""
+    message: str = ""
+
+
+def _safety_refusal(event: Event) -> safety_check.SafetyCheckRefusal | None:
+    return safety_check.check_ready_for_safety_check(
+        status=event.status,
+        change_requested=event.change_requested,
+        bookings=booking_store.repository().list_for_event(event.id),
+        equipment=equipment_store.repository().list_for_event(event.id),
+    )
+
+
+SafetySender = Annotated[User, Depends(require_permission(Permission.SAFETY_SUBMIT))]
+SafetyOfficer = Annotated[User, Depends(require_permission(Permission.SAFETY_REVIEW))]
+
+
+@router.get("/{event_id}/safety-check", response_model=SafetyReadinessOut)
+def safety_check_readiness(event_id: str, user: SafetySender) -> SafetyReadinessOut:
+    """US4.4: say whether the event is ready, and if not, what is outstanding."""
+    event = _readable(_as_id(event_id), user)
+    refusal = _safety_refusal(event)
+    if refusal is None:
+        return SafetyReadinessOut(ready=True)
+    return SafetyReadinessOut(
+        ready=False,
+        reason=str(refusal),
+        message=safety_check.safety_check_refusal_message(refusal),
+    )
+
+
+@router.post("/{event_id}/safety-check", response_model=EventOut)
+def send_for_safety_check(event_id: str, user: SafetySender) -> EventOut:
+    """US4.4: Planning -> Pending Safety Check, timestamped and attributable."""
+    event = _readable(_as_id(event_id), user)
+    _require_transition(event.status, EventStatus.PENDING_SAFETY_CHECK)
+    refusal = _safety_refusal(event)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": safety_check.safety_check_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+    try:
+        sent = event_store.repository().send_to_safety_check(event.id, actor_id=user.id)
+    except StaleEventStatus:
+        raise _stale_request() from None
+    return _to_out(sent)
+
+
+class SafetyReturn(BaseModel):
+    """What the Safety Officer needs changed before the event is safe."""
+
+    note: str = ""
+
+
+def _decide_safety(
+    event_id: str, user: User, to_status: EventStatus, *, note: str = ""
+) -> Event:
+    """Move a Pending Safety Check event on, for the Safety Officer.
+
+    `_readable` only lets the Safety Officer reach an event that is Pending
+    Safety Check, and the store re-checks that status in the same write, so a
+    check decided twice is refused rather than overwritten.
+    """
+    event = _readable(_as_id(event_id), user)
+    _require_transition(event.status, to_status)
+    try:
+        return event_store.repository().decide_safety_check(
+            event.id, actor_id=user.id, to_status=to_status, note=note
+        )
+    except StaleEventStatus:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": "This safety check was already decided. Refresh it and try again.",
+                "reason": "invalid-transition",
+            },
+        ) from None
+
+
+@router.post("/{event_id}/safety-check/approve", response_model=EventOut)
+def approve_safety_check(event_id: str, user: SafetyOfficer) -> EventOut:
+    """US4.4: the Safety Officer signs the event off. Pending Safety Check -> Confirmed."""
+    return _to_out(_decide_safety(event_id, user, EventStatus.CONFIRMED))
+
+
+@router.post("/{event_id}/safety-check/return", response_model=EventOut)
+def return_safety_check(event_id: str, payload: SafetyReturn, user: SafetyOfficer) -> EventOut:
+    """US4.4: back to Planning, with a note the Coordinator reads and is told about."""
+    note = payload.note.strip()
+    if not note:
+        raise _invalid("Tell the Coordinator what needs to change before this event is safe.")
+    if len(note) > safety_check.SAFETY_NOTE_MAX:
+        raise _invalid(f"Keep the note to {safety_check.SAFETY_NOTE_MAX} characters or fewer.")
+    returned = _decide_safety(event_id, user, EventStatus.PLANNING, note=note)
+    # US10.2: best effort, like every notice; the move has already happened.
+    notify_safety_changes(returned, note)
+    return _to_out(returned)
 
 class ChangeRequestIn(EventDraft):
     """US11.1: the edit form's values, proposed rather than saved, plus a note.

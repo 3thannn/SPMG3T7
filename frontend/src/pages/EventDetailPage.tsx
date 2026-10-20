@@ -6,6 +6,7 @@ import EventNeedsFields from '../components/EventNeedsFields'
 import StatusBadge from '../components/StatusBadge'
 import StatusTimeline from '../components/StatusTimeline'
 import ProposedChanges from '../components/ProposedChanges'
+import SafetyCheckPanel from '../components/SafetyCheckPanel'
 import {
   EventRuleError,
   approveEvent,
@@ -41,7 +42,7 @@ import {
   submitRefusalMessage,
 } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
-import { can } from '../permissions'
+import { can, canAny } from '../permissions'
 
 type EventDetailPageProps = {
   eventId: string
@@ -72,6 +73,16 @@ function draftFrom(event: EventRecord) {
     expectedAttendance: attendanceField(event.expectedAttendance),
     ...needsOf(event),
   }
+}
+
+/**
+ * Where "back" leads. US4.4: the Safety Officer reaches an event from their
+ * queue, not the events list, which their role cannot open.
+ */
+function backRoute(session: Session): { path: string; label: string } {
+  return canAny(session, ['events:read:own', 'events:read:submitted', 'events:read:all'])
+    ? { path: '/events', label: 'Events' }
+    : { path: '/safety-review', label: 'Safety review' }
 }
 
 /** US2.1 (Sprint 3): how each need reads on the event, in form order. */
@@ -160,10 +171,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => navigate('/events')}
+            onClick={() => navigate(backRoute(session).path)}
             style={{ marginTop: '1.25rem' }}
           >
-            Back to events
+            Back to {backRoute(session).label.toLowerCase()}
           </button>
         </div>
       </div>
@@ -186,6 +197,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
   const { event } = page
   const isOwner = event.organiserId === session.id
+  const backTo = backRoute(session)
+  // US4.4: the Safety Officer cannot load an event's bookings or equipment;
+  // US17.1 adds the venue and equipment detail they review.
+  const readsEvents = backTo.path === '/events'
   const canEdit = can(session, 'events:edit')
   const submitCheck = checkSubmit(event, session.id)
   // US8.1 enforces assignment when the API loads this event; the permission
@@ -526,13 +541,13 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
       <div className="shell">
         <a
           className="detail-back"
-          href="#/events"
+          href={`#${backTo.path}`}
           onClick={(clickEvent) => {
             clickEvent.preventDefault()
-            navigate('/events')
+            navigate(backTo.path)
           }}
         >
-          ← Events
+          ← {backTo.label}
         </a>
 
         <header className="detail-head">
@@ -913,6 +928,17 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               </div>
             )}
 
+            <SafetyCheckPanel
+              event={event}
+              session={session}
+              disabled={writePending}
+              onUpdated={(updated, message) => {
+                setPage({ state: 'loaded', event: updated })
+                setBanner({ kind: 'ok', text: message })
+              }}
+              onError={(message) => setBanner({ kind: 'error', text: message })}
+            />
+
             {/* US7.3. In the history panel rather than beside the form, because
                 a request is an entry in this trail and the Organiser reads it
                 here. A Coordinator who cannot ask yet is told why instead of
@@ -959,8 +985,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
         {/* US14.1. Not on a Draft: nothing can be requested for one, so the
             card would only ever say so. */}
-        {event.status !== 'Draft' && <EventBookings event={event} session={session} onBookingRequested={refreshAfterBooking} />}
-        <EventEquipment event={event} session={session} />
+        {readsEvents && event.status !== 'Draft' && <EventBookings event={event} session={session} onBookingRequested={refreshAfterBooking} />}
+        {readsEvents && <EventEquipment event={event} session={session} />}
       </div>
     </div>
   )
