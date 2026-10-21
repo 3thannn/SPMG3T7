@@ -28,6 +28,7 @@ Following the 5-step test case design methodology:
 - A hold must expire **no later than the booking starts**. Keeping a slot past the moment it is used means nothing.
 - "Now" is Singapore local time, the same clock the booking and event times use.
 - An expired hold is not rewritten. It stays Held, is flagged `holdExpired`, and stops counting as taken the moment it passes, so no scheduled job is needed. Notifying anyone about expiry is US14.4.
+  - **Update (US14.4):** a pg_cron job now sweeps every 15 minutes, rewriting a lapsed hold to the new `Expired` status and notifying the Coordinator. The slot is still freed at the deadline by the rule above; the job only records it. An expired hold can no longer be cancelled. See `test_cases_us14_4.md`.
 - Turning a hold into a request follows US14.1/US4.5: the first request moves an Approved event to Planning.
 - The Coordinator can release a hold with the existing Cancel (US14.2).
 

@@ -495,6 +495,37 @@ curl -X POST http://localhost:8000/events/12/bookings/31/cancel \
   a booking that is still Requested. A blank reason, or one over 2,000
   characters, answers `400` with `invalid_booking`.
 
+### Holds expire automatically (US14.4)
+
+A Supabase **pg_cron** job runs `sweep_tentative_holds()` every 15 minutes. It
+moves every hold past its expiry from Held to **Expired** and sends the event's
+Coordinator a "Hold expired" notice, and it sends a "Hold expiring" notice once
+when a hold has less than 24 hours left. The notices are worded exactly as
+`notify_hold_expiring` and `notify_hold_expired` word them.
+
+- **The slot is free at the deadline, not at the next sweep.** Every availability
+  check still compares the expiry with the clock (US14.3); a Held hold past its
+  expiry reads exactly like an Expired one (`Booking.hold_expired`).
+- **Expired is history.** It stays on the event's bookings and the venue's holds
+  list, never holds its venue, and requesting or cancelling it answers `409`
+  `hold-expired`.
+- **No backend scheduler.** The job lives in the database, so it runs whether or
+  not anyone has the API up.
+
+Rolling it out takes two scripts, at different times:
+
+1. [`SUPABASE_US14_4_HOLD_EXPIRY.sql`](SUPABASE_US14_4_HOLD_EXPIRY.sql) — any time.
+   Adds the status, the `expiry_warned_at` column and the function; changes
+   nothing until something calls it.
+2. [`SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql`](SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql)
+   — **only after US14.4 is merged and everyone has pulled.** Older code cannot
+   read the Expired status, so once the job writes it their booking pages answer
+   500.
+
+Run the sweep by hand with `SELECT public.sweep_tentative_holds();`. The SQL is
+tested against the real database by `tests/test_hold_expiry_db.py`, which is
+opt-in (`SPMG3T7_DB_TESTS=1`) and rolls everything back.
+
 ### Venue suitability (US18.1)
 
 Before a venue is requested, the system says whether it suits the booking:

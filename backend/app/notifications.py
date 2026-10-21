@@ -16,8 +16,10 @@ US10.2 tells the Coordinator an event is assigned to about the things that
 need their attention: being assigned or unassigned, a tentative hold running
 out, a booking hit by venue unavailability or a setup change, and the Safety
 Officer asking for changes. Only assignment (US8.3) exists yet; the other
-`notify_*` functions are ready for US8.4, US14.4, US12.2/US15.2 and US17.2 to
-call once the change they describe has been stored. Same best-effort rule.
+`notify_*` functions are ready for US8.4, US12.2/US15.2 and US17.2 to call
+once the change they describe has been stored. Same best-effort rule. US14.4's
+two hold notices are written by the database's scheduled sweep instead, in the
+words `notify_hold_expiring` and `notify_hold_expired` set out.
 """
 
 import logging
@@ -267,7 +269,13 @@ def notify_reassigned(event: Event, previous_id: int | None, new_id: int | None)
 
 
 def notify_hold_expiring(event: Event, venue_name: str, expires_at: str) -> None:
-    """US14.4: a tentative hold is about to lapse. `expires_at` is shown as given."""
+    """US14.4: a tentative hold is about to lapse. `expires_at` is shown as given.
+
+    In production the scheduled sweep (`sweep_tentative_holds` in
+    SUPABASE_US14_4_HOLD_EXPIRY.sql) writes this notice in SQL, giving the
+    expiry as "02 Nov 2027, 09:00". This function is the wording it must match;
+    tests/test_hold_expiry_db.py checks the two agree.
+    """
     _notify_coordinator(
         event.coordinator_id,
         event,
@@ -278,7 +286,11 @@ def notify_hold_expiring(event: Event, venue_name: str, expires_at: str) -> None
 
 
 def notify_hold_expired(event: Event, venue_name: str) -> None:
-    """US14.4: a tentative hold lapsed and the venue is no longer held."""
+    """US14.4: a tentative hold lapsed and the venue is no longer held.
+
+    Written in SQL by the scheduled sweep, in these words; see
+    `notify_hold_expiring`.
+    """
     _notify_coordinator(
         event.coordinator_id,
         event,

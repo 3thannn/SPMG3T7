@@ -896,6 +896,21 @@ it('TC-HF03 shows an expired hold as expired, with nothing to do', async () => {
   expect(within(row).queryByRole('button')).not.toBeInTheDocument()
 })
 
+// US14.4: what the scheduled sweep writes. It reads like a lapsed Held hold.
+it('shows a hold the sweep marked Expired as expired, with nothing to do', async () => {
+  listBookingsMock.mockResolvedValue([held({ status: 'Expired', holdExpired: true })])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const row = within(await screen.findByRole('list')).getByRole('listitem')
+  expect(row).toHaveTextContent('Hold expired')
+  expect(row).toHaveTextContent(
+    `Hold expired ${formatTimestamp('2027-10-08T17:00:00')}. The venue is no longer kept`,
+  )
+  expect(row).not.toHaveTextContent('Requested from a hold')
+  expect(row).toHaveClass('is-expired')
+  expect(within(row).queryByRole('button')).not.toBeInTheDocument()
+})
+
 it('TC-HF04 shows the server refusal under the hold', async () => {
   listBookingsMock.mockResolvedValue([held()])
   requestHeldBookingMock.mockRejectedValue(

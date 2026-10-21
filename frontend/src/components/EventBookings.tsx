@@ -400,7 +400,9 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
   function renderBooking(booking: BookingRecord) {
     const isCancelled = booking.status === 'Cancelled'
     const isHeld = booking.status === 'Held'
-    const holdExpired = isHeld && booking.holdExpired === true
+    // US14.4: Expired is what the scheduled sweep writes. A Held hold past its
+    // expiry reads the same until the sweep reaches it.
+    const holdExpired = booking.status === 'Expired' || (isHeld && booking.holdExpired === true)
     const venueName = booking.venueName || 'Unnamed venue'
     const cancelOpen = cancelling?.bookingId === booking.id
     const isRejected = booking.status === 'Rejected'
@@ -415,7 +417,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
             {formatBookingTimes(booking.startsAt, booking.endsAt)}
           </span>
           <span
-            className={`booking-status is-${booking.status.toLowerCase()}${
+            className={`booking-status is-${holdExpired ? 'held' : booking.status.toLowerCase()}${
               holdExpired ? ' is-expired' : ''
             }`}
           >
@@ -444,12 +446,12 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
             </button>
           )}
         </div>
-        {booking.holdExpiresAt && (isHeld || booking.status === 'Requested') && (
+        {booking.holdExpiresAt && (isHeld || holdExpired || booking.status === 'Requested') && (
           <p className={`booking-hold${holdExpired ? ' is-expired' : ''}`}>
-            {!isHeld
-              ? `Requested from a hold${booking.heldByName ? ` by ${booking.heldByName}` : ''}.`
-              : holdExpired
-                ? `Hold expired ${formatTimestamp(booking.holdExpiresAt)}. The venue is no longer kept for this event.`
+            {holdExpired
+              ? `Hold expired ${formatTimestamp(booking.holdExpiresAt)}. The venue is no longer kept for this event.`
+              : !isHeld
+                ? `Requested from a hold${booking.heldByName ? ` by ${booking.heldByName}` : ''}.`
                 : `Held${booking.heldByName ? ` by ${booking.heldByName}` : ''} until ${formatTimestamp(
                     booking.holdExpiresAt,
                   )}. Request it before then to keep the slot.`}
