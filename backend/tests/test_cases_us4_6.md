@@ -203,6 +203,12 @@ bookings and equipment, and always ends by raising an error on purpose so that
 everything is rolled back — read "US4.6 PASSED" or "US4.6 FAILED" from the
 message. Nothing is saved either way.
 
+| Check | Date | Result |
+| --- | --- | --- |
+| `TEST_US4_6_CANCEL_EVENT.sql` against the live Supabase project | 2026-10-21 | **US4.6 PASSED - all 20 checks**; rolled back |
+| Backend `ruff check`, `compileall`, `pytest` | 2026-10-21 | 1693 passed |
+| Frontend `oxlint`, `build`, `vitest` | 2026-10-21 | Clean; 917 passed. Unrelated: the `UnassignedQueuePage` date test fails on a non-US locale, and one 5-second timeout under full-suite load passes alone |
+
 The same checks by hand, with a Planning test event `:id` assigned to the
 Coordinator, holding a Confirmed booking and a Requested equipment line:
 
