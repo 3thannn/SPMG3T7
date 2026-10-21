@@ -195,7 +195,15 @@ event's lines, and nothing else.
 ## 6. Database checks (run manually in the Supabase SQL editor)
 
 Applied to the live project on 2026-10-21; `cancel_event` answers NULL for an event
-that does not exist. Still to run, with a Planning test event `:id` assigned to the
+that does not exist.
+
+**`backend/TEST_US4_6_CANCEL_EVENT.sql` runs all of the checks below in one go**:
+paste it into the SQL Editor and run it. It builds its own users, venue, events,
+bookings and equipment, and always ends by raising an error on purpose so that
+everything is rolled back — read "US4.6 PASSED" or "US4.6 FAILED" from the
+message. Nothing is saved either way.
+
+The same checks by hand, with a Planning test event `:id` assigned to the
 Coordinator, holding a Confirmed booking and a Requested equipment line:
 
 1. `SELECT public.cancel_event(:id, 'Planning', :coordinator, '');` → NULL (reason required).
