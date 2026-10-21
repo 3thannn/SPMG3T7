@@ -253,3 +253,28 @@ class TestAnExpiredHoldCannotBeCancelled:
         )
         assert response.status_code == 409
         assert response.json()["detail"]["reason"] == "hold-expired"
+
+
+class TestCancellingTheEvent:
+    """US4.6 with US14.4: cancelling an event releases only holds still keeping a slot."""
+
+    def test_an_expired_hold_is_left_as_history(
+        self, client, coordinator, event, booking_repository
+    ):
+        live = a_hold(51, BookingStatus.HELD, expires="2027-10-20T17:00",
+                      starts="2027-11-03T09:00", ends="2027-11-03T17:00")
+        unswept = a_hold(52, BookingStatus.HELD, starts="2027-11-04T09:00",
+                         ends="2027-11-04T17:00")
+        booking_repository.bookings.extend([a_hold(), live, unswept])
+
+        response = client.post(
+            f"/events/{EVENT_ID}/cancel", json={"reason": "Not going ahead."},
+            headers=coordinator,
+        )
+
+        assert response.status_code == 200, response.text
+        assert {b.id: b.status for b in booking_repository.bookings} == {
+            50: BookingStatus.EXPIRED,
+            51: BookingStatus.CANCELLED,
+            52: BookingStatus.HELD,  # past its expiry; the sweep will mark it Expired
+        }
