@@ -97,6 +97,19 @@ it('TC-HF11 lists the venue holds and marks expired ones', async () => {
   expect(listHoldsMock).toHaveBeenCalledWith('1', staff)
 })
 
+// US14.4: a hold the sweep marked Expired stays on the venue's list as history.
+it('lists a hold the sweep marked Expired as expired', async () => {
+  listHoldsMock.mockResolvedValue([hold({ status: 'Expired', holdExpired: true })])
+  renderCard()
+
+  const [row] = within(
+    await screen.findByRole('list', { name: 'Holds on this venue' }),
+  ).getAllByRole('listitem')
+  expect(row).toHaveTextContent('Expired')
+  expect(row).not.toHaveTextContent('Until')
+  expect(row).toHaveClass('is-expired')
+})
+
 it('TC-HF12 says when there are no holds', async () => {
   renderCard()
   expect(await screen.findByText('No holds on this venue.')).toBeInTheDocument()

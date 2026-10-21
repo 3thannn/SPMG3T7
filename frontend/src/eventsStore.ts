@@ -391,9 +391,10 @@ export type BookingRecord = {
    * Coordinator may cancel one (US14.2), which is final. US14.3: Venue Staff
    * may hold a venue for the Coordinator, who turns it into a request before
    * it expires. A hold is never Confirmed. US16.1: Venue Staff approve a
-   * request (Confirmed) or reject it with a reason (Rejected).
+   * request (Confirmed) or reject it with a reason (Rejected). US14.4: the
+   * scheduled sweep marks a hold past its expiry Expired, which is final.
    */
-  status: 'Requested' | 'Cancelled' | 'Held' | 'Confirmed' | 'Rejected'
+  status: 'Requested' | 'Cancelled' | 'Held' | 'Confirmed' | 'Rejected' | 'Expired'
   requestedAt: string
   /**
    * US18.1: how many people this booking is for. null only on a booking made
@@ -408,7 +409,10 @@ export type BookingRecord = {
   cancellation: BookingCancellation | null
   /** US14.3: when the hold lapses. Empty for a booking that was never a hold. */
   holdExpiresAt?: string
-  /** US14.3: Held and past its expiry, so the slot is no longer kept. */
+  /**
+   * US14.3: past its expiry, so the slot is no longer kept. US14.4: true for an
+   * Expired hold, and for a Held one the sweep has not reached yet.
+   */
   holdExpired?: boolean
   /** US14.3: the Venue Staff member who placed the hold. */
   heldByName?: string

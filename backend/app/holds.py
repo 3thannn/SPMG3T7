@@ -155,11 +155,18 @@ def list_holdable_events(user: PlacesHolds) -> list[HoldableEventOut]:
 def list_holds(
     user: PlacesHolds, venue_id: Annotated[str, Query(alias="venueId")] = ""
 ) -> list[HoldOut]:
-    """The holds at one venue, soonest first, expired ones included and flagged."""
+    """The holds at one venue, soonest first, expired ones included and flagged.
+
+    US14.4: a hold the sweep marked Expired stays on the list as history.
+    """
     if not _ID.fullmatch(venue_id.strip()):
         raise _venue_missing()
     bookings = booking_store.repository().list_for_venue(int(venue_id))
-    held = [booking for booking in bookings if booking.status is BookingStatus.HELD]
+    held = [
+        booking
+        for booking in bookings
+        if booking.status in (BookingStatus.HELD, BookingStatus.EXPIRED)
+    ]
     titles = {booking.event_id: _event_title(booking.event_id) for booking in held}
     return [_hold_out(booking, titles) for booking in held]
 

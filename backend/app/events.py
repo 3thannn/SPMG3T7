@@ -1853,6 +1853,9 @@ def cancel_booking(
 
     404, then 409, then 400, as for a request. A booking on another event is
     404 rather than 403, for the reason `_not_found` gives for events.
+
+    US14.4: an expired hold is history and its slot is already free, so there
+    is nothing to cancel, whether or not the sweep has marked it Expired yet.
     """
     event = _readable(_as_id(event_id), user)
     try:
@@ -1864,6 +1867,8 @@ def cancel_booking(
 
     if booking.status is BookingStatus.CANCELLED:
         raise _already_cancelled()
+    if booking.hold_expired:
+        raise _nothing_to_cancel(booking)
 
     reason = payload.reason.strip()
     if not reason:
@@ -1876,7 +1881,11 @@ def cancel_booking(
     try:
         cancelled = booking_store.repository().cancel(booking.id, actor_id=user.id, reason=reason)
     except StaleBookingStatus:
-        # Someone else cancelled it between the read above and this write.
+        # Someone else cancelled it between the read above and this write, or
+        # (US14.4) the sweep expired it.
+        current = booking_store.repository().get_booking(booking.id)
+        if current is not None and current.hold_expired:
+            raise _nothing_to_cancel(current) from None
         raise _already_cancelled() from None
     # US15.2: a cancelled booking frees its slot, which may resolve a flagged
     # clash at this venue, its own included.
@@ -1913,10 +1922,12 @@ def request_held_booking(
         booking = None
     if booking is None or booking.event_id != event.id:
         raise _booking_not_found()
-    if booking.status is not BookingStatus.HELD:
-        raise _not_held(booking.status)
+    # US14.4: expired first, so a swept (Expired) hold is refused as expired
+    # rather than as "not a hold".
     if booking.hold_expired:
         raise _hold_expired(booking)
+    if booking.status is not BookingStatus.HELD:
+        raise _not_held(booking.status)
     refusal = check_booking(status=event.status)
     if refusal is not None:
         raise HTTPException(
@@ -1938,6 +1949,9 @@ def request_held_booking(
         raise _hold_expired(booking) from None
     except StaleBookingStatus:
         current = booking_store.repository().get_booking(booking.id)
+        if current is not None and current.hold_expired:
+            # US14.4: the sweep expired it between the check above and the write.
+            raise _hold_expired(current) from None
         raise _not_held(current.status if current else BookingStatus.CANCELLED) from None
     except StaleEventStatus:
         raise _stale_request() from None
@@ -1955,6 +1969,22 @@ def _not_held(current: BookingStatus) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={"code": EventError.REFUSED, "message": message, "reason": "not-held"},
+    )
+
+
+def _nothing_to_cancel(booking: Booking) -> HTTPException:
+    """US14.4: an expired hold already gave its slot back."""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": (
+                f"The hold on {booking.venue_name or 'this venue'} expired at "
+                f"{booking.hold_expires_at.replace('T', ' ')[:16]}, so its slot is already "
+                "free. There is nothing to cancel."
+            ),
+            "reason": "hold-expired",
+        },
     )
 
 

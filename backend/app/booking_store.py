@@ -24,9 +24,12 @@ Three choices worth knowing:
 * A tentative hold (US14.3) is a booking with status Held, placed by Venue
   Staff for an event's Coordinator, with an expiry. It holds the venue only
   until it expires, and the Coordinator can turn it into a request before
-  then. Nothing rewrites an expired hold: it stays Held, and `holds_venue`
-  reads the expiry, so it frees its slot the moment it passes without a job
-  having to run.
+  then. `holds_venue` reads the expiry, so a hold frees its slot the moment it
+  passes without waiting for anything to run.
+* US14.4: a scheduled job (`sweep_tentative_holds`, pg_cron, every 15 minutes)
+  then records it: Held becomes Expired, and the Coordinator is told. Between
+  the deadline and the next sweep the hold is still Held but already expired;
+  `hold_expired` answers the same for both, so nothing reads them differently.
 * Venue Staff decide a request (US16.1): Confirmed or Rejected, with who
   decided and when on the row, and for a rejection the reason and an optional
   suggested alternative. A rejected booking is kept, like a cancelled one, and
@@ -94,6 +97,9 @@ class BookingStatus(StrEnum):
     CONFIRMED = "Confirmed"
     #: US16.1: Venue Staff turned the request down, with a reason. Final.
     REJECTED = "Rejected"
+    #: US14.4: a hold the scheduled sweep found past its expiry. Final: it is
+    #: kept as history, never holds its venue and cannot be requested.
+    EXPIRED = "Expired"
 
 
 #: The statuses that can hold a venue for their slot. A cancelled booking does
@@ -175,9 +181,14 @@ class Booking:
     def hold_expired_at(self, now: datetime) -> bool:
         """Whether this is a hold whose expiry has passed. Expiry itself counts.
 
+        US14.4: an Expired hold has, by definition; a Held one past its expiry
+        has too, it just has not been swept yet.
+
         An expiry that cannot be read is taken as passed: a hold must never
         block a venue for longer than anyone agreed to.
         """
+        if self.status is BookingStatus.EXPIRED:
+            return True
         if self.status is not BookingStatus.HELD:
             return False
         try:

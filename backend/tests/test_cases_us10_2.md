@@ -32,7 +32,7 @@ will. Each gets an end-to-end case once its story lands.
 | --- | --- | --- |
 | Assigned (US8.3) | `notify_assigned(event)` | `POST /events/{id}/assign` (live) |
 | Reassigned (US8.4) | `notify_reassigned(event, previous_id, new_id)` | pending US8.4 |
-| Hold expiring / expired (US14.4) | `notify_hold_expiring(event, venue, when)` / `notify_hold_expired(event, venue)` | pending US14.4 |
+| Hold expiring / expired (US14.4) | `notify_hold_expiring(event, venue, when)` / `notify_hold_expired(event, venue)` | Written by US14.4's scheduled sweep (`sweep_tentative_holds`, SQL) in these exact words; the Python functions are the wording it is checked against |
 | Booking conflict (US12.2, US15.2) | `notify_booking_conflict(event, venue, reason)` | pending US12.2, US15.2 |
 | Safety changes (US17.2) | `notify_safety_changes(event, notes)` | pending US17.2 |
 
@@ -223,7 +223,7 @@ Coordinator ──► Notifications link (unread count) ──► list: unread f
 | --- | --- | --- |
 | AC1 assigned | TC-CN01, CN02, CN03, CN04 | ✅ Live: route calls it |
 | AC1 reassigned | TC-CN05, CN06, CN07, CF03 | 🔌 Function tested; waits on US8.4 |
-| AC2 | TC-CN08, CN09, CN13 | 🔌 Function tested; waits on US14.4 |
+| AC2 | TC-CN08, CN09, CN13 | ✅ Delivered by US14.4's sweep once scheduled; see `test_cases_us14_4.md` (TC-E04, TC-E05) |
 | AC3 | TC-CN10, CN13 | 🔌 Function tested; waits on US12.2, US15.2 |
 | AC4 | TC-CN11, CN12, CN13 | 🔌 Function tested; waits on US17.2 |
 | AC5 | TC-CN16–CN20, CF01–CF06, N15, F16, F17 | ✅ |
