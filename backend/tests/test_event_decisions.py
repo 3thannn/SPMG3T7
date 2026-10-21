@@ -103,6 +103,13 @@ class TestTransitionRules:
             (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
             (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
             (EventStatus.CONFIRMED, EventStatus.COMPLETED),
+            # US4.6: anything not already Completed, Cancelled or Rejected.
+            *(
+                (status, EventStatus.CANCELLED)
+                for status in EventStatus
+                if status
+                not in (EventStatus.COMPLETED, EventStatus.CANCELLED, EventStatus.REJECTED)
+            ),
         }
         for before in EventStatus:
             for after in EventStatus:

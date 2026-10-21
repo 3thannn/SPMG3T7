@@ -33,7 +33,7 @@ from app.change_requests import (
     ordered,
 )
 from app.event_needs import NEED_FIELDS, NO_NEEDS, EventNeeds
-from app.event_status import EventStatus, check_completion
+from app.event_status import CLOSED, EventStatus, check_completion
 
 EVENTS_TABLE = "events"
 CHANGES_TABLE = "status_changes"
@@ -125,6 +125,21 @@ class Event:
 
 class StaleEventStatus(RuntimeError):
     """The event changed after the route checked its current status."""
+
+
+@dataclass(frozen=True)
+class CancelledEvent:
+    """US4.6: the event as cancelled, and what the cancellation gave back.
+
+    The ids are the ones this cancellation moved, so a booking cancelled or a
+    line removed earlier is not reported as released again.
+    """
+
+    event: Event
+    #: Venue bookings moved to Cancelled: every one that still held its venue.
+    booking_ids: tuple[int, ...] = ()
+    #: Equipment lines moved to Removed: every one not already removed.
+    equipment_ids: tuple[int, ...] = ()
 
 
 def _now() -> str:
@@ -324,6 +339,10 @@ class Repository(Protocol):
     def decide_safety_check(
         self, event_id: int, *, actor_id: int, to_status: EventStatus, note: str
     ) -> Event: ...
+
+    def cancel_event(
+        self, event_id: int, *, actor_id: int, from_status: EventStatus, reason: str
+    ) -> CancelledEvent: ...
 
 class SupabaseEvents:
     """The real store. Goes through the service role client, like the user store."""
@@ -913,6 +932,36 @@ class SupabaseEvents:
         assert decided is not None  # noqa: S101 - the row was just updated
         return decided
 
+    def cancel_event(
+        self, event_id: int, *, actor_id: int, from_status: EventStatus, reason: str
+    ) -> CancelledEvent:
+        """US4.6: Cancelled, with its audit entry, and everything it held released.
+
+        One RPC, so the status, the history row, the cancelled bookings and the
+        removed equipment lines land together or not at all. It locks the
+        event, re-checks the status and that the actor owns it or is assigned
+        to it, and answers null - changing nothing - when any of that fails.
+        """
+        result = supabase_client.admin().rpc(
+            "cancel_event",
+            {
+                "p_event_id": event_id,
+                "p_expected_status": str(from_status),
+                "p_actor_id": actor_id,
+                "p_reason": reason,
+            },
+        ).execute()
+        released = result.data
+        if not isinstance(released, dict):
+            raise StaleEventStatus
+        cancelled = self.get_event(event_id)
+        assert cancelled is not None  # noqa: S101 - the row was just updated
+        return CancelledEvent(
+            event=cancelled,
+            booking_ids=tuple(released.get("bookings") or ()),
+            equipment_ids=tuple(released.get("equipment") or ()),
+        )
+
 @dataclass
 class InMemoryEvents:
     """A stand-in for tests, with the same visibility and audit behaviour."""
@@ -1307,6 +1356,36 @@ class InMemoryEvents:
         return self.decide_event(
             event_id, actor_id=actor_id, from_status=EventStatus.PENDING_SAFETY_CHECK,
             to_status=to_status, reason=note,
+        )
+
+    def cancel_event(
+        self, event_id: int, *, actor_id: int, from_status: EventStatus, reason: str
+    ) -> CancelledEvent:
+        """The RPC's checks and writes, against the in-memory stores beside this one.
+
+        Imported here because both of those stores import this module.
+        """
+        from app import booking_store, equipment_store
+
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        may_cancel = actor_id == existing.organiser_id or (
+            actor_id == existing.coordinator_id and existing.status is not EventStatus.DRAFT
+        )
+        if existing.status is not from_status or from_status in CLOSED or not may_cancel:
+            raise StaleEventStatus
+        bookings = booking_store.repository()
+        equipment = equipment_store.repository()
+        assert isinstance(bookings, booking_store.InMemoryBookings)  # noqa: S101
+        assert isinstance(equipment, equipment_store.InMemoryEquipment)  # noqa: S101
+        cancelled = self.decide_event(
+            event_id, actor_id=actor_id, from_status=from_status,
+            to_status=EventStatus.CANCELLED, reason=reason,
+        )
+        return CancelledEvent(
+            event=cancelled,
+            booking_ids=bookings.release_for_event(event_id, actor_id=actor_id, reason=reason),
+            equipment_ids=equipment.release_for_event(event_id, actor_id=actor_id),
         )
 
 

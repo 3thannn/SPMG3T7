@@ -232,6 +232,31 @@ export async function completeEvent(id: string, session: Session): Promise<Event
   }
 }
 
+/** The server's cap on a reason for cancelling an event (US4.6). */
+export const EVENT_CANCELLATION_REASON_MAX = 2000
+
+/**
+ * US4.6: cancel the event, with a reason. The server releases every venue
+ * booking and hold that still keeps a slot and every equipment line, and tells
+ * everyone it affects. The event comes back Cancelled and read-only.
+ */
+export async function cancelEvent(
+  id: string,
+  reason: string,
+  session: Session,
+): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/cancel`, session.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
 /**
  * US4.4: whether the assigned Coordinator can send the event for its safety
  * check now, and if not, the server's sentence saying what is outstanding.

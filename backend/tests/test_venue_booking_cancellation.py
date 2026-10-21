@@ -251,10 +251,7 @@ class TestWhoMayCancel:
 
         assert response.status_code == 401
 
-    @pytest.mark.parametrize(
-        "event_status",
-        [EventStatus.REJECTED, EventStatus.CANCELLED, EventStatus.COMPLETED],
-    )
+    @pytest.mark.parametrize("event_status", [EventStatus.REJECTED, EventStatus.COMPLETED])
     def test_a_booking_on_a_closed_event_can_still_be_cancelled(
         self, client, coordinator, event_repository, booking_repository, event_status
     ):
@@ -272,6 +269,27 @@ class TestWhoMayCancel:
         response = cancel(client, coordinator, str(booking.id))
 
         assert response.status_code == 200, response.text
+
+    def test_a_cancelled_event_is_read_only(
+        self, client, coordinator, event_repository, booking_repository
+    ):
+        """US4.6: cancelling the event already gave its bookings back, and it is
+        read-only from then on."""
+        seed_event(event_repository, status=EventStatus.CANCELLED)
+        booking = booking_repository.create(
+            event_id=EVENT_ID,
+            venue_id=1,
+            starts_at="2027-11-02T09:00",
+            ends_at="2027-11-02T17:00",
+            requested_by_id=COORDINATOR_ID,
+            headcount=30,
+        )
+
+        response = cancel(client, coordinator, str(booking.id))
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["reason"] == "event-cancelled"
+        assert booking_repository.get_booking(booking.id).status is BookingStatus.REQUESTED
 
 
 class TestRefusals:

@@ -206,3 +206,52 @@ it('TC-DF20 labels the booking decision notices', async () => {
   expect(screen.getByText('Booking rejected')).toBeInTheDocument()
   expect(screen.getAllByRole('link', { name: 'Open Gala' })).toHaveLength(2)
 })
+
+/* ---------- US4.6: cancelled events ---------- */
+
+const venueStaff = buildSession({ role: 'Venue Staff', id: '4' })
+
+function cancellation(message: string): NotificationRecord {
+  return notice({ status: 'Cancelled', eventTitle: 'Open House', message })
+}
+
+it('shows Venue Staff a released booking without a link to an event they cannot open', async () => {
+  listMock.mockResolvedValue([
+    cancellation('"Open House" was cancelled, so its booking was released: Great Hall.'),
+  ])
+  render(<NotificationsPage session={venueStaff} />)
+
+  expect(await screen.findByText(/its booking was released: Great Hall/)).toBeInTheDocument()
+  expect(screen.getByText('Cancelled')).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: /Open/ })).not.toBeInTheDocument()
+  expect(screen.getByText('Bookings released by cancelled events, unread first.')).toBeInTheDocument()
+})
+
+it('shows Tech Support released equipment without a link to the event', async () => {
+  listMock.mockResolvedValue([
+    cancellation('"Open House" was cancelled, so its equipment request was released.'),
+  ])
+  render(<NotificationsPage session={support} />)
+
+  expect(await screen.findByText(/equipment request was released/)).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: /Open/ })).not.toBeInTheDocument()
+})
+
+it('still links the Organiser to their cancelled event', async () => {
+  listMock.mockResolvedValue([cancellation('"Open House" was cancelled by Priya.')])
+  render(<NotificationsPage session={organiser} />)
+
+  expect(await screen.findByRole('link', { name: 'Open Open House' })).toHaveAttribute(
+    'href',
+    '#/events/101',
+  )
+})
+
+it('tells Venue Staff what will show up here', async () => {
+  listMock.mockResolvedValue([])
+  render(<NotificationsPage session={venueStaff} />)
+
+  expect(
+    await screen.findByText('When a cancelled event gives back its venue bookings, it shows up here.'),
+  ).toBeInTheDocument()
+})

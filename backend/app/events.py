@@ -30,6 +30,7 @@ from app import (
     change_requests,
     conflict_flags,
     equipment_store,
+    event_cancellation,
     event_needs,
     event_store,
     safety_check,
@@ -107,6 +108,7 @@ class StatusChangeOut(BaseModel):
     #: US11.1: "change-request" on the entry an Organiser's change request
     #: wrote, so the history can label its note. US4.4: "safety-return" on the
     #: entry the Safety Officer wrote sending an event back to Planning.
+    #: US4.6: "cancellation" on the entry that cancelled the event.
     #: Worked out, not stored; empty on every other entry.
     kind: str = ""
 
@@ -234,6 +236,7 @@ def _to_out(event: Event) -> EventOut:
                 kind=safety_check.history_kind(
                     from_status=change.from_status, to_status=change.to_status
                 )
+                or event_cancellation.history_kind(to_status=change.to_status)
                 or change_requests.history_kind(
                     by_id=change.by_id,
                     organiser_id=event.organiser_id,
@@ -603,6 +606,7 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
     Coordinator can edit Submitted (or later) events with change tracking.
     """
     event = _readable(_as_id(event_id), user)
+    _refuse_if_cancelled(event)
     is_owner = event.organiser_id == user.id
     is_coordinator = has_permission(user.role, Permission.EVENTS_EDIT)
 
@@ -877,6 +881,74 @@ def complete_event(
     except StaleEventStatus:
         raise _stale_request() from None
     return _to_out(completed)
+
+
+# -- US4.6: cancelling an event ------------------------------------------------
+
+
+class EventCancellationIn(BaseModel):
+    """Why the event is being cancelled. Required."""
+
+    reason: str = ""
+
+
+def _refuse_if_cancelled(event: Event) -> None:
+    """US4.6: a cancelled event is read-only."""
+    if event.status is EventStatus.CANCELLED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": event_cancellation.READ_ONLY_MESSAGE,
+                "reason": "event-cancelled",
+            },
+        )
+
+
+@router.post("/{event_id}/cancel", response_model=EventOut)
+def cancel_event(
+    event_id: str,
+    payload: EventCancellationIn,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_CANCEL))],
+) -> EventOut:
+    """US4.6: cancel the event, with a reason, and release everything it held.
+
+    The owning Organiser or the assigned Coordinator: the permission admits
+    the role, and `_readable` admits only the events they own or are assigned
+    to, answering 404 for any other. Then 409 for an event already Completed,
+    Cancelled or Rejected, then 400 for the reason, as for cancelling a booking.
+
+    The store makes the move, its history entry, the cancelled bookings and the
+    removed equipment lines one write (`app.event_cancellation` says what each
+    covers). What follows it - conflict flags and notices - is best effort.
+    """
+    event = _readable(_as_id(event_id), user)
+    refusal = event_cancellation.check_cancel(status=event.status)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": event_cancellation.cancel_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+    reason = payload.reason.strip()
+    if not reason:
+        raise _invalid("Give a reason for cancelling this event.")
+    if len(reason) > event_cancellation.CANCELLATION_REASON_MAX:
+        raise _invalid(
+            f"Keep the reason to {event_cancellation.CANCELLATION_REASON_MAX} characters or fewer."
+        )
+    _require_transition(event.status, EventStatus.CANCELLED)
+    try:
+        cancelled = event_store.repository().cancel_event(
+            event.id, actor_id=user.id, from_status=event.status, reason=reason
+        )
+    except StaleEventStatus:
+        raise _stale_request() from None
+    event_cancellation.settle_quietly(cancelled, actor=user, reason=reason)
+    return _to_out(cancelled.event)
 
 
 # -- US4.4: Pending Safety Check -----------------------------------------------
@@ -1854,10 +1926,14 @@ def cancel_booking(
     404, then 409, then 400, as for a request. A booking on another event is
     404 rather than 403, for the reason `_not_found` gives for events.
 
+    US4.6: except a Cancelled event, which is read-only. Its cancellation
+    already released every booking that held a venue.
+
     US14.4: an expired hold is history and its slot is already free, so there
     is nothing to cancel, whether or not the sweep has marked it Expired yet.
     """
     event = _readable(_as_id(event_id), user)
+    _refuse_if_cancelled(event)
     try:
         booking = booking_store.repository().get_booking(int(booking_id))
     except ValueError:

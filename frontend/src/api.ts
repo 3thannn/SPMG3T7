@@ -22,6 +22,7 @@ export type Permission =
   | 'events:submit'
   | 'events:review'
   | 'events:complete'
+  | 'events:cancel'
   | 'events:edit'
   | 'users:read'
   | 'venues:read'

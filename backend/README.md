@@ -153,6 +153,7 @@ button is a courtesy and a refused request is the rule.
 | `GET /events/{id}/safety-review` | Safety Officer | Read-only review of a waiting event: attendance, venues, restrictions, reserved equipment (US17.1) |
 | `POST /events/{id}/safety-check/approve` | Safety Officer | Pending Safety Check → Confirmed (US4.4) |
 | `POST /events/{id}/safety-check/return` | Safety Officer | Pending Safety Check → Planning, with a note (US4.4) |
+| `POST /events/{id}/cancel` | the owning Organiser, assigned Coordinator | Cancel with a reason; releases bookings, holds and equipment (US4.6) |
 
 An event that belongs to another Organiser answers `404`, not `403`. Telling
 someone an event exists but is not theirs tells them something about another
@@ -271,6 +272,40 @@ and Pending Safety Check only from Planning.
 
 Until US19.3 adds reserving equipment, an event with any equipment request
 cannot be sent; remove the lines it does not need, or wait for US19.3.
+
+### Cancelling an event (US4.6)
+
+The owning Organiser, or the assigned Coordinator once the event is submitted,
+cancels any event that is not Completed, Cancelled or Rejected, with a reason
+(`app/event_cancellation.py`).
+
+```bash
+curl -X POST http://localhost:8000/events/12/cancel \
+  -H "Authorization: Bearer <token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"Funding was withdrawn."}'
+```
+
+- **One transaction.** The `cancel_event` RPC moves the event to Cancelled with a
+  history entry (who, when, reason), cancels every booking that still holds its
+  venue (Requested, Confirmed, a hold not yet expired) and removes every equipment
+  line, so the slots and quantities are free. A cancelled Confirmed booking keeps
+  the decision that confirmed it.
+- **Afterwards, best effort.** Conflict flags at the freed venues are re-checked
+  (US15.2), and the Organiser or Coordinator (whoever did not cancel), every Venue
+  Staff user (if bookings were released) and every Tech Support user (if equipment
+  was) get a Cancelled notice. Venue Staff now hold `notifications:read`.
+- **Read-only.** Every route that changes the event, its bookings, holds or
+  equipment refuses it; saving and cancelling a booking answer `409`
+  `event-cancelled`.
+- **Refusals.** `404` for an event that is not the caller's; `409`
+  `already-cancelled`, `event-completed` or `event-rejected`; `400` for a missing
+  reason or one over 2,000 characters.
+- **Not built:** registrations marked Event Cancelled and notices to registered
+  Attendees. Neither exists yet; see `tests/test_cases_us4_6.md` for what to add
+  when the registration epic lands.
+
+Run [`SUPABASE_US4_6_CANCEL_EVENT.sql`](SUPABASE_US4_6_CANCEL_EVENT.sql) first.
 
 ### Safety Officer review (US17.1)
 
