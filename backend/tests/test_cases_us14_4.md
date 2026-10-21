@@ -76,6 +76,7 @@ Venue Staff place a hold ──► Held (expires at T)
 | Backend (real database, opt-in) | `backend/tests/test_hold_expiry_db.py` — the sweep itself |
 | Frontend | `EventBookings.test.tsx` (US14.4 test), `VenueHolds.test.tsx` (US14.4 test) |
 | Database | `SUPABASE_US14_4_HOLD_EXPIRY.sql`, `SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql` |
+| Database (SQL Editor, no DB URL needed) | `backend/TEST_US14_4_HOLD_EXPIRY.sql` — the same checks as the DB test, in one block that always rolls back; read the result from the error message |
 
 Run the database test from `backend/` after step 1. It works in a transaction that
 is always rolled back, so it leaves nothing in the shared project:
