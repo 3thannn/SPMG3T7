@@ -103,6 +103,81 @@ def _notify_equipment(request: EquipmentRequest, message: str) -> None:
             )
 
 
+def _listed(items: list[str]) -> str:
+    """"A", "A and B", "A, B and C"."""
+    if len(items) < 2:
+        return "".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _notify_cancelled(user_id: int, event: Event, message: str) -> None:
+    try:
+        notification_store.repository().create(
+            user_id=user_id, event_id=event.id, status=EventStatus.CANCELLED, message=message
+        )
+    except Exception:
+        logger.exception(
+            "Could not write the US4.6 cancellation notice for event %s to user %s",
+            event.id,
+            user_id,
+        )
+
+
+def notify_event_cancelled(
+    event: Event,
+    *,
+    actor_id: int,
+    actor_name: str,
+    reason: str,
+    venue_names: list[str],
+    equipment: list[EquipmentRequest],
+) -> None:
+    """US4.6: tell everyone a cancellation affects. Not the person who cancelled.
+
+    The Organiser and the assigned Coordinator are told who cancelled and why.
+    Venue Staff are told when bookings were released and Tech Support when
+    equipment was; there is no per-venue or per-item owner, so, as for new
+    equipment requests, every member of the role hears. Each notice is a status
+    notice (Cancelled), written best effort: the cancellation already happened.
+    """
+    title = event.title.strip()
+    subject = f'"{title}"' if title else "An untitled event"
+    because = f" Reason: {reason}"
+
+    for person in dict.fromkeys((event.organiser_id, event.coordinator_id)):
+        if person is not None and person != actor_id:
+            _notify_cancelled(person, event, f"{subject} was cancelled by {actor_name}.{because}")
+
+    if not venue_names and not equipment:
+        return
+    try:
+        recipients = users.list_users()
+    except Exception:
+        logger.exception("Could not look up the US4.6 notice recipients for event %s", event.id)
+        return
+
+    def tell(role: Role, message: str) -> None:
+        for recipient in recipients:
+            if recipient.role is role and recipient.id != actor_id:
+                _notify_cancelled(recipient.id, event, message)
+
+    if venue_names:
+        venues = _listed(list(dict.fromkeys(venue_names)))
+        released = "booking was" if len(venue_names) == 1 else "bookings were"
+        tell(
+            Role.VENUE_STAFF,
+            f"{subject} was cancelled, so its {released} released: {venues}.{because}",
+        )
+
+    if equipment:
+        lines = _listed([f"{line.quantity} × {line.equipment_type}" for line in equipment])
+        released = "request was" if len(equipment) == 1 else "requests were"
+        tell(
+            Role.TECH_SUPPORT,
+            f"{subject} was cancelled, so its equipment {released} released: {lines}.{because}",
+        )
+
+
 def notify_equipment_request(event: Event, request: EquipmentRequest) -> None:
     _notify_equipment(
         request,

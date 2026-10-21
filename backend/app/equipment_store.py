@@ -427,6 +427,24 @@ class InMemoryEquipment:
         self._record(removed, "Removed", current)
         return True
 
+    def release_for_event(self, event_id: int, *, actor_id: int) -> tuple[int, ...]:
+        """US4.6: the `cancel_event` RPC's equipment update, for `InMemoryEvents`.
+
+        Every line of the event not already Removed is Removed, whatever its
+        status, so the quantities it asked for are free again.
+        """
+        released: list[int] = []
+        for current in sorted(self.requests, key=lambda r: r.id):
+            if current.event_id != event_id or current.status == "Removed":
+                continue
+            removed = replace(
+                current, status="Removed", version=current.version + 1, updated_by_id=actor_id
+            )
+            self.requests = [removed if r.id == current.id else r for r in self.requests]
+            self._record(removed, "Removed", current)
+            released.append(current.id)
+        return tuple(released)
+
     def list_history(self, event_id: int) -> list[RequestHistory]:
         return sorted(
             (h for h in self.history if h.event_id == event_id),

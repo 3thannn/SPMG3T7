@@ -16,6 +16,7 @@ import {
   approveEvent,
   approveEventChange,
   approveSafetyCheck,
+  cancelEvent,
   getSafetyReadiness,
   getSafetyReview,
   listSafetyQueue,
@@ -415,5 +416,28 @@ describe('US17.1 safety review', () => {
   it('lets a refusal through as an ApiError', async () => {
     stubFetch(failure(403, 'forbidden', 'The Event Coordinator role cannot review event safety.'))
     await expect(getSafetyReview('101', session)).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('US4.6 cancelling an event', () => {
+  it('posts the reason and returns the cancelled event', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Cancelled' }))
+
+    expect((await cancelEvent('101', 'Funding was withdrawn.', session)).status).toBe('Cancelled')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/cancel')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({ reason: 'Funding was withdrawn.' })
+  })
+
+  it('turns refusals into rule errors and lets a lapsed session through', async () => {
+    stubFetch(failure(409, 'rule_refused', 'This event has already been cancelled.'))
+    await expect(cancelEvent('101', 'x', session)).rejects.toThrow(
+      new EventRuleError('This event has already been cancelled.'),
+    )
+    stubFetch(failure(400, 'invalid_event', 'Give a reason for cancelling this event.'))
+    await expect(cancelEvent('101', '', session)).rejects.toBeInstanceOf(EventRuleError)
+
+    stubFetch(failure(401, 'session_expired', 'Sign in again.'))
+    await expect(cancelEvent('101', 'x', session)).rejects.toBeInstanceOf(ApiError)
   })
 })

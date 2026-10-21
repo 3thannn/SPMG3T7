@@ -11,11 +11,20 @@ import type { Permission, Session } from '../api'
 import type { Role } from '../status'
 
 const PERMISSIONS: Record<Role, Permission[]> = {
-  'Event Organiser': ['events:create', 'events:read:own', 'events:submit', 'notifications:read'],
+  'Event Organiser': [
+    'events:create',
+    'events:read:own',
+    'events:submit',
+    // US4.6: cancel an event they own.
+    'events:cancel',
+    'notifications:read',
+  ],
   'Event Coordinator': [
     'events:read:submitted',
     'events:review',
     'events:complete',
+    // US4.6: cancel an event assigned to them.
+    'events:cancel',
     'users:read',
     'venues:read',
     // US14.1: request venues for the events assigned to them.
@@ -46,6 +55,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'holds:place',
     // US16.1: approve or reject booking requests.
     'bookings:decide',
+    // US4.6: told when a cancelled event's bookings are released.
+    'notifications:read',
   ],
   // US1.4: Safety Officer reviews safety aspects.
   'Safety Officer': ['safety:review'],

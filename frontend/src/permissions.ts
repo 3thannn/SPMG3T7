@@ -70,7 +70,7 @@ const GUARDED: Record<string, GuardedRoute> = {
   '/notifications': {
     anyOf: ['notifications:read'],
     what: 'notifications',
-    who: 'Organisers and Technical Support',
+    who: 'Organisers, Event Coordinators, Venue Staff, and Technical Support',
   },
   '/equipment': {
     anyOf: ['equipment:read'],

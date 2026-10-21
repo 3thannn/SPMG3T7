@@ -217,7 +217,11 @@ describe('notifications (US10.1)', () => {
     // US10.2
     expect(canOpen(buildSession({ role: 'Event Coordinator' }), '/notifications')).toBe(true)
     expect(canOpen(buildSession({ role: 'Event Coordinator Lead' }), '/notifications')).toBe(false)
-    expect(canOpen(buildSession({ role: 'Venue Staff' }), '/notifications')).toBe(false)
+    expect(canOpen(buildSession({ role: 'Safety Officer' }), '/notifications')).toBe(false)
+  })
+
+  it('lets Venue Staff open notifications, to hear about released bookings (US4.6)', () => {
+    expect(canOpen(buildSession({ role: 'Venue Staff' }), '/notifications')).toBe(true)
   })
 })
 

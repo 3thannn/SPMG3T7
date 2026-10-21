@@ -3,7 +3,9 @@ import {
   EVENT_STATUSES,
   REQUESTABLE,
   canViewStatus,
+  cancelRefusalMessage,
   changeRequestRefusalMessage,
+  checkCancel,
   checkChangeRequest,
   checkSubmit,
   statusNoteKind,
@@ -220,5 +222,37 @@ describe('US4.4 — Pending Safety Check', () => {
     expect(statusNoteKind(change)).toBe('safety-return')
     expect(statusNoteLabel('safety-return')).toBe('Sent back by Safety Officer')
     expect(statusNoteKind({ ...change, notes: '' })).toBeNull()
+  })
+})
+
+describe('US4.6 — which events can be cancelled', () => {
+  it.each(EVENT_STATUSES.filter((status) => !['Completed', 'Cancelled', 'Rejected'].includes(status)))(
+    'allows cancelling a %s event',
+    (status) => {
+      expect(checkCancel({ status })).toEqual({ allowed: true })
+    },
+  )
+
+  it.each([
+    ['Cancelled', 'already-cancelled', 'This event has already been cancelled.'],
+    ['Completed', 'event-completed', 'This event has already been completed, so it cannot be cancelled.'],
+    ['Rejected', 'event-rejected', 'This event was rejected, so there is nothing to cancel.'],
+  ] as const)('refuses a %s event, saying why', (status, reason, message) => {
+    expect(checkCancel({ status })).toEqual({ allowed: false, reason })
+    expect(cancelRefusalMessage(reason)).toBe(message)
+  })
+
+  it('labels the note on a cancellation as its reason', () => {
+    const change = {
+      from: 'Planning' as const,
+      to: 'Cancelled' as const,
+      at: '2026-10-21T09:00:00',
+      byId: '2',
+      byName: 'Priya',
+      notes: 'Funding was withdrawn.',
+      kind: 'cancellation' as const,
+    }
+    expect(statusNoteKind(change)).toBe('cancellation')
+    expect(statusNoteLabel('cancellation')).toBe('Cancellation reason')
   })
 })
