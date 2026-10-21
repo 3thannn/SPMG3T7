@@ -9,6 +9,7 @@ import {
 } from '../notificationsStore'
 import { displayEventTitle } from '../draftRules'
 import { navigate } from '../router'
+import { canOpen } from '../permissions'
 import { formatTimestamp } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 
@@ -27,24 +28,38 @@ type NotificationsPageProps = {
  * make the row jump out from under the pointer.
  */
 const SUBTITLES: Partial<Record<Session['role'], string>> = {
-  'Technical Support': 'New equipment requests, unread first.',
+  'Technical Support': 'New equipment requests and released equipment, unread first.',
   'Event Coordinator': 'Assignments and booking or safety problems on your events, unread first.',
+  // US4.6: Venue Staff are told when a cancelled event gives its bookings back.
+  'Venue Staff': 'Bookings released by cancelled events, unread first.',
 }
 
 const EMPTY_TEXT: Partial<Record<Session['role'], string>> = {
-  'Technical Support': 'New equipment requests will appear here.',
+  'Technical Support':
+    'New equipment requests, and equipment released by a cancelled event, will appear here.',
   'Event Coordinator':
     'When an event is assigned to you, or one of yours has a hold, booking or safety problem, it shows up here.',
+  'Venue Staff': 'When a cancelled event gives back its venue bookings, it shows up here.',
 }
 
-/** Where a notice leads, or null when there is nothing the reader can open. */
-function target(item: NotificationRecord): { path: string; label: string } | null {
+/**
+ * Where a notice leads, or null when there is nothing the reader can open.
+ *
+ * US4.6: Venue Staff and Tech Support are told about cancelled events but
+ * cannot open events, so their notice links nowhere rather than to a refusal.
+ */
+function target(
+  item: NotificationRecord,
+  session: Session,
+): { path: string; label: string } | null {
   if (item.kind === 'equipment-request') {
     return { path: `/equipment-requests/${item.equipmentRequestId ?? 'missing'}`, label: 'Open request' }
   }
   // US10.2: the event was taken off this Coordinator, so they can no longer open it.
   if (item.kind === 'unassigned') return null
-  return { path: `/events/${item.eventId}`, label: `Open ${displayEventTitle(item.eventTitle)}` }
+  const path = `/events/${item.eventId}`
+  if (!canOpen(session, path)) return null
+  return { path, label: `Open ${displayEventTitle(item.eventTitle)}` }
 }
 
 export default function NotificationsPage({ session }: NotificationsPageProps) {
@@ -137,7 +152,7 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
         ) : (
           <ul className="notification-list">
             {items.map((item) => {
-              const link = target(item)
+              const link = target(item, session)
               return (
               <li
                 key={item.id}

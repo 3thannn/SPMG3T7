@@ -114,9 +114,10 @@ export type StatusChange = {
   /**
    * US11.1: 'change-request' on the entry an Organiser's change request wrote,
    * so its note is labelled as theirs. US4.4: 'safety-return' on the entry the
-   * Safety Officer wrote sending an event back to Planning. Empty otherwise.
+   * Safety Officer wrote sending an event back to Planning. US4.6:
+   * 'cancellation' on the entry that cancelled the event. Empty otherwise.
    */
-  kind?: '' | 'change-request' | 'safety-return'
+  kind?: '' | 'change-request' | 'safety-return' | 'cancellation'
 }
 
 /**
@@ -161,7 +162,12 @@ export function clarificationRefusalMessage(reason: ClarificationRefusal): strin
   }
 }
 
-export type StatusNoteKind = 'clarification' | 'rejection' | 'change-request' | 'safety-return'
+export type StatusNoteKind =
+  | 'clarification'
+  | 'rejection'
+  | 'change-request'
+  | 'safety-return'
+  | 'cancellation'
 /**
  * US14.1: the statuses an event may have venues requested for.
  *
@@ -206,6 +212,39 @@ export function bookingRefusalMessage(reason: BookingRefusal): string {
   }
 }
 
+/**
+ * US4.6: why an event cannot be cancelled. "Any event that isn't Completed,
+ * Cancelled or Rejected" may be, so there is one refusal for each of those.
+ */
+export type CancelRefusal = 'already-cancelled' | 'event-completed' | 'event-rejected'
+
+export type CancelCheck = { allowed: true } | { allowed: false; reason: CancelRefusal }
+
+/**
+ * US4.6: may an event at this status be cancelled?
+ *
+ * Mirrors the server's `check_cancel`. Who may cancel (the owner, or the
+ * assigned Coordinator) is the page's to decide from the session; the server
+ * re-checks both, and that refusal is the rule.
+ */
+export function checkCancel(event: { status: EventStatus }): CancelCheck {
+  if (event.status === 'Cancelled') return { allowed: false, reason: 'already-cancelled' }
+  if (event.status === 'Completed') return { allowed: false, reason: 'event-completed' }
+  if (event.status === 'Rejected') return { allowed: false, reason: 'event-rejected' }
+  return { allowed: true }
+}
+
+export function cancelRefusalMessage(reason: CancelRefusal): string {
+  switch (reason) {
+    case 'already-cancelled':
+      return 'This event has already been cancelled.'
+    case 'event-completed':
+      return 'This event has already been completed, so it cannot be cancelled.'
+    case 'event-rejected':
+      return 'This event was rejected, so there is nothing to cancel.'
+  }
+}
+
 /** What kind of person-written note an audit entry carries. */
 export function statusNoteKind(change: StatusChange): StatusNoteKind | null {
   if (!(change.notes ?? '').trim()) return null
@@ -225,6 +264,8 @@ export function statusNoteLabel(kind: StatusNoteKind): string {
       return 'Change requested by Organiser'
     case 'safety-return':
       return 'Sent back by Safety Officer'
+    case 'cancellation':
+      return 'Cancellation reason'
   }
 }
 

@@ -54,6 +54,11 @@ class Permission(StrEnum):
     US4.4: the assigned Coordinator sends a ready event for its safety check
     (`safety:submit`), and the Safety Officer signs it off or sends it back
     (`safety:review`). Two names because two different roles hold them.
+
+    US4.6: cancelling an event (`events:cancel`) is held by both the Organiser
+    and the Coordinator, so neither role's existing grant could stand in for
+    it. The role is the first half of the rule; owning the event, or being
+    assigned to it, is the second, checked per event.
     """
 
     EVENTS_CREATE = "events:create"
@@ -63,6 +68,7 @@ class Permission(StrEnum):
     EVENTS_SUBMIT = "events:submit"
     EVENTS_REVIEW = "events:review"
     EVENTS_COMPLETE = "events:complete"
+    EVENTS_CANCEL = "events:cancel"  # US4.6: owning Organiser or assigned Coordinator
     EVENTS_EDIT = "events:edit"
     USERS_READ = "users:read"
     VENUES_READ = "venues:read"
@@ -92,6 +98,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.EVENTS_SUBMIT: "submit events for approval",
     Permission.EVENTS_REVIEW: "review submitted events",
     Permission.EVENTS_COMPLETE: "complete confirmed events",
+    Permission.EVENTS_CANCEL: "cancel events",
     Permission.EVENTS_EDIT: "edit events",
     Permission.USERS_READ: "view the user directory",
     Permission.VENUES_READ: "view the venue catalogue",
@@ -118,6 +125,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.EVENTS_CREATE,
             Permission.EVENTS_READ_OWN,
             Permission.EVENTS_SUBMIT,
+            # US4.6: cancel an event they own.
+            Permission.EVENTS_CANCEL,
             # US10.1: told when a Coordinator moves one of their events.
             Permission.NOTIFICATIONS_READ,
         }
@@ -127,6 +136,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.EVENTS_READ_SUBMITTED,
             Permission.EVENTS_REVIEW,
             Permission.EVENTS_COMPLETE,
+            # US4.6: cancel an event assigned to them (US8.6, checked per event).
+            Permission.EVENTS_CANCEL,
             Permission.EVENTS_EDIT,
             Permission.USERS_READ,
             Permission.VENUES_READ,
@@ -168,6 +179,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.HOLDS_PLACE,
             # US16.1: only Venue Staff confirm or turn down a booking request.
             Permission.BOOKINGS_DECIDE,
+            # US4.6: told when an event's bookings are released by its cancellation.
+            Permission.NOTIFICATIONS_READ,
         }
     ),
     # US1.4: Safety Officer. US4.4 lets them read and decide events that are

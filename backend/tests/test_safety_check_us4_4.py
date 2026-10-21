@@ -577,8 +577,9 @@ class TestOnlyWayToConfirmed:
         assert transition_allowed(from_status=before, to_status=PSC) is expected
 
     def test_pending_safety_check_leaves_only_for_confirmed_or_planning(self):
+        # US4.6 adds the one way out every open event has: being cancelled.
         assert {after for before, after in VALID_TRANSITIONS if before is PSC} == {
-            EventStatus.CONFIRMED, EventStatus.PLANNING,
+            EventStatus.CONFIRMED, EventStatus.PLANNING, EventStatus.CANCELLED,
         }
 
     def test_us4_3_transitions_are_kept(self):

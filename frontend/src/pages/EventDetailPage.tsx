@@ -7,6 +7,7 @@ import StatusBadge from '../components/StatusBadge'
 import StatusTimeline from '../components/StatusTimeline'
 import ProposedChanges from '../components/ProposedChanges'
 import SafetyCheckPanel from '../components/SafetyCheckPanel'
+import CancelEventPanel, { CancelledNotice } from '../components/CancelEventPanel'
 import SafetyReviewDetails from '../components/SafetyReviewDetails'
 import {
   EventRuleError,
@@ -208,8 +209,11 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   // determines whether this review UI belongs to the signed-in role.
   const mayReview = can(session, 'events:review')
   const clarificationCheck = checkClarification(event)
+  // US4.6: a cancelled event is read-only, and nothing on it waits for anyone.
+  const cancelled = event.status === 'Cancelled'
   // US11.1: a pending change request is answered before the event is decided.
-  const changeRequested = event.changeRequested ?? false
+  // One left waiting when the event was cancelled can no longer be answered.
+  const changeRequested = (event.changeRequested ?? false) && !cancelled
   const pendingChanges = event.pendingChanges ?? []
   // Shown once nothing is waiting, so a fresh request is not overshadowed by
   // the answer to the one before it.
@@ -225,9 +229,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   // US5.2: Coordinators can edit submitted events (not drafts), owners can edit their own drafts.
   // US11.1: an owner can also open the form on a submitted event, to propose changes.
   const editable =
-    (canEdit && event.status !== 'Draft') ||
-    (isOwner && event.status === 'Draft') ||
-    (isOwner && proposing)
+    !cancelled &&
+    ((canEdit && event.status !== 'Draft') ||
+      (isOwner && event.status === 'Draft') ||
+      (isOwner && proposing))
   const dirty =
     draft.title !== event.title ||
     draft.purpose !== event.purpose ||
@@ -570,6 +575,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
           </p>
         )}
 
+        <CancelledNotice event={event} />
+
         <div className="detail-grid">
           <section className="card card-pad detail-main">
             <h2 className="detail-section-title">Details</h2>
@@ -766,7 +773,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               </label>
             )}
 
-            {isOwner && event.status !== 'Draft' && (
+            {isOwner && event.status !== 'Draft' && !cancelled && (
               <p className="detail-note">
                 {proposing
                   ? 'Edit the details above, then submit them for the Coordinator to review. ' +
@@ -784,7 +791,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               </p>
             )}
 
-            {!isOwner && canEdit && (
+            {!isOwner && canEdit && !cancelled && (
               <p className="detail-note">
                 You are editing this event as {session.role}. Changes are tracked and logged.
               </p>
@@ -940,6 +947,19 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               onError={(message) => setBanner({ kind: 'error', text: message })}
             />
 
+            <CancelEventPanel
+              event={event}
+              session={session}
+              disabled={writePending}
+              onUpdated={(updated, message) => {
+                setPage({ state: 'loaded', event: updated })
+                setDraft(draftFrom(updated))
+                setProposing(false)
+                setBanner({ kind: 'ok', text: message })
+              }}
+              onError={(message) => setBanner({ kind: 'error', text: message })}
+            />
+
             {/* US7.3. In the history panel rather than beside the form, because
                 a request is an entry in this trail and the Organiser reads it
                 here. A Coordinator who cannot ask yet is told why instead of
@@ -986,7 +1006,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
         {/* US14.1. Not on a Draft: nothing can be requested for one, so the
             card would only ever say so. */}
-        {readsEvents && event.status !== 'Draft' && <EventBookings event={event} session={session} onBookingRequested={refreshAfterBooking} />}
+        {/* US4.6: keyed so a cancellation reloads the card with its bookings released. */}
+        {readsEvents && event.status !== 'Draft' && <EventBookings key={cancelled ? 'cancelled' : 'open'} event={event} session={session} onBookingRequested={refreshAfterBooking} />}
         {readsEvents && <EventEquipment event={event} session={session} />}
         {can(session, 'safety:review') && (
           <SafetyReviewDetails eventId={event.id} session={session} />

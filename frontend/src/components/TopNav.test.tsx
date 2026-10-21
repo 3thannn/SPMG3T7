@@ -60,7 +60,8 @@ it('TC-F15 re-reads the count when read state changes', async () => {
   await waitFor(() => expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument())
 })
 
-it.each(['Event Coordinator Lead', 'Venue Staff'] as const)(
+// US4.6 gave Venue Staff notifications, for bookings a cancellation releases.
+it.each(['Event Coordinator Lead', 'Safety Officer'] as const)(
   'TC-F16 offers no Notifications link to %s',
   (role) => {
     render(<TopNav route="/events" session={buildSession({ role })} onSignOut={() => {}} />)

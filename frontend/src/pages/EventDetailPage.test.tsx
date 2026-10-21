@@ -6,6 +6,7 @@ import { MISSING_MESSAGES, NO_NEEDS, NOT_REQUIRED } from '../eventNeeds'
 import {
   EventRuleError,
   approveSafetyCheck,
+  cancelEvent,
   completeEvent,
   getEvent,
   getSafetyReadiness,
@@ -26,6 +27,8 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   saveEvent: vi.fn(),
   submitEvent: vi.fn(),
   completeEvent: vi.fn(),
+  // US4.6: cancelling from the page.
+  cancelEvent: vi.fn(),
   // US4.4: the safety check panel loads its own readiness.
   getSafetyReadiness: vi.fn(async () => ({ ready: true, reason: '', message: '' })),
   sendForSafetyCheck: vi.fn(),
@@ -526,4 +529,100 @@ it('shows no safety review to anyone else', async () => {
   await screen.findByRole('heading', { name: 'Safety check' })
   expect(screen.queryByRole('heading', { name: 'Safety review' })).not.toBeInTheDocument()
   expect(vi.mocked(getSafetyReview)).not.toHaveBeenCalled()
+})
+
+/* ---------- US4.6: cancelling an event ---------- */
+
+const cancelledBy = (byName: string, byId: string) => ({
+  from: 'Planning' as const,
+  to: 'Cancelled' as const,
+  at: '2026-10-21T09:00:00',
+  byId,
+  byName,
+  notes: 'Funding was withdrawn.',
+  kind: 'cancellation' as const,
+})
+
+it('lets the assigned Coordinator cancel the event, and then shows it read-only', async () => {
+  const user = userEvent.setup()
+  const planning = { ...submittedEvent, status: 'Planning' as const, coordinatorId: coordinator.id }
+  getEventMock.mockResolvedValue(planning)
+  vi.mocked(cancelEvent).mockResolvedValue({
+    ...planning,
+    status: 'Cancelled',
+    history: [...planning.history, cancelledBy('Priya', coordinator.id)],
+  })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+  await user.click(await screen.findByRole('button', { name: 'Cancel this event…' }))
+  await user.type(
+    screen.getByLabelText('Why is this event being cancelled?'),
+    'Funding was withdrawn.',
+  )
+  await user.click(screen.getByRole('button', { name: 'Confirm cancellation' }))
+
+  expect(vi.mocked(cancelEvent)).toHaveBeenCalledWith('101', 'Funding was withdrawn.', coordinator)
+  expect(await screen.findByRole('status')).toHaveTextContent(/^Cancelled\. Its venue bookings/)
+  const notice = screen.getByRole('note')
+  expect(notice).toHaveTextContent(/Cancelled by Priya on/)
+  expect(notice).toHaveTextContent('Reason: Funding was withdrawn.')
+  expect(screen.queryByRole('heading', { name: 'Cancel event' })).not.toBeInTheDocument()
+  // The history labels the note as the reason, not as a request.
+  expect(screen.getByText('Cancellation reason')).toBeInTheDocument()
+  // The bookings card reloads, so it shows what the cancellation released.
+  await waitFor(() => expect(vi.mocked(listBookings)).toHaveBeenCalledTimes(2))
+})
+
+it('shows the owning Organiser a cancelled event as read-only, with nothing waiting', async () => {
+  getEventMock.mockResolvedValue({
+    ...submittedEvent,
+    status: 'Cancelled',
+    coordinatorId: coordinator.id,
+    // US11.1: left waiting when the event was cancelled; nobody can answer it now.
+    changeRequested: true,
+    pendingChanges: [
+      { field: 'name', label: 'Title', oldValue: 'A', newValue: 'B', important: false },
+    ],
+    history: [...submittedEvent.history, cancelledBy('Dylan', organiser.id)],
+  })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  expect(await screen.findByRole('note')).toHaveTextContent('This event is read-only.')
+  expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Request changes' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Requested changes' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Cancel this event…' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/has already been decided/)).not.toBeInTheDocument()
+})
+
+it('lets the Organiser cancel their own Draft', async () => {
+  getEventMock.mockResolvedValue(event)
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  expect(await screen.findByRole('button', { name: 'Cancel this event…' })).toBeInTheDocument()
+})
+
+it('gives an editing Coordinator no form on a cancelled event', async () => {
+  // The server grants Coordinators events:edit (US5.2); the shared test
+  // session leaves it out, so it is added here to reach the editable path.
+  const editor = buildSession({
+    role: 'Event Coordinator',
+    id: coordinator.id,
+    permissions: [...coordinator.permissions, 'events:edit'],
+  })
+  getEventMock.mockResolvedValue({
+    ...submittedEvent,
+    status: 'Cancelled',
+    coordinatorId: editor.id,
+    history: [...submittedEvent.history, cancelledBy('Priya', editor.id)],
+  })
+
+  render(<EventDetailPage eventId="101" session={editor} />)
+
+  expect(await screen.findByRole('note')).toHaveTextContent('This event is read-only.')
+  expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/Changes are tracked and logged/)).not.toBeInTheDocument()
 })

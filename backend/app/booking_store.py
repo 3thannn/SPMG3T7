@@ -713,6 +713,35 @@ class InMemoryBookings:
         self.bookings = [cancelled if b.id == booking_id else b for b in self.bookings]
         return cancelled
 
+    def release_for_event(self, event_id: int, *, actor_id: int, reason: str) -> tuple[int, ...]:
+        """US4.6: the `cancel_event` RPC's booking update, for `InMemoryEvents`.
+
+        Every booking of the event that still holds its venue is Cancelled with
+        the event's reason. A Confirmed one keeps its decision, as the row does.
+        Cancelled, Rejected and expired holds are left as they are.
+        """
+        actor = users.get_by_id(actor_id)
+        now = local_now()
+        released: list[int] = []
+        for booking in self.list_for_event(event_id):
+            if not booking.holds_venue_at(now):
+                continue
+            released.append(booking.id)
+            self._decide(
+                booking.id,
+                replace(
+                    booking,
+                    status=BookingStatus.CANCELLED,
+                    cancellation=Cancellation(
+                        at=_now(),
+                        by_id=actor_id,
+                        by_name=actor.name if actor else "",
+                        reason=reason,
+                    ),
+                ),
+            )
+        return tuple(released)
+
     def create(
         self,
         *,

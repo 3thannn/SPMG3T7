@@ -47,6 +47,20 @@ CLARIFIABLE: tuple[EventStatus, ...] = (
     EventStatus.UNDER_REVIEW,
 )
 
+#: US4.6: the statuses an event has finished in. Nothing moves an event on from
+#: one of these, cancellation included.
+CLOSED: tuple[EventStatus, ...] = (
+    EventStatus.COMPLETED,
+    EventStatus.CANCELLED,
+    EventStatus.REJECTED,
+)
+
+#: US4.6: "any event that isn't Completed, Cancelled or Rejected" may be
+#: cancelled, so the set is worked out from `CLOSED` rather than listed twice.
+CANCELLABLE: tuple[EventStatus, ...] = tuple(
+    status for status in EventStatus if status not in CLOSED
+)
+
 #: US4.3: every status change the current workflow may make. Keeping US4.2's
 #: Draft -> Submitted transition here means the older submission flow and the
 #: new review decisions share one source of truth.
@@ -66,6 +80,9 @@ VALID_TRANSITIONS: frozenset[tuple[EventStatus, EventStatus]] = frozenset(
         (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
         (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
         (EventStatus.CONFIRMED, EventStatus.COMPLETED),
+        # US4.6: the owning Organiser or the assigned Coordinator cancels
+        # (`app.event_cancellation`). Cancelled is final, like the other two.
+        *((status, EventStatus.CANCELLED) for status in CANCELLABLE),
     }
 )
 
