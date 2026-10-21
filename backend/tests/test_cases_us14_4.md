@@ -170,4 +170,7 @@ Recorded results:
 | --- | --- | --- |
 | Backend `ruff check`, `compileall`, `pytest` | 2026-10-21 | 1619 passed, 1 skipped (the opt-in DB test) |
 | Frontend `oxlint`, `build`, `vitest` | 2026-10-21 | Clean; all US14.4 tests pass. Unrelated: `UnassignedQueuePage` date-format test fails on a non-US locale, and some 5-second timeouts under full-suite load pass when run alone |
-| `test_hold_expiry_db.py` against Supabase | — | Not yet run: needs step 1 applied |
+| Step 1 (`SUPABASE_US14_4_HOLD_EXPIRY.sql`) applied to the live project | 2026-10-21 | Applied |
+| `TEST_US14_4_HOLD_EXPIRY.sql` against the live Supabase project | 2026-10-21 | **US14.4 PASSED - all 19 checks**; rolled back |
+| `test_hold_expiry_db.py` (pytest, opt-in) | — | Not run: `SUPABASE_DB_URL` is not configured locally. It covers the same ground as the SQL Editor check |
+| Step 2 (pg_cron schedule) | — | **Not applied, on purpose**: waits until US14.4 is merged and pulled |
