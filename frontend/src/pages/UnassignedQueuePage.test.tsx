@@ -46,7 +46,7 @@ function buildUnassignedEvent(
     status: 'Submitted',
     organiserId: '1',
     organiserName: 'Dylan',
-    submittedAt: '2027-02-01T10:00',
+    submittedAt: '2027-02-01T10:00:00+08:00',
     coordinatorId: null,
     ...overrides,
   }
