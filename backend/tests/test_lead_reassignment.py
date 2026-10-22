@@ -22,7 +22,7 @@ def create_assigned_event(client, auth_headers) -> dict:
     organiser = auth_headers("Event Organiser")
     created = client.post("/events", json=DRAFT, headers=organiser)
     event_id = created.json()["id"]
-    submitted = client.post(f"/events/{event_id}/submit", headers=organiser)
+    client.post(f"/events/{event_id}/submit", headers=organiser)
 
     # Assign it to the default coordinator
     lead = auth_headers("Event Coordinator Lead")
@@ -37,7 +37,9 @@ def create_assigned_event(client, auth_headers) -> dict:
 class TestLeadCanReassign:
     """AC1: Coordinator Lead can reassign an already-assigned event to a different Coordinator."""
 
-    def test_lead_can_reassign_event_to_different_coordinator(self, client, auth_headers, user_store):
+    def test_lead_can_reassign_event_to_different_coordinator(
+        self, client, auth_headers, user_store
+    ):
         """POST /events/{id}/reassign changes the assigned coordinator."""
         # Add a second coordinator
         coordinator_2 = User(
@@ -93,7 +95,9 @@ class TestLeadCanReassign:
         assert response.status_code == 200
         assert response.json()["id"] == event["id"]
 
-    def test_reassigned_event_not_visible_to_previous_coordinator(self, client, auth_headers, user_store):
+    def test_reassigned_event_not_visible_to_previous_coordinator(
+        self, client, auth_headers, user_store
+    ):
         """The previous coordinator loses access after reassignment."""
         # Add a second coordinator
         coordinator_2 = User(

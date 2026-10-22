@@ -214,10 +214,14 @@ def to_event(
 ) -> Event:
     # US8.4: Extract both organiser and coordinator names from aliased joins
     organiser_joined = row.get("organiser")
-    organiser_name = organiser_joined.get("name", "") if isinstance(organiser_joined, dict) else ""
+    organiser_name = (
+        organiser_joined.get("name", "") if isinstance(organiser_joined, dict) else ""
+    )
 
     coordinator_joined = row.get("coordinator")
-    coordinator_name = coordinator_joined.get("name", "") if isinstance(coordinator_joined, dict) else ""
+    coordinator_name = (
+        coordinator_joined.get("name", "") if isinstance(coordinator_joined, dict) else ""
+    )
 
 
     event = Event(
