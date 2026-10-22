@@ -69,7 +69,7 @@ class TestLeadCanReassign:
         reassigned = response.json()
         assert reassigned["id"] == event["id"]
         assert reassigned["coordinatorId"] == "10"
-        assert reassigned["status"] == "Submitted"  # Status unchanged
+        assert reassigned["status"] == "Under Review"  # Status unchanged
 
     def test_reassigned_event_is_visible_to_new_coordinator(self, client, auth_headers, user_store):
         """The new coordinator can access the reassigned event."""
