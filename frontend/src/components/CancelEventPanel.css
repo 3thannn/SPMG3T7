@@ -1,0 +1,39 @@
+/* US4.6: the cancel panel in the event's side column, and the notice a
+   cancelled event shows above everything else. */
+
+.event-cancel-warning {
+  color: var(--danger);
+}
+
+.event-cancel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.event-cancelled {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  padding: 0.8rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.event-cancelled-title {
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.event-cancelled-reason {
+  margin-top: 0.3rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.event-cancelled-lede {
+  margin-top: 0.3rem;
+  color: var(--muted);
+}

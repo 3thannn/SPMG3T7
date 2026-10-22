@@ -5,14 +5,16 @@ The Lead needs to see which events are Submitted but have no Coordinator assigne
 """
 
 from app.event_status import EventStatus
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Team Building Workshop",
     "purpose": "Improve team collaboration",
     "startsAt": "2026-11-15T14:00",
+    "endsAt": "2026-11-15T17:00",
     "description": "Interactive workshop for staff",
     "expectedAttendance": 30,
+    **SUBMITTABLE_NEEDS,
 }
 
 

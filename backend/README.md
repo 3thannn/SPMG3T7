@@ -55,11 +55,10 @@ committed.
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API Keys → `service_role`      |
 | `SUPABASE_DB_URL`           | Connect → Session pooler (optional; see below)    |
 
-`SUPABASE_DB_URL` is optional and unused by the API, which goes through
-PostgREST. It is there for reading the schema directly — inspecting Row Level
-Security policies, say. If you do set it, use the **Session pooler** string
-rather than the direct connection, which is IPv6-only and fails on most home
-networks.
+`SUPABASE_DB_URL` is unused by the API, which goes through PostgREST. It is
+required when running the US19 migration script below or inspecting the schema
+directly. Use the **Session pooler** string rather than the direct connection,
+which is IPv6-only and fails on most home networks.
 
 For a new project, run [`SUPABASE_SETUP.sql`](SUPABASE_SETUP.sql) once. For the
 already-created project, run [`SUPABASE_HARDENING.sql`](SUPABASE_HARDENING.sql)
@@ -136,15 +135,25 @@ button is a courtesy and a refused request is the rule.
 | `GET /events`                | Organiser (own), Coordinator (assigned) | The events list (US4.1/US8.1)     |
 | `GET /events/{id}`           | as above                      | One event, with its audit trail            |
 | `POST /events`               | Organiser                     | Create — always lands in Draft (US4.2)     |
-| `PUT /events/{id}`           | the owning Organiser          | Save edits; the status does not move       |
+| `PUT /events/{id}`           | the owning Organiser (Draft only); assigned Coordinator | Save edits; the status does not move |
 | `POST /events/{id}/submit`   | the owning Organiser          | Draft → Submitted, once (US4.2)            |
 | `POST /events/{id}/clarification` | assigned Coordinator     | Ask for info or changes; → Under Review (US7.3) |
 | `POST /events/{id}/approve`  | assigned Coordinator        | Under Review → Approved (US7.1)       |
 | `POST /events/{id}/reject`   | assigned Coordinator        | Under Review → Rejected with a reason (US7.1) |
+| `POST /events/{id}/change-request` | the owning Organiser  | Propose changes to a submitted event; → Under Review (US11.1) |
+| `POST /events/{id}/change-request/approve` | assigned Coordinator | Apply the proposed changes (US11.1) |
+| `POST /events/{id}/change-request/reject` | assigned Coordinator | Keep the current details, with a reason (US11.1) |
 | `GET /events/{id}/bookings`  | owning Organiser, assigned Coordinator | The event's venue bookings, soonest first (US14.1) |
 | `POST /events/{id}/bookings` | assigned Coordinator        | Request one venue; it starts Requested (US14.1) |
 | `POST /events/{id}/bookings/{bookingId}/cancel` | assigned Coordinator | Cancel one booking with a reason (US14.2) |
 | `POST /events/{id}/bookings/suitability` | assigned Coordinator | Whether a venue suits a booking; stores nothing (US18.1) |
+| `GET /events/{id}/safety-check` | assigned Coordinator | Whether the event is ready for its safety check, and if not why (US4.4) |
+| `POST /events/{id}/safety-check` | assigned Coordinator | Planning → Pending Safety Check, once ready (US4.4) |
+| `GET /events/safety-check` | Safety Officer | Events Pending Safety Check, oldest first (US4.4/US17.1) |
+| `GET /events/{id}/safety-review` | Safety Officer | Read-only review of a waiting event: attendance, venues, restrictions, reserved equipment (US17.1) |
+| `POST /events/{id}/safety-check/approve` | Safety Officer | Pending Safety Check → Confirmed (US4.4) |
+| `POST /events/{id}/safety-check/return` | Safety Officer | Pending Safety Check → Planning, with a note (US4.4) |
+| `POST /events/{id}/cancel` | the owning Organiser, assigned Coordinator | Cancel with a reason; releases bookings, holds and equipment (US4.6) |
 
 An event that belongs to another Organiser answers `404`, not `403`. Telling
 someone an event exists but is not theirs tells them something about another
@@ -194,9 +203,8 @@ curl -X POST http://localhost:8000/events/12/clarification \
 
 **There is no new table.** The message goes in `status_changes.notes`, a column
 the schema has always had and nothing wrote until now, on the row that records
-the move to Under Review. The request and the status change it caused are one
-event in the event's history, and storing them apart would let them disagree
-about when it happened or who asked.
+the clarification entry. If Lead assignment already moved the event to Under
+Review, this entry keeps the same status and records the Coordinator's message.
 
 That is also how "visible to the Organiser" is satisfied without any delivery
 mechanism: the owning Organiser already reads the event's history, so the message
@@ -213,7 +221,7 @@ ask. A decided event answers `409` with `already-decided`. A `Draft` answers
 `not-yet-submitted` refusal exists for completeness and is unreachable through
 the route.
 
-The Organiser's reply is **US11.1** and is deliberately not modelled here.
+The Organiser's reply is a change request — see **US11.1** below.
 
 ### Approving and rejecting (US7.1/US4.3)
 
@@ -231,6 +239,190 @@ US8.1's coordinator assignment is unchanged. Existing Supabase projects must run
 before deploying this story. Its RPC only makes the conditional decision update
 and audit insert atomic; it does not decide which transitions are valid.
 
+While a change request is waiting (US11.1, below), approving or rejecting the
+event answers `409` with `change-pending`: the Coordinator reviews the proposed
+changes before deciding.
+
+### Pending Safety Check (US4.4)
+
+A ninth step sits between Planning and Confirmed. The allowlist in
+`app/event_status.py` gains Planning → Pending Safety Check, Pending Safety
+Check → Confirmed and Pending Safety Check → Planning; nothing else leads to
+Confirmed.
+
+- **Sending.** The assigned Coordinator sends the event once it is ready
+  (`app/safety_check.py`): at least one Confirmed venue booking, no booking
+  still Requested or Held, no Confirmed booking flagged “Conflict – review
+  needed”, every equipment line Reserved, and no change request waiting.
+  `GET /events/{id}/safety-check` says which of those is outstanding, so the
+  page can explain rather than just disable the button. A refused send answers
+  `409` with the same `reason`.
+- **Deciding.** The Safety Officer can open an event only while it is Pending
+  Safety Check. Approve moves it to Confirmed; sending it back moves it to
+  Planning and needs a note (at most 2,000 characters), which lands in the
+  audit trail and is sent to the assigned Coordinator (US10.2). US17.2 splits
+  that into separate reject and request-changes outcomes.
+- **Audit.** Every move is a `status_changes` row with who and when (US4.2).
+
+Run [`SUPABASE_ADD_SAFETY_CHECK_STATUS.sql`](SUPABASE_ADD_SAFETY_CHECK_STATUS.sql)
+first. Its two RPCs make each move and its audit row atomic, and the send RPC
+re-checks readiness with the event locked. Its trigger is the backstop for any
+other status write: an event becomes Confirmed only from Pending Safety Check,
+and Pending Safety Check only from Planning.
+
+Until US19.3 adds reserving equipment, an event with any equipment request
+cannot be sent; remove the lines it does not need, or wait for US19.3.
+
+### Cancelling an event (US4.6)
+
+The owning Organiser, or the assigned Coordinator once the event is submitted,
+cancels any event that is not Completed, Cancelled or Rejected, with a reason
+(`app/event_cancellation.py`).
+
+```bash
+curl -X POST http://localhost:8000/events/12/cancel \
+  -H "Authorization: Bearer <token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"Funding was withdrawn."}'
+```
+
+- **One transaction.** The `cancel_event` RPC moves the event to Cancelled with a
+  history entry (who, when, reason), cancels every booking that still holds its
+  venue (Requested, Confirmed, a hold not yet expired) and removes every equipment
+  line, so the slots and quantities are free. A cancelled Confirmed booking keeps
+  the decision that confirmed it.
+- **Afterwards, best effort.** Conflict flags at the freed venues are re-checked
+  (US15.2), and the Organiser or Coordinator (whoever did not cancel), every Venue
+  Staff user (if bookings were released) and every Tech Support user (if equipment
+  was) get a Cancelled notice. Venue Staff now hold `notifications:read`.
+- **Read-only.** Every route that changes the event, its bookings, holds or
+  equipment refuses it; saving and cancelling a booking answer `409`
+  `event-cancelled`.
+- **Refusals.** `404` for an event that is not the caller's; `409`
+  `already-cancelled`, `event-completed` or `event-rejected`; `400` for a missing
+  reason or one over 2,000 characters.
+- **Not built:** registrations marked Event Cancelled and notices to registered
+  Attendees. Neither exists yet; see `tests/test_cases_us4_6.md` for what to add
+  when the registration epic lands.
+
+Run [`SUPABASE_US4_6_CANCEL_EVENT.sql`](SUPABASE_US4_6_CANCEL_EVENT.sql) first.
+
+### Safety Officer review (US17.1)
+
+`GET /events/{id}/safety-review` is everything the Safety Officer needs to
+assess an event, so they do not have to chase anyone for it
+(`app/safety_review.py`):
+
+- the event's expected attendance and accessibility requirements (plus its
+  preferred layout, venue requirements, and when it started waiting);
+- each **booked** venue — bookings that hold their venue; Cancelled, Rejected
+  and expired ones are history — with its capacity against the booking's
+  headcount (`overCapacity`), the layout asked for against the ones it supports,
+  its accessibility features against what the booking asked for, and its
+  **known restrictions**: operating hours, setup and turnaround minutes (US9.4),
+  and unavailability periods (US12.1) that have not ended yet;
+- the **reserved** equipment lines (`Reserved`, set by US19.3; empty until then).
+
+It is read-only (GET only; anything else answers `405`) and Safety Officer only
+(`403` for every other role). As with the event itself, the Safety Officer can
+reach it only while the event is Pending Safety Check; otherwise `404`. No
+migration is needed.
+
+### Requesting changes to a submitted event (US11.1)
+
+Once an event is submitted, its Organiser no longer edits it directly — a
+`PUT` on a non-Draft answers `409` with `change-request-required`. They fill in
+the same edit form instead, and what they send becomes a proposal for the
+assigned Coordinator to review. The event keeps its current details until the
+Coordinator approves.
+
+```bash
+# Organiser: the edit form's values, plus an optional note (up to 2,000 characters)
+curl -X POST http://localhost:8000/events/12/change-request \
+  -H "Authorization: Bearer <organiser token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Welcome Night","purpose":"Welcome the new intake.","description":"Talks.",
+       "startsAt":"2027-11-02T19:00","endsAt":"2027-11-02T22:00","expectedAttendance":150,
+       "note":"Moved to 19:00 as you asked."}'
+
+# Coordinator: apply them, or keep the current details with a reason
+curl -X POST http://localhost:8000/events/12/change-request/approve \
+  -H "Authorization: Bearer <coordinator token>"
+curl -X POST http://localhost:8000/events/12/change-request/reject \
+  -H "Authorization: Bearer <coordinator token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"The hall is booked at 19:00."}'
+```
+
+**What a request does.** The server compares the form's values with the
+event's and records one row per field that differs. Text is compared exactly;
+dates are compared as moments, so `18:00` and `18:00:00` are not a change. The
+event moves to Under Review only if it is assigned and still Submitted. An
+unassigned Submitted event stays in the Lead's queue; Under Review, Approved
+and Planning keep their statuses and carry the pending flag.
+The response carries:
+
+- `changeRequested` — the "change requested" flag, true while a request waits;
+- `pendingChanges` — each field's label, current and proposed value, and
+  whether it is `important`;
+- `changeRequestNote` — the Organiser's note while a request is pending;
+- `lastChangeReview` — the Coordinator's answer to the most recent request:
+  `approved` or `rejected`, when, the reason, and that request's Organiser note
+  in `requestNote`.
+
+**Important changes** follow US5.2's logging rule: date/time (`proposed_date`,
+`end_date`), attendance, venue and equipment. Venue and equipment are in the
+rule but are not columns on `events` yet, so no request can contain them until
+the booking work adds them.
+
+**Validation.** A request is checked as a submission, not as a draft, because a
+submitted event has to stay complete: title, purpose, a date that is not in the
+past, attendance of at least 1, and an end after the start. A request that
+changes nothing answers `400`.
+
+**Refusals** answer `409` with a `reason`:
+
+| Reason | When |
+| ------ | ---- |
+| `not-submitted` | The event is still a Draft — edit it directly instead |
+| `already-decided` | The event is Rejected, Confirmed, Completed or Cancelled |
+| `already-pending` | A request is already waiting; one at a time |
+| `nothing-pending` | Approve or reject was called with no request waiting |
+| `invalid-transition` | Someone else acted on the event first; refresh and retry |
+
+Another Organiser's event answers `404`, as everywhere else in this API.
+
+**Storage.** Everything about a request lives in its own table,
+`event_change_requests`: one row per proposed field, with `status`
+(`pending` → `approved` or `rejected`), who asked and when, and who answered,
+when and why. No other table's columns change:
+
+- `events` gets approved values. A request on an assigned Submitted event moves
+  it to Under Review; unassigned Submitted, Under Review, Approved and Planning
+  retain their status.
+- `status_changes` gets a row only when the status actually moves. The note is
+  also stored on the request rows, so it remains visible for flag-only requests.
+- `event_changes` stays a log of changes that were actually applied. An
+  approved request writes its fields there when it is applied, with the same
+  `important`/`routine` `change_type` as a US5.2 edit; the approving
+  Coordinator is recorded as `changed_by_user_id`. A pending or rejected
+  request never writes there.
+
+"Change requested" is worked out rather than stored: an event has a request
+waiting exactly when it has `pending` rows.
+
+Existing Supabase projects must run
+[`SUPABASE_ADD_CHANGE_REQUESTS.sql`](SUPABASE_ADD_CHANGE_REQUESTS.sql) before
+deploying this story; every events route reads the new table. Its two RPCs make
+each request and each answer atomic, and lock the event row so two requests or
+two answers cannot slip past each other. Validation stays in Python, in
+`app/change_requests.py` and `app/events.py`.
+
+US4.5 additionally requires [`SUPABASE_US4_5_LIFECYCLE.sql`](SUPABASE_US4_5_LIFECYCLE.sql)
+after the assignment, booking-needs and change-request scripts. Apply it before
+deploying the US4.5 backend, because event reads select `request_note` and the
+new writes use its atomic RPCs. The old round-robin backfill is retired; assign
+unassigned events through the Lead's queue.
 ### Venue bookings (US14.1)
 
 An assigned Coordinator requests one or more venues for an event, so a bigger
@@ -258,10 +450,10 @@ none ever did, so there was nothing to move.
 - **Status.** Every new booking is `Requested` and waits for Venue Staff; the
   `booking_status` enum holds only that value until the Venue Booking Approval
   epic adds the rest.
-- **Which events.** Submitted, Under Review, Approved, Planning and Confirmed. A
-  Rejected, Cancelled or Completed event answers `409` with `event-closed`. A
-  booking is only a request until Venue Staff approve it, so asking while the
-  event is still under review costs nothing.
+- **Which events.** Approved and Planning only. The first successful request
+  moves Approved to Planning with an audit entry; later requests leave Planning
+  unchanged. Submitted and Under Review answer `not-approved`; Confirmed,
+  Rejected, Cancelled and Completed answer `event-closed`.
 - **Validation.** A venue that is in the catalogue, and a start and an end as
   `YYYY-MM-DDTHH:MM` (seconds optional), with the end after the start and the
   start not on a past date. Each refusal is a `400` with `invalid_booking` and a
@@ -302,6 +494,37 @@ curl -X POST http://localhost:8000/events/12/bookings/31/cancel \
   `already-cancelled`, including when two cancels race: the update only matches
   a booking that is still Requested. A blank reason, or one over 2,000
   characters, answers `400` with `invalid_booking`.
+
+### Holds expire automatically (US14.4)
+
+A Supabase **pg_cron** job runs `sweep_tentative_holds()` every 15 minutes. It
+moves every hold past its expiry from Held to **Expired** and sends the event's
+Coordinator a "Hold expired" notice, and it sends a "Hold expiring" notice once
+when a hold has less than 24 hours left. The notices are worded exactly as
+`notify_hold_expiring` and `notify_hold_expired` word them.
+
+- **The slot is free at the deadline, not at the next sweep.** Every availability
+  check still compares the expiry with the clock (US14.3); a Held hold past its
+  expiry reads exactly like an Expired one (`Booking.hold_expired`).
+- **Expired is history.** It stays on the event's bookings and the venue's holds
+  list, never holds its venue, and requesting or cancelling it answers `409`
+  `hold-expired`.
+- **No backend scheduler.** The job lives in the database, so it runs whether or
+  not anyone has the API up.
+
+Rolling it out takes two scripts, at different times:
+
+1. [`SUPABASE_US14_4_HOLD_EXPIRY.sql`](SUPABASE_US14_4_HOLD_EXPIRY.sql) — any time.
+   Adds the status, the `expiry_warned_at` column and the function; changes
+   nothing until something calls it.
+2. [`SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql`](SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql)
+   — **only after US14.4 is merged and everyone has pulled.** Older code cannot
+   read the Expired status, so once the job writes it their booking pages answer
+   500.
+
+Run the sweep by hand with `SELECT public.sweep_tentative_holds();`. The SQL is
+tested against the real database by `tests/test_hold_expiry_db.py`, which is
+opt-in (`SPMG3T7_DB_TESTS=1`) and rolls everything back.
 
 ### Venue suitability (US18.1)
 
@@ -592,6 +815,35 @@ off.
 The default matches the Vite dev server, so the frontend works locally with no
 configuration. Deployed environments should set `CORS_ORIGINS` to the real
 frontend URL.
+
+## Continuous integration
+
+## US19 equipment setup
+
+1. Apply `SUPABASE_ADD_NOTIFICATIONS.sql` if US10.1 has not already been applied.
+2. Run the full contents of `SUPABASE_ADD_EQUIPMENT_REQUESTS.sql` in your
+   Supabase SQL Editor. The SQL is rerunnable and preserves existing equipment
+   rows. It also installs an atomic equipment-request audit trail. Alternatively,
+   put a Session Pooler connection string in the gitignored `backend/.env` as
+   `SUPABASE_DB_URL` and run `.venv/Scripts/python.exe apply_equipment_migration.py`.
+   `SUPABASE_DB_URL` is only for this optional migration runner; the API uses
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
+3. Run `.venv/Scripts/python.exe seed_new_users.py --tech-only`. It creates
+   Bryan's `technicalsupport@spmg3t7.edu` Auth login and `Technical Support`
+   profile. New Auth accounts use `PASSWORD`, which defaults to `Sprint1!demo`
+   and can be overridden with `SEED_PASSWORD`. Existing passwords are not reset.
+4. Start the API, then run `.venv/Scripts/python.exe seed_equipment.py`. It
+   signs in through `/auth/login`, creates ten sample items through `/equipment`,
+   and replaces their old generic demo descriptions on reruns. Other edits are
+   preserved. Set `SEED_API_URL` if the API is not on
+   `http://localhost:8000`.
+
+Equipment requests do not reserve stock or change event status. US19.3 owns
+availability checks and reservation. The migration prevents an event from
+leaving Planning while any equipment line remains Requested.
+The event's Organiser and assigned Coordinator see creation, edits, and
+removals in the existing right-hand status history, in time order from Draft,
+with actor, time, and changed values.
 
 ## Continuous integration
 

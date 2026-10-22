@@ -1,0 +1,75 @@
+/* US17.1: the Safety Officer's read-only view of what an event's plan holds. */
+.safety-review {
+  margin-top: 1.25rem;
+}
+
+.safety-review-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.6rem 1rem;
+  margin: 0 0 0.9rem;
+}
+
+.safety-review-facts dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.safety-review-facts dd {
+  margin: 0.15rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.safety-review-heading {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.6rem;
+}
+
+.safety-review-subheading {
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0.35rem;
+}
+
+.safety-review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.safety-review-item {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+}
+
+/* More people than the room holds: the card says so at its edge as well. */
+.safety-review-item.is-warning {
+  border-left: 3px solid var(--danger-border);
+}
+
+.safety-review-item-head {
+  margin-bottom: 0.6rem;
+}
+
+.safety-review-when {
+  margin: 0.2rem 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.safety-review-warning {
+  font-weight: 600;
+  color: var(--danger);
+  margin: 0 0 0.6rem;
+}
+
+.safety-review-restrictions {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.92rem;
+}

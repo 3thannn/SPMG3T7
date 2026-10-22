@@ -5,6 +5,7 @@ import {
   deleteVenue,
   detailOrNotRecorded,
   formatCapacity,
+  formatMinutes,
   getVenue,
   type VenueRecord,
 } from '../venuesStore'
@@ -12,6 +13,7 @@ import { navigate } from '../router'
 import { formatTimestamp } from '../status'
 import { can } from '../permissions'
 import { unexpectedFailureMessage, type Session } from '../api'
+import VenueHolds from '../components/VenueHolds'
 import VenueUnavailability from '../components/VenueUnavailability'
 
 type VenueDetailPageProps = {
@@ -26,8 +28,9 @@ type PageState =
   | { state: 'error' }
 
 /**
- * One venue record — US9.2 to read, US9.1b and US9.1c to act on, and US12.1's
- * unavailable dates for everyone to see and Venue Staff to add to.
+ * One venue record — US9.2 to read, US9.1b and US9.1c to act on, US9.4's setup
+ * and turnaround time, and US12.1's unavailable dates for everyone to see and
+ * Venue Staff to add to.
  *
  * A description list rather than a form, even for Venue Staff: editing happens
  * on its own page, so this one never has inputs and a Coordinator's view of it
@@ -47,6 +50,8 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
   const [busy, setBusy] = useState(false)
 
   const mayEdit = can(session, 'venues:edit')
+  // US14.3: Venue Staff keep a slot for a Coordinator.
+  const mayHold = can(session, 'holds:place')
   const mayDelete = can(session, 'venues:delete')
 
   useEffect(() => {
@@ -169,6 +174,15 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
 
             <dt>Operating hours</dt>
             <dd>{detailOrNotRecorded(venue.operatingHours)}</dd>
+
+            {/* US9.4: shown to everyone who can open the venue, Coordinators
+                included, because each booking holds the room for this long
+                before and after its own times. */}
+            <dt>Setup time</dt>
+            <dd>{formatMinutes(venue.setupMinutes)}</dd>
+
+            <dt>Turnaround time</dt>
+            <dd>{formatMinutes(venue.turnaroundMinutes)}</dd>
           </dl>
 
           {venue.updatedAt && (
@@ -179,6 +193,8 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
         </section>
 
         <VenueUnavailability venueId={venue.id} session={session} mayMark={mayEdit} />
+
+        {mayHold && <VenueHolds venueId={venue.id} session={session} />}
 
         {(mayEdit || mayDelete) && (
           <section className="card venue-actions">

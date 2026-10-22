@@ -83,6 +83,70 @@
   background: var(--bg);
 }
 
+/* US14.3: a hold is tentative. A dashed outline keeps it apart from a request,
+   and nothing about it looks like a confirmation. */
+.booking-status.is-held {
+  color: var(--accent);
+  border: 1px dashed var(--accent);
+  background: var(--bg);
+}
+
+.booking-status.is-held.is-expired {
+  color: var(--muted);
+  border-color: var(--line-strong);
+}
+
+.booking-row.is-expired {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.booking-row.is-expired .booking-venue {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.booking-hold {
+  margin-top: 0.35rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* The summary grid has one action column; a hold can offer two. */
+.booking-summary:has(.booking-request-hold) {
+  grid-template-columns: minmax(10rem, 16rem) 1fr auto auto auto;
+}
+
+/* US16.1: Confirmed is the one result here, so it alone reads as settled. */
+.booking-status.is-confirmed {
+  color: var(--ink-strong);
+  border-color: var(--line-strong);
+  background: var(--bg);
+  font-weight: 700;
+}
+
+.booking-status.is-rejected {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.booking-decision {
+  margin-top: 0.45rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.booking-decision.is-rejected {
+  color: var(--ink);
+}
+
+.booking-suggestion {
+  font-weight: 600;
+}
+
 /* US18.1: what the booking was made for, under the line that says where. */
 .booking-needs {
   margin-top: 0.35rem;
@@ -147,6 +211,24 @@
 
 .booking-verdict.is-unsuitable,
 .booking-verdict.is-error {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+/* US15.1: free or taken is its own line under the suitability verdict, in the
+   same colours, because either one alone can stop the request. */
+.booking-availability {
+  margin-top: 0.5rem;
+}
+
+.booking-verdict.is-available {
+  background: #eaf7ef;
+  border-color: #cfead9;
+  color: #1f6b3f;
+}
+
+.booking-verdict.is-unavailable {
   background: var(--danger-bg);
   border-color: var(--danger-border);
   color: var(--danger);
@@ -247,4 +329,30 @@
   .booking-form .btn {
     width: 100%;
   }
+}
+
+/* US15.2: a flagged booking keeps its status pill; the flag is a note under it,
+   in the danger colours, because the clash needs someone to act. */
+.booking-conflict {
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.86rem;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
+.booking-conflict-tag {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--danger-border);
+  background: var(--bg);
+  white-space: nowrap;
 }

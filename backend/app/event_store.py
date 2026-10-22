@@ -24,22 +24,43 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from app import supabase_client
-from app.event_status import EventStatus
+from app.change_requests import (
+    ChangeReview,
+    FieldChange,
+    applied_values,
+    change_type,
+    is_important,
+    ordered,
+)
+from app.event_needs import NEED_FIELDS, NO_NEEDS, EventNeeds
+from app.event_status import CLOSED, EventStatus, check_completion
 
 EVENTS_TABLE = "events"
 CHANGES_TABLE = "status_changes"
 EVENT_CHANGES_TABLE = "event_changes"
+#: US11.1: an Organiser's proposed changes, kept apart from `event_changes` —
+#: which records changes that were applied — until a Coordinator approves them.
+CHANGE_REQUESTS_TABLE = "event_change_requests"
 
 # US8.1: Two foreign keys to users now exist (organiser_id, coordinator_id),
 # so PostgREST requires explicit relationship qualification via constraint name.
 # US8.4: Fetch both organiser and coordinator names via separate joins.
 EVENT_COLUMNS = (
     "id, name, purpose, description, proposed_date, end_date, expected_attendance, "
+    "venue_requirements, preferred_layout, accessibility_needs, equipment_needs, "
+    "registration_needs, "
     "status, organiser_id, coordinator_id, created_at, updated_at, submitted_at, "
     "organiser:users!events_organiser_id_fkey(name), "
     "coordinator:users!events_coordinator_id_fkey(name)"
 )
 CHANGE_COLUMNS = "id, old_status, new_status, changed_at, notes, changed_by_id, users(name)"
+#: US11.1: a request's rows. Pending rows are the request awaiting review; the
+#: most recently answered ones carry the Coordinator's answer.
+REQUEST_COLUMNS = (
+    "event_id, changed_field, old_value, new_value, change_type, status, "
+    "reviewed_at, review_note, request_note"
+)
+PENDING = "pending"
 
 
 @dataclass(frozen=True)
@@ -57,7 +78,8 @@ class StatusChange:
     at: str
     by_id: int
     by_name: str
-    #: Empty for an automatic entry; a US7.3 request or US7.1 rejection reason.
+    #: Empty for an automatic entry; a US7.3 request, a US7.1 rejection
+    #: reason, or the note on a US11.1 change request.
     notes: str = ""
 
 
@@ -83,10 +105,45 @@ class Event:
     #: US8.4: The assigned Event Coordinator's name, or empty if unassigned.
     coordinator_name: str = ""
     history: tuple[StatusChange, ...] = ()
+    #: US11.1: the "change requested" flag. Not a column: it is true exactly
+    #: when the event has pending `event_change_requests` rows.
+    change_requested: bool = False
+    #: US11.1: what the Organiser has asked for, in form order. Empty unless
+    #: `change_requested` is set.
+    pending_changes: tuple[FieldChange, ...] = ()
+    change_request_note: str = ""
+    #: US11.1: the Coordinator's answer to the most recent request, if any.
+    last_change_review: ChangeReview | None = None
+    #: US2.1 (Sprint 3): what the event needs, as `app.event_needs` describes.
+    #: Empty means not answered yet, which only a draft may leave.
+    venue_requirements: str = ""
+    preferred_layout: str = ""
+    accessibility_needs: str = ""
+    equipment_needs: str = ""
+    registration_needs: str = ""
+
+    @property
+    def needs(self) -> EventNeeds:
+        return EventNeeds(**{name: getattr(self, name) for name in NEED_FIELDS})
 
 
 class StaleEventStatus(RuntimeError):
     """The event changed after the route checked its current status."""
+
+
+@dataclass(frozen=True)
+class CancelledEvent:
+    """US4.6: the event as cancelled, and what the cancellation gave back.
+
+    The ids are the ones this cancellation moved, so a booking cancelled or a
+    line removed earlier is not reported as released again.
+    """
+
+    event: Event
+    #: Venue bookings moved to Cancelled: every one that still held its venue.
+    booking_ids: tuple[int, ...] = ()
+    #: Equipment lines moved to Removed: every one not already removed.
+    equipment_ids: tuple[int, ...] = ()
 
 
 def _now() -> str:
@@ -113,6 +170,15 @@ def to_change(row: dict) -> StatusChange:
     )
 
 
+def to_field_change(row: dict) -> FieldChange:
+    return FieldChange(
+        field=row["changed_field"],
+        old_value=row.get("old_value") or "",
+        new_value=row.get("new_value") or "",
+        important=row.get("change_type") == "important",
+    )
+
+
 def creation_entry(event: "Event") -> StatusChange:
     """The "Created as Draft" entry, derived rather than stored."""
     return StatusChange(
@@ -124,13 +190,35 @@ def creation_entry(event: "Event") -> StatusChange:
     )
 
 
-def to_event(row: dict, changes: list[dict] | None = None) -> Event:
+def latest_review(requests: list[dict]) -> ChangeReview | None:
+    """The answer to the most recent answered request, from its rows.
+
+    Every row of one request is answered together, so they share
+    `reviewed_at`; the latest of those is the request the Organiser last heard
+    back about.
+    """
+    answered = [row for row in requests if row.get("status") != PENDING and row.get("reviewed_at")]
+    if not answered:
+        return None
+    last = max(answered, key=lambda row: str(row["reviewed_at"]))
+    return ChangeReview(
+        outcome=last["status"],
+        at=str(last["reviewed_at"]),
+        note=last.get("review_note") or "",
+        request_note=last.get("request_note") or "",
+    )
+
+
+def to_event(
+    row: dict, changes: list[dict] | None = None, requests: list[dict] | None = None
+) -> Event:
     # US8.4: Extract both organiser and coordinator names from aliased joins
     organiser_joined = row.get("organiser")
     organiser_name = organiser_joined.get("name", "") if isinstance(organiser_joined, dict) else ""
 
     coordinator_joined = row.get("coordinator")
     coordinator_name = coordinator_joined.get("name", "") if isinstance(coordinator_joined, dict) else ""
+
 
     event = Event(
         id=row["id"],
@@ -147,12 +235,30 @@ def to_event(row: dict, changes: list[dict] | None = None) -> Event:
         updated_at=str(row["updated_at"]),
         coordinator_id=row.get("coordinator_id"),
         coordinator_name=coordinator_name,
+        **{name: row.get(name) or "" for name in NEED_FIELDS},
     )
     stored = sorted(
         (to_change(change) for change in changes or []),
         key=lambda change: change.at,
     )
-    return replace(event, history=(creation_entry(event), *stored))
+    pending = ordered(
+        to_field_change(item) for item in requests or [] if item.get("status") == PENDING
+    )
+    return replace(
+        event,
+        history=(creation_entry(event), *stored),
+        change_requested=bool(pending),
+        pending_changes=pending,
+        change_request_note=next(
+            (
+                item.get("request_note") or ""
+                for item in requests or []
+                if item.get("status") == PENDING
+            ),
+            "",
+        ),
+        last_change_review=latest_review(requests or []),
+    )
 
 
 class Repository(Protocol):
@@ -172,6 +278,7 @@ class Repository(Protocol):
         ends_at: str | None,
         expected_attendance: int | None,
         organiser_id: int,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event: ...
 
     def save_event(
@@ -184,6 +291,7 @@ class Repository(Protocol):
         starts_at: str,
         ends_at: str | None,
         expected_attendance: int | None,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event: ...
 
     def save_event_with_tracking(
@@ -198,18 +306,7 @@ class Repository(Protocol):
         expected_attendance: int | None,
         editor_id: int,
         previous_event: Event,
-    ) -> Event: ...
-
-    def create_event_request(
-        self,
-        *,
-        name: str,
-        purpose: str,
-        description: str,
-        starts_at: str,
-        ends_at: str,
-        expected_attendance: int,
-        organiser_id: int,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event: ...
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event: ...
@@ -227,27 +324,41 @@ class Repository(Protocol):
         to_status: EventStatus,
         reason: str,
     ) -> Event: ...
+     
+    def submit_change_request(
+        self,
+        event_id: int,
+        *,
+        actor_id: int,
+        from_status: EventStatus,
+        changes: tuple[FieldChange, ...],
+        note: str,
+    ) -> Event: ...
+
+    def resolve_change_request(
+        self, event_id: int, *, actor_id: int, approve: bool, note: str
+    ) -> Event: ...
 
     def assign_coordinator(
         self, event_id: int, coordinator_id: int, assigned_by_id: int
     ) -> Event: ...
 
+    def complete_event(self, event_id: int, *, actor_id: int) -> Event: ...
+
+    def plan_event(self, event_id: int, *, actor_id: int) -> Event: ...
+
+    def send_to_safety_check(self, event_id: int, *, actor_id: int) -> Event: ...
+
+    def decide_safety_check(
+        self, event_id: int, *, actor_id: int, to_status: EventStatus, note: str
+    ) -> Event: ...
+
+    def cancel_event(
+        self, event_id: int, *, actor_id: int, from_status: EventStatus, reason: str
+    ) -> CancelledEvent: ...
 
 class SupabaseEvents:
     """The real store. Goes through the service role client, like the user store."""
-
-    def _pick_coordinator(self) -> int | None:
-        """US8.1 AC2/AC5: Use database function to pick next coordinator via round-robin.
-
-        The assignment logic lives in the database so backfill and live assignment
-        use the same mechanism. If the function doesn't exist yet (pre-migration),
-        this returns None and events remain unassigned."""
-        try:
-            result = supabase_client.admin().rpc("pick_next_coordinator").execute()
-            return result.data if result.data else None
-        except Exception:
-            # Function doesn't exist yet (pre-migration) or no coordinators exist
-            return None
 
     def _changes_for(self, event_ids: list[int]) -> dict[int, list[dict]]:
         """Every audit row for a page of events, in one query rather than one each."""
@@ -265,6 +376,26 @@ class SupabaseEvents:
             grouped.setdefault(row["event_id"], []).append(row)
         return grouped
 
+    def _requests_for(self, event_ids: list[int]) -> dict[int, list[dict]]:
+        """US11.1: change request rows for a page of events, in one query.
+
+        Pending and answered rows both come back: pending ones are the request
+        to review, and answered ones carry the Coordinator's last answer.
+        """
+        if not event_ids:
+            return {}
+        response = (
+            supabase_client.admin()
+            .table(CHANGE_REQUESTS_TABLE)
+            .select(REQUEST_COLUMNS)
+            .in_("event_id", event_ids)
+            .execute()
+        )
+        grouped: dict[int, list[dict]] = {}
+        for row in response.data or []:
+            grouped.setdefault(row["event_id"], []).append(row)
+        return grouped
+
     def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]:
         """Filter visibility in the database before event data leaves it."""
         query = supabase_client.admin().table(EVENTS_TABLE).select(EVENT_COLUMNS)
@@ -273,8 +404,10 @@ class SupabaseEvents:
         if not include_drafts:
             query = query.neq("status", str(EventStatus.DRAFT))
         rows = query.order("updated_at", desc=True).execute().data or []
-        changes = self._changes_for([row["id"] for row in rows])
-        return [to_event(row, changes.get(row["id"])) for row in rows]
+        event_ids = [row["id"] for row in rows]
+        changes = self._changes_for(event_ids)
+        requests = self._requests_for(event_ids)
+        return [to_event(row, changes.get(row["id"]), requests.get(row["id"])) for row in rows]
 
     def list_unassigned(self) -> list[Event]:
         """US8.2: List events that are Submitted but have no assigned Coordinator."""
@@ -289,7 +422,8 @@ class SupabaseEvents:
             .data or []
         )
         changes = self._changes_for([row["id"] for row in rows])
-        return [to_event(row, changes.get(row["id"])) for row in rows]
+        requests = self._requests_for([row["id"] for row in rows])
+        return [to_event(row, changes.get(row["id"]), requests.get(row["id"])) for row in rows]
 
     def get_event(self, event_id: int) -> Event | None:
         response = (
@@ -302,7 +436,11 @@ class SupabaseEvents:
         )
         if not response.data:
             return None
-        return to_event(response.data[0], self._changes_for([event_id]).get(event_id))
+        return to_event(
+            response.data[0],
+            self._changes_for([event_id]).get(event_id),
+            self._requests_for([event_id]).get(event_id),
+        )
 
     def create_event(
         self,
@@ -314,6 +452,7 @@ class SupabaseEvents:
         ends_at: str | None,
         expected_attendance: int | None,
         organiser_id: int,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         """US4.2: a new event always begins as a Draft."""
         at = _now()
@@ -328,6 +467,7 @@ class SupabaseEvents:
                     "proposed_date": starts_at if starts_at.strip() else None,
                     "end_date": ends_at if ends_at and ends_at.strip() else None,
                     "expected_attendance": expected_attendance,
+                    **needs.as_columns(),
                     "status": str(EventStatus.DRAFT),
                     "organiser_id": organiser_id,
                     "created_at": at,
@@ -352,6 +492,7 @@ class SupabaseEvents:
         starts_at: str,
         ends_at: str | None,
         expected_attendance: int | None,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         """US4.2: saving edits content and never moves the status."""
         supabase_client.admin().table(EVENTS_TABLE).update(
@@ -362,6 +503,7 @@ class SupabaseEvents:
                 "proposed_date": starts_at if starts_at.strip() else None,
                 "end_date": ends_at if ends_at and ends_at.strip() else None,
                 "expected_attendance": expected_attendance,
+                **needs.as_columns(),
                 "updated_at": _now(),
             }
         ).eq("id", event_id).execute()
@@ -381,6 +523,7 @@ class SupabaseEvents:
         expected_attendance: int | None,
         editor_id: int,
         previous_event: Event,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         """US5.2: coordinator edits with change tracking (important vs routine)."""
         at = _now()
@@ -461,6 +604,23 @@ class SupabaseEvents:
                 }
             )
 
+        # US2.1 (Sprint 3): each need is its own column, classified by the same
+        # rule a change request uses.
+        for name, value in needs.as_attrs().items():
+            old_value = getattr(previous_event, name)
+            if value != old_value:
+                changes_to_log.append(
+                    {
+                        "event_id": event_id,
+                        "changed_field": name,
+                        "old_value": old_value,
+                        "new_value": value,
+                        "change_type": "important" if is_important(name) else "routine",
+                        "changed_by_user_id": editor_id,
+                        "changed_at": at,
+                    }
+                )
+
         # Update the event
         supabase_client.admin().table(EVENTS_TABLE).update(
             {
@@ -470,6 +630,7 @@ class SupabaseEvents:
                 "proposed_date": starts_at,
                 "end_date": ends_at,
                 "expected_attendance": expected_attendance,
+                **needs.as_columns(),
                 "updated_at": at,
             }
         ).eq("id", event_id).execute()
@@ -502,10 +663,9 @@ class SupabaseEvents:
         about what happened — the event did exist as a draft, for no time at
         all — and keeps the derived creation entry meaning what it always meant.
 
-        US8.1: Events created already Submitted get assigned a Coordinator.
+        Direct creation leaves the event unassigned for the Lead's queue.
         """
         at = _now()
-        coordinator_id = self._pick_coordinator()
         created = (
             supabase_client.admin()
             .table(EVENTS_TABLE)
@@ -519,7 +679,7 @@ class SupabaseEvents:
                     "expected_attendance": expected_attendance,
                     "status": str(EventStatus.SUBMITTED),
                     "organiser_id": organiser_id,
-                    "coordinator_id": coordinator_id,
+                    "coordinator_id": None,
                     "created_at": at,
                     "updated_at": at,
                     "submitted_at": at,
@@ -639,22 +799,181 @@ class SupabaseEvents:
         assert decided is not None  # noqa: S101 - the row was just updated
         return decided
 
-    def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
-        """US8.3: Manually assign a Coordinator to an event.
+    def submit_change_request(
+        self,
+        event_id: int,
+        *,
+        actor_id: int,
+        from_status: EventStatus,
+        changes: tuple[FieldChange, ...],
+        note: str,
+    ) -> Event:
+        """Store the proposal and flag; only assigned Submitted events move status.
 
-        The assignment is permanent (no reassignment) and updates the event's
-        coordinator_id. No status change occurs (event stays Submitted)."""
-        at = _now()
-        supabase_client.admin().table(EVENTS_TABLE).update(
+        The proposal goes to event_change_requests, not event_changes:
+        nothing has changed yet. The status move, the request rows and the
+        history entry must not come apart, so the RPC is the transaction
+        boundary, as it is for US7.1. It locks the event and re-checks the
+        status and that nothing is pending, so a concurrent request or decision
+        is reported as stale rather than overwritten.
+        """
+        result = supabase_client.admin().rpc(
+            "submit_change_request",
             {
-                "coordinator_id": coordinator_id,
-                "updated_at": at,
-            }
-        ).eq("id", event_id).execute()
+                "p_event_id": event_id,
+                "p_expected_status": str(from_status),
+                "p_changed_by_id": actor_id,
+                "p_changes": [
+                    {
+                        "changed_field": change.field,
+                        "old_value": change.old_value,
+                        "new_value": change.new_value,
+                        "change_type": change_type(change),
+                    }
+                    for change in changes
+                ],
+                "p_notes": note or None,
+            },
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
+        requested = self.get_event(event_id)
+        assert requested is not None  # noqa: S101 - the row was just updated
+        return requested
+
+    def resolve_change_request(
+        self, event_id: int, *, actor_id: int, approve: bool, note: str
+    ) -> Event:
+        """US11.1: approve (apply) or reject the pending proposal, and clear the flag.
+
+        Approving applies each field and only then logs it to event_changes,
+        as the US5.2 change it now is; rejecting logs nothing there. The request
+        rows are kept, marked approved or rejected, with who answered, when,
+        and the reason. No status-history entry is added: the status does not
+        move.
+
+        Answering a request never changes the event's current status.
+        """
+        result = supabase_client.admin().rpc(
+            "resolve_change_request",
+            {
+                "p_event_id": event_id,
+                "p_approve": approve,
+                "p_changed_by_id": actor_id,
+                "p_notes": note or None,
+            },
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
+        resolved = self.get_event(event_id)
+        assert resolved is not None  # noqa: S101 - the row was just updated
+        return resolved
+
+    def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
+        """Assign and audit Submitted -> Under Review in one transaction."""
+        result = supabase_client.admin().rpc(
+            "assign_event_coordinator",
+            {
+                "p_event_id": event_id,
+                "p_coordinator_id": coordinator_id,
+                "p_assigned_by_id": assigned_by_id,
+            },
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
         assigned = self.get_event(event_id)
-        assert assigned is not None  # noqa: S101 — the row was just updated
+        assert assigned is not None  # noqa: S101 - the row was just updated
         return assigned
 
+    def complete_event(self, event_id: int, *, actor_id: int) -> Event:
+        """Complete only an ended Confirmed event, with its audit entry."""
+        result = supabase_client.admin().rpc(
+            "complete_event_status",
+            {"p_event_id": event_id, "p_coordinator_id": actor_id},
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
+        completed = self.get_event(event_id)
+        assert completed is not None  # noqa: S101 - the row was just updated
+        return completed
+
+    def plan_event(self, event_id: int, *, actor_id: int) -> Event:
+        return self.decide_event(
+            event_id, actor_id=actor_id, from_status=EventStatus.APPROVED,
+            to_status=EventStatus.PLANNING, reason="",
+        )
+
+    def send_to_safety_check(self, event_id: int, *, actor_id: int) -> Event:
+        """US4.4: Planning -> Pending Safety Check, with its audit entry.
+
+        The RPC locks the event and re-checks readiness — every active booking
+        Confirmed and unflagged, no outstanding equipment line, no pending
+        change request — so a booking or line that changed after the route's
+        check is reported as stale rather than slipping through.
+        """
+        result = supabase_client.admin().rpc(
+            "send_event_to_safety_check",
+            {"p_event_id": event_id, "p_coordinator_id": actor_id},
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
+        sent = self.get_event(event_id)
+        assert sent is not None  # noqa: S101 - the row was just updated
+        return sent
+
+    def decide_safety_check(
+        self, event_id: int, *, actor_id: int, to_status: EventStatus, note: str
+    ) -> Event:
+        """US4.4: Pending Safety Check -> Confirmed or back to Planning, audited.
+
+        The RPC only moves an event that is still Pending Safety Check, and
+        only for a Safety Officer, so a second decision on the same check
+        fails rather than overwriting the first.
+        """
+        result = supabase_client.admin().rpc(
+            "decide_safety_check",
+            {
+                "p_event_id": event_id,
+                "p_new_status": str(to_status),
+                "p_officer_id": actor_id,
+                "p_notes": note or None,
+            },
+        ).execute()
+        if result.data is not True:
+            raise StaleEventStatus
+        decided = self.get_event(event_id)
+        assert decided is not None  # noqa: S101 - the row was just updated
+        return decided
+
+    def cancel_event(
+        self, event_id: int, *, actor_id: int, from_status: EventStatus, reason: str
+    ) -> CancelledEvent:
+        """US4.6: Cancelled, with its audit entry, and everything it held released.
+
+        One RPC, so the status, the history row, the cancelled bookings and the
+        removed equipment lines land together or not at all. It locks the
+        event, re-checks the status and that the actor owns it or is assigned
+        to it, and answers null - changing nothing - when any of that fails.
+        """
+        result = supabase_client.admin().rpc(
+            "cancel_event",
+            {
+                "p_event_id": event_id,
+                "p_expected_status": str(from_status),
+                "p_actor_id": actor_id,
+                "p_reason": reason,
+            },
+        ).execute()
+        released = result.data
+        if not isinstance(released, dict):
+            raise StaleEventStatus
+        cancelled = self.get_event(event_id)
+        assert cancelled is not None  # noqa: S101 - the row was just updated
+        return CancelledEvent(
+            event=cancelled,
+            booking_ids=tuple(released.get("bookings") or ()),
+            equipment_ids=tuple(released.get("equipment") or ()),
+        )
 
 @dataclass
 class InMemoryEvents:
@@ -664,48 +983,17 @@ class InMemoryEvents:
     #: user id -> display name, standing in for the joined `users(name)`.
     names: dict[int, str] = field(default_factory=dict)
     next_id: int = 100
-    #: US8.1 AC2: Track the last assigned coordinator ID for round-robin.
-    last_assigned_coordinator_id: int | None = None
+    #: US11.1: `event_change_requests` rows as `(event_id, change, status)`.
+    #: Pending rows are also on the event as `pending_changes`; this keeps
+    #: every request, including the ones answered.
+    change_requests: list[tuple[int, FieldChange, str]] = field(default_factory=list)
+    #: `event_changes` rows as `(event_id, change)` — changes that were applied.
+    #: Only an approved request adds to it.
+    change_log: list[tuple[int, FieldChange]] = field(default_factory=list)
 
     def _replace(self, event: Event) -> Event:
         self.events = [event if item.id == event.id else item for item in self.events]
         return event
-
-    def _pick_coordinator(self) -> int | None:
-        """US8.1 AC2: Select a Coordinator via round-robin. Returns None if none exist."""
-        from app import users
-        from app.permissions import Role
-
-        # Get all coordinators from the user store, sorted by ID for consistency
-        all_users = users.list_users()
-        coordinators = sorted(
-            [u for u in all_users if u.role == Role.COORDINATOR],
-            key=lambda u: u.id
-        )
-
-        if not coordinators:
-            return None
-
-        # Round-robin: find the next coordinator after the last assigned one
-        if self.last_assigned_coordinator_id is None:
-            # First assignment: pick the first coordinator
-            next_coordinator = coordinators[0]
-        else:
-            # Find the last assigned coordinator's index
-            try:
-                last_index = next(
-                    i for i, c in enumerate(coordinators)
-                    if c.id == self.last_assigned_coordinator_id
-                )
-                # Pick the next one, wrapping around if needed
-                next_coordinator = coordinators[(last_index + 1) % len(coordinators)]
-            except StopIteration:
-                # Last assigned coordinator no longer exists, start from beginning
-                next_coordinator = coordinators[0]
-
-        # Remember this assignment for next time
-        self.last_assigned_coordinator_id = next_coordinator.id
-        return next_coordinator.id
 
     def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]:
         visible = [
@@ -739,6 +1027,7 @@ class InMemoryEvents:
         ends_at: str | None,
         expected_attendance: int | None,
         organiser_id: int,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         at = _now()
         self.next_id += 1
@@ -755,6 +1044,7 @@ class InMemoryEvents:
             organiser_name=self.names.get(organiser_id, ""),
             created_at=at,
             updated_at=at,
+            **needs.as_attrs(),
         )
         event = replace(event, history=(creation_entry(event),))
         self.events.insert(0, event)
@@ -770,6 +1060,7 @@ class InMemoryEvents:
         starts_at: str,
         ends_at: str | None,
         expected_attendance: int | None,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 — the caller checked it exists
@@ -782,6 +1073,7 @@ class InMemoryEvents:
                 starts_at=starts_at,
                 ends_at=ends_at or "",
                 expected_attendance=expected_attendance,
+                **needs.as_attrs(),
                 updated_at=_now(),
             )
         )
@@ -798,6 +1090,7 @@ class InMemoryEvents:
         expected_attendance: int | None,
         editor_id: int,
         previous_event: Event,
+        needs: EventNeeds = NO_NEEDS,
     ) -> Event:
         """In-memory version of coordinator edits. Change tracking is not implemented in memory."""
         return self.save_event(
@@ -808,6 +1101,7 @@ class InMemoryEvents:
             starts_at=starts_at,
             ends_at=ends_at,
             expected_attendance=expected_attendance,
+            needs=needs,
         )
 
     def create_event_request(
@@ -823,10 +1117,9 @@ class InMemoryEvents:
     ) -> Event:
         """The same two writes as the Supabase store, and the same history.
 
-        US8.1: Events created already Submitted get assigned a Coordinator."""
+        Direct creation leaves the event unassigned for the Lead's queue."""
         at = _now()
         self.next_id += 1
-        coordinator_id = self._pick_coordinator()
         event = Event(
             id=self.next_id,
             title=name,
@@ -840,7 +1133,7 @@ class InMemoryEvents:
             organiser_name=self.names.get(organiser_id, ""),
             created_at=at,
             updated_at=at,
-            coordinator_id=coordinator_id,
+            coordinator_id=None,
         )
         submission = StatusChange(
             from_status=EventStatus.DRAFT,
@@ -931,16 +1224,181 @@ class InMemoryEvents:
             )
         )
 
+    def submit_change_request(
+        self,
+        event_id: int,
+        *,
+        actor_id: int,
+        from_status: EventStatus,
+        changes: tuple[FieldChange, ...],
+        note: str,
+    ) -> Event:
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        if existing.status is not from_status or existing.change_requested:
+            raise StaleEventStatus
+        at = _now()
+        move_to_review = (
+            from_status is EventStatus.SUBMITTED and existing.coordinator_id is not None
+        )
+        new_status = EventStatus.UNDER_REVIEW if move_to_review else from_status
+        entry = StatusChange(
+            from_status=from_status,
+            to_status=new_status,
+            at=at,
+            by_id=actor_id,
+            by_name=self.names.get(actor_id, ""),
+            notes=note,
+        ) if move_to_review else None
+        self.change_requests.extend((event_id, change, "pending") for change in changes)
+        return self._replace(
+            replace(
+                existing,
+                status=new_status,
+                updated_at=at,
+                change_requested=True,
+                pending_changes=ordered(changes),
+                change_request_note=note,
+                history=(*existing.history, entry) if entry else existing.history,
+            )
+        )
+
+    def resolve_change_request(
+        self, event_id: int, *, actor_id: int, approve: bool, note: str
+    ) -> Event:
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        if not existing.change_requested or existing.status not in (
+            EventStatus.UNDER_REVIEW, EventStatus.APPROVED, EventStatus.PLANNING
+        ):
+            raise StaleEventStatus
+        at = _now()
+        outcome = "approved" if approve else "rejected"
+
+        def answered(row_event: int, status: str) -> str:
+            return outcome if row_event == event_id and status == "pending" else status
+
+        self.change_requests = [
+            (row_event, change, answered(row_event, status))
+            for row_event, change, status in self.change_requests
+        ]
+        if approve:
+            self.change_log.extend((event_id, change) for change in existing.pending_changes)
+        applied = applied_values(existing.pending_changes) if approve else {}
+        return self._replace(
+            replace(
+                existing,
+                **applied,
+                updated_at=at,
+                change_requested=False,
+                pending_changes=(),
+                change_request_note="",
+                last_change_review=ChangeReview(
+                    outcome=outcome, at=at, note=note,
+                    request_note=existing.change_request_note,
+                ),
+            )
+        )
+
     def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
         """US8.3: Manually assign a Coordinator to an event."""
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 - the caller checked it exists
+        if existing.status is not EventStatus.SUBMITTED or existing.coordinator_id is not None:
+            raise StaleEventStatus
+        at = _now()
+        entry = StatusChange(
+            from_status=EventStatus.SUBMITTED,
+            to_status=EventStatus.UNDER_REVIEW,
+            at=at,
+            by_id=assigned_by_id,
+            by_name=self.names.get(assigned_by_id, ""),
+        )
         return self._replace(
             replace(
                 existing,
                 coordinator_id=coordinator_id,
-                updated_at=_now(),
+                status=EventStatus.UNDER_REVIEW,
+                updated_at=at,
+                history=(*existing.history, entry),
             )
+        )
+
+    def complete_event(self, event_id: int, *, actor_id: int) -> Event:
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        if existing.status is not EventStatus.CONFIRMED or existing.coordinator_id != actor_id:
+            raise StaleEventStatus
+        if check_completion(existing.ends_at) is not None:
+            raise StaleEventStatus
+        at = _now()
+        entry = StatusChange(
+            from_status=EventStatus.CONFIRMED,
+            to_status=EventStatus.COMPLETED,
+            at=at,
+            by_id=actor_id,
+            by_name=self.names.get(actor_id, ""),
+        )
+        return self._replace(
+            replace(
+                existing, status=EventStatus.COMPLETED, updated_at=at,
+                history=(*existing.history, entry),
+            )
+        )
+
+    def plan_event(self, event_id: int, *, actor_id: int) -> Event:
+        return self.decide_event(
+            event_id, actor_id=actor_id, from_status=EventStatus.APPROVED,
+            to_status=EventStatus.PLANNING, reason="",
+        )
+
+    def send_to_safety_check(self, event_id: int, *, actor_id: int) -> Event:
+        """Readiness is the route's check here; the real store's RPC repeats it."""
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        if existing.status is not EventStatus.PLANNING or existing.coordinator_id != actor_id:
+            raise StaleEventStatus
+        return self.decide_event(
+            event_id, actor_id=actor_id, from_status=EventStatus.PLANNING,
+            to_status=EventStatus.PENDING_SAFETY_CHECK, reason="",
+        )
+
+    def decide_safety_check(
+        self, event_id: int, *, actor_id: int, to_status: EventStatus, note: str
+    ) -> Event:
+        return self.decide_event(
+            event_id, actor_id=actor_id, from_status=EventStatus.PENDING_SAFETY_CHECK,
+            to_status=to_status, reason=note,
+        )
+
+    def cancel_event(
+        self, event_id: int, *, actor_id: int, from_status: EventStatus, reason: str
+    ) -> CancelledEvent:
+        """The RPC's checks and writes, against the in-memory stores beside this one.
+
+        Imported here because both of those stores import this module.
+        """
+        from app import booking_store, equipment_store
+
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        may_cancel = actor_id == existing.organiser_id or (
+            actor_id == existing.coordinator_id and existing.status is not EventStatus.DRAFT
+        )
+        if existing.status is not from_status or from_status in CLOSED or not may_cancel:
+            raise StaleEventStatus
+        bookings = booking_store.repository()
+        equipment = equipment_store.repository()
+        assert isinstance(bookings, booking_store.InMemoryBookings)  # noqa: S101
+        assert isinstance(equipment, equipment_store.InMemoryEquipment)  # noqa: S101
+        cancelled = self.decide_event(
+            event_id, actor_id=actor_id, from_status=from_status,
+            to_status=EventStatus.CANCELLED, reason=reason,
+        )
+        return CancelledEvent(
+            event=cancelled,
+            booking_ids=bookings.release_for_event(event_id, actor_id=actor_id, reason=reason),
+            equipment_ids=equipment.release_for_event(event_id, actor_id=actor_id),
         )
 
 

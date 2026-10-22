@@ -14,10 +14,20 @@ import {
   splitNeeds,
   validateBooking,
   approveEvent,
+  approveEventChange,
+  approveSafetyCheck,
+  cancelEvent,
+  getSafetyReadiness,
+  getSafetyReview,
+  listSafetyQueue,
+  returnSafetyCheck,
+  sendForSafetyCheck,
   createEvent,
   getEvent,
   listEvents,
   rejectEvent,
+  rejectEventChange,
+  requestEventChange,
   saveEvent,
   submitEvent,
 } from './eventsStore'
@@ -232,6 +242,75 @@ describe('event decisions', () => {
   })
 })
 
+describe('US11.1 change requests', () => {
+  it('posts the form values and the note to the change-request route', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Under Review', changeRequested: true }))
+
+    const requested = await requestEventChange(
+      '101',
+      { ...DRAFT, title: 'Welcome Night' },
+      'Renamed.',
+      session,
+    )
+
+    expect(requested.changeRequested).toBe(true)
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/change-request')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+    expect(spy.mock.calls[0][1].headers.Authorization).toBe('Bearer session-token')
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({
+      ...DRAFT,
+      title: 'Welcome Night',
+      note: 'Renamed.',
+    })
+  })
+
+  it('posts an approval to the approve route', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Under Review', changeRequested: false }))
+
+    const approved = await approveEventChange('101', session)
+
+    expect(approved.changeRequested).toBe(false)
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/change-request/approve')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+  })
+
+  it('posts a rejection reason to the reject route', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Under Review' }))
+
+    await rejectEventChange('101', 'Booked.', session)
+
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/change-request/reject')
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({ reason: 'Booked.' })
+  })
+
+  it.each([
+    [409, 'rule_refused', 'A change request for this event is already awaiting review.'],
+    [400, 'invalid_event', 'Change at least one detail before requesting a change.'],
+    [403, 'forbidden', 'The Event Coordinator role cannot submit events for approval.'],
+  ])('turns a %i refusal into a rule error the page can show', async (status, code, message) => {
+    stubFetch(failure(status, code, message))
+
+    await expect(requestEventChange('101', DRAFT, '', session)).rejects.toEqual(
+      new EventRuleError(message),
+    )
+  })
+
+  it('surfaces a refused approval or rejection as a rule error', async () => {
+    stubFetch(failure(409, 'rule_refused', 'There is no change request awaiting review.'))
+    await expect(approveEventChange('101', session)).rejects.toBeInstanceOf(EventRuleError)
+
+    stubFetch(failure(400, 'invalid_event', 'Tell the Organiser why.'))
+    await expect(rejectEventChange('101', '', session)).rejects.toBeInstanceOf(EventRuleError)
+  })
+
+  it('lets a server fault through unchanged, for the page to explain', async () => {
+    stubFetch(failure(500, 'unknown', 'Boom'))
+    await expect(requestEventChange('101', DRAFT, '', session)).rejects.toBeInstanceOf(ApiError)
+    await expect(approveEventChange('101', session)).rejects.not.toBeInstanceOf(EventRuleError)
+    await expect(rejectEventChange('101', 'x', session)).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
 describe('US18.1: the booking form as the API reads it', () => {
   const form = {
     venueId: '1',
@@ -267,5 +346,98 @@ describe('US18.1: the booking form as the API reads it', () => {
     )
     expect(validateBooking({ ...form, headcount: '0' })).toBe('The headcount must be at least 1.')
     expect(validateBooking(form)).toBe('')
+  })
+})
+describe('US4.4 safety check', () => {
+  it('reads whether the event is ready to send', async () => {
+    const readiness = { ready: false, reason: 'venue-not-confirmed', message: 'Wait.' }
+    const spy = stubFetch(ok(readiness))
+
+    expect(await getSafetyReadiness('101', session)).toEqual(readiness)
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check')
+    expect(spy.mock.calls[0][1].method).toBeUndefined()
+  })
+
+  it('posts to send the event for its check', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Pending Safety Check' }))
+
+    const sent = await sendForSafetyCheck('101', session)
+
+    expect(sent.status).toBe('Pending Safety Check')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+  })
+
+  it('lists the Safety Officer queue', async () => {
+    const spy = stubFetch(ok([{ ...EVENT, status: 'Pending Safety Check' }]))
+
+    const queue = await listSafetyQueue(session)
+
+    expect(queue.map((item) => item.id)).toEqual(['101'])
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/safety-check')
+  })
+
+  it('posts the sign-off and the send-back with its note', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Confirmed' }))
+    expect((await approveSafetyCheck('101', session)).status).toBe('Confirmed')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check/approve')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+
+    const back = stubFetch(ok({ ...EVENT, status: 'Planning' }))
+    expect((await returnSafetyCheck('101', 'Fix exits', session)).status).toBe('Planning')
+    expect(back.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check/return')
+    expect(back.mock.calls[0][1].method).toBe('POST')
+    expect(JSON.parse(back.mock.calls[0][1].body)).toEqual({ note: 'Fix exits' })
+  })
+
+  it('turns refusals into rule errors and lets a lapsed session through', async () => {
+    stubFetch(failure(409, 'rule_refused', 'Every active venue booking must be Confirmed.'))
+    await expect(sendForSafetyCheck('101', session)).rejects.toBeInstanceOf(EventRuleError)
+    await expect(approveSafetyCheck('101', session)).rejects.toBeInstanceOf(EventRuleError)
+    await expect(returnSafetyCheck('101', 'x', session)).rejects.toBeInstanceOf(EventRuleError)
+
+    stubFetch(failure(401, 'session_expired', 'Sign in again.'))
+    await expect(sendForSafetyCheck('101', session)).rejects.toBeInstanceOf(ApiError)
+    await expect(approveSafetyCheck('101', session)).rejects.toBeInstanceOf(ApiError)
+    await expect(returnSafetyCheck('101', 'x', session)).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('US17.1 safety review', () => {
+  it('reads the review for one event', async () => {
+    const review = { eventId: '101', venues: [], equipment: [] }
+    const spy = stubFetch(ok(review))
+
+    expect(await getSafetyReview('101', session)).toEqual(review)
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-review')
+    expect(spy.mock.calls[0][1].method).toBeUndefined()
+  })
+
+  it('lets a refusal through as an ApiError', async () => {
+    stubFetch(failure(403, 'forbidden', 'The Event Coordinator role cannot review event safety.'))
+    await expect(getSafetyReview('101', session)).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('US4.6 cancelling an event', () => {
+  it('posts the reason and returns the cancelled event', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Cancelled' }))
+
+    expect((await cancelEvent('101', 'Funding was withdrawn.', session)).status).toBe('Cancelled')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/cancel')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({ reason: 'Funding was withdrawn.' })
+  })
+
+  it('turns refusals into rule errors and lets a lapsed session through', async () => {
+    stubFetch(failure(409, 'rule_refused', 'This event has already been cancelled.'))
+    await expect(cancelEvent('101', 'x', session)).rejects.toThrow(
+      new EventRuleError('This event has already been cancelled.'),
+    )
+    stubFetch(failure(400, 'invalid_event', 'Give a reason for cancelling this event.'))
+    await expect(cancelEvent('101', '', session)).rejects.toBeInstanceOf(EventRuleError)
+
+    stubFetch(failure(401, 'session_expired', 'Sign in again.'))
+    await expect(cancelEvent('101', 'x', session)).rejects.toBeInstanceOf(ApiError)
   })
 })

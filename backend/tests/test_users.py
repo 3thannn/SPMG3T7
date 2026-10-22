@@ -21,9 +21,9 @@ class TestReadingARow:
         assert user.role is Role.ORGANISER
         assert Permission.EVENTS_CREATE in user.permissions
 
-    def test_a_role_this_build_does_not_model_is_skipped_not_raised(self):
-        """The enum has five values; this build has features for three of them."""
-        for role in ("Technical Support", "Attendee"):
+    def test_an_unmodelled_role_is_skipped_not_raised(self):
+        """Attendee remains unavailable until its own features arrive."""
+        for role in ("Attendee",):
             assert to_user({**ROW, "role": role}) is None
 
     def test_venue_staff_became_a_modelled_role_with_us9_1(self):

@@ -386,3 +386,13 @@ it('blocks other roles from accessing the safety review page', async () => {
     'The Event Organiser role cannot open the safety review queue. That is available to Safety Officer.',
   )
 })
+
+it('TC-FF24 routes Venue Staff to the booking conflicts page', async () => {
+  signedInAs('Venue Staff')
+  stubApi({ me: 'ok', role: 'Venue Staff' })
+  window.location.hash = '/booking-conflicts'
+
+  render(<App />)
+
+  expect(await screen.findByRole('heading', { name: 'Booking conflicts' })).toBeInTheDocument()
+})

@@ -1,5 +1,5 @@
 /**
- * Venue data access — US9.1a-c, US9.2, US9.3 and US12.1.
+ * Venue data access — US9.1a-c, US9.2, US9.3, US9.4 and US12.1.
  *
  * A thin layer over `/venues`, the same shape `eventsStore` settled into. Four
  * stories share this module and they do not share a role: a Coordinator reads
@@ -30,6 +30,13 @@ export type VenueRecord = {
   operatingHours: string
   /** `venues.supported_layouts`, the column US9.1a added. */
   supportedLayouts: string
+  /**
+   * US9.4: whole minutes the venue is still occupied before each booking
+   * (setup) and after it (turnaround). The server always sends both; optional
+   * so fixtures that predate US9.4 still type-check, and read as 0 when absent.
+   */
+  setupMinutes?: number
+  turnaroundMinutes?: number
   createdAt: string
   updatedAt: string
 }
@@ -50,6 +57,9 @@ export type VenueInput = {
   accessibilityFeatures: string
   operatingHours: string
   supportedLayouts: string
+  /** US9.4: whole minutes, 0 to `MINUTES_MAX`. */
+  setupMinutes: number
+  turnaroundMinutes: number
 }
 
 /** An empty form — also what Clear resets the filters to. */
@@ -61,7 +71,47 @@ export const EMPTY_VENUE: VenueInput = {
   accessibilityFeatures: '',
   operatingHours: '',
   supportedLayouts: '',
+  setupMinutes: 0,
+  turnaroundMinutes: 0,
 }
+
+/** One booking in a US9.4 conflict: its own times and what it really occupies. */
+export type BookingWindow = {
+  bookingId: string
+  eventId: string
+  startsAt: string
+  endsAt: string
+  occupiedFrom: string
+  occupiedTo: string
+}
+
+export type VenueConflict = {
+  first: BookingWindow
+  second: BookingWindow
+  /** True when the new setup or turnaround time is what made the pair clash. */
+  causedByChange: boolean
+}
+
+/**
+ * US9.4 kicks off US15.2's re-check when setup or turnaround changes. Bookings
+ * that now clash are listed here; nothing is cancelled or removed.
+ */
+export type VenueRecheck = {
+  setupMinutes: number
+  turnaroundMinutes: number
+  checkedBookings: number
+  conflicts: VenueConflict[]
+  /**
+   * US15.2: bookings this change marked "Conflict – review needed", with their
+   * Coordinators notified. Optional so an older server's answer reads as none.
+   */
+  flaggedBookingIds?: string[]
+  /** US15.2: flagged bookings whose clash this change resolved. */
+  clearedBookingIds?: string[]
+}
+
+/** What saving a venue returns: the record, plus the re-check when one ran. */
+export type SavedVenue = VenueRecord & { recheck?: VenueRecheck | null }
 
 /**
  * US9.3: narrow the catalogue by capacity, location and accessibility.
@@ -217,14 +267,14 @@ export async function saveVenue(
   id: string,
   input: VenueInput,
   session: Session,
-): Promise<VenueRecord> {
+): Promise<SavedVenue> {
   try {
     const response = await authorizedFetch(`/venues/${id}`, session.token, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     })
-    return (await response.json()) as VenueRecord
+    return (await response.json()) as SavedVenue
   } catch (error) {
     return asRuleError(error)
   }
@@ -276,6 +326,51 @@ export function capacityField(value: number | null): string {
   return value === null ? '' : String(value)
 }
 
+// --- US9.4: setup and turnaround time -----------------------------------------
+
+/**
+ * The server's ceiling: a day. Team-chosen, not customer-confirmed — more than
+ * a day to set up or reset a room is a typing mistake.
+ */
+export const MINUTES_MAX = 1440
+
+const MINUTE_LABELS = { setup: 'setup time', turnaround: 'turnaround time' } as const
+export type MinutesField = keyof typeof MINUTE_LABELS
+
+/**
+ * Read a setup or turnaround box: whole minutes, 0 to `MINUTES_MAX`. An empty
+ * box is 0, the story's default. Returns the minutes or the sentence the
+ * server would send, so the form and the API say the same thing.
+ */
+export function parseMinutes(raw: string, which: MinutesField): number | string {
+  const label = MINUTE_LABELS[which]
+  const trimmed = raw.trim()
+  if (!trimmed) return 0
+  if (/^-\d+$/.test(trimmed)) return `The ${label} cannot be negative.`
+  if (!/^\d+$/.test(trimmed)) return `Give the ${label} as a whole number of minutes, 0 or more.`
+  const value = Number(trimmed)
+  if (value > MINUTES_MAX) {
+    return `Keep the ${label} to ${MINUTES_MAX} minutes (24 hours) or fewer.`
+  }
+  return value
+}
+
+/** A stored value as the form shows it; a record that predates US9.4 shows 0. */
+export function minutesField(value: number | undefined): string {
+  return String(value ?? 0)
+}
+
+/** "None", "1 minute", "45 minutes", "90 minutes (1 h 30 min)". */
+export function formatMinutes(value: number | undefined): string {
+  const minutes = value ?? 0
+  if (minutes <= 0) return 'None'
+  if (minutes === 1) return '1 minute'
+  if (minutes < 60) return `${minutes} minutes`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return `${minutes} minutes (${hours} h${rest ? ` ${rest} min` : ''})`
+}
+
 /**
  * US9.1a: name, location and a positive capacity are required; the rest is not.
  *
@@ -289,6 +384,11 @@ export function validateVenue(input: VenueInput): string {
   if (input.capacity === null) return 'Give the venue a capacity.'
   if (!Number.isInteger(input.capacity) || input.capacity < 1) {
     return 'Capacity must be a positive whole number of people.'
+  }
+  for (const which of ['setup', 'turnaround'] as const) {
+    const value = which === 'setup' ? input.setupMinutes : input.turnaroundMinutes
+    const read = parseMinutes(String(value), which)
+    if (typeof read === 'string') return read
   }
   return ''
 }

@@ -26,11 +26,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import booking_store, venue_store, venue_unavailability_store
+from app import (
+    booking_store,
+    conflict_flags,
+    venue_store,
+    venue_turnaround,
+    venue_unavailability_store,
+)
 from app.auth import require_permission
 from app.permissions import Permission
 from app.users import User
 from app.venue_store import DuplicateVenueName, Venue, VenueFilters
+from app.venue_turnaround import BookingConflict, InvalidMinutes, OccupiedBooking, Recheck
 from app.venue_unavailability_store import Unavailability
 
 router = APIRouter(prefix="/venues", tags=["venues"])
@@ -56,6 +63,10 @@ class VenueOut(BaseModel):
     accessibility_features: str = Field(serialization_alias="accessibilityFeatures")
     operating_hours: str = Field(serialization_alias="operatingHours")
     supported_layouts: str = Field(serialization_alias="supportedLayouts")
+    #: US9.4: whole minutes before and after each booking that the venue is
+    #: still occupied. 0 when Venue Staff have not set one.
+    setup_minutes: int = Field(serialization_alias="setupMinutes")
+    turnaround_minutes: int = Field(serialization_alias="turnaroundMinutes")
     created_at: str = Field(serialization_alias="createdAt")
     updated_at: str = Field(serialization_alias="updatedAt")
 
@@ -70,6 +81,8 @@ def _to_out(venue: Venue) -> VenueOut:
         accessibility_features=venue.accessibility_features,
         operating_hours=venue.operating_hours,
         supported_layouts=venue.supported_layouts,
+        setup_minutes=venue.setup_minutes,
+        turnaround_minutes=venue.turnaround_minutes,
         created_at=venue.created_at,
         updated_at=venue.updated_at,
     )
@@ -228,6 +241,13 @@ class VenueInput(BaseModel):
     accessibility_features: str = Field(default="", alias="accessibilityFeatures")
     operating_hours: str = Field(default="", alias="operatingHours")
     supported_layouts: str = Field(default="", alias="supportedLayouts")
+    #: US9.4: whole minutes, 0 or more, 0 when left out. Typed loosely so a
+    #: decimal, a word or `true` is a sentence from `_validated` rather than a
+    #: 422; `venue_turnaround.parse_minutes` is the one reading of them.
+    setup_minutes: bool | int | float | str | None = Field(default=None, alias="setupMinutes")
+    turnaround_minutes: bool | int | float | str | None = Field(
+        default=None, alias="turnaroundMinutes"
+    )
 
 
 #: `venues.name` is VARCHAR(255) and `venues.location` VARCHAR(500). Checking
@@ -272,6 +292,13 @@ def _validated(payload: VenueInput) -> VenueInput:
         raise _invalid("Capacity must be a positive whole number of people.")
     if payload.capacity > CAPACITY_MAX:
         raise _invalid("That capacity is larger than any venue this system can hold.")
+    try:
+        setup = venue_turnaround.parse_minutes(payload.setup_minutes, which="setup")
+        turnaround = venue_turnaround.parse_minutes(
+            payload.turnaround_minutes, which="turnaround"
+        )
+    except InvalidMinutes as error:
+        raise _invalid(str(error)) from None
 
     return VenueInput(
         name=name,
@@ -281,7 +308,17 @@ def _validated(payload: VenueInput) -> VenueInput:
         accessibility_features=payload.accessibility_features.strip(),
         operating_hours=payload.operating_hours.strip(),
         supported_layouts=payload.supported_layouts.strip(),
+        setup_minutes=setup,
+        turnaround_minutes=turnaround,
     )
+
+
+def _minutes(clean: VenueInput) -> dict[str, int]:
+    """The two US9.4 values of a validated input, as the store takes them."""
+    return {
+        "setup_minutes": int(clean.setup_minutes or 0),
+        "turnaround_minutes": int(clean.turnaround_minutes or 0),
+    }
 
 
 def _taken(error: DuplicateVenueName) -> HTTPException:
@@ -308,23 +345,104 @@ def create_venue(
             accessibility_features=clean.accessibility_features,
             operating_hours=clean.operating_hours,
             supported_layouts=clean.supported_layouts,
+            **_minutes(clean),
         )
     except DuplicateVenueName as error:
         raise _taken(error) from error
     return _to_out(created)
 
 
-@router.put("/{venue_id}", response_model=VenueOut)
+class BookingWindowOut(BaseModel):
+    """One booking in a US9.4 conflict: its own times and what it really occupies."""
+
+    booking_id: str = Field(serialization_alias="bookingId")
+    event_id: str = Field(serialization_alias="eventId")
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+    occupied_from: str = Field(serialization_alias="occupiedFrom")
+    occupied_to: str = Field(serialization_alias="occupiedTo")
+
+
+class ConflictOut(BaseModel):
+    first: BookingWindowOut
+    second: BookingWindowOut
+    #: True when the new setup or turnaround time is what made the pair clash.
+    caused_by_change: bool = Field(serialization_alias="causedByChange")
+
+
+class RecheckOut(BaseModel):
+    """US9.4 kicks off US15.2's re-check; this is what it found."""
+
+    setup_minutes: int = Field(serialization_alias="setupMinutes")
+    turnaround_minutes: int = Field(serialization_alias="turnaroundMinutes")
+    checked_bookings: int = Field(serialization_alias="checkedBookings")
+    conflicts: list[ConflictOut]
+    #: US15.2: bookings this change marked "Conflict – review needed". Their
+    #: Coordinators have been notified. Already-flagged bookings are not repeated.
+    flagged_booking_ids: list[str] = Field(
+        default_factory=list, serialization_alias="flaggedBookingIds"
+    )
+    #: US15.2: flagged bookings whose clash this change resolved.
+    cleared_booking_ids: list[str] = Field(
+        default_factory=list, serialization_alias="clearedBookingIds"
+    )
+
+
+class VenueSavedOut(VenueOut):
+    #: Set only when setup or turnaround changed, which is what triggers it.
+    recheck: RecheckOut | None = None
+
+
+def _window_out(item: OccupiedBooking) -> BookingWindowOut:
+    return BookingWindowOut(
+        booking_id=str(item.booking.id),
+        event_id=str(item.booking.event_id),
+        starts_at=item.booking.starts_at,
+        ends_at=item.booking.ends_at,
+        occupied_from=item.occupied_from.isoformat(timespec="minutes"),
+        occupied_to=item.occupied_to.isoformat(timespec="minutes"),
+    )
+
+
+def _conflict_out(conflict: BookingConflict) -> ConflictOut:
+    return ConflictOut(
+        first=_window_out(conflict.first),
+        second=_window_out(conflict.second),
+        caused_by_change=conflict.caused_by_change,
+    )
+
+
+def _recheck_out(result: Recheck, review: conflict_flags.Review | None) -> RecheckOut:
+    return RecheckOut(
+        setup_minutes=result.setup_minutes,
+        turnaround_minutes=result.turnaround_minutes,
+        checked_bookings=result.checked,
+        conflicts=[_conflict_out(conflict) for conflict in result.conflicts],
+        flagged_booking_ids=[str(b.id) for b in review.flagged] if review else [],
+        cleared_booking_ids=[str(b.id) for b in review.cleared] if review else [],
+    )
+
+
+@router.put("/{venue_id}", response_model=VenueSavedOut)
 def save_venue(
     venue_id: str,
     payload: VenueInput,
     _: Annotated[User, Depends(require_permission(Permission.VENUES_EDIT))],
-) -> VenueOut:
+) -> VenueSavedOut:
     """US9.1b: update a venue, so the catalogue keeps up with the building.
 
     Every field is editable except `id` and `created_at`, which `VenueInput`
     has no room for. A venue keeps its own name, so renaming it to what it
     already is is not a clash.
+
+    US9.4: changing the setup or turnaround time re-checks every booking that
+    holds the venue under the new values. Bookings that now clash are reported
+    in `recheck` - identified, not removed or cancelled.
+
+    US15.2: each future active booking that now clashes, with another booking
+    or an unavailability period, is also marked "Conflict – review needed" and
+    its Coordinator notified; flags whose clash the change resolved are cleared.
+    The save has already happened, so a failure here is logged, not returned.
     """
     existing = venue_store.repository().get_venue(_as_id(venue_id))
     if existing is None:
@@ -341,10 +459,22 @@ def save_venue(
             accessibility_features=clean.accessibility_features,
             operating_hours=clean.operating_hours,
             supported_layouts=clean.supported_layouts,
+            **_minutes(clean),
         )
     except DuplicateVenueName as error:
         raise _taken(error) from error
-    return _to_out(saved)
+
+    result = None
+    if saved.buffers != existing.buffers:
+        result = _recheck_out(
+            venue_turnaround.recheck(
+                booking_store.repository().list_for_venue(saved.id),
+                before=existing.buffers,
+                after=saved.buffers,
+            ),
+            conflict_flags.recheck_quietly(saved),
+        )
+    return VenueSavedOut(**_to_out(saved).model_dump(), recheck=result)
 
 
 @router.delete("/{venue_id}", status_code=status.HTTP_204_NO_CONTENT)

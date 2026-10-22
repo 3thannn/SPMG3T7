@@ -17,28 +17,54 @@ only ever compares them.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import booking_store, event_store, suitability, venue_store
+from app import (
+    availability,
+    booking_store,
+    change_requests,
+    conflict_flags,
+    equipment_store,
+    event_cancellation,
+    event_needs,
+    event_store,
+    safety_check,
+    safety_review,
+    suitability,
+    venue_store,
+    venue_unavailability_store,
+)
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
-from app.booking_store import Booking, BookingStatus, StaleBookingStatus
+from app.availability import SlotCheck
+from app.booking_store import (
+    Booking,
+    BookingStatus,
+    HoldExpired,
+    SlotTaken,
+    StaleBookingStatus,
+    local_now,
+)
+from app.event_needs import EventNeeds
 from app.event_status import (
     EventStatus,
     booking_refusal_message,
     check_booking,
     check_clarification,
+    check_completion,
     check_submit,
     clarification_refusal_message,
+    completion_refusal_message,
     refusal_message,
     transition_allowed,
     transition_refusal_message,
 )
 from app.event_store import Event, StaleEventStatus
+from app.notifications import notify_assigned, notify_safety_changes, notify_status_change
 from app.permissions import Permission, Role, has_permission
 from app.suitability import BookingNeeds, Verdict
 from app.users import User
@@ -51,6 +77,9 @@ READ_ANY = (
     Permission.EVENTS_READ_SUBMITTED,
     Permission.EVENTS_READ_ALL,
 )
+#: US4.4: opening one event. The Safety Officer reads only the events waiting
+#: for their check (see `_readable`), so they are not on the list routes.
+READ_ONE = (*READ_ANY, Permission.SAFETY_REVIEW)
 
 
 class EventError:
@@ -76,6 +105,33 @@ class StatusChangeOut(BaseModel):
     by_id: str = Field(serialization_alias="byId")
     by_name: str = Field(serialization_alias="byName")
     notes: str = ""
+    #: US11.1: "change-request" on the entry an Organiser's change request
+    #: wrote, so the history can label its note. US4.4: "safety-return" on the
+    #: entry the Safety Officer wrote sending an event back to Planning.
+    #: US4.6: "cancellation" on the entry that cancelled the event.
+    #: Worked out, not stored; empty on every other entry.
+    kind: str = ""
+
+
+class ProposedChangeOut(BaseModel):
+    """One field of a pending US11.1 change request, as the Coordinator reviews it."""
+
+    field: str
+    label: str
+    old_value: str = Field(serialization_alias="oldValue")
+    new_value: str = Field(serialization_alias="newValue")
+    #: US5.2's rule: date/time, attendance, venue and equipment are important.
+    important: bool
+
+
+class ChangeReviewOut(BaseModel):
+    """US11.1: the Coordinator's answer to the most recent change request."""
+
+    outcome: str
+    at: str
+    #: The rejection reason. Empty for an approval.
+    note: str = ""
+    request_note: str = Field(default="", serialization_alias="requestNote")
 
 
 class EventOut(BaseModel):
@@ -98,6 +154,22 @@ class EventOut(BaseModel):
     #: US8.4: The assigned Event Coordinator's name, or empty if unassigned.
     coordinator_name: str = Field(default="", serialization_alias="coordinatorName")
     history: list[StatusChangeOut]
+    #: US11.1: set while an Organiser's change request awaits review, which is
+    #: what puts the event in the Coordinator's review queue.
+    change_requested: bool = Field(default=False, serialization_alias="changeRequested")
+    pending_changes: list[ProposedChangeOut] = Field(
+        default_factory=list, serialization_alias="pendingChanges"
+    )
+    change_request_note: str = Field(default="", serialization_alias="changeRequestNote")
+    last_change_review: ChangeReviewOut | None = Field(
+        default=None, serialization_alias="lastChangeReview"
+    )
+    #: US2.1 (Sprint 3): what the event needs. Empty until answered.
+    venue_requirements: str = Field(default="", serialization_alias="venueRequirements")
+    preferred_layout: str = Field(default="", serialization_alias="preferredLayout")
+    accessibility_needs: str = Field(default="", serialization_alias="accessibilityNeeds")
+    equipment_needs: str = Field(default="", serialization_alias="equipmentNeeds")
+    registration_needs: str = Field(default="", serialization_alias="registrationNeeds")
 
 
 class EventDraft(BaseModel):
@@ -122,6 +194,22 @@ class EventDraft(BaseModel):
     starts_at: str = Field(default="", alias="startsAt")
     ends_at: str | None = Field(default=None, alias="endsAt")
     expected_attendance: int | None = Field(default=None, alias="expectedAttendance")
+    #: US2.1 (Sprint 3): what the event needs, as `app.event_needs` describes.
+    #: Optional on a draft; all five are required to submit.
+    venue_requirements: str = Field(default="", alias="venueRequirements")
+    preferred_layout: str = Field(default="", alias="preferredLayout")
+    accessibility_needs: str = Field(default="", alias="accessibilityNeeds")
+    equipment_needs: str = Field(default="", alias="equipmentNeeds")
+    registration_needs: str = Field(default="", alias="registrationNeeds")
+
+    def needs(self) -> EventNeeds:
+        return EventNeeds(
+            venue_requirements=self.venue_requirements,
+            preferred_layout=self.preferred_layout,
+            accessibility_needs=self.accessibility_needs,
+            equipment_needs=self.equipment_needs,
+            registration_needs=self.registration_needs,
+        )
 
 
 def _to_out(event: Event) -> EventOut:
@@ -148,9 +236,41 @@ def _to_out(event: Event) -> EventOut:
                 by_id=str(change.by_id),
                 by_name=change.by_name,
                 notes=change.notes,
+                kind=safety_check.history_kind(
+                    from_status=change.from_status, to_status=change.to_status
+                )
+                or event_cancellation.history_kind(to_status=change.to_status)
+                or change_requests.history_kind(
+                    by_id=change.by_id,
+                    organiser_id=event.organiser_id,
+                    to_status=change.to_status,
+                ),
             )
             for change in event.history
         ],
+        change_requested=event.change_requested,
+        change_request_note=event.change_request_note,
+        pending_changes=[
+            ProposedChangeOut(
+                field=change.field,
+                label=change_requests.label_for(change.field),
+                old_value=change.old_value,
+                new_value=change.new_value,
+                important=change.important,
+            )
+            for change in event.pending_changes
+        ],
+        last_change_review=(
+            ChangeReviewOut(
+                outcome=event.last_change_review.outcome,
+                at=event.last_change_review.at,
+                note=event.last_change_review.note,
+                request_note=event.last_change_review.request_note,
+            )
+            if event.last_change_review is not None
+            else None
+        ),
+        **event.needs.as_attrs(),
     )
 
 
@@ -193,6 +313,10 @@ def _not_found() -> HTTPException:
 #: lengths here turns a database error into a sentence the form can show.
 TITLE_MAX = 255
 PURPOSE_MAX = 500
+#: `events.expected_attendance` is INTEGER, so a larger number would fail the
+#: write. Refused here with a sentence instead (US2.1 boundary).
+ATTENDANCE_MAX = 2_147_483_647
+ATTENDANCE_TOO_LARGE = f"Expected attendance must be {ATTENDANCE_MAX:,} or fewer."
 DRAFT_CONTENT_ERROR = "Enter at least one letter or number in any field to save a draft."
 
 
@@ -204,6 +328,7 @@ def _has_draft_content(draft: EventDraft) -> bool:
         draft.starts_at,
         draft.ends_at or "",
         "" if draft.expected_attendance is None else str(draft.expected_attendance),
+        *draft.needs().as_attrs().values(),
     )
     return any(character.isalnum() for value in values for character in value)
 
@@ -217,6 +342,11 @@ def _validated(draft: EventDraft) -> EventDraft:
         raise _invalid(f"Keep the purpose to {PURPOSE_MAX} characters or fewer.")
     if draft.expected_attendance is not None and draft.expected_attendance < 0:
         raise _invalid("Expected attendance cannot be negative.")
+    if draft.expected_attendance is not None and draft.expected_attendance > ATTENDANCE_MAX:
+        raise _invalid(ATTENDANCE_TOO_LARGE)
+    needs_problem = event_needs.format_error(draft.needs())
+    if needs_problem:
+        raise _invalid(needs_problem)
 
     start = draft.starts_at.strip()
     end = (draft.ends_at or "").strip()
@@ -239,6 +369,8 @@ def _validate_submission(event: Event) -> None:
         raise _invalid("Give the event a date.")
     if not event.purpose.strip():
         raise _invalid("Give the event a purpose.")
+    if not event.description.strip():
+        raise _invalid("Give the event a description.")
     if event.expected_attendance is None:
         raise _invalid("Give the expected attendance.")
     if event.expected_attendance < 1:
@@ -257,16 +389,29 @@ def _validate_submission(event: Event) -> None:
             raise _invalid("Give the event a valid date.") from None
         if end_date <= start_date_time:
             raise _invalid("The end date must be after the start date.")
+    # US2.1 (Sprint 3): the customer made the end time and every need
+    # mandatory. Checked after the original rules so their messages stand.
+    if not event.ends_at.strip():
+        raise _invalid("Give the event an end date.")
+    missing = event_needs.missing_error(event.needs)
+    if missing:
+        raise _invalid(missing)
 
 
 def _readable(event_id: int, user: User) -> Event:
     """Fetch an event the caller is allowed to see, or 404.
 
     US8.1: Coordinators can only see events assigned to them.
-    US8.6: Lead can see all events (not just assigned ones)."""
+    US8.6: Lead can see all events (not just assigned ones).
+    US4.4: the Safety Officer sees an event while it waits for their check."""
     event = event_store.repository().get_event(event_id)
     if event is None:
         raise _not_found()
+    if (
+        has_permission(user.role, Permission.SAFETY_REVIEW)
+        and event.status is EventStatus.PENDING_SAFETY_CHECK
+    ):
+        return event
     sees_own = has_permission(user.role, Permission.EVENTS_READ_OWN)
     owns_event = sees_own and event.organiser_id == user.id
     sees_submitted = has_permission(user.role, Permission.EVENTS_READ_SUBMITTED)
@@ -360,6 +505,17 @@ def assign_coordinator(
             },
         )
 
+    if event.status is not EventStatus.SUBMITTED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": "Only a Submitted event can be assigned to a Coordinator.",
+                "reason": "invalid-transition",
+            },
+        )
+    _require_transition(event.status, EventStatus.UNDER_REVIEW)
+
     # Validate the coordinator ID
     try:
         coordinator_id = int(payload.coordinator_id)
@@ -375,9 +531,16 @@ def assign_coordinator(
         raise _invalid("That user is not a Coordinator.")
 
     # Assign the coordinator
-    assigned = event_store.repository().assign_coordinator(
-        event.id, coordinator_id, assigned_by_id=user.id
-    )
+    try:
+        assigned = event_store.repository().assign_coordinator(
+            event.id, coordinator_id, assigned_by_id=user.id
+        )
+    except StaleEventStatus:
+        raise _stale_request() from None
+    # US10.1: assignment is what moves an event to Under Review now (US8.3).
+    notify_status_change(assigned, EventStatus.UNDER_REVIEW)
+    # US10.2: and the Coordinator learns the event is theirs.
+    notify_assigned(assigned)
     return _to_out(assigned)
 
 
@@ -429,10 +592,33 @@ def reassign_coordinator(
     return _to_out(reassigned)
 
 
+@router.get("/safety-check", response_model=list[EventOut])
+def list_pending_safety_check(
+    _user: Annotated[User, Depends(require_permission(Permission.SAFETY_REVIEW))],
+) -> list[EventOut]:
+    """US4.4: the events waiting for the Safety Officer, longest-waiting first.
+
+    The order is by when each event entered Pending Safety Check, so an event
+    sent back and sent again joins the end of the queue rather than jumping it.
+    US17.1 builds the full review queue on this.
+    """
+    events = [
+        event
+        for event in event_store.repository().list_events(organiser_id=None, include_drafts=False)
+        if event.status is EventStatus.PENDING_SAFETY_CHECK
+    ]
+    return [
+        _to_out(event)
+        for event in sorted(
+            events, key=lambda event: (safety_review.entered_safety_check(event), event.id)
+        )
+    ]
+
+
 @router.get("/{event_id}", response_model=EventOut)
 def get_event(
     event_id: str,
-    user: Annotated[User, Depends(require_any_permission(*READ_ANY))],
+    user: Annotated[User, Depends(require_any_permission(*READ_ONE))],
 ) -> EventOut:
     return _to_out(_readable(_as_id(event_id), user))
 
@@ -452,8 +638,15 @@ def create_event(
         ends_at=clean.ends_at,
         expected_attendance=clean.expected_attendance,
         organiser_id=user.id,
+        needs=clean.needs(),
     )
     return _to_out(created)
+
+
+SUBMITTED_EDIT_MESSAGE = (
+    "This event has been submitted, so it can no longer be edited directly. "
+    "Request a change instead and the Coordinator will review it."
+)
 
 
 @router.put("/{event_id}", response_model=EventOut)
@@ -464,6 +657,7 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
     Coordinator can edit Submitted (or later) events with change tracking.
     """
     event = _readable(_as_id(event_id), user)
+    _refuse_if_cancelled(event)
     is_owner = event.organiser_id == user.id
     is_coordinator = has_permission(user.role, Permission.EVENTS_EDIT)
 
@@ -490,6 +684,18 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             },
         )
 
+    # US11.1: once submitted, the event is the Coordinator's to review. The
+    # Organiser proposes changes instead, so they are reviewed, not applied.
+    if is_owner and not is_coordinator and event.status is not EventStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": SUBMITTED_EDIT_MESSAGE,
+                "reason": "change-request-required",
+            },
+        )
+
     clean = _validated(draft)
 
     # If coordinator is editing (not the owner), use change tracking
@@ -504,6 +710,7 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             expected_attendance=clean.expected_attendance,
             editor_id=user.id,
             previous_event=event,
+            needs=clean.needs(),
         )
     else:
         # Owner editing: no change tracking (original US4.2 behavior)
@@ -515,6 +722,7 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             starts_at=clean.starts_at,
             ends_at=clean.ends_at,
             expected_attendance=clean.expected_attendance,
+            needs=clean.needs(),
         )
     return _to_out(saved)
 
@@ -610,6 +818,9 @@ def request_clarification(
                 "reason": "invalid-transition",
             },
         ) from None
+    # US10.1: a follow-up question on an event already Under Review notifies
+    # too — it carries a new request the Organiser has to answer.
+    notify_status_change(reviewed, EventStatus.UNDER_REVIEW, message)
     return _to_out(reviewed)
 
 
@@ -639,6 +850,19 @@ def _decide_event(
                 "reason": "invalid-transition",
             },
         )
+    if event.change_requested:
+        # US11.1: the Coordinator reviews the proposed changes before deciding,
+        # so a decision cannot overtake a request it has not answered.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": (
+                    "Approve or reject the Organiser's change request before deciding this event."
+                ),
+                "reason": "change-pending",
+            },
+        )
     _require_transition(event.status, to_status)
     try:
         decided = event_store.repository().decide_event(
@@ -657,6 +881,7 @@ def _decide_event(
                 "reason": "invalid-transition",
             },
         ) from None
+    notify_status_change(decided, to_status, reason)
     return _to_out(decided)
 
 
@@ -682,6 +907,503 @@ def reject_event(
     if len(reason) > DECISION_REASON_MAX:
         raise _invalid(f"Keep the reason to {DECISION_REASON_MAX} characters or fewer.")
     return _decide_event(event_id, user, EventStatus.REJECTED, reason=reason)
+
+
+@router.post("/{event_id}/complete", response_model=EventOut)
+def complete_event(
+    event_id: str,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_COMPLETE))],
+) -> EventOut:
+    """The assigned Coordinator closes a Confirmed event after its end time."""
+    event = _readable(_as_id(event_id), user)
+    _require_transition(event.status, EventStatus.COMPLETED)
+    refusal = check_completion(event.ends_at)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": completion_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+    try:
+        completed = event_store.repository().complete_event(event.id, actor_id=user.id)
+    except StaleEventStatus:
+        raise _stale_request() from None
+    return _to_out(completed)
+
+
+# -- US4.6: cancelling an event ------------------------------------------------
+
+
+class EventCancellationIn(BaseModel):
+    """Why the event is being cancelled. Required."""
+
+    reason: str = ""
+
+
+def _refuse_if_cancelled(event: Event) -> None:
+    """US4.6: a cancelled event is read-only."""
+    if event.status is EventStatus.CANCELLED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": event_cancellation.READ_ONLY_MESSAGE,
+                "reason": "event-cancelled",
+            },
+        )
+
+
+@router.post("/{event_id}/cancel", response_model=EventOut)
+def cancel_event(
+    event_id: str,
+    payload: EventCancellationIn,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_CANCEL))],
+) -> EventOut:
+    """US4.6: cancel the event, with a reason, and release everything it held.
+
+    The owning Organiser or the assigned Coordinator: the permission admits
+    the role, and `_readable` admits only the events they own or are assigned
+    to, answering 404 for any other. Then 409 for an event already Completed,
+    Cancelled or Rejected, then 400 for the reason, as for cancelling a booking.
+
+    The store makes the move, its history entry, the cancelled bookings and the
+    removed equipment lines one write (`app.event_cancellation` says what each
+    covers). What follows it - conflict flags and notices - is best effort.
+    """
+    event = _readable(_as_id(event_id), user)
+    refusal = event_cancellation.check_cancel(status=event.status)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": event_cancellation.cancel_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+    reason = payload.reason.strip()
+    if not reason:
+        raise _invalid("Give a reason for cancelling this event.")
+    if len(reason) > event_cancellation.CANCELLATION_REASON_MAX:
+        raise _invalid(
+            f"Keep the reason to {event_cancellation.CANCELLATION_REASON_MAX} characters or fewer."
+        )
+    _require_transition(event.status, EventStatus.CANCELLED)
+    try:
+        cancelled = event_store.repository().cancel_event(
+            event.id, actor_id=user.id, from_status=event.status, reason=reason
+        )
+    except StaleEventStatus:
+        raise _stale_request() from None
+    event_cancellation.settle_quietly(cancelled, actor=user, reason=reason)
+    return _to_out(cancelled.event)
+
+
+# -- US4.4: Pending Safety Check -----------------------------------------------
+#
+# Planning -> Pending Safety Check is the assigned Coordinator's to ask for, and
+# only once the event is ready (`app.safety_check`). The Safety Officer then
+# signs it off (-> Confirmed) or sends it back to Planning with a note. That is
+# the only way into Confirmed; US17.2 adds the separate reject and
+# request-changes outcomes and the re-review flags on top of these routes.
+
+
+class SafetyReadinessOut(BaseModel):
+    """Whether the assigned Coordinator can send the event for its check now."""
+
+    ready: bool
+    #: A `SafetyCheckRefusal` value, or empty when ready.
+    reason: str = ""
+    message: str = ""
+
+
+def _safety_refusal(event: Event) -> safety_check.SafetyCheckRefusal | None:
+    return safety_check.check_ready_for_safety_check(
+        status=event.status,
+        change_requested=event.change_requested,
+        bookings=booking_store.repository().list_for_event(event.id),
+        equipment=equipment_store.repository().list_for_event(event.id),
+    )
+
+
+SafetySender = Annotated[User, Depends(require_permission(Permission.SAFETY_SUBMIT))]
+SafetyOfficer = Annotated[User, Depends(require_permission(Permission.SAFETY_REVIEW))]
+
+
+@router.get("/{event_id}/safety-check", response_model=SafetyReadinessOut)
+def safety_check_readiness(event_id: str, user: SafetySender) -> SafetyReadinessOut:
+    """US4.4: say whether the event is ready, and if not, what is outstanding."""
+    event = _readable(_as_id(event_id), user)
+    refusal = _safety_refusal(event)
+    if refusal is None:
+        return SafetyReadinessOut(ready=True)
+    return SafetyReadinessOut(
+        ready=False,
+        reason=str(refusal),
+        message=safety_check.safety_check_refusal_message(refusal),
+    )
+
+
+@router.post("/{event_id}/safety-check", response_model=EventOut)
+def send_for_safety_check(event_id: str, user: SafetySender) -> EventOut:
+    """US4.4: Planning -> Pending Safety Check, timestamped and attributable."""
+    event = _readable(_as_id(event_id), user)
+    _require_transition(event.status, EventStatus.PENDING_SAFETY_CHECK)
+    refusal = _safety_refusal(event)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": safety_check.safety_check_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+    try:
+        sent = event_store.repository().send_to_safety_check(event.id, actor_id=user.id)
+    except StaleEventStatus:
+        raise _stale_request() from None
+    return _to_out(sent)
+
+
+# -- US17.1: what the Safety Officer reviews ------------------------------------
+
+
+class ClosureOut(BaseModel):
+    """A venue unavailability period that has not ended yet (US12.1)."""
+
+    start_date: str = Field(serialization_alias="startDate")
+    end_date: str = Field(serialization_alias="endDate")
+    reason: str
+
+
+class ReviewedVenueOut(BaseModel):
+    """One booked venue: what the booking asks beside what the venue offers."""
+
+    booking_id: str = Field(serialization_alias="bookingId")
+    venue_id: str = Field(serialization_alias="venueId")
+    venue_name: str = Field(serialization_alias="venueName")
+    location: str
+    status: str
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+    capacity: int | None
+    headcount: int | None
+    over_capacity: bool = Field(serialization_alias="overCapacity")
+    required_layout: str = Field(serialization_alias="requiredLayout")
+    supported_layouts: str = Field(serialization_alias="supportedLayouts")
+    facilities: str
+    accessibility_features: str = Field(serialization_alias="accessibilityFeatures")
+    accessibility_needs: list[str] = Field(serialization_alias="accessibilityNeeds")
+    operating_hours: str = Field(serialization_alias="operatingHours")
+    setup_minutes: int = Field(serialization_alias="setupMinutes")
+    turnaround_minutes: int = Field(serialization_alias="turnaroundMinutes")
+    closures: list[ClosureOut]
+
+
+class ReviewedEquipmentOut(BaseModel):
+    id: str
+    equipment_type: str = Field(serialization_alias="type")
+    quantity: int
+    technical_requirements: str = Field(serialization_alias="technicalRequirements")
+    support_notes: str = Field(serialization_alias="supportNotes")
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+
+
+class SafetyReviewOut(BaseModel):
+    """US17.1: everything the Safety Officer needs to assess one event."""
+
+    event_id: str = Field(serialization_alias="eventId")
+    title: str
+    status: EventStatus
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+    expected_attendance: int | None = Field(serialization_alias="expectedAttendance")
+    #: The event's own accessibility requirements, as the Organiser gave them.
+    accessibility_needs: str = Field(serialization_alias="accessibilityNeeds")
+    preferred_layout: str = Field(serialization_alias="preferredLayout")
+    venue_requirements: str = Field(serialization_alias="venueRequirements")
+    waiting_since: str = Field(serialization_alias="waitingSince")
+    venues: list[ReviewedVenueOut]
+    equipment: list[ReviewedEquipmentOut]
+
+
+def _review_out(review: safety_review.SafetyReview) -> SafetyReviewOut:
+    event = review.event
+    return SafetyReviewOut(
+        event_id=str(event.id),
+        title=event.title,
+        status=event.status,
+        starts_at=event.starts_at,
+        ends_at=event.ends_at,
+        expected_attendance=event.expected_attendance,
+        accessibility_needs=event.accessibility_needs,
+        preferred_layout=event.preferred_layout,
+        venue_requirements=event.venue_requirements,
+        waiting_since=review.waiting_since,
+        venues=[
+            ReviewedVenueOut(
+                booking_id=str(venue.booking_id),
+                venue_id=str(venue.venue_id),
+                venue_name=venue.venue_name,
+                location=venue.location,
+                status=venue.status,
+                starts_at=venue.starts_at,
+                ends_at=venue.ends_at,
+                capacity=venue.capacity,
+                headcount=venue.headcount,
+                over_capacity=venue.over_capacity,
+                required_layout=venue.required_layout,
+                supported_layouts=venue.supported_layouts,
+                facilities=venue.facilities,
+                accessibility_features=venue.accessibility_features,
+                accessibility_needs=list(venue.accessibility_needs),
+                operating_hours=venue.operating_hours,
+                setup_minutes=venue.setup_minutes,
+                turnaround_minutes=venue.turnaround_minutes,
+                closures=[
+                    ClosureOut(
+                        start_date=closure.start_date.isoformat(),
+                        end_date=closure.end_date.isoformat(),
+                        reason=closure.reason,
+                    )
+                    for closure in venue.closures
+                ],
+            )
+            for venue in review.venues
+        ],
+        equipment=[
+            ReviewedEquipmentOut(
+                id=str(line.id),
+                equipment_type=line.equipment_type,
+                quantity=line.quantity,
+                technical_requirements=line.technical_requirements,
+                support_notes=line.support_notes,
+                starts_at=line.starts_at,
+                ends_at=line.ends_at,
+            )
+            for line in review.equipment
+        ],
+    )
+
+
+@router.get("/{event_id}/safety-review", response_model=SafetyReviewOut)
+def get_safety_review(event_id: str, user: SafetyOfficer) -> SafetyReviewOut:
+    """US17.1: the detail view behind the queue. Read-only, Safety Officer only.
+
+    `_readable` lets the Safety Officer reach an event only while it is
+    Pending Safety Check; anything else is 404, as it is for any event that is
+    not the caller's to see.
+    """
+    event = _readable(_as_id(event_id), user)
+    review = safety_review.build_review(
+        event,
+        bookings=booking_store.repository().list_for_event(event.id),
+        venue_for=venue_store.repository().get_venue,
+        closures_for=venue_unavailability_store.repository().list_for_venue,
+        equipment=equipment_store.repository().list_reserved_for_event(event.id),
+        today=local_now().date(),
+    )
+    return _review_out(review)
+
+
+class SafetyReturn(BaseModel):
+    """What the Safety Officer needs changed before the event is safe."""
+
+    note: str = ""
+
+
+def _decide_safety(
+    event_id: str, user: User, to_status: EventStatus, *, note: str = ""
+) -> Event:
+    """Move a Pending Safety Check event on, for the Safety Officer.
+
+    `_readable` only lets the Safety Officer reach an event that is Pending
+    Safety Check, and the store re-checks that status in the same write, so a
+    check decided twice is refused rather than overwritten.
+    """
+    event = _readable(_as_id(event_id), user)
+    _require_transition(event.status, to_status)
+    try:
+        return event_store.repository().decide_safety_check(
+            event.id, actor_id=user.id, to_status=to_status, note=note
+        )
+    except StaleEventStatus:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": "This safety check was already decided. Refresh it and try again.",
+                "reason": "invalid-transition",
+            },
+        ) from None
+
+
+@router.post("/{event_id}/safety-check/approve", response_model=EventOut)
+def approve_safety_check(event_id: str, user: SafetyOfficer) -> EventOut:
+    """US4.4: the Safety Officer signs the event off. Pending Safety Check -> Confirmed."""
+    return _to_out(_decide_safety(event_id, user, EventStatus.CONFIRMED))
+
+
+@router.post("/{event_id}/safety-check/return", response_model=EventOut)
+def return_safety_check(event_id: str, payload: SafetyReturn, user: SafetyOfficer) -> EventOut:
+    """US4.4: back to Planning, with a note the Coordinator reads and is told about."""
+    note = payload.note.strip()
+    if not note:
+        raise _invalid("Tell the Coordinator what needs to change before this event is safe.")
+    if len(note) > safety_check.SAFETY_NOTE_MAX:
+        raise _invalid(f"Keep the note to {safety_check.SAFETY_NOTE_MAX} characters or fewer.")
+    returned = _decide_safety(event_id, user, EventStatus.PLANNING, note=note)
+    # US10.2: best effort, like every notice; the move has already happened.
+    notify_safety_changes(returned, note)
+    return _to_out(returned)
+
+class ChangeRequestIn(EventDraft):
+    """US11.1: the edit form's values, proposed rather than saved, plus a note.
+
+    It is the same shape as `EventDraft` because it is the same form. The note
+    is optional — the changes usually speak for themselves — but it is where an
+    Organiser answers a US7.3 question in words.
+    """
+
+    note: str = ""
+
+
+#: Same reasoning as `CLARIFICATION_MAX`: a cap for readability, not the column.
+CHANGE_NOTE_MAX = 2000
+
+
+def _stale_request() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": "This event changed while you were working on it. Refresh it and try again.",
+            "reason": "invalid-transition",
+        },
+    )
+
+
+@router.post("/{event_id}/change-request", response_model=EventOut)
+def request_change(
+    event_id: str,
+    payload: ChangeRequestIn,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_SUBMIT))],
+) -> EventOut:
+    """US11.1: propose changes for the Coordinator to review.
+
+    The event's own values do not move. The pending flag is set, and an assigned
+    Submitted event moves to Under Review. Other requestable statuses stay put.
+    One pending `event_change_requests` row is written per field
+    that differs, each marked important or routine by US5.2's rule. Nothing is
+    written to `event_changes` until a Coordinator approves.
+
+    The proposal is validated as a submission, not as a draft: a submitted event
+    has to stay complete, so a change cannot be asked for that would leave it
+    with no date or no attendance.
+    """
+    event = _readable(_as_id(event_id), user)
+
+    refusal = change_requests.check_change_request(
+        status=event.status,
+        organiser_id=event.organiser_id,
+        actor_id=user.id,
+        change_requested=event.change_requested,
+    )
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": change_requests.change_request_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+
+    note = payload.note.strip()
+    if len(note) > CHANGE_NOTE_MAX:
+        raise _invalid(f"Keep the note to {CHANGE_NOTE_MAX} characters or fewer.")
+
+    clean = _validated(payload)
+    proposed = replace(
+        event,
+        title=clean.title,
+        purpose=clean.purpose,
+        description=clean.description,
+        starts_at=clean.starts_at,
+        ends_at=clean.ends_at or "",
+        expected_attendance=clean.expected_attendance,
+        **clean.needs().as_attrs(),
+    )
+    _validate_submission(proposed)
+
+    changes = change_requests.diff(event, proposed)
+    if not changes:
+        raise _invalid("Change at least one detail before requesting a change.")
+
+    if event.status is EventStatus.SUBMITTED and event.coordinator_id is not None:
+        _require_transition(event.status, EventStatus.UNDER_REVIEW)
+    try:
+        requested = event_store.repository().submit_change_request(
+            event.id,
+            actor_id=user.id,
+            from_status=event.status,
+            changes=changes,
+            note=note,
+        )
+    except StaleEventStatus:
+        raise _stale_request() from None
+    return _to_out(requested)
+
+
+def _resolve_change(event_id: str, user: User, *, approve: bool, note: str) -> EventOut:
+    event = _readable(_as_id(event_id), user)
+    if not change_requests.has_pending_request(
+        status=event.status, change_requested=event.change_requested
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": change_requests.NOTHING_PENDING_MESSAGE,
+                "reason": "nothing-pending",
+            },
+        )
+    try:
+        resolved = event_store.repository().resolve_change_request(
+            event.id, actor_id=user.id, approve=approve, note=note
+        )
+    except StaleEventStatus:
+        raise _stale_request() from None
+    return _to_out(resolved)
+
+
+@router.post("/{event_id}/change-request/approve", response_model=EventOut)
+def approve_change(
+    event_id: str,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
+) -> EventOut:
+    """US11.1: apply the proposed changes. The event stays Under Review for US7.1."""
+    return _resolve_change(event_id, user, approve=True, note="")
+
+
+@router.post("/{event_id}/change-request/reject", response_model=EventOut)
+def reject_change(
+    event_id: str,
+    payload: RejectionRequest,
+    user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
+) -> EventOut:
+    """US11.1: decline the proposed changes, with a reason the Organiser can read."""
+    reason = payload.reason.strip()
+    if not reason:
+        raise _invalid("Tell the Organiser why their requested changes were rejected.")
+    if len(reason) > DECISION_REASON_MAX:
+        raise _invalid(f"Keep the reason to {DECISION_REASON_MAX} characters or fewer.")
+    return _resolve_change(event_id, user, approve=False, note=reason)
 
 
 # -- US14.1: venue bookings ----------------------------------------------------
@@ -730,6 +1452,40 @@ class BookingOut(BaseModel):
     #: Null unless the booking is Cancelled, so "not cancelled" is one state
     #: rather than three empty fields.
     cancellation: CancellationOut | None = None
+    #: US14.3: when a hold lapses. Empty for a booking that was never a hold.
+    hold_expires_at: str = Field(default="", serialization_alias="holdExpiresAt")
+    #: US14.3: Held and past its expiry, so it no longer keeps the slot.
+    hold_expired: bool = Field(default=False, serialization_alias="holdExpired")
+    held_by_name: str = Field(default="", serialization_alias="heldByName")
+    #: US16.1: who approved or rejected it, when, and for a rejection why.
+    decision: "DecisionOut | None" = None
+    #: US15.2: set while the booking is flagged "Conflict – review needed".
+    conflict: "ConflictFlagOut | None" = None
+
+
+class ConflictFlagOut(BaseModel):
+    """US15.2: why a booking clashes since its venue's setup or turnaround changed."""
+
+    #: Always "Conflict – review needed": the label the acceptance criteria name.
+    label: str = conflict_flags.LABEL
+    flagged_at: str = Field(serialization_alias="flaggedAt")
+    reason: str
+
+
+class DecisionOut(BaseModel):
+    """Venue Staff's decision on a booking request (US16.1)."""
+
+    at: str
+    #: Null once the user who decided has been removed; the record stays.
+    by_id: str | None = Field(serialization_alias="byId")
+    by_name: str = Field(serialization_alias="byName")
+    #: Empty for an approval.
+    reason: str = ""
+    #: An alternative venue or time Venue Staff suggest. Empty when none.
+    suggestion: str = ""
+
+
+BookingOut.model_rebuild()
 
 
 def _booking_out(booking: Booking) -> BookingOut:
@@ -755,6 +1511,25 @@ def _booking_out(booking: Booking) -> BookingOut:
                 reason=cancellation.reason,
             )
             if cancellation
+            else None
+        ),
+        hold_expires_at=booking.hold_expires_at,
+        hold_expired=booking.hold_expired,
+        held_by_name=booking.held_by_name,
+        decision=(
+            DecisionOut(
+                at=booking.decision.at,
+                by_id=str(booking.decision.by_id) if booking.decision.by_id is not None else None,
+                by_name=booking.decision.by_name,
+                reason=booking.decision.reason,
+                suggestion=booking.decision.suggestion,
+            )
+            if booking.decision
+            else None
+        ),
+        conflict=(
+            ConflictFlagOut(flagged_at=booking.conflict.flagged_at, reason=booking.conflict.reason)
+            if booking.conflict
             else None
         ),
     )
@@ -948,8 +1723,70 @@ def _prepared_booking(
     return event, venue, valid
 
 
+# -- US15.1: is the slot free? ---------------------------------------------------
+#
+# A request is checked against the full time the venue is occupied, setup and
+# turnaround included, and against the venue's unavailability periods. The rule
+# is `availability.check_slot`; these helpers read what it needs and say what it
+# found in a 409 the form can show.
+
+
+def _iso_minutes(moment: datetime) -> str:
+    return moment.isoformat(timespec="minutes")
+
+
+def slot_check(
+    venue_id: int,
+    starts_at: str,
+    ends_at: str,
+    *,
+    venue: Venue | None = None,
+    exclude_id: int | None = None,
+) -> SlotCheck:
+    """US15.1's rule for one slot at one venue, counting Held, Requested and Confirmed."""
+    return availability.check_slot(
+        venue if venue is not None else venue_store.repository().get_venue(venue_id),
+        starts_at,
+        ends_at,
+        bookings_at_venue=booking_store.repository().list_for_venue(venue_id),
+        unavailability=venue_unavailability_store.repository().list_for_venue(venue_id),
+        exclude_id=exclude_id,
+    )
+
+
+def coordinator_titles(found: SlotCheck, user: User) -> dict[int, str]:
+    """Titles of the clashing bookings' events that this user is assigned to, by booking id.
+
+    A Coordinator sees only the events assigned to them (US8.6), so a clash with
+    someone else's event is named by its booking number, status and times alone.
+    """
+    titles: dict[int, str] = {}
+    for item in found.bookings:
+        event = event_store.repository().get_event(item.booking.event_id)
+        if event is not None and event.coordinator_id == user.id:
+            titles[item.booking.id] = event.title
+    return titles
+
+
+def not_available(venue_name: str, found: SlotCheck, titles: dict[int, str]) -> HTTPException:
+    """US15.1: 409 saying which bookings and periods the slot clashes with."""
+    # Empty only when another write took the slot and has gone again since.
+    phrases = availability.describe(found, titles=titles) or ["a booking made a moment ago"]
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": availability.unavailable_message(venue_name, found, phrases),
+            "reason": "not-available",
+            "clashes": phrases,
+            "occupiedFrom": _iso_minutes(found.occupied_from),
+            "occupiedTo": _iso_minutes(found.occupied_to),
+        },
+    )
+
+
 class SuitabilityOut(BaseModel):
-    """US18.1: Suitable or Not suitable, with every reason."""
+    """US18.1: Suitable or Not suitable, with every reason. US15.1: and whether it is free."""
 
     venue_id: str = Field(serialization_alias="venueId")
     suitable: bool
@@ -957,14 +1794,27 @@ class SuitabilityOut(BaseModel):
     reasons: list[str]
     #: What could not be checked, such as hours nobody has recorded.
     notes: list[str]
+    #: US15.1: whether the slot is free, setup and turnaround included.
+    available: bool = True
+    #: US15.1: each booking or unavailability period it clashes with, as a phrase.
+    clashes: list[str] = Field(default_factory=list)
+    #: US15.1: the full window the booking would occupy.
+    occupied_from: str = Field(default="", serialization_alias="occupiedFrom")
+    occupied_to: str = Field(default="", serialization_alias="occupiedTo")
 
 
-def _suitability_out(venue: Venue, verdict: Verdict) -> SuitabilityOut:
+def _suitability_out(
+    venue: Venue, verdict: Verdict, found: SlotCheck, titles: dict[int, str]
+) -> SuitabilityOut:
     return SuitabilityOut(
         venue_id=str(venue.id),
         suitable=verdict.suitable,
         reasons=list(verdict.reasons),
         notes=list(verdict.notes),
+        available=found.available,
+        clashes=availability.describe(found, titles=titles),
+        occupied_from=_iso_minutes(found.occupied_from),
+        occupied_to=_iso_minutes(found.occupied_to),
     )
 
 
@@ -1003,6 +1853,11 @@ def request_booking(
     US18.1: a venue that is not suitable cannot be requested. The refusal is a
     409 with `not-suitable` and every reason, from the same `assess` the
     suitability check shows, so the form and the rule agree.
+
+    US15.1: nor can a slot that is not free, setup and turnaround included. The
+    refusal is a 409 with `not-available`, naming each booking and period it
+    clashes with. The store checks again under a lock on the venue, so two
+    requests for one slot at once cannot both be stored.
     """
     event, venue, valid = _prepared_booking(event_id, payload, user)
 
@@ -1019,17 +1874,29 @@ def request_booking(
             },
         )
 
-    created = booking_store.repository().create(
-        event_id=event.id,
-        venue_id=venue.id,
-        starts_at=valid.starts_at,
-        ends_at=valid.ends_at,
-        requested_by_id=user.id,
-        headcount=valid.needs.headcount,
-        required_layout=valid.needs.layout,
-        required_facilities=valid.needs.facilities,
-        accessibility_needs=valid.needs.accessibility,
-    )
+    found = slot_check(venue.id, valid.starts_at, valid.ends_at, venue=venue)
+    if not found.available:
+        raise not_available(venue.name, found, coordinator_titles(found, user))
+
+    try:
+        created = booking_store.repository().create(
+            event_id=event.id,
+            venue_id=venue.id,
+            starts_at=valid.starts_at,
+            ends_at=valid.ends_at,
+            requested_by_id=user.id,
+            headcount=valid.needs.headcount,
+            required_layout=valid.needs.layout,
+            required_facilities=valid.needs.facilities,
+            accessibility_needs=valid.needs.accessibility,
+            expected_status=event.status,
+        )
+    except StaleEventStatus:
+        raise _stale_request() from None
+    except SlotTaken:
+        # Another request took the slot between the check above and the write.
+        found = slot_check(venue.id, valid.starts_at, valid.ends_at, venue=venue)
+        raise not_available(venue.name, found, coordinator_titles(found, user)) from None
     return _booking_out(created)
 
 
@@ -1047,7 +1914,10 @@ def check_suitability(
     events and the same validation.
     """
     _, venue, valid = _prepared_booking(event_id, payload, user)
-    return _suitability_out(venue, suitability.assess(venue, valid.needs))
+    found = slot_check(venue.id, valid.starts_at, valid.ends_at, venue=venue)
+    return _suitability_out(
+        venue, suitability.assess(venue, valid.needs), found, coordinator_titles(found, user)
+    )
 
 
 # -- US14.2: cancelling one booking ----------------------------------------------
@@ -1106,8 +1976,15 @@ def cancel_booking(
 
     404, then 409, then 400, as for a request. A booking on another event is
     404 rather than 403, for the reason `_not_found` gives for events.
+
+    US4.6: except a Cancelled event, which is read-only. Its cancellation
+    already released every booking that held a venue.
+
+    US14.4: an expired hold is history and its slot is already free, so there
+    is nothing to cancel, whether or not the sweep has marked it Expired yet.
     """
     event = _readable(_as_id(event_id), user)
+    _refuse_if_cancelled(event)
     try:
         booking = booking_store.repository().get_booking(int(booking_id))
     except ValueError:
@@ -1117,6 +1994,8 @@ def cancel_booking(
 
     if booking.status is BookingStatus.CANCELLED:
         raise _already_cancelled()
+    if booking.hold_expired:
+        raise _nothing_to_cancel(booking)
 
     reason = payload.reason.strip()
     if not reason:
@@ -1129,6 +2008,124 @@ def cancel_booking(
     try:
         cancelled = booking_store.repository().cancel(booking.id, actor_id=user.id, reason=reason)
     except StaleBookingStatus:
-        # Someone else cancelled it between the read above and this write.
+        # Someone else cancelled it between the read above and this write, or
+        # (US14.4) the sweep expired it.
+        current = booking_store.repository().get_booking(booking.id)
+        if current is not None and current.hold_expired:
+            raise _nothing_to_cancel(current) from None
         raise _already_cancelled() from None
+    # US15.2: a cancelled booking frees its slot, which may resolve a flagged
+    # clash at this venue, its own included.
+    conflict_flags.resolve_quietly(cancelled.venue_id)
+    if cancelled.conflict is not None:
+        cancelled = booking_store.repository().get_booking(cancelled.id) or cancelled
     return _booking_out(cancelled)
+
+
+# -- US14.3: turning a tentative hold into a request -----------------------------
+
+
+@router.post("/{event_id}/bookings/{booking_id}/request", response_model=BookingOut)
+def request_held_booking(
+    event_id: str,
+    booking_id: str,
+    user: Annotated[User, Depends(require_permission(Permission.BOOKINGS_REQUEST))],
+) -> BookingOut:
+    """US14.3: the Coordinator asks for a venue Venue Staff held for them.
+
+    Held -> Requested, before the hold expires, and on the same terms as a new
+    request (US14.1): the assigned Coordinator, on an Approved or Planning
+    event, which a first request moves to Planning (US4.5). The times are the
+    ones held. 404, then 409, as for cancelling.
+
+    US15.1: the hold's own slot is left out of the check, but a hold that has
+    clashed since it was placed (a setup or turnaround change, US15.2) cannot
+    become a request until the clash is resolved.
+    """
+    event = _readable(_as_id(event_id), user)
+    try:
+        booking = booking_store.repository().get_booking(int(booking_id))
+    except ValueError:
+        booking = None
+    if booking is None or booking.event_id != event.id:
+        raise _booking_not_found()
+    # US14.4: expired first, so a swept (Expired) hold is refused as expired
+    # rather than as "not a hold".
+    if booking.hold_expired:
+        raise _hold_expired(booking)
+    if booking.status is not BookingStatus.HELD:
+        raise _not_held(booking.status)
+    refusal = check_booking(status=event.status)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": booking_refusal_message(refusal),
+                "reason": str(refusal),
+            },
+        )
+    found = slot_check(booking.venue_id, booking.starts_at, booking.ends_at, exclude_id=booking.id)
+    if not found.available:
+        raise not_available(booking.venue_name, found, coordinator_titles(found, user))
+    try:
+        requested = booking_store.repository().request_hold(
+            booking.id, actor_id=user.id, expected_status=event.status
+        )
+    except HoldExpired:
+        raise _hold_expired(booking) from None
+    except StaleBookingStatus:
+        current = booking_store.repository().get_booking(booking.id)
+        if current is not None and current.hold_expired:
+            # US14.4: the sweep expired it between the check above and the write.
+            raise _hold_expired(current) from None
+        raise _not_held(current.status if current else BookingStatus.CANCELLED) from None
+    except StaleEventStatus:
+        raise _stale_request() from None
+    return _booking_out(requested)
+
+
+def _not_held(current: BookingStatus) -> HTTPException:
+    message = (
+        "This hold has already been turned into a booking request."
+        if current is BookingStatus.REQUESTED
+        else "This hold has been cancelled."
+        if current is BookingStatus.CANCELLED
+        else "Only a hold can be turned into a booking request."
+    )
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"code": EventError.REFUSED, "message": message, "reason": "not-held"},
+    )
+
+
+def _nothing_to_cancel(booking: Booking) -> HTTPException:
+    """US14.4: an expired hold already gave its slot back."""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": (
+                f"The hold on {booking.venue_name or 'this venue'} expired at "
+                f"{booking.hold_expires_at.replace('T', ' ')[:16]}, so its slot is already "
+                "free. There is nothing to cancel."
+            ),
+            "reason": "hold-expired",
+        },
+    )
+
+
+def _hold_expired(booking: Booking) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": (
+                f"The hold on {booking.venue_name or 'this venue'} expired at "
+                f"{booking.hold_expires_at.replace('T', ' ')[:16]}. Ask Venue Staff to "
+                "hold it again, "
+                "or request the venue as a new booking."
+            ),
+            "reason": "hold-expired",
+        },
+    )

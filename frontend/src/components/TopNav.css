@@ -150,3 +150,19 @@
     display: none;
   }
 }
+
+/* US10.1: unread notifications, counted on the rail link. */
+.topnav-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  margin-left: 0.35rem;
+  padding: 0 0.3rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+}

@@ -1,0 +1,56 @@
+/* US2.1 (Sprint 3): the event needs fields. A fieldset is a `.field` too, so it
+   lines up with the inputs around it once the browser's frame is removed. */
+.needs-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.needs-group > legend {
+  padding: 0;
+  margin-bottom: 0.4rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--ink-strong);
+}
+
+.needs-group > .field-hint {
+  font-size: 0.82rem;
+  color: var(--muted-soft);
+}
+
+.needs-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.35rem 1rem;
+}
+
+.needs-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--ink-strong);
+  cursor: pointer;
+}
+
+.field .needs-option input {
+  width: auto;
+  padding: 0;
+  margin: 0;
+}
+
+.field select[aria-invalid='true'] {
+  border-color: var(--danger-border);
+}
+
+.needs-group-invalid .needs-options {
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+}
+
+.field .needs-text {
+  min-height: 4.5rem;
+}

@@ -21,16 +21,26 @@ export type Permission =
   | 'events:read:all'
   | 'events:submit'
   | 'events:review'
+  | 'events:complete'
+  | 'events:cancel'
   | 'events:edit'
   | 'users:read'
   | 'venues:read'
   | 'venues:create'
   | 'venues:edit'
   | 'venues:delete'
+  | 'notifications:read'
   | 'bookings:request'
   | 'queue:view:unassigned'
   | 'coordinators:assign'
   | 'safety:review'
+  | 'safety:submit'
+  | 'equipment:read'
+  | 'equipment:write'
+  | 'equipment:request'
+  | 'equipment:queue'
+  | 'holds:place'
+  | 'bookings:decide'
 
 /**
  * The signed-in user, exactly as the server issued it.
@@ -96,7 +106,8 @@ export class ForbiddenError extends ApiError {
   }
 }
 
-type ErrorBody = { detail?: { code?: string; message?: string } | string }
+type ValidationIssue = { loc?: Array<string | number>; msg?: string }
+type ErrorBody = { detail?: { code?: string; message?: string } | string | ValidationIssue[] }
 
 /** Pull the API's {detail: {code, message}} out of a response, whatever it sent. */
 async function readError(response: Response): Promise<{ code: ErrorCode; message: string }> {
@@ -107,6 +118,9 @@ async function readError(response: Response): Promise<{ code: ErrorCode; message
     const body = (await response.json()) as ErrorBody
     if (typeof body.detail === 'string') {
       message = body.detail
+    } else if (Array.isArray(body.detail)) {
+      const first = body.detail[0]
+      if (first) message = `${String(first.loc?.at(-1) ?? 'Field')}: ${first.msg ?? 'invalid value'}.`
     } else if (body.detail) {
       code = (body.detail.code as ErrorCode) ?? 'unknown'
       message = body.detail.message ?? ''

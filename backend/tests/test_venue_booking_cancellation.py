@@ -146,7 +146,8 @@ class TestOtherBookingsAreUnchanged:
     ):
         seed_event(event_repository, event_id=901)
         here = request(client, coordinator).json()
-        there = request(client, coordinator, event_id=901).json()
+        # US15.1: the Great Hall's slot is taken by `here`, so `there` is elsewhere.
+        there = request(client, coordinator, event_id=901, venueId=SEMINAR_ROOM).json()
 
         cancel(client, coordinator, here["id"])
 
@@ -158,7 +159,7 @@ class TestTheEventIsUnchanged:
 
     @pytest.mark.parametrize(
         "event_status",
-        [EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW, EventStatus.APPROVED],
+        [EventStatus.APPROVED, EventStatus.PLANNING],
     )
     def test_the_event_status_is_unchanged(
         self, client, coordinator, event_repository, event_status
@@ -170,7 +171,7 @@ class TestTheEventIsUnchanged:
         cancel(client, coordinator, booking["id"])
 
         after = client.get(f"/events/{EVENT_ID}", headers=coordinator).json()
-        assert after["status"] == str(event_status)
+        assert after["status"] == before["status"]
         assert after == before
 
     def test_cancelling_the_last_booking_still_leaves_the_event_alone(
@@ -199,8 +200,15 @@ class TestTheVenueIsFreed:
 
         assert not booking_repository.bookings[0].holds_venue
 
-    def test_only_requested_holds_a_venue(self):
-        assert HOLDS_VENUE == {BookingStatus.REQUESTED}
+    def test_only_requested_held_and_confirmed_can_hold_a_venue(self):
+        # US14.3: a Held booking holds the venue too, until it expires.
+        # US16.1: so does a Confirmed one; a Rejected one frees it.
+        assert HOLDS_VENUE == {
+            BookingStatus.REQUESTED,
+            BookingStatus.HELD,
+            BookingStatus.CONFIRMED,
+        }
+        assert BookingStatus.REJECTED not in HOLDS_VENUE
         assert BookingStatus.CANCELLED not in HOLDS_VENUE
 
     def test_the_same_venue_and_slot_can_be_requested_again(
@@ -243,10 +251,7 @@ class TestWhoMayCancel:
 
         assert response.status_code == 401
 
-    @pytest.mark.parametrize(
-        "event_status",
-        [EventStatus.REJECTED, EventStatus.CANCELLED, EventStatus.COMPLETED],
-    )
+    @pytest.mark.parametrize("event_status", [EventStatus.REJECTED, EventStatus.COMPLETED])
     def test_a_booking_on_a_closed_event_can_still_be_cancelled(
         self, client, coordinator, event_repository, booking_repository, event_status
     ):
@@ -264,6 +269,27 @@ class TestWhoMayCancel:
         response = cancel(client, coordinator, str(booking.id))
 
         assert response.status_code == 200, response.text
+
+    def test_a_cancelled_event_is_read_only(
+        self, client, coordinator, event_repository, booking_repository
+    ):
+        """US4.6: cancelling the event already gave its bookings back, and it is
+        read-only from then on."""
+        seed_event(event_repository, status=EventStatus.CANCELLED)
+        booking = booking_repository.create(
+            event_id=EVENT_ID,
+            venue_id=1,
+            starts_at="2027-11-02T09:00",
+            ends_at="2027-11-02T17:00",
+            requested_by_id=COORDINATOR_ID,
+            headcount=30,
+        )
+
+        response = cancel(client, coordinator, str(booking.id))
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["reason"] == "event-cancelled"
+        assert booking_repository.get_booking(booking.id).status is BookingStatus.REQUESTED
 
 
 class TestRefusals:

@@ -17,7 +17,7 @@ import pytest
 from app.booking_store import BookingStatus
 from app.event_status import BOOKABLE, BookingRefusal, EventStatus, check_booking
 from app.event_store import Event
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 EVENT_ID = 900
 GREAT_HALL = "1"
@@ -136,6 +136,14 @@ class TestRequestingABooking:
             "requiredFacilities",
             "accessibilityNeeds",
             "cancellation",
+            # US14.3: empty and False on a booking that was never a hold.
+            "holdExpiresAt",
+            "holdExpired",
+            "heldByName",
+            # US16.1: null until Venue Staff decide it.
+            "decision",
+            # US15.2: null unless flagged "Conflict – review needed".
+            "conflict",
         }
         assert isinstance(body["id"], str)
         # US14.2: only a cancelled booking says who cancelled it.
@@ -373,7 +381,7 @@ class TestOnlyTheAssignedCoordinatorRequests:
 
 
 class TestEventStatus:
-    """Venues can be requested for any event the Coordinator can see, unless it is over."""
+    """Venues can be requested only after approval and during planning."""
 
     @pytest.mark.parametrize("event_status", BOOKABLE)
     def test_an_open_event_takes_requests(
@@ -385,7 +393,7 @@ class TestEventStatus:
 
     @pytest.mark.parametrize(
         "event_status",
-        [EventStatus.REJECTED, EventStatus.CANCELLED, EventStatus.COMPLETED],
+        [EventStatus.REJECTED, EventStatus.CANCELLED, EventStatus.CONFIRMED, EventStatus.COMPLETED],
     )
     def test_a_closed_event_is_refused_with_the_reason(
         self, client, coordinator, event_repository, booking_repository, event_status
@@ -426,6 +434,8 @@ class TestEventStatus:
 
     def test_the_rule_on_its_own(self):
         assert check_booking(status=EventStatus.DRAFT) is BookingRefusal.NOT_YET_SUBMITTED
+        assert check_booking(status=EventStatus.SUBMITTED) is BookingRefusal.NOT_APPROVED
+        assert check_booking(status=EventStatus.UNDER_REVIEW) is BookingRefusal.NOT_APPROVED
         assert check_booking(status=EventStatus.REJECTED) is BookingRefusal.EVENT_CLOSED
         assert all(check_booking(status=status) is None for status in BOOKABLE)
 
@@ -573,10 +583,11 @@ def test_the_whole_journey_through_the_routes(client, organiser, coordinator, au
         json={
             "title": "Open Day",
             "purpose": "Show prospective students around.",
-            "description": "",
+            "description": "Campus tours and talks.",
             "startsAt": "2027-11-02T09:00",
             "endsAt": "2027-11-02T17:00",
             "expectedAttendance": 300,
+            **SUBMITTABLE_NEEDS,
         },
         headers=organiser,
     ).json()
@@ -589,6 +600,8 @@ def test_the_whole_journey_through_the_routes(client, organiser, coordinator, au
         headers=auth_headers("Event Coordinator Lead"),
     ).json()
     assert assigned["coordinatorId"] == str(COORDINATOR_ID)
+    approved = client.post(f"/events/{created['id']}/approve", headers=coordinator)
+    assert approved.status_code == 200, approved.text
 
     hall = client.post(
         f"/events/{created['id']}/bookings", json=BOOKING, headers=coordinator

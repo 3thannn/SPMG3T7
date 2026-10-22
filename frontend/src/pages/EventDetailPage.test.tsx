@@ -1,8 +1,23 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import EventDetailPage from './EventDetailPage'
-import { getEvent, listBookings, saveEvent, submitEvent, type EventRecord } from '../eventsStore'
+import { MISSING_MESSAGES, NO_NEEDS, NOT_REQUIRED } from '../eventNeeds'
+import {
+  EventRuleError,
+  approveSafetyCheck,
+  cancelEvent,
+  completeEvent,
+  getEvent,
+  getSafetyReadiness,
+  getSafetyReview,
+  listBookings,
+  saveEvent,
+  sendForSafetyCheck,
+  submitEvent,
+  type EventRecord,
+} from '../eventsStore'
+import { ANSWERED_NEEDS } from '../test/eventNeeds'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
@@ -11,6 +26,15 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   getEvent: vi.fn(),
   saveEvent: vi.fn(),
   submitEvent: vi.fn(),
+  completeEvent: vi.fn(),
+  // US4.6: cancelling from the page.
+  cancelEvent: vi.fn(),
+  // US4.4: the safety check panel loads its own readiness.
+  getSafetyReadiness: vi.fn(async () => ({ ready: true, reason: '', message: '' })),
+  sendForSafetyCheck: vi.fn(),
+  approveSafetyCheck: vi.fn(),
+  // US17.1: the Safety Officer's review loads its own data; left pending here.
+  getSafetyReview: vi.fn(() => new Promise(() => {})),
 }))
 
 // US14.1: the venue bookings card loads its own data. These tests are not about
@@ -23,9 +47,16 @@ vi.mock('../venuesStore', async (importOriginal) => ({
   listVenues: vi.fn(async () => []),
 }))
 
+vi.mock('../equipmentStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../equipmentStore')>()),
+  listEventEquipmentRequests: vi.fn(async () => []),
+  listEquipment: vi.fn(async () => []),
+}))
+
 const getEventMock = vi.mocked(getEvent)
 const saveEventMock = vi.mocked(saveEvent)
 const submitEventMock = vi.mocked(submitEvent)
+const completeEventMock = vi.mocked(completeEvent)
 const organiser = buildSession({ role: 'Event Organiser', id: '1', name: 'Dylan' })
 
 const event: EventRecord = {
@@ -81,6 +112,7 @@ it('saves a description-only edit without trimming its whitespace', async () => 
       startsAt: '',
       endsAt: null,
       expectedAttendance: null,
+      ...NO_NEEDS,
     },
     organiser,
   )
@@ -192,6 +224,17 @@ it('shows the full status history, not just the current status', async () => {
   expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0)
 })
 
+it.each([coordinator, organiser])('keeps status history about event transitions for %s', async (session) => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Planning', coordinatorId: coordinator.id })
+  render(<EventDetailPage eventId="101" session={session} />)
+  expect(await screen.findByRole('heading', { name: 'Status history' })).toBeInTheDocument()
+  expect(screen.getByText('Event status transitions and requested changes.')).toBeInTheDocument()
+  const entries = document.querySelectorAll('ol.timeline > li')
+  expect(entries[0]).toHaveTextContent('Created as')
+  expect(entries[0]).toHaveTextContent('Status: Draft')
+  expect(screen.queryByText(/Microphone request/)).not.toBeInTheDocument()
+})
+
 it('shows the venue bookings for a submitted event under its details (US14.1)', async () => {
   getEventMock.mockResolvedValue(submittedEvent)
 
@@ -208,5 +251,378 @@ it('shows no venue bookings card on a Draft, which cannot have any', async () =>
 
   await screen.findByLabelText('Title')
   expect(screen.queryByRole('heading', { name: 'Venue bookings' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Equipment requests' })).not.toBeInTheDocument()
   expect(vi.mocked(listBookings)).not.toHaveBeenCalled()
+})
+
+it('lets the assigned Coordinator complete an ended Confirmed event', async () => {
+  const user = userEvent.setup()
+  const confirmed = {
+    ...submittedEvent, status: 'Confirmed' as const,
+    coordinatorId: coordinator.id, endsAt: '2020-01-01T17:00',
+  }
+  getEventMock.mockResolvedValue(confirmed)
+  completeEventMock.mockResolvedValue({ ...confirmed, status: 'Completed' })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  await user.click(await screen.findByRole('button', { name: 'Mark Completed' }))
+  expect(completeEventMock).toHaveBeenCalledWith('101', coordinator)
+  expect(await screen.findByRole('status')).toHaveTextContent('Completed.')
+  expect(screen.queryByRole('button', { name: 'Mark Completed' })).not.toBeInTheDocument()
+})
+
+it('does not offer completion before the end time or to another Coordinator', async () => {
+  const future = {
+    ...submittedEvent, status: 'Confirmed' as const,
+    coordinatorId: coordinator.id, endsAt: '2099-01-01T17:00',
+  }
+  getEventMock.mockResolvedValue(future)
+  const view = render(<EventDetailPage eventId="101" session={coordinator} />)
+  expect(await screen.findByRole('button', { name: 'Mark Completed' })).toBeDisabled()
+
+  view.unmount()
+  getEventMock.mockResolvedValue({ ...future, coordinatorId: 'someone-else' })
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+  await screen.findByText('Faculty Welcome Night')
+  expect(screen.queryByRole('button', { name: 'Mark Completed' })).not.toBeInTheDocument()
+})
+
+// --- US2.1 (Sprint 3): the customer's mandatory event needs ----------------------
+
+const answeredDraft: EventRecord = {
+  ...event,
+  description: 'Talks and a campus tour.',
+  endsAt: '2026-11-02T21:00',
+  ...ANSWERED_NEEDS,
+}
+
+it('shows each need as read-only text, and says when one is not stated', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, ...ANSWERED_NEEDS, equipmentNeeds: '' })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  expect(await screen.findByText('Venue requirements')).toBeInTheDocument()
+  expect(screen.getByText('Stage, Projector')).toBeInTheDocument()
+  expect(screen.getByText('Theatre')).toBeInTheDocument()
+  expect(screen.getByText('Wheelchair access')).toBeInTheDocument()
+  expect(screen.getByText(NOT_REQUIRED)).toBeInTheDocument()
+  const equipment = screen.getByText('Equipment needs')
+  expect(equipment.nextElementSibling).toHaveTextContent('Not stated.')
+})
+
+it('reads every need as not stated on an event saved before they existed', async () => {
+  getEventMock.mockResolvedValue(submittedEvent)
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  await screen.findByText('Registration needs')
+  expect(screen.getAllByText('Not stated.')).toHaveLength(5)
+})
+
+it('fills the draft form with the event’s needs and saves a changed one', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue(answeredDraft)
+  saveEventMock.mockResolvedValue({ ...answeredDraft, preferredLayout: 'Banquet' })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  const layout = await screen.findByLabelText('Preferred layout')
+  expect(layout).toHaveValue('Theatre')
+  // Nothing has changed yet, so there is nothing to save.
+  expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled()
+
+  await user.selectOptions(layout, 'Banquet')
+  await user.click(screen.getByRole('button', { name: 'Save draft' }))
+
+  await waitFor(() => expect(saveEventMock).toHaveBeenCalled())
+  expect(saveEventMock.mock.calls[0][1]).toEqual(
+    expect.objectContaining({ ...ANSWERED_NEEDS, preferredLayout: 'Banquet' }),
+  )
+  expect(await screen.findByRole('status')).toHaveTextContent('Saved. Status is still Draft.')
+})
+
+it('saves a draft with needs left unanswered', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue(event)
+  saveEventMock.mockResolvedValue(event)
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  const access = await screen.findByRole('group', { name: 'Accessibility needs' })
+  await user.click(within(access).getByLabelText('Lift'))
+  await user.click(screen.getByRole('button', { name: 'Save draft' }))
+
+  await waitFor(() => expect(saveEventMock).toHaveBeenCalled())
+  expect(saveEventMock.mock.calls[0][1]).toEqual(
+    expect.objectContaining({ ...NO_NEEDS, accessibilityNeeds: 'Lift' }),
+  )
+})
+
+it.each([
+  ['venueRequirements' as const],
+  ['preferredLayout' as const],
+  ['accessibilityNeeds' as const],
+  ['equipmentNeeds' as const],
+  ['registrationNeeds' as const],
+])('blocks submitting a draft whose %s is unanswered, and says so', async (key) => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue({ ...answeredDraft, [key]: '' })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  await user.click(await screen.findByRole('button', { name: 'Submit event' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(MISSING_MESSAGES[key])
+  expect(saveEventMock).not.toHaveBeenCalled()
+  expect(submitEventMock).not.toHaveBeenCalled()
+})
+
+it('blocks submitting a draft with no description', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue({ ...answeredDraft, description: '' })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  await user.click(await screen.findByRole('button', { name: 'Submit event' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Give the event a description.')
+  expect(submitEventMock).not.toHaveBeenCalled()
+})
+
+it('submits a complete draft with its needs, trimming the described ones', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue(answeredDraft)
+  saveEventMock.mockResolvedValue(answeredDraft)
+  submitEventMock.mockResolvedValue({ ...answeredDraft, status: 'Submitted' })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  const registration = await screen.findByRole('group', { name: 'Registration needs' })
+  await user.click(within(registration).getByLabelText(NOT_REQUIRED))
+  await user.type(within(registration).getByRole('textbox'), '  Online sign-up  ')
+  await user.click(screen.getByRole('button', { name: 'Submit event' }))
+
+  await waitFor(() => expect(submitEventMock).toHaveBeenCalledWith('101', organiser))
+  expect(saveEventMock.mock.calls[0][1]).toEqual(
+    expect.objectContaining({ ...ANSWERED_NEEDS, registrationNeeds: 'Online sign-up' }),
+  )
+  expect(await screen.findByRole('status')).toHaveTextContent('Submitted.')
+})
+
+/* ---------- US4.4: Pending Safety Check ---------- */
+
+const officer = buildSession({ role: 'Safety Officer', id: '5', name: 'Alex' })
+
+it('lets the assigned Coordinator send a ready Planning event for its safety check', async () => {
+  const user = userEvent.setup()
+  const planning = { ...submittedEvent, status: 'Planning' as const, coordinatorId: coordinator.id }
+  getEventMock.mockResolvedValue(planning)
+  vi.mocked(sendForSafetyCheck).mockResolvedValue({
+    ...planning,
+    status: 'Pending Safety Check',
+  })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  await user.click(await screen.findByRole('button', { name: 'Send for safety check' }))
+
+  expect(vi.mocked(getSafetyReadiness)).toHaveBeenCalledWith('101', coordinator)
+  expect(await screen.findByText(/The event is now Pending Safety Check\./)).toBeInTheDocument()
+  expect(screen.getByText(/Waiting for the Safety Officer/)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Send for safety check' })).not.toBeInTheDocument()
+})
+
+it('shows the Safety Officer the decision, but not the bookings or equipment cards', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+
+  expect(await screen.findByRole('heading', { name: 'Safety check decision' })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '← Safety review' })).toHaveAttribute(
+    'href',
+    '#/safety-review',
+  )
+  expect(screen.queryByRole('heading', { name: 'Venue bookings' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Equipment requests' })).not.toBeInTheDocument()
+  expect(vi.mocked(listBookings)).not.toHaveBeenCalled()
+})
+
+it('takes the Safety Officer back to their queue', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+  await user.click(await screen.findByRole('link', { name: '← Safety review' }))
+
+  expect(window.location.hash).toBe('#/safety-review')
+})
+
+it('shows the Safety Officer the outcome of their approval', async () => {
+  const user = userEvent.setup()
+  const pending = { ...submittedEvent, status: 'Pending Safety Check' as const }
+  getEventMock.mockResolvedValue(pending)
+  vi.mocked(approveSafetyCheck).mockResolvedValue({ ...pending, status: 'Confirmed' })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+  await user.click(await screen.findByRole('button', { name: 'Approve safety check' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Approved. The event is now Confirmed.',
+  )
+  expect(screen.queryByRole('heading', { name: 'Safety check decision' })).not.toBeInTheDocument()
+})
+
+it('shows the Safety Officer why a decision was refused', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })
+  vi.mocked(approveSafetyCheck).mockRejectedValue(
+    new EventRuleError('This safety check was already decided. Refresh it and try again.'),
+  )
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+  await user.click(await screen.findByRole('button', { name: 'Approve safety check' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'This safety check was already decided. Refresh it and try again.',
+  )
+})
+
+it('refuses the Safety Officer an event that is no longer waiting for them', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Confirmed' })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+
+  expect(await screen.findByRole('heading', { name: 'Not available for your role' })).toBeInTheDocument()
+})
+
+it('sends the Safety Officer back to their queue from a missing event', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockResolvedValue(null)
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+  await user.click(await screen.findByRole('button', { name: 'Back to safety review' }))
+
+  expect(window.location.hash).toBe('#/safety-review')
+})
+
+/* ---------- US17.1: the Safety Officer's read-only review ---------- */
+
+it('shows the Safety Officer the safety review of a waiting event', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+
+  expect(await screen.findByRole('heading', { name: 'Safety review' })).toBeInTheDocument()
+  expect(vi.mocked(getSafetyReview)).toHaveBeenCalledWith('101', officer)
+  // Read-only: the details are not an editable form for them.
+  expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+})
+
+it('shows no safety review to anyone else', async () => {
+  getEventMock.mockResolvedValue({
+    ...submittedEvent, status: 'Pending Safety Check', coordinatorId: coordinator.id,
+  })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  await screen.findByRole('heading', { name: 'Safety check' })
+  expect(screen.queryByRole('heading', { name: 'Safety review' })).not.toBeInTheDocument()
+  expect(vi.mocked(getSafetyReview)).not.toHaveBeenCalled()
+})
+
+/* ---------- US4.6: cancelling an event ---------- */
+
+const cancelledBy = (byName: string, byId: string) => ({
+  from: 'Planning' as const,
+  to: 'Cancelled' as const,
+  at: '2026-10-21T09:00:00',
+  byId,
+  byName,
+  notes: 'Funding was withdrawn.',
+  kind: 'cancellation' as const,
+})
+
+it('lets the assigned Coordinator cancel the event, and then shows it read-only', async () => {
+  const user = userEvent.setup()
+  const planning = { ...submittedEvent, status: 'Planning' as const, coordinatorId: coordinator.id }
+  getEventMock.mockResolvedValue(planning)
+  vi.mocked(cancelEvent).mockResolvedValue({
+    ...planning,
+    status: 'Cancelled',
+    history: [...planning.history, cancelledBy('Priya', coordinator.id)],
+  })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+  await user.click(await screen.findByRole('button', { name: 'Cancel this event…' }))
+  await user.type(
+    screen.getByLabelText('Why is this event being cancelled?'),
+    'Funding was withdrawn.',
+  )
+  await user.click(screen.getByRole('button', { name: 'Confirm cancellation' }))
+
+  expect(vi.mocked(cancelEvent)).toHaveBeenCalledWith('101', 'Funding was withdrawn.', coordinator)
+  expect(await screen.findByRole('status')).toHaveTextContent(/^Cancelled\. Its venue bookings/)
+  const notice = screen.getByRole('note')
+  expect(notice).toHaveTextContent(/Cancelled by Priya on/)
+  expect(notice).toHaveTextContent('Reason: Funding was withdrawn.')
+  expect(screen.queryByRole('heading', { name: 'Cancel event' })).not.toBeInTheDocument()
+  // The history labels the note as the reason, not as a request.
+  expect(screen.getByText('Cancellation reason')).toBeInTheDocument()
+  // The bookings card reloads, so it shows what the cancellation released.
+  await waitFor(() => expect(vi.mocked(listBookings)).toHaveBeenCalledTimes(2))
+})
+
+it('shows the owning Organiser a cancelled event as read-only, with nothing waiting', async () => {
+  getEventMock.mockResolvedValue({
+    ...submittedEvent,
+    status: 'Cancelled',
+    coordinatorId: coordinator.id,
+    // US11.1: left waiting when the event was cancelled; nobody can answer it now.
+    changeRequested: true,
+    pendingChanges: [
+      { field: 'name', label: 'Title', oldValue: 'A', newValue: 'B', important: false },
+    ],
+    history: [...submittedEvent.history, cancelledBy('Dylan', organiser.id)],
+  })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  expect(await screen.findByRole('note')).toHaveTextContent('This event is read-only.')
+  expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Request changes' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Requested changes' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Cancel this event…' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/has already been decided/)).not.toBeInTheDocument()
+})
+
+it('lets the Organiser cancel their own Draft', async () => {
+  getEventMock.mockResolvedValue(event)
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  expect(await screen.findByRole('button', { name: 'Cancel this event…' })).toBeInTheDocument()
+})
+
+it('gives an editing Coordinator no form on a cancelled event', async () => {
+  // The server grants Coordinators events:edit (US5.2); the shared test
+  // session leaves it out, so it is added here to reach the editable path.
+  const editor = buildSession({
+    role: 'Event Coordinator',
+    id: coordinator.id,
+    permissions: [...coordinator.permissions, 'events:edit'],
+  })
+  getEventMock.mockResolvedValue({
+    ...submittedEvent,
+    status: 'Cancelled',
+    coordinatorId: editor.id,
+    history: [...submittedEvent.history, cancelledBy('Priya', editor.id)],
+  })
+
+  render(<EventDetailPage eventId="101" session={editor} />)
+
+  expect(await screen.findByRole('note')).toHaveTextContent('This event is read-only.')
+  expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/Changes are tracked and logged/)).not.toBeInTheDocument()
 })

@@ -67,6 +67,37 @@ const GUARDED: Record<string, GuardedRoute> = {
     what: 'adding a venue',
     who: 'Venue Staff',
   },
+  '/notifications': {
+    anyOf: ['notifications:read'],
+    what: 'notifications',
+    who: 'Organisers, Event Coordinators, Venue Staff, and Technical Support',
+  },
+  '/equipment': {
+    anyOf: ['equipment:read'],
+    what: 'the equipment catalogue',
+    who: 'Event Coordinators, Coordinator Lead, and Technical Support',
+  },
+  '/equipment/new': {
+    anyOf: ['equipment:write'],
+    what: 'adding equipment',
+    who: 'Technical Support',
+  },
+  '/booking-requests': {
+    anyOf: ['bookings:decide'],
+    what: 'the venue booking requests',
+    who: 'Venue Staff',
+  },
+  // US15.2: reviewing a clash is part of deciding what a venue can support.
+  '/booking-conflicts': {
+    anyOf: ['bookings:decide'],
+    what: 'the flagged booking conflicts',
+    who: 'Venue Staff',
+  },
+  '/equipment-requests': {
+    anyOf: ['equipment:queue'],
+    what: 'the equipment request queue',
+    who: 'Technical Support',
+  },
 }
 
 /**
@@ -75,11 +106,21 @@ const GUARDED: Record<string, GuardedRoute> = {
  */
 export function guardFor(route: string): GuardedRoute | null {
   if (GUARDED[route]) return GUARDED[route]
+  if (/^\/equipment\/[^/]+\/edit$/.test(route)) {
+    return { anyOf: ['equipment:write'], what: 'editing equipment', who: 'Technical Support' }
+  }
+  if (/^\/equipment-requests\/[^/]+$/.test(route)) {
+    return { anyOf: ['equipment:queue'], what: 'the equipment request queue', who: 'Technical Support' }
+  }
+  if (/^\/equipment\/[^/]+$/.test(route)) {
+    return { anyOf: ['equipment:read'], what: 'equipment details', who: 'Event Coordinators, Coordinator Lead, and Technical Support' }
+  }
   if (/^\/events\/[^/]+$/.test(route)) {
     return {
-      anyOf: ['events:read:own', 'events:read:submitted', 'events:read:all'],
+      // US4.4: the Safety Officer opens the events waiting for their check.
+      anyOf: ['events:read:own', 'events:read:submitted', 'events:read:all', 'safety:review'],
       what: 'event details',
-      who: 'Organisers, Event Coordinators, and Coordinator Lead',
+      who: 'Organisers, Event Coordinators, Coordinator Lead, and Safety Officer',
     }
   }
   // Checked before the detail route, which would otherwise match the id and

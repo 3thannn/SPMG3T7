@@ -1,0 +1,10 @@
+/* US15.2: the flagged list reuses the booking request card, with the flag at
+   its edge so a conflict reads as a problem before its details are read. */
+.booking-conflict-card {
+  border-left: 3px solid var(--danger-border);
+}
+
+.booking-conflict-resolved {
+  margin: 0 0 0.9rem;
+  font-size: 0.88rem;
+}

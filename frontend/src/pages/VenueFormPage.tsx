@@ -2,15 +2,22 @@ import { useEffect, useState } from 'react'
 import './VenueFormPage.css'
 import {
   EMPTY_VENUE,
+  MINUTES_MAX,
   VenueRuleError,
   capacityField,
   createVenue,
   getVenue,
+  minutesField,
   parseCapacity,
+  parseMinutes,
   saveVenue,
   validateVenue,
+  type BookingWindow,
+  type SavedVenue,
   type VenueInput,
+  type VenueRecheck,
 } from '../venuesStore'
+import { formatTimestamp } from '../status'
 import { navigate } from '../router'
 import { unexpectedFailureMessage, type Session } from '../api'
 
@@ -28,8 +35,11 @@ type Fields = {
   accessibilityFeatures: string
   operatingHours: string
   supportedLayouts: string
+  setupMinutes: string
+  turnaroundMinutes: string
 }
 
+/** US9.4: setup and turnaround start at 0, the story's default. */
 const EMPTY_FIELDS: Fields = {
   name: '',
   location: '',
@@ -38,13 +48,24 @@ const EMPTY_FIELDS: Fields = {
   accessibilityFeatures: '',
   operatingHours: '',
   supportedLayouts: '',
+  setupMinutes: '0',
+  turnaroundMinutes: '0',
 }
 
 type Loading = { state: 'loading' }
 type Ready = { state: 'ready' }
 type Missing = { state: 'missing' }
 type LoadFailed = { state: 'error' }
-type PageState = Loading | Ready | Missing | LoadFailed
+/** US9.4: saved, and the re-check found bookings that now clash. */
+type Rechecked = { state: 'rechecked'; venueId: string; recheck: VenueRecheck }
+type PageState = Loading | Ready | Missing | LoadFailed | Rechecked
+
+/** "Booking 12 (event 34): 01 Mar 2027, 09:30 to 01 Mar 2027, 12:45". */
+function describeWindow(window: BookingWindow): string {
+  return `Booking ${window.bookingId} (event ${window.eventId}) occupies ${formatTimestamp(
+    window.occupiedFrom,
+  )} to ${formatTimestamp(window.occupiedTo)}`
+}
 
 /**
  * One form for US9.1a (create) and US9.1b (update).
@@ -87,6 +108,8 @@ export default function VenueFormPage({ venueId, session }: VenueFormPageProps) 
           accessibilityFeatures: venue.accessibilityFeatures,
           operatingHours: venue.operatingHours,
           supportedLayouts: venue.supportedLayouts,
+          setupMinutes: minutesField(venue.setupMinutes),
+          turnaroundMinutes: minutesField(venue.turnaroundMinutes),
         })
         setPage({ state: 'ready' })
       })
@@ -108,6 +131,10 @@ export default function VenueFormPage({ venueId, session }: VenueFormPageProps) 
     if (capacity === 'invalid') {
       return 'Capacity must be a positive whole number of people.'
     }
+    const setupMinutes = parseMinutes(fields.setupMinutes, 'setup')
+    if (typeof setupMinutes === 'string') return setupMinutes
+    const turnaroundMinutes = parseMinutes(fields.turnaroundMinutes, 'turnaround')
+    if (typeof turnaroundMinutes === 'string') return turnaroundMinutes
 
     const input: VenueInput = {
       ...EMPTY_VENUE,
@@ -118,6 +145,8 @@ export default function VenueFormPage({ venueId, session }: VenueFormPageProps) 
       accessibilityFeatures: fields.accessibilityFeatures.trim(),
       operatingHours: fields.operatingHours.trim(),
       supportedLayouts: fields.supportedLayouts.trim(),
+      setupMinutes,
+      turnaroundMinutes,
     }
 
     const complaint = validateVenue(input)
@@ -135,12 +164,26 @@ export default function VenueFormPage({ venueId, session }: VenueFormPageProps) 
     }
 
     setBusy(true)
-    const written = editing
+    const written: Promise<SavedVenue> = editing
       ? saveVenue(venueId as string, input, session)
       : createVenue(input, session)
 
     written
       .then((venue) => {
+        // US9.4: a changed setup or turnaround time re-checks the venue's
+        // bookings. Clashes it found are shown here before moving on, because
+        // nothing else will have told Venue Staff — nothing was cancelled.
+        const recheck = venue.recheck
+        // US15.2: a booking pushed into an unavailability period is flagged
+        // without being one of US9.4's pairs, so either one shows the result.
+        if (
+          recheck &&
+          (recheck.conflicts.length > 0 || (recheck.flaggedBookingIds ?? []).length > 0)
+        ) {
+          setBusy(false)
+          setPage({ state: 'rechecked', venueId: venue.id, recheck })
+          return
+        }
         // Straight to the record, so the change is visible rather than asserted.
         navigate(`/venues/${venue.id}`)
       })
@@ -183,6 +226,72 @@ export default function VenueFormPage({ venueId, session }: VenueFormPageProps) 
         <p className="form-error" role="alert">
           Could not load this venue. Check the API is running and try again.
         </p>
+      )
+    }
+
+    if (page.state === 'rechecked') {
+      const { recheck } = page
+      const count = recheck.conflicts.length
+      const flagged = recheck.flaggedBookingIds ?? []
+      return (
+        <section className="card venue-recheck" aria-labelledby="venue-recheck-title">
+          <h1 className="page-title" id="venue-recheck-title">
+            {count > 0
+              ? `Saved — ${count} booking ${count === 1 ? 'clash needs' : 'clashes need'} attention`
+              : `Saved — ${flagged.length} ${flagged.length === 1 ? 'booking needs' : 'bookings need'} attention`}
+          </h1>
+          <p className="page-subtitle" role="status">
+            With {recheck.setupMinutes} minutes' setup and {recheck.turnaroundMinutes}{' '}
+            minutes' turnaround, {recheck.checkedBookings} active{' '}
+            {recheck.checkedBookings === 1 ? 'booking was' : 'bookings were'} checked again.
+            These now overlap. Nothing has been cancelled or removed.
+          </p>
+          <ul className="venue-recheck-list">
+            {recheck.conflicts.map((conflict) => (
+              <li key={`${conflict.first.bookingId}-${conflict.second.bookingId}`}>
+                <span
+                  className={
+                    conflict.causedByChange
+                      ? 'venue-recheck-tag venue-recheck-tag-new'
+                      : 'venue-recheck-tag'
+                  }
+                >
+                  {conflict.causedByChange ? 'New with this change' : 'Already overlapping'}
+                </span>
+                <span>{describeWindow(conflict.first)}</span>
+                <span>{describeWindow(conflict.second)}</span>
+              </li>
+            ))}
+          </ul>
+          {flagged.length > 0 && (
+            <p className="venue-recheck-flagged" role="status">
+              {flagged.length === 1
+                ? `Booking #${flagged[0]} is`
+                : `Bookings ${flagged.map((id) => `#${id}`).join(', ')} are`}{' '}
+              now marked “Conflict – review needed”, and{' '}
+              {flagged.length === 1 ? 'its Coordinator has' : 'their Coordinators have'} been
+              notified.
+            </p>
+          )}
+          <div className="venue-form-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => navigate(`/venues/${page.venueId}`)}
+            >
+              View venue
+            </button>
+            {flagged.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => navigate('/booking-conflicts')}
+              >
+                Review booking conflicts
+              </button>
+            )}
+          </div>
+        </section>
       )
     }
 
@@ -271,6 +380,45 @@ export default function VenueFormPage({ venueId, session }: VenueFormPageProps) 
                   without becoming part of its name. */}
               <span className="venue-field-hint" id="venue-capacity-hint">
                 A positive whole number of people.
+              </span>
+            </div>
+          </fieldset>
+
+          <fieldset className="venue-fieldset" disabled={busy}>
+            <legend className="venue-form-legend">Setup and turnaround</legend>
+
+            <div className="venue-field">
+              <label className="venue-field-label" htmlFor="venue-setup">
+                Setup time (minutes)
+              </label>
+              <input
+                id="venue-setup"
+                type="text"
+                inputMode="numeric"
+                aria-describedby="venue-setup-hint"
+                value={fields.setupMinutes}
+                onChange={(changeEvent) => set('setupMinutes', changeEvent.target.value)}
+              />
+              <span className="venue-field-hint" id="venue-setup-hint">
+                Time to prepare the room before each booking. Whole minutes, 0 to {MINUTES_MAX}.
+              </span>
+            </div>
+
+            <div className="venue-field">
+              <label className="venue-field-label" htmlFor="venue-turnaround">
+                Turnaround time (minutes)
+              </label>
+              <input
+                id="venue-turnaround"
+                type="text"
+                inputMode="numeric"
+                aria-describedby="venue-turnaround-hint"
+                value={fields.turnaroundMinutes}
+                onChange={(changeEvent) => set('turnaroundMinutes', changeEvent.target.value)}
+              />
+              <span className="venue-field-hint" id="venue-turnaround-hint">
+                Time to reset the room after each booking. Whole minutes, 0 to {MINUTES_MAX}.
+                {editing && ' Changing either time re-checks this venue’s bookings.'}
               </span>
             </div>
           </fieldset>

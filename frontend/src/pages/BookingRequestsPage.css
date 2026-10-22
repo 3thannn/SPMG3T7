@@ -1,0 +1,129 @@
+/* US16.1: Venue Staff's queue of booking requests, one card per request. */
+.booking-request-notice {
+  font-size: 0.9rem;
+  color: var(--ink-strong);
+  background: var(--bg-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.booking-request-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.booking-request {
+  padding: 1.1rem 1.25rem;
+}
+
+/* A clash is the one thing on a card that stops a decision, so the card says
+   so at its edge as well as in the note. */
+.booking-request.is-blocked {
+  border-left: 3px solid var(--danger-border);
+}
+
+.booking-request-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.booking-request-title {
+  font-size: 1.05rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.booking-request-coordinator {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+/* Venue, booking, occupied window, headcount, layout: the order a decision reads. */
+.booking-request-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.6rem 1rem;
+  margin: 0 0 0.9rem;
+}
+
+.booking-request-facts dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.booking-request-facts dd {
+  margin: 0.15rem 0 0;
+  color: var(--ink-strong);
+  overflow-wrap: anywhere;
+}
+
+.booking-request-buffers {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.booking-request-clash {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.9rem;
+}
+
+.booking-request-clash ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.booking-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.booking-request-reject {
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+/* US15.2: a request flagged after a setup or turnaround change. The flag is a
+   note beside the facts, not a status: the request is still a request. */
+.booking-request-flag {
+  margin: 0 0 0.9rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.88rem;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
+.booking-request-flag-tag {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--danger-border);
+  background: var(--bg);
+  white-space: nowrap;
+}

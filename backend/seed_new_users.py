@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Seed new users (Coordinator Lead and Safety Officer) into Supabase Auth.
+"""Seed development accounts in Supabase Auth and public.users.
 
-Run this AFTER running SUPABASE_ADD_NEW_ROLES.sql
+For Coordinator Lead and Safety Officer, run SUPABASE_ADD_NEW_ROLES.sql first.
+Technical Support is already in the base role enum.
 
 Usage:
     python seed_new_users.py
+    python seed_new_users.py --tech-only
 """
 
+import argparse
 import os
 
 from dotenv import load_dotenv
@@ -31,52 +34,65 @@ NEW_USERS = [
         "email": "coordinatorlead@spmg3t7.edu",
         "password": PASSWORD,
         "email_confirm": True,
-        "user_metadata": {
-            "name": "Jordan",
-            "role": "Event Coordinator Lead"
-        }
+        "user_metadata": {"name": "Jordan", "role": "Event Coordinator Lead"},
     },
     {
         "email": "safetyofficer@spmg3t7.edu",
         "password": PASSWORD,
         "email_confirm": True,
-        "user_metadata": {
-            "name": "Alex",
-            "role": "Safety Officer"
-        }
-    }
+        "user_metadata": {"name": "Alex", "role": "Safety Officer"},
+    },
+    {
+        "email": "technicalsupport@spmg3t7.edu",
+        "password": PASSWORD,
+        "email_confirm": True,
+        "user_metadata": {"name": "Bryan", "role": "Technical Support Staff"},
+    },
 ]
 
-print("🔧 Creating auth accounts for new roles...")
-print(f"Password for all accounts: {PASSWORD}")
-print()
 
-for user_data in NEW_USERS:
-    try:
-        # Check if user already exists
-        response = supabase.auth.admin.list_users()
-        existing = next(
-            (u for u in response if u.email == user_data["email"]),
-            None
-        )
+def seed_user(user_data: dict) -> None:
+    email = user_data["email"]
+    metadata = user_data["user_metadata"]
+    role = "Technical Support" if email == "technicalsupport@spmg3t7.edu" else metadata["role"]
+    existing_auth = next((u for u in supabase.auth.admin.list_users() if u.email == email), None)
+    if existing_auth is None:
+        created = supabase.auth.admin.create_user(user_data)
+        if created.user is None:
+            raise RuntimeError(f"Supabase did not return the new Auth account for {email}.")
+        print(f"Created Auth account: {email}")
+    else:
+        print(f"Auth account already exists: {email}; password unchanged.")
 
-        if existing:
-            print(f"⚠️  {user_data['email']} already exists (ID: {existing.id})")
-            # Update password if needed
-            supabase.auth.admin.update_user_by_id(
-                existing.id,
-                {"password": user_data["password"]}
+    profiles = (
+        supabase.table("users").select("id, name, role").eq("email", email).limit(1).execute().data
+        or []
+    )
+    if profiles:
+        if profiles[0]["role"] != role:
+            raise RuntimeError(f"Profile {email} has role {profiles[0]['role']}, expected {role}.")
+        print(f"Profile already exists: {email}; unchanged.")
+    else:
+        profile = {"email": email, "name": metadata["name"], "role": role}
+        try:
+            supabase.table("users").insert(profile).execute()
+        except Exception as error:
+            if getattr(error, "code", None) != "23505" or "users_pkey" not in str(error):
+                raise
+            # Existing manually assigned IDs can leave the serial sequence behind.
+            highest = (
+                supabase.table("users").select("id").order("id", desc=True).limit(1).execute().data
             )
-            print("   ✅ Password updated")
-        else:
-            # Create new auth user
-            result = supabase.auth.admin.create_user(user_data)
-            print(f"✅ Created {user_data['email']} (ID: {result.user.id})")
+            profile["id"] = (highest[0]["id"] if highest else 0) + 1
+            supabase.table("users").insert(profile).execute()
+        print(f"Created profile: {email} ({role}).")
 
-    except Exception as e:
-        print(f"❌ Error creating {user_data['email']}: {e}")
 
-print()
-print("✅ Done! You can now sign in with:")
-print(f"   Coordinator Lead: coordinatorlead@spmg3t7.edu / {PASSWORD}")
-print(f"   Safety Officer:   safetyofficer@spmg3t7.edu / {PASSWORD}")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tech-only", action="store_true", help="Set up Bryan only")
+    arguments = parser.parse_args()
+    selected = NEW_USERS[-1:] if arguments.tech_only else NEW_USERS
+    for account in selected:
+        seed_user(account)
+    print("Account setup complete. Newly created accounts use the configured seed password.")

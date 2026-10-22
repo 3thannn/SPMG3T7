@@ -18,6 +18,7 @@ const ROLES: Role[] = [
   'Event Coordinator Lead',
   'Venue Staff',
   'Safety Officer',
+  'Technical Support',
 ]
 
 /**
@@ -49,6 +50,16 @@ describe('can', () => {
 })
 
 describe('canOpen', () => {
+  it('lets Tech Support maintain equipment and see only its request queue and notices', () => {
+    const support = buildSession({ role: 'Technical Support' })
+    expect(canOpen(support, '/equipment')).toBe(true)
+    expect(canOpen(support, '/equipment/new')).toBe(true)
+    expect(canOpen(support, '/equipment/1/edit')).toBe(true)
+    expect(canOpen(support, '/equipment-requests/17')).toBe(true)
+    expect(canOpen(support, '/notifications')).toBe(true)
+    expect(canOpen(support, '/events/101')).toBe(false)
+    expect(canOpen(buildSession({ role: 'Event Coordinator' }), '/equipment/new')).toBe(false)
+  })
   it('lets an Organiser into the events screens', () => {
     const organiser = buildSession({ role: 'Event Organiser' })
     expect(canOpen(organiser, '/events')).toBe(true)
@@ -197,5 +208,52 @@ describe('maintaining the catalogue (US9.1a-c)', () => {
       'The Event Coordinator role cannot open adding a venue. That is available to Venue Staff.',
     )
     expect(denialMessage(coordinator, '/venues/1/edit')).toContain('editing a venue')
+  })
+})
+
+describe('notifications (US10.1)', () => {
+  it('TC-F17 lets an Organiser and a Coordinator open notifications and keeps other roles out', () => {
+    expect(canOpen(buildSession({ role: 'Event Organiser' }), '/notifications')).toBe(true)
+    // US10.2
+    expect(canOpen(buildSession({ role: 'Event Coordinator' }), '/notifications')).toBe(true)
+    expect(canOpen(buildSession({ role: 'Event Coordinator Lead' }), '/notifications')).toBe(false)
+    expect(canOpen(buildSession({ role: 'Safety Officer' }), '/notifications')).toBe(false)
+  })
+
+  it('lets Venue Staff open notifications, to hear about released bookings (US4.6)', () => {
+    expect(canOpen(buildSession({ role: 'Venue Staff' }), '/notifications')).toBe(true)
+  })
+})
+
+describe('booking requests (US16.1)', () => {
+  it('TC-DF18 lets only Venue Staff open the booking requests', () => {
+    expect(canOpen(buildSession({ role: 'Venue Staff' }), '/booking-requests')).toBe(true)
+    for (const role of [
+      'Event Organiser',
+      'Event Coordinator',
+      'Event Coordinator Lead',
+      'Safety Officer',
+      'Technical Support',
+    ] as const) {
+      expect(canOpen(buildSession({ role }), '/booking-requests')).toBe(false)
+    }
+  })
+})
+
+describe('booking conflicts (US15.2)', () => {
+  it('TC-FF23 lets only Venue Staff open the flagged booking conflicts', () => {
+    expect(canOpen(buildSession({ role: 'Venue Staff' }), '/booking-conflicts')).toBe(true)
+    for (const role of [
+      'Event Organiser',
+      'Event Coordinator',
+      'Event Coordinator Lead',
+      'Safety Officer',
+      'Technical Support',
+    ] as const) {
+      expect(canOpen(buildSession({ role }), '/booking-conflicts')).toBe(false)
+    }
+    expect(denialMessage(buildSession({ role: 'Event Coordinator' }), '/booking-conflicts')).toBe(
+      'The Event Coordinator role cannot open the flagged booking conflicts. That is available to Venue Staff.',
+    )
   })
 })

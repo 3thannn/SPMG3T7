@@ -13,6 +13,9 @@ export const EVENT_STATUSES = [
   'Pending Safety Check',
   'Approved',
   'Planning',
+  // US4.4: between planning and preparation; only the Safety Officer's
+  // sign-off moves an event on to Confirmed.
+  'Pending Safety Check',
   'Confirmed',
   'Completed',
   'Cancelled',
@@ -31,9 +34,7 @@ export const SPRINT_1_REACHABLE: readonly EventStatus[] = ['Draft', 'Submitted']
 /**
  * The roles the system knows about.
  *
- * US1.4 adds Coordinator Lead and Safety Officer. Technical Support and
- * Attendee are still deliberately absent — the server agrees, and this type
- * is what makes a stray role name a build error rather than a runtime surprise.
+ * US19 adds Technical Support. Attendee remains unavailable.
  */
 export type Role =
   | 'Event Organiser'
@@ -41,6 +42,7 @@ export type Role =
   | 'Event Coordinator Lead'
   | 'Venue Staff'
   | 'Safety Officer'
+  | 'Technical Support'
 
 /**
  * US4.1: status is visible to the Organiser who owns the event. Coordinators
@@ -56,6 +58,8 @@ export function canViewStatus(
   if (role === 'Event Coordinator') return event.status !== 'Draft'
   if (role === 'Event Coordinator Lead') return event.status !== 'Draft'
   if (role === 'Event Organiser') return event.organiserId === viewerId
+  // US4.4: the Safety Officer sees an event only while it waits for their check.
+  if (role === 'Safety Officer') return event.status === 'Pending Safety Check'
   // Venue Staff hold no event permission, so this is their answer, and it
   // stays the safe one for any role added later that has not been considered
   // here — which is how it already covered Venue Staff before US9.1a-c.
@@ -110,6 +114,13 @@ export type StatusChange = {
    * fixtures still type-check.
    */
   notes?: string
+  /**
+   * US11.1: 'change-request' on the entry an Organiser's change request wrote,
+   * so its note is labelled as theirs. US4.4: 'safety-return' on the entry the
+   * Safety Officer wrote sending an event back to Planning. US4.6:
+   * 'cancellation' on the entry that cancelled the event. Empty otherwise.
+   */
+  kind?: '' | 'change-request' | 'safety-return' | 'cancellation'
 }
 
 /**
@@ -154,6 +165,12 @@ export function clarificationRefusalMessage(reason: ClarificationRefusal): strin
   }
 }
 
+export type StatusNoteKind =
+  | 'clarification'
+  | 'rejection'
+  | 'change-request'
+  | 'safety-return'
+  | 'cancellation'
 /**
  * US14.1: the statuses an event may have venues requested for.
  *
@@ -162,15 +179,12 @@ export function clarificationRefusalMessage(reason: ClarificationRefusal): strin
  * event is under review costs nothing.
  */
 export const BOOKABLE: readonly EventStatus[] = [
-  'Submitted',
-  'Under Review',
   'Approved',
   'Planning',
-  'Confirmed',
 ]
 
 /** Why venues cannot be requested, so the UI can explain rather than deny. */
-export type BookingRefusal = 'not-yet-submitted' | 'event-closed'
+export type BookingRefusal = 'not-yet-submitted' | 'not-approved' | 'event-closed'
 
 export type BookingCheck = { allowed: true } | { allowed: false; reason: BookingRefusal }
 
@@ -183,6 +197,9 @@ export type BookingCheck = { allowed: true } | { allowed: false; reason: Booking
  */
 export function checkBooking(event: { status: EventStatus }): BookingCheck {
   if (event.status === 'Draft') return { allowed: false, reason: 'not-yet-submitted' }
+  if (event.status === 'Submitted' || event.status === 'Under Review') {
+    return { allowed: false, reason: 'not-approved' }
+  }
   if (!BOOKABLE.includes(event.status)) return { allowed: false, reason: 'event-closed' }
   return { allowed: true }
 }
@@ -191,18 +208,117 @@ export function bookingRefusalMessage(reason: BookingRefusal): string {
   switch (reason) {
     case 'not-yet-submitted':
       return 'This event has not been submitted yet, so no venues can be requested for it.'
+    case 'not-approved':
+      return 'Approve this event before requesting a venue.'
     case 'event-closed':
       return 'This event is closed, so no more venues can be requested for it.'
   }
 }
 
+/**
+ * US4.6: why an event cannot be cancelled. "Any event that isn't Completed,
+ * Cancelled or Rejected" may be, so there is one refusal for each of those.
+ */
+export type CancelRefusal = 'already-cancelled' | 'event-completed' | 'event-rejected'
+
+export type CancelCheck = { allowed: true } | { allowed: false; reason: CancelRefusal }
+
+/**
+ * US4.6: may an event at this status be cancelled?
+ *
+ * Mirrors the server's `check_cancel`. Who may cancel (the owner, or the
+ * assigned Coordinator) is the page's to decide from the session; the server
+ * re-checks both, and that refusal is the rule.
+ */
+export function checkCancel(event: { status: EventStatus }): CancelCheck {
+  if (event.status === 'Cancelled') return { allowed: false, reason: 'already-cancelled' }
+  if (event.status === 'Completed') return { allowed: false, reason: 'event-completed' }
+  if (event.status === 'Rejected') return { allowed: false, reason: 'event-rejected' }
+  return { allowed: true }
+}
+
+export function cancelRefusalMessage(reason: CancelRefusal): string {
+  switch (reason) {
+    case 'already-cancelled':
+      return 'This event has already been cancelled.'
+    case 'event-completed':
+      return 'This event has already been completed, so it cannot be cancelled.'
+    case 'event-rejected':
+      return 'This event was rejected, so there is nothing to cancel.'
+  }
+}
+
 /** What kind of person-written note an audit entry carries. */
-export function statusNoteKind(
-  change: StatusChange,
-): 'clarification' | 'rejection' | null {
+export function statusNoteKind(change: StatusChange): StatusNoteKind | null {
   if (!(change.notes ?? '').trim()) return null
+  if (change.kind) return change.kind
   if (change.to === 'Rejected') return 'rejection'
   return 'clarification'
+}
+
+/** The heading the history shows above each kind of note. */
+export function statusNoteLabel(kind: StatusNoteKind): string {
+  switch (kind) {
+    case 'clarification':
+      return 'Requested by Coordinator'
+    case 'rejection':
+      return 'Rejection reason'
+    case 'change-request':
+      return 'Change requested by Organiser'
+    case 'safety-return':
+      return 'Sent back by Safety Officer'
+    case 'cancellation':
+      return 'Cancellation reason'
+  }
+}
+
+/**
+ * US11.1: where an Organiser may request changes. A Draft is still theirs to
+ * edit directly; a decided event is no longer under review.
+ */
+export const REQUESTABLE: readonly EventStatus[] = [
+  'Submitted', 'Under Review', 'Approved', 'Planning',
+]
+
+/** Why a change request is not available, so the page can say rather than hide. */
+export type ChangeRequestRefusal =
+  | 'not-owner'
+  | 'not-submitted'
+  | 'already-decided'
+  | 'already-pending'
+
+export type ChangeRequestCheck =
+  | { allowed: true }
+  | { allowed: false; reason: ChangeRequestRefusal }
+
+/**
+ * US11.1: may this Organiser propose changes to this event now?
+ *
+ * Mirrors the server's `check_change_request`, in the same order, so the page
+ * explains the same refusal the server would give. The server re-checks.
+ */
+export function checkChangeRequest(
+  event: { status: EventStatus; organiserId: string; changeRequested?: boolean },
+  actorId: string,
+): ChangeRequestCheck {
+  if (event.organiserId !== actorId) return { allowed: false, reason: 'not-owner' }
+  if (event.status === 'Draft') return { allowed: false, reason: 'not-submitted' }
+  if (!REQUESTABLE.includes(event.status)) return { allowed: false, reason: 'already-decided' }
+  if (event.changeRequested) return { allowed: false, reason: 'already-pending' }
+  return { allowed: true }
+}
+
+export function changeRequestRefusalMessage(reason: ChangeRequestRefusal): string {
+  switch (reason) {
+    case 'not-owner':
+      return 'Only the Organiser who owns this event can request changes to it.'
+    case 'not-submitted':
+      return 'This event is still a Draft. Edit it directly, then submit it.'
+    case 'already-decided':
+      return 'This event has already been decided, so changes can no longer be requested.'
+    case 'already-pending':
+      return "A change request for this event is already awaiting the Coordinator's review."
+  }
 }
 
 /** Whether an entry specifically contains a US7.3 clarification request. */

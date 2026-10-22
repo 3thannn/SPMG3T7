@@ -14,14 +14,16 @@ it to the assigned one waits for US8.1.
 
 from app.event_status import ClarificationRefusal, EventStatus, check_clarification
 from app.event_store import Event
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Faculty Welcome Night",
     "purpose": "Welcome the new intake.",
     "startsAt": "2026-11-02T18:00",
+    "endsAt": "2026-11-02T21:00",
     "description": "Talks.",
     "expectedAttendance": 120,
+    **SUBMITTABLE_NEEDS,
 }
 
 MESSAGE = "Please confirm the catering budget and add a wet-weather plan."
@@ -97,7 +99,7 @@ class TestAsking:
 
         latest = response.json()["history"][-1]
         assert latest["notes"] == MESSAGE
-        assert latest["from"] == "Submitted"
+        assert latest["from"] == "Under Review"
         assert latest["to"] == "Under Review"
 
     def test_the_request_is_attributable_and_timestamped(self, client, auth_headers):
@@ -137,10 +139,11 @@ class TestAsking:
         response = request_clarification(client, auth_headers("Event Coordinator"), event["id"])
 
         history = response.json()["history"]
-        # US8.6: Assignment doesn't create a history entry (coordinator_id just gets set)
+        # Lead assignment records Submitted -> Under Review before clarification.
         assert [entry["to"] for entry in history] == [
             "Draft",
             "Submitted",
+            "Under Review",
             "Under Review",
         ]
 
@@ -211,8 +214,7 @@ class TestTheOrganiserSeesIt:
         """So a client can tell a request apart from a plain status change."""
         event = submitted_event(client, auth_headers)
 
-        # US8.6: Assignment doesn't create a history entry
-        assert [entry["notes"] for entry in event["history"]] == ["", ""]
+        assert [entry["notes"] for entry in event["history"]] == ["", "", ""]
 
 
 class TestWhoMayAsk:
@@ -304,8 +306,8 @@ class TestTheMessageIsRequired:
 
         after = client.get(f"/events/{event['id']}", headers=auth_headers("Event Organiser")).json()
 
-        assert after["status"] == "Submitted"
-        assert len(after["history"]) == 2
+        assert after["status"] == "Under Review"
+        assert len(after["history"]) == 3
 
 
 class TestWhenItIsRefused:

@@ -17,11 +17,8 @@ class Role(StrEnum):
     roles. Lead manages the unassigned queue (US8.2) and assigns Coordinators
     (US8.3). Safety Officer runs the Operational Safety Check (US17.x).
 
-    Technical Support and Attendee are still deliberately absent — a role that
-    can sign in but can do nothing is a dead end for whoever holds it. They come
-    back with the epics that give them something to do, which is exactly how
-    Venue Staff arrived: it was unmodelled until there were venue records to
-    create, update and delete.
+    Technical Support joins with the US19 equipment catalogue and request queue.
+    Attendee remains unavailable until its own features arrive.
     """
 
     ORGANISER = "Event Organiser"
@@ -29,6 +26,7 @@ class Role(StrEnum):
     COORDINATOR_LEAD = "Event Coordinator Lead"
     VENUE_STAFF = "Venue Staff"
     SAFETY_OFFICER = "Safety Officer"
+    TECH_SUPPORT = "Technical Support"
 
 
 class Permission(StrEnum):
@@ -52,6 +50,15 @@ class Permission(StrEnum):
 
     US1.4/US8.2/US8.3: Coordinator Lead permissions for managing assignments.
     US1.4/US17.x: Safety Officer permissions (placeholder for now).
+
+    US4.4: the assigned Coordinator sends a ready event for its safety check
+    (`safety:submit`), and the Safety Officer signs it off or sends it back
+    (`safety:review`). Two names because two different roles hold them.
+
+    US4.6: cancelling an event (`events:cancel`) is held by both the Organiser
+    and the Coordinator, so neither role's existing grant could stand in for
+    it. The role is the first half of the rule; owning the event, or being
+    assigned to it, is the second, checked per event.
     """
 
     EVENTS_CREATE = "events:create"
@@ -60,16 +67,26 @@ class Permission(StrEnum):
     EVENTS_READ_ALL = "events:read:all"  # US8.6: Lead sees all, not just assigned
     EVENTS_SUBMIT = "events:submit"
     EVENTS_REVIEW = "events:review"
+    EVENTS_COMPLETE = "events:complete"
+    EVENTS_CANCEL = "events:cancel"  # US4.6: owning Organiser or assigned Coordinator
     EVENTS_EDIT = "events:edit"
     USERS_READ = "users:read"
     VENUES_READ = "venues:read"
     VENUES_CREATE = "venues:create"
     VENUES_EDIT = "venues:edit"
     VENUES_DELETE = "venues:delete"
+    NOTIFICATIONS_READ = "notifications:read"
     BOOKINGS_REQUEST = "bookings:request"
     QUEUE_VIEW_UNASSIGNED = "queue:view:unassigned"  # US8.2: Lead sees unassigned queue
     COORDINATORS_ASSIGN = "coordinators:assign"  # US8.3: Lead assigns Coordinators
-    SAFETY_REVIEW = "safety:review"  # US17.x: Safety Officer (placeholder)
+    SAFETY_REVIEW = "safety:review"  # US4.4/US17.x: Safety Officer decides the check
+    SAFETY_SUBMIT = "safety:submit"  # US4.4: Coordinator sends a ready event for it
+    HOLDS_PLACE = "holds:place"  # US14.3: Venue Staff keep a slot for a Coordinator
+    BOOKINGS_DECIDE = "bookings:decide"  # US16.1: Venue Staff approve or reject requests
+    EQUIPMENT_READ = "equipment:read"
+    EQUIPMENT_WRITE = "equipment:write"
+    EQUIPMENT_REQUEST = "equipment:request"
+    EQUIPMENT_QUEUE = "equipment:queue"
 
 
 #: Said in the first person, to be dropped into a denial message.
@@ -80,16 +97,26 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.EVENTS_READ_ALL: "view all events",
     Permission.EVENTS_SUBMIT: "submit events for approval",
     Permission.EVENTS_REVIEW: "review submitted events",
+    Permission.EVENTS_COMPLETE: "complete confirmed events",
+    Permission.EVENTS_CANCEL: "cancel events",
     Permission.EVENTS_EDIT: "edit events",
     Permission.USERS_READ: "view the user directory",
     Permission.VENUES_READ: "view the venue catalogue",
     Permission.VENUES_CREATE: "add a venue to the catalogue",
     Permission.VENUES_EDIT: "update a venue record",
     Permission.VENUES_DELETE: "remove a venue from the catalogue",
+    Permission.NOTIFICATIONS_READ: "view and manage your notifications",
     Permission.BOOKINGS_REQUEST: "request and cancel venue bookings",
     Permission.QUEUE_VIEW_UNASSIGNED: "view the unassigned event queue",
     Permission.COORDINATORS_ASSIGN: "assign events to Coordinators",
     Permission.SAFETY_REVIEW: "review event safety",
+    Permission.SAFETY_SUBMIT: "send events for a safety check",
+    Permission.HOLDS_PLACE: "place tentative venue holds",
+    Permission.BOOKINGS_DECIDE: "approve or reject venue booking requests",
+    Permission.EQUIPMENT_READ: "view the equipment catalogue",
+    Permission.EQUIPMENT_WRITE: "maintain equipment",
+    Permission.EQUIPMENT_REQUEST: "request equipment for assigned events",
+    Permission.EQUIPMENT_QUEUE: "review equipment requests",
 }
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -98,18 +125,32 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.EVENTS_CREATE,
             Permission.EVENTS_READ_OWN,
             Permission.EVENTS_SUBMIT,
+            # US4.6: cancel an event they own.
+            Permission.EVENTS_CANCEL,
+            # US10.1: told when a Coordinator moves one of their events.
+            Permission.NOTIFICATIONS_READ,
         }
     ),
     Role.COORDINATOR: frozenset(
         {
             Permission.EVENTS_READ_SUBMITTED,
             Permission.EVENTS_REVIEW,
+            Permission.EVENTS_COMPLETE,
+            # US4.6: cancel an event assigned to them (US8.6, checked per event).
+            Permission.EVENTS_CANCEL,
             Permission.EVENTS_EDIT,
             Permission.USERS_READ,
             Permission.VENUES_READ,
             # US14.1. The role is the first half of US8.6's rule; the event
             # being assigned to them is the second, checked per event.
             Permission.BOOKINGS_REQUEST,
+            Permission.EQUIPMENT_READ,
+            Permission.EQUIPMENT_REQUEST,
+            # US4.4: Planning -> Pending Safety Check, on the events assigned
+            # to them (US8.6, checked per event).
+            Permission.SAFETY_SUBMIT,
+            # US10.2: told about assignments and booking or safety problems.
+            Permission.NOTIFICATIONS_READ,
         }
     ),
     # US1.4/US8.2/US8.3: Coordinator Lead manages the unassigned queue and
@@ -122,6 +163,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VENUES_READ,
             Permission.QUEUE_VIEW_UNASSIGNED,
             Permission.COORDINATORS_ASSIGN,
+            Permission.EQUIPMENT_READ,
         }
     ),
     # US9.1a-c: Venue Staff own the catalogue and nothing else. They read it
@@ -133,12 +175,27 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VENUES_CREATE,
             Permission.VENUES_EDIT,
             Permission.VENUES_DELETE,
+            # US14.3: tentative holds, which expire on their own.
+            Permission.HOLDS_PLACE,
+            # US16.1: only Venue Staff confirm or turn down a booking request.
+            Permission.BOOKINGS_DECIDE,
+            # US4.6: told when an event's bookings are released by its cancellation.
+            Permission.NOTIFICATIONS_READ,
         }
     ),
-    # US1.4: Safety Officer placeholder. Features arrive in US17.x.
+    # US1.4: Safety Officer. US4.4 lets them read and decide events that are
+    # Pending Safety Check; the queue and detail view grow in US17.1/US17.2.
     Role.SAFETY_OFFICER: frozenset(
         {
             Permission.SAFETY_REVIEW,
+        }
+    ),
+    Role.TECH_SUPPORT: frozenset(
+        {
+            Permission.EQUIPMENT_READ,
+            Permission.EQUIPMENT_WRITE,
+            Permission.EQUIPMENT_QUEUE,
+            Permission.NOTIFICATIONS_READ,
         }
     ),
 }
@@ -156,6 +213,7 @@ HOME_ROUTE: dict[Role, str] = {
     Role.COORDINATOR_LEAD: "/unassigned-queue",
     Role.VENUE_STAFF: "/venues",
     Role.SAFETY_OFFICER: "/safety-review",
+    Role.TECH_SUPPORT: "/equipment-requests",
 }
 
 

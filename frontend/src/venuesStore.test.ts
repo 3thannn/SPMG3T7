@@ -158,6 +158,8 @@ describe('validateVenue', () => {
     accessibilityFeatures: '',
     operatingHours: '',
     supportedLayouts: '',
+    setupMinutes: 0,
+    turnaroundMinutes: 0,
   }
 
   it('accepts a record with only the required fields', () => {

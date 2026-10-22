@@ -1,24 +1,42 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import './EventDetailPage.css'
 import EventBookings from '../components/EventBookings'
+import EventEquipment from '../components/EventEquipment'
+import EventNeedsFields from '../components/EventNeedsFields'
 import StatusBadge from '../components/StatusBadge'
 import StatusTimeline from '../components/StatusTimeline'
+import ProposedChanges from '../components/ProposedChanges'
+import SafetyCheckPanel from '../components/SafetyCheckPanel'
+import CancelEventPanel, { CancelledNotice } from '../components/CancelEventPanel'
+import SafetyReviewDetails from '../components/SafetyReviewDetails'
 import {
   EventRuleError,
   approveEvent,
+  approveEventChange,
+  completeEvent,
   attendanceField,
   getEvent,
   parseAttendance,
   rejectEvent,
+  rejectEventChange,
   requestClarification,
+  requestEventChange,
   saveEvent,
   submitEvent,
   type EventRecord,
 } from '../eventsStore'
-import { DRAFT_CONTENT_ERROR, displayEventTitle, hasDraftContent } from '../draftRules'
+import {
+  DRAFT_CONTENT_ERROR,
+  displayEventTitle,
+  hasDraftContent,
+  submissionError,
+} from '../draftRules'
+import { NEED_KEYS, NO_NEEDS, needsOf, type EventNeeds } from '../eventNeeds'
 import { navigate } from '../router'
 import {
   canViewStatus,
+  changeRequestRefusalMessage,
+  checkChangeRequest,
   checkClarification,
   checkSubmit,
   clarificationRefusalMessage,
@@ -26,7 +44,7 @@ import {
   submitRefusalMessage,
 } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
-import { can } from '../permissions'
+import { can, canAny } from '../permissions'
 import { listCoordinators, reassignCoordinator, type Coordinator } from '../unassignedQueueStore'
 
 type EventDetailPageProps = {
@@ -47,6 +65,38 @@ function todayIso(): string {
   return `${now.getFullYear()}-${month}-${day}`
 }
 
+/** The edit form's fields, filled from an event. */
+function draftFrom(event: EventRecord) {
+  return {
+    title: event.title,
+    purpose: event.purpose,
+    description: event.description,
+    startsAt: event.startsAt,
+    endsAt: event.endsAt ?? '',
+    expectedAttendance: attendanceField(event.expectedAttendance),
+    ...needsOf(event),
+  }
+}
+
+/**
+ * Where "back" leads. US4.4: the Safety Officer reaches an event from their
+ * queue, not the events list, which their role cannot open.
+ */
+function backRoute(session: Session): { path: string; label: string } {
+  return canAny(session, ['events:read:own', 'events:read:submitted', 'events:read:all'])
+    ? { path: '/events', label: 'Events' }
+    : { path: '/safety-review', label: 'Safety review' }
+}
+
+/** US2.1 (Sprint 3): how each need reads on the event, in form order. */
+const NEED_LABELS: Record<keyof EventNeeds, string> = {
+  venueRequirements: 'Venue requirements',
+  preferredLayout: 'Preferred layout',
+  accessibilityNeeds: 'Accessibility needs',
+  equipmentNeeds: 'Equipment needs',
+  registrationNeeds: 'Registration needs',
+}
+
 export default function EventDetailPage({ eventId, session }: EventDetailPageProps) {
   const [page, setPage] = useState<PageState>({ state: 'loading' })
   const [draft, setDraft] = useState({
@@ -56,6 +106,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     startsAt: '',
     endsAt: '',
     expectedAttendance: '',
+    ...NO_NEEDS,
   })
   const [banner, setBanner] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -69,6 +120,15 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const [showReassignModal, setShowReassignModal] = useState(false)
   const [coordinators, setCoordinators] = useState<Coordinator[]>([])
   const [reassigning, setReassigning] = useState(false)
+  const [completing, setCompleting] = useState(false)
+  const [nowMs, setNowMs] = useState<number | null>(null)
+  //: US11.1. `proposing` opens the existing edit form on a submitted event; what
+  //: is typed there is sent as a change request rather than saved.
+  const [proposing, setProposing] = useState(false)
+  const [changeNote, setChangeNote] = useState('')
+  const [requesting, setRequesting] = useState(false)
+  const [changeRejection, setChangeRejection] = useState('')
+  const [answering, setAnswering] = useState<'approve' | 'reject' | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -85,19 +145,21 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         return
       }
       setPage({ state: 'loaded', event })
-      setDraft({
-        title: event.title,
-        purpose: event.purpose,
-        description: event.description,
-        startsAt: event.startsAt,
-        endsAt: event.endsAt ?? '',
-        expectedAttendance: attendanceField(event.expectedAttendance),
-      })
+      setDraft(draftFrom(event))
     })
     return () => {
       cancelled = true
     }
   }, [eventId, session])
+
+  useEffect(() => {
+    if (page.state !== 'loaded' || page.event.status !== 'Confirmed') return
+    const updateClock = () => setNowMs(Date.now())
+    updateClock()
+    const timer = window.setInterval(updateClock, 1000)
+    return () => window.clearInterval(timer)
+  }, [page])
+
 
   if (page.state === 'loading') {
     return (
@@ -116,10 +178,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => navigate('/events')}
+            onClick={() => navigate(backRoute(session).path)}
             style={{ marginTop: '1.25rem' }}
           >
-            Back to events
+            Back to {backRoute(session).label.toLowerCase()}
           </button>
         </div>
       </div>
@@ -142,23 +204,48 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
   const { event } = page
   const isOwner = event.organiserId === session.id
+  const backTo = backRoute(session)
+  // US4.4: the Safety Officer cannot load an event's bookings or equipment
+  // cards; US17.1 shows them the read-only safety review instead.
+  const readsEvents = backTo.path === '/events'
   const canEdit = can(session, 'events:edit')
   const submitCheck = checkSubmit(event, session.id)
   // US8.1 enforces assignment when the API loads this event; the permission
   // determines whether this review UI belongs to the signed-in role.
   const mayReview = can(session, 'events:review')
   const clarificationCheck = checkClarification(event)
-  const canDecide = mayReview && event.status === 'Under Review'
-  const writePending = busy || asking || deciding !== null
-  // US5.2: Coordinators can edit submitted events (not drafts), owners can edit their own drafts
-  const editable = (canEdit && event.status !== 'Draft') || (isOwner && event.status === 'Draft')
+  // US4.6: a cancelled event is read-only, and nothing on it waits for anyone.
+  const cancelled = event.status === 'Cancelled'
+  // US11.1: a pending change request is answered before the event is decided.
+  // One left waiting when the event was cancelled can no longer be answered.
+  const changeRequested = (event.changeRequested ?? false) && !cancelled
+  const pendingChanges = event.pendingChanges ?? []
+  // Shown once nothing is waiting, so a fresh request is not overshadowed by
+  // the answer to the one before it.
+  const lastReview = changeRequested ? null : (event.lastChangeReview ?? null)
+  const changeCheck = checkChangeRequest(event, session.id)
+  const canDecide = mayReview && event.status === 'Under Review' && !changeRequested
+  const canComplete = can(session, 'events:complete') &&
+    event.coordinatorId === session.id && event.status === 'Confirmed'
+  const eventEnded = Boolean(event.endsAt) && nowMs !== null &&
+    nowMs > Date.parse(`${event.endsAt}+08:00`)
+  const writePending =
+    busy || asking || deciding !== null || requesting || answering !== null || completing
+  // US5.2: Coordinators can edit submitted events (not drafts), owners can edit their own drafts.
+  // US11.1: an owner can also open the form on a submitted event, to propose changes.
+  const editable =
+    !cancelled &&
+    ((canEdit && event.status !== 'Draft') ||
+      (isOwner && event.status === 'Draft') ||
+      (isOwner && proposing))
   const dirty =
     draft.title !== event.title ||
     draft.purpose !== event.purpose ||
     draft.description !== event.description ||
     draft.startsAt !== event.startsAt ||
     draft.endsAt !== (event.endsAt ?? '') ||
-    draft.expectedAttendance !== attendanceField(event.expectedAttendance)
+    draft.expectedAttendance !== attendanceField(event.expectedAttendance) ||
+    NEED_KEYS.some((key) => draft[key] !== (event[key] ?? ''))
 
   /** US7.3: attach the message and move the event to Under Review. */
   async function handleRequestClarification() {
@@ -238,6 +325,140 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     }
   }
 
+  async function handleComplete() {
+    setCompleting(true)
+    setBanner(null)
+    try {
+      const updated = await completeEvent(event.id, session)
+      setPage({ state: 'loaded', event: updated })
+      setBanner({ kind: 'ok', text: 'Completed. The status change has been recorded.' })
+    } catch (error) {
+      setBanner({
+        kind: 'error',
+        text: error instanceof EventRuleError
+          ? error.message
+          : unexpectedFailureMessage(error, 'complete the event'),
+      })
+    } finally {
+      setCompleting(false)
+    }
+  }
+
+  function refreshAfterBooking() {
+    void getEvent(event.id, session).then((updated) => {
+      if (updated) setPage({ state: 'loaded', event: updated })
+    }).catch(() => {
+      setBanner({ kind: 'error', text: 'The venue request was saved. Refresh to see the latest event status.' })
+    })
+  }
+
+  /** US11.1: send the form's values as a change request, not as a save. */
+  async function handleRequestChange() {
+    // A submitted event has to stay complete, so the proposal meets the same
+    // rules submitting it did. The server re-checks.
+    const problem = submissionError(draft, todayIso())
+    if (problem) {
+      setBanner({ kind: 'error', text: problem })
+      return
+    }
+    setRequesting(true)
+    setBanner(null)
+    try {
+      // Sent as typed, not trimmed: the server compares exactly, and trimming
+      // here would propose a change to a field the Organiser never touched.
+      const updated = await requestEventChange(
+        event.id,
+        {
+          title: draft.title,
+          purpose: draft.purpose,
+          description: draft.description,
+          startsAt: draft.startsAt,
+          endsAt: draft.endsAt,
+          expectedAttendance: Number(draft.expectedAttendance.trim()),
+          ...needsOf(draft),
+        },
+        changeNote.trim(),
+        session,
+      )
+      setPage({ state: 'loaded', event: updated })
+      setDraft(draftFrom(updated))
+      setProposing(false)
+      setChangeNote('')
+      setBanner({
+        kind: 'ok',
+        text: `Change request sent. The event is now ${updated.status} and the Coordinator will review your changes.`,
+      })
+    } catch (error) {
+      setBanner({
+        kind: 'error',
+        text:
+          error instanceof EventRuleError
+            ? error.message
+            : unexpectedFailureMessage(error, 'send the change request'),
+      })
+    } finally {
+      setRequesting(false)
+    }
+  }
+
+  function handleCancelProposal() {
+    setProposing(false)
+    setDraft(draftFrom(event))
+    setChangeNote('')
+    setBanner(null)
+  }
+
+  async function handleApproveChange() {
+    setAnswering('approve')
+    setBanner(null)
+    try {
+      const updated = await approveEventChange(event.id, session)
+      setPage({ state: 'loaded', event: updated })
+      setDraft(draftFrom(updated))
+      setBanner({
+        kind: 'ok',
+        text: 'Changes approved and applied. You can now decide the event.',
+      })
+    } catch (error) {
+      setBanner({
+        kind: 'error',
+        text:
+          error instanceof EventRuleError
+            ? error.message
+            : unexpectedFailureMessage(error, 'approve the requested changes'),
+      })
+    } finally {
+      setAnswering(null)
+    }
+  }
+
+  async function handleRejectChange() {
+    // The button stays disabled until a reason is typed, and the server
+    // refuses an empty one, so there is no blank reason to guard against here.
+    const reason = changeRejection.trim()
+    setAnswering('reject')
+    setBanner(null)
+    try {
+      const updated = await rejectEventChange(event.id, reason, session)
+      setPage({ state: 'loaded', event: updated })
+      setChangeRejection('')
+      setBanner({
+        kind: 'ok',
+        text: 'Changes rejected. The Organiser can see your reason.',
+      })
+    } catch (error) {
+      setBanner({
+        kind: 'error',
+        text:
+          error instanceof EventRuleError
+            ? error.message
+            : unexpectedFailureMessage(error, 'reject the requested changes'),
+      })
+    } finally {
+      setAnswering(null)
+    }
+  }
+
   async function handleSave() {
     if (!hasDraftContent(draft)) {
       setBanner({ kind: 'error', text: DRAFT_CONTENT_ERROR })
@@ -270,6 +491,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
           startsAt: draft.startsAt,
           endsAt: draft.endsAt || null,
           expectedAttendance: attendance,
+          ...needsOf(draft),
         },
         session,
       )
@@ -323,43 +545,12 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   }
 
   async function handleSubmit() {
-    if (!draft.title.trim()) {
-      setBanner({ kind: 'error', text: 'Give the event a title.' })
+    const problem = submissionError(draft, todayIso())
+    if (problem) {
+      setBanner({ kind: 'error', text: problem })
       return
     }
-    if (!draft.startsAt.trim()) {
-      setBanner({ kind: 'error', text: 'Give the event a date.' })
-      return
-    }
-    if (!draft.endsAt.trim()) {
-      setBanner({ kind: 'error', text: 'Give the event an end date.' })
-      return
-    }
-    if (draft.endsAt <= draft.startsAt) {
-      setBanner({ kind: 'error', text: 'The end date must be after the start date.' })
-      return
-    }
-    if (!draft.purpose.trim()) {
-      setBanner({ kind: 'error', text: 'Give the event a purpose.' })
-      return
-    }
-    if (!draft.expectedAttendance.trim()) {
-      setBanner({ kind: 'error', text: 'Give the expected attendance.' })
-      return
-    }
-    const attendance = parseAttendance(draft.expectedAttendance)
-    if (attendance === 'invalid') {
-      setBanner({ kind: 'error', text: 'Enter a whole number of people.' })
-      return
-    }
-    if (attendance === null || attendance < 1) {
-      setBanner({ kind: 'error', text: 'Expected attendance must be at least 1.' })
-      return
-    }
-    if (draft.startsAt.slice(0, 10) < todayIso()) {
-      setBanner({ kind: 'error', text: 'The start date cannot be in the past.' })
-      return
-    }
+    const attendance = Number(draft.expectedAttendance.trim())
     setBusy(true)
     setBanner(null)
     try {
@@ -374,6 +565,9 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
           startsAt: draft.startsAt.trim(),
           endsAt: draft.endsAt.trim(),
           expectedAttendance: attendance,
+          ...needsOf(draft),
+          equipmentNeeds: draft.equipmentNeeds.trim(),
+          registrationNeeds: draft.registrationNeeds.trim(),
         },
         session,
       )
@@ -395,13 +589,13 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
       <div className="shell">
         <a
           className="detail-back"
-          href="#/events"
+          href={`#${backTo.path}`}
           onClick={(clickEvent) => {
             clickEvent.preventDefault()
-            navigate('/events')
+            navigate(backTo.path)
           }}
         >
-          ← Events
+          ← {backTo.label}
         </a>
 
         <header className="detail-head">
@@ -424,6 +618,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             {banner.text}
           </p>
         )}
+
+        <CancelledNotice event={event} />
 
         <div className="detail-grid">
           <section className="card card-pad detail-main">
@@ -513,6 +709,14 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     disabled={writePending}
                   />
                 </div>
+                <EventNeedsFields
+                  needs={draft}
+                  onChange={(key, value) => {
+                    setDraft({ ...draft, [key]: value })
+                    setBanner(null)
+                  }}
+                  disabled={writePending}
+                />
               </div>
             ) : (
               <dl className="detail-readonly">
@@ -530,6 +734,12 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                 </dd>
                 <dt>Description</dt>
                 <dd>{event.description || 'No description.'}</dd>
+                {NEED_KEYS.map((key) => (
+                  <Fragment key={key}>
+                    <dt>{NEED_LABELS[key]}</dt>
+                    <dd>{event[key] || 'Not stated.'}</dd>
+                  </Fragment>
+                ))}
               </dl>
             )}
 
@@ -545,7 +755,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     {busy ? 'Saving…' : canEdit && !isOwner ? 'Save changes' : 'Save draft'}
                   </button>
                 )}
-                {isOwner && (
+                {isOwner && event.status === 'Draft' && (
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -556,11 +766,67 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     {busy ? 'Working…' : 'Submit event'}
                   </button>
                 )}
+                {isOwner && proposing && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleRequestChange}
+                      disabled={writePending || !dirty}
+                    >
+                      {requesting ? 'Sending…' : 'Submit change request'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleCancelProposal}
+                      disabled={writePending}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+                {isOwner && !proposing && changeCheck.allowed && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setProposing(true)
+                      setBanner(null)
+                    }}
+                    disabled={writePending}
+                  >
+                    Request changes
+                  </button>
+                )}
               </div>
             )}
 
-            {isOwner && !submitCheck.allowed && (
-              <p className="detail-note">{submitRefusalMessage(submitCheck.reason)}</p>
+            {/* US11.1: the note travels with the request, in the history the
+                Coordinator reads — where an answer to a US7.3 question goes. */}
+            {isOwner && proposing && (
+              <label className="detail-clarify-field detail-change-note">
+                <span className="detail-clarify-label">Note for the Coordinator (optional)</span>
+                <textarea
+                  rows={3}
+                  maxLength={2000}
+                  value={changeNote}
+                  disabled={writePending}
+                  onChange={(changeEvent) => setChangeNote(changeEvent.target.value)}
+                />
+              </label>
+            )}
+
+            {isOwner && event.status !== 'Draft' && !cancelled && (
+              <p className="detail-note">
+                {proposing
+                  ? 'Edit the details above, then submit them for the Coordinator to review. ' +
+                    'Your event keeps its current details until they approve.'
+                  : changeCheck.allowed
+                    ? 'This event has been submitted, so it is no longer edited directly. ' +
+                      'Request changes and the Coordinator will review them.'
+                    : changeRequestRefusalMessage(changeCheck.reason)}
+              </p>
             )}
 
             {!isOwner && !canEdit && (
@@ -569,7 +835,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               </p>
             )}
 
-            {!isOwner && canEdit && (
+            {!isOwner && canEdit && !cancelled && (
               <p className="detail-note">
                 You are editing this event as {session.role}. Changes are tracked and logged.
               </p>
@@ -578,7 +844,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
           <aside className="card card-pad detail-side">
             <h2 className="detail-section-title">Status history</h2>
-            <p className="detail-side-lede">Who changed it, and when.</p>
+            <p className="detail-side-lede">Event status transitions and requested changes.</p>
             <StatusTimeline history={event.history} />
 
             {/* US8.4: Reassignment UI for Coordinator Lead */}
@@ -610,6 +876,89 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                 >
                   Reassign Coordinator
                 </button>
+              </div>
+            )}
+
+            {/* US11.1: the Coordinator's answer to the last request. It is not a
+                status change, so it is not in the trail above; it is kept on
+                the request itself and shown here. */}
+            {lastReview && (
+              <div className="detail-change-review">
+                <h3 className="detail-clarify-title">
+                  {lastReview.outcome === 'approved'
+                    ? 'Requested changes approved'
+                    : 'Requested changes rejected'}
+                </h3>
+                <p className="detail-clarify-lede">
+                  {lastReview.outcome === 'approved'
+                    ? 'The Coordinator applied the changes on '
+                    : 'The Coordinator kept the current details on '}
+                  <time dateTime={lastReview.at}>{formatTimestamp(lastReview.at)}</time>.
+                </p>
+                {lastReview.requestNote && (
+                  <blockquote className="timeline-note">
+                    <p className="timeline-note-label">Organiser's note</p>
+                    {lastReview.requestNote}
+                  </blockquote>
+                )}
+                {lastReview.note && (
+                  <blockquote className="timeline-note">
+                    <p className="timeline-note-label">Reason</p>
+                    {lastReview.note}
+                  </blockquote>
+                )}
+              </div>
+            )}
+
+            {/* US11.1: the Organiser's proposal, visible to both sides. The
+                Coordinator answers it here, before the decision below. */}
+            {changeRequested && pendingChanges.length > 0 && (
+              <div className="detail-change-review">
+                <h3 className="detail-clarify-title">Requested changes</h3>
+                <p className="detail-clarify-lede">
+                  {mayReview
+                    ? event.status === 'Under Review'
+                      ? 'The Organiser has asked to change these details. Review them and ' +
+                        'approve or reject the request before deciding the event.'
+                      : 'The Organiser has asked to change these details. Approve or reject ' +
+                        'the request; the event keeps its current status.'
+                    : 'Awaiting the Coordinator's review. Your event keeps its current ' +
+                      'details until the changes are approved.'}
+                </p>
+                <ProposedChanges changes={pendingChanges} />
+                {event.changeRequestNote && <p className="detail-clarify-lede">{event.changeRequestNote}</p>}
+                {mayReview && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={writePending}
+                      onClick={handleApproveChange}
+                    >
+                      {answering === 'approve' ? 'Approving…' : 'Approve changes'}
+                    </button>
+                    <label className="detail-clarify-field detail-decision-reason">
+                      <span className="detail-clarify-label">
+                        Reason for rejecting the changes
+                      </span>
+                      <textarea
+                        rows={3}
+                        maxLength={2000}
+                        value={changeRejection}
+                        disabled={writePending}
+                        onChange={(changeEvent) => setChangeRejection(changeEvent.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-danger-solid btn-sm"
+                      disabled={writePending || changeRejection.trim() === ''}
+                      onClick={handleRejectChange}
+                    >
+                      {answering === 'reject' ? 'Rejecting…' : 'Reject changes'}
+                    </button>
+                  </>
+                )}
               </div>
             )}
 
@@ -648,6 +997,44 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                 </button>
               </div>
             )}
+
+            {canComplete && (
+              <div className="detail-decision">
+                <h3 className="detail-clarify-title">Complete event</h3>
+                <p className="detail-clarify-lede">
+                  {eventEnded ? 'The event has ended and can be marked Completed.'
+                    : 'You can mark this event Completed after its end date and time.'}
+                </p>
+                <button type="button" className="btn btn-primary btn-sm"
+                  disabled={writePending || !eventEnded} onClick={handleComplete}>
+                  {completing ? 'Completing…' : 'Mark Completed'}
+                </button>
+              </div>
+            )}
+
+            <SafetyCheckPanel
+              event={event}
+              session={session}
+              disabled={writePending}
+              onUpdated={(updated, message) => {
+                setPage({ state: 'loaded', event: updated })
+                setBanner({ kind: 'ok', text: message })
+              }}
+              onError={(message) => setBanner({ kind: 'error', text: message })}
+            />
+
+            <CancelEventPanel
+              event={event}
+              session={session}
+              disabled={writePending}
+              onUpdated={(updated, message) => {
+                setPage({ state: 'loaded', event: updated })
+                setDraft(draftFrom(updated))
+                setProposing(false)
+                setBanner({ kind: 'ok', text: message })
+              }}
+              onError={(message) => setBanner({ kind: 'error', text: message })}
+            />
 
             {/* US7.3. In the history panel rather than beside the form, because
                 a request is an entry in this trail and the Organiser reads it
@@ -695,7 +1082,12 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
         {/* US14.1. Not on a Draft: nothing can be requested for one, so the
             card would only ever say so. */}
-        {event.status !== 'Draft' && <EventBookings event={event} session={session} />}
+        {/* US4.6: keyed so a cancellation reloads the card with its bookings released. */}
+        {readsEvents && event.status !== 'Draft' && <EventBookings key={cancelled ? 'cancelled' : 'open'} event={event} session={session} onBookingRequested={refreshAfterBooking} />}
+        {readsEvents && <EventEquipment event={event} session={session} />}
+        {can(session, 'safety:review') && (
+          <SafetyReviewDetails eventId={event.id} session={session} />
+        )}
 
         {/* US8.4: Coordinator reassignment modal */}
         {showReassignModal && (

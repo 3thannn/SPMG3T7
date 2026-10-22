@@ -16,10 +16,20 @@ password is a column on the user.
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, booking_store, event_store, venue_store, venue_unavailability_store
+from app import (
+    auth,
+    booking_store,
+    equipment_store,
+    event_store,
+    notification_store,
+    venue_store,
+    venue_unavailability_store,
+)
 from app.booking_store import InMemoryBookings
+from app.equipment_store import InMemoryEquipment
 from app.event_store import InMemoryEvents
 from app.main import app
+from app.notification_store import InMemoryNotifications
 from app.permissions import Role
 from app.users import InMemoryUsers, User, use_repository
 from app.venue_store import InMemoryVenues, Venue
@@ -35,6 +45,25 @@ ACCOUNTS = {
     "Event Coordinator Lead": "coordinatorlead@spmg3t7.edu",  # US1.4
     "Venue Staff": "venuestaff@spmg3t7.edu",
     "Safety Officer": "safetyofficer@spmg3t7.edu",  # US1.4
+    "Technical Support": "technicalsupport@spmg3t7.edu",
+}
+
+#: US2.1 (Sprint 3): every need answered, so a fixture event can be submitted.
+#: Mixes fixed-list choices with a free-text answer and a "None / Not required".
+SUBMITTABLE_NEEDS = {
+    "venueRequirements": "Stage, Projector",
+    "preferredLayout": "Theatre",
+    "accessibilityNeeds": "Wheelchair access",
+    "equipmentNeeds": "Two wireless microphones",
+    "registrationNeeds": "None / Not required",
+}
+#: The same answers as `event_store.Event` attributes, for seeding the store.
+SUBMITTABLE_NEED_ATTRS = {
+    "venue_requirements": SUBMITTABLE_NEEDS["venueRequirements"],
+    "preferred_layout": SUBMITTABLE_NEEDS["preferredLayout"],
+    "accessibility_needs": SUBMITTABLE_NEEDS["accessibilityNeeds"],
+    "equipment_needs": SUBMITTABLE_NEEDS["equipmentNeeds"],
+    "registration_needs": SUBMITTABLE_NEEDS["registrationNeeds"],
 }
 
 ORGANISER_ID = 1
@@ -42,6 +71,7 @@ COORDINATOR_ID = 2
 COORDINATOR_LEAD_ID = 3
 VENUE_STAFF_ID = 4
 SAFETY_OFFICER_ID = 5
+TECH_SUPPORT_ID = 6
 
 
 def fixture_users() -> list[User]:
@@ -82,6 +112,12 @@ def fixture_users() -> list[User]:
             name="Alex",
             role=Role.SAFETY_OFFICER,
         ),
+        User(
+            id=TECH_SUPPORT_ID,
+            email=ACCOUNTS["Technical Support"],
+            name="Bryan",
+            role=Role.TECH_SUPPORT,
+        ),
     ]
 
 
@@ -107,6 +143,7 @@ def event_repository():
             COORDINATOR_LEAD_ID: "Jordan",  # US1.4
             VENUE_STAFF_ID: "Sam",
             SAFETY_OFFICER_ID: "Alex",  # US1.4
+            TECH_SUPPORT_ID: "Bryan",
         },
     )
     previous = event_store.use_repository(store)
@@ -181,12 +218,29 @@ def unavailability_repository():
 
 
 @pytest.fixture(autouse=True)
+def notification_repository():
+    """US10.1: no notifications until a transition writes one."""
+    store = InMemoryNotifications()
+    previous = notification_store.use_repository(store)
+    yield store
+    notification_store.use_repository(previous)
+
+
+@pytest.fixture(autouse=True)
 def booking_repository():
     """US14.1: no venue bookings until a test requests one."""
     store = InMemoryBookings()
     previous = booking_store.use_repository(store)
     yield store
     booking_store.use_repository(previous)
+
+
+@pytest.fixture(autouse=True)
+def equipment_repository():
+    store = InMemoryEquipment()
+    previous = equipment_store.use_repository(store)
+    yield store
+    equipment_store.use_repository(previous)
 
 
 @pytest.fixture

@@ -175,6 +175,11 @@ export default function EventsPage({ session }: EventsPageProps) {
                   <div className="event-content">
                     <div className="event-header">
                       <h3 className="event-title">{displayEventTitle(event.title)}</h3>
+                      {/* US11.1: what puts a request in the Coordinator's queue.
+                          US4.6: nobody can answer one on a cancelled event. */}
+                      {event.changeRequested && event.status !== 'Cancelled' && (
+                        <span className="event-row-flag">Change requested</span>
+                      )}
                       <StatusBadge status={event.status} />
                     </div>
                     <p className="event-meta">

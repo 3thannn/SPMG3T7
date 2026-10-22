@@ -7,14 +7,16 @@ the event.
 
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID
+from tests.conftest import COORDINATOR_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Team Building Workshop",
     "purpose": "Improve team collaboration",
     "startsAt": "2026-11-15T14:00",
+    "endsAt": "2026-11-15T17:00",
     "description": "Interactive workshop for staff",
     "expectedAttendance": 30,
+    **SUBMITTABLE_NEEDS,
 }
 
 
@@ -84,10 +86,12 @@ class TestLeadCanAssign:
 
         assigned = response.json()
         # The event should have history tracking who assigned it
-        assert len(assigned["history"]) >= 1
-        # Status stays Submitted, but we can verify the coordinatorId changed
-        assert assigned["status"] == "Submitted"
+        assert assigned["status"] == "Under Review"
         assert assigned["coordinatorId"] == str(COORDINATOR_ID)
+        assert assigned["history"][-1]["from"] == "Submitted"
+        assert assigned["history"][-1]["to"] == "Under Review"
+        assert assigned["history"][-1]["byId"] == "3"
+        assert assigned["history"][-1]["at"]
 
     def test_only_lead_can_assign(self, client, auth_headers):
         """Regular Coordinator gets 403 when trying to assign."""

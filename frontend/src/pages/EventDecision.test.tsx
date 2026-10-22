@@ -31,6 +31,8 @@ vi.mock('../venuesStore', async (importOriginal) => ({
   listVenues: vi.fn(async () => []),
 }))
 
+vi.mock('../components/EventEquipment', () => ({ default: () => null }))
+
 const getEventMock = vi.mocked(getEvent)
 const approveEventMock = vi.mocked(approveEvent)
 const rejectEventMock = vi.mocked(rejectEvent)

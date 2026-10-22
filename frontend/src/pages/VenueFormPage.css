@@ -87,3 +87,45 @@
     flex: 1 1 auto;
   }
 }
+
+/* US9.4: what the re-check found after a setup or turnaround change. */
+.venue-recheck {
+  padding: 1.5rem;
+  display: grid;
+  gap: 1rem;
+}
+
+/* US15.2: which of them are now flagged for review, and that their
+   Coordinators were told. */
+.venue-recheck-flagged {
+  margin: 1rem 0 0;
+  font-size: 0.92rem;
+  color: var(--ink-strong);
+}
+
+.venue-recheck-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.venue-recheck-list li {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+
+.venue-recheck-tag {
+  justify-self: start;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted-soft);
+}
+
+.venue-recheck-tag-new {
+  color: var(--danger);
+}

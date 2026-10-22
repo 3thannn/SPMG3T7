@@ -17,6 +17,8 @@ CREATE TYPE event_status AS ENUM (
     'Under Review',
     'Approved',
     'Planning',
+    -- US4.4: see SUPABASE_ADD_SAFETY_CHECK_STATUS.sql for its transitions.
+    'Pending Safety Check',
     'Confirmed',
     'Completed',
     'Cancelled',
@@ -24,10 +26,15 @@ CREATE TYPE event_status AS ENUM (
 );
 
 -- US14.1 and US14.2: a new booking is Requested and a Coordinator may cancel
--- it. The Venue Booking Approval epic adds the statuses Venue Staff set.
+-- it. US14.3: Venue Staff may place a tentative Held booking. The Venue
+-- Booking Approval epic adds the statuses Venue Staff set.
 CREATE TYPE booking_status AS ENUM (
     'Requested',
-    'Cancelled'
+    'Cancelled',
+    'Held',
+    -- US16.1: Venue Staff decide a request.
+    'Confirmed',
+    'Rejected'
 );
 
 -- Create users table
@@ -54,6 +61,11 @@ CREATE TABLE venues (
     operating_hours VARCHAR(255),
     -- US9.1a names supported layouts as an optional field on a venue record.
     supported_layouts TEXT,
+    -- US9.4: see SUPABASE_ADD_VENUE_TURNAROUND.sql.
+    setup_minutes INTEGER NOT NULL DEFAULT 0
+        CONSTRAINT venues_setup_minutes_range CHECK (setup_minutes BETWEEN 0 AND 1440),
+    turnaround_minutes INTEGER NOT NULL DEFAULT 0
+        CONSTRAINT venues_turnaround_minutes_range CHECK (turnaround_minutes BETWEEN 0 AND 1440),
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
@@ -84,6 +96,12 @@ CREATE TABLE events (
     proposed_date TIMESTAMP,
     end_date TIMESTAMP,
     expected_attendance INTEGER,
+    -- US2.1 (Sprint 3): see SUPABASE_ADD_EVENT_NEEDS.sql.
+    venue_requirements TEXT,
+    preferred_layout TEXT,
+    accessibility_needs TEXT,
+    equipment_needs TEXT,
+    registration_needs TEXT,
     status event_status NOT NULL DEFAULT 'Draft',
     organiser_id INTEGER NOT NULL REFERENCES users(id),
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
@@ -128,6 +146,22 @@ CREATE INDEX ix_venue_unavailability_venue_start
 CREATE INDEX ix_venue_unavailability_created_by_id
     ON venue_unavailability(created_by_id);
 
+-- US10.1: an Organiser's in-app notices about their events' status changes.
+-- See SUPABASE_ADD_NOTIFICATIONS.sql for why each column is what it is.
+CREATE TABLE notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    status event_status NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    read_at TIMESTAMP
+);
+
+CREATE INDEX ix_notifications_user_read_created
+    ON notifications(user_id, is_read, created_at DESC);
+CREATE INDEX ix_notifications_event_id ON notifications(event_id);
 -- US14.1: one row per venue an event asks for; US14.2 adds cancelling one and
 -- US18.1 what it needs. See SUPABASE_ADD_VENUE_BOOKINGS.sql,
 -- SUPABASE_CANCEL_VENUE_BOOKINGS.sql and SUPABASE_ADD_BOOKING_NEEDS.sql for why
@@ -149,16 +183,45 @@ CREATE TABLE venue_bookings (
     cancelled_at TIMESTAMP,
     cancellation_reason TEXT,
     cancelled_by_id INTEGER,
+    -- US14.3: a hold's expiry and who placed it. See SUPABASE_ADD_VENUE_HOLDS.sql.
+    hold_expires_at TIMESTAMP,
+    held_by_id INTEGER,
+    -- US16.1: the decision. See SUPABASE_ADD_BOOKING_DECISIONS.sql.
+    decided_at TIMESTAMP,
+    decided_by_id INTEGER,
+    rejection_reason TEXT,
+    suggested_alternative TEXT,
+    -- US15.2: flagged "Conflict - review needed". See SUPABASE_ADD_BOOKING_CONFLICTS.sql.
+    conflict_flagged_at TIMESTAMP,
+    conflict_reason TEXT,
     CONSTRAINT venue_bookings_end_after_start CHECK (end_at > start_at),
     CONSTRAINT venue_bookings_headcount_positive CHECK (headcount IS NULL OR headcount >= 1),
     CONSTRAINT venue_bookings_cancelled_by_id_fkey
         FOREIGN KEY (cancelled_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT venue_bookings_held_by_id_fkey
+        FOREIGN KEY (held_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT venue_bookings_hold_has_expiry CHECK (
+        status <> 'Held' OR hold_expires_at IS NOT NULL
+    ),
+    CONSTRAINT venue_bookings_decided_by_id_fkey
+        FOREIGN KEY (decided_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT venue_bookings_decision_recorded CHECK (
+        (status IN ('Confirmed', 'Rejected')) = (decided_at IS NOT NULL)
+    ),
+    CONSTRAINT venue_bookings_rejection_has_reason CHECK (
+        status <> 'Rejected'
+        OR (rejection_reason IS NOT NULL AND btrim(rejection_reason) <> '')
+    ),
     CONSTRAINT venue_bookings_cancellation_recorded CHECK (
         (status = 'Cancelled') = (
             cancelled_at IS NOT NULL
             AND cancellation_reason IS NOT NULL
             AND btrim(cancellation_reason) <> ''
         )
+    ),
+    CONSTRAINT venue_bookings_conflict_has_reason CHECK (
+        conflict_flagged_at IS NULL
+        OR (conflict_reason IS NOT NULL AND btrim(conflict_reason) <> '')
     )
 );
 
@@ -166,6 +229,11 @@ CREATE INDEX ix_venue_bookings_event_start ON venue_bookings(event_id, start_at)
 CREATE INDEX ix_venue_bookings_venue_id ON venue_bookings(venue_id);
 CREATE INDEX ix_venue_bookings_requested_by_id ON venue_bookings(requested_by_id);
 CREATE INDEX ix_venue_bookings_cancelled_by_id ON venue_bookings(cancelled_by_id);
+CREATE INDEX ix_venue_bookings_held_by_id ON venue_bookings(held_by_id);
+CREATE INDEX ix_venue_bookings_decided_by_id ON venue_bookings(decided_by_id);
+CREATE INDEX ix_venue_bookings_status_created ON venue_bookings(status, created_at);
+CREATE INDEX ix_venue_bookings_conflict_flagged
+    ON venue_bookings(start_at) WHERE conflict_flagged_at IS NOT NULL;
 
 -- US7.1: keep a Coordinator decision and its US4.2 audit row in one transaction.
 -- Transition validation remains in Python; this is not a status trigger.
@@ -261,10 +329,11 @@ ALTER TABLE status_changes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE venues ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
 ALTER TABLE venue_unavailability ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE venue_bookings ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON TABLE users, events, status_changes, venues, equipment,
-    venue_unavailability, venue_bookings FROM anon, authenticated;
+    venue_unavailability, notifications, venue_bookings FROM anon, authenticated;
 
 -- Verify tables were created
 SELECT table_name FROM information_schema.tables

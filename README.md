@@ -56,8 +56,8 @@ npm install
 
 ### Required SQL migrations
 
-The schema in `SUPABASE_SETUP.sql` covers a fresh project. An **existing**
-project needs the scripts below applied once each, in the Supabase SQL Editor
+`SUPABASE_SETUP.sql` creates the base schema. Fresh and existing projects need
+the applicable additions below applied in dependency order in the Supabase SQL Editor
 (Dashboard → SQL Editor → New Query → paste → Run). All of them are idempotent,
 so running one twice is a no-op.
 
@@ -65,10 +65,23 @@ so running one twice is a no-op.
 | ------ | ---------- | -------------- |
 | [`SUPABASE_ADD_VENUE_LAYOUTS.sql`](backend/SUPABASE_ADD_VENUE_LAYOUTS.sql) | US9.1a-c, US9.2, US9.3 — every venue route | **All five `/venues` routes return 500.** Reads included, not just writes |
 | [`SUPABASE_ADD_VENUE_UNAVAILABILITY.sql`](backend/SUPABASE_ADD_VENUE_UNAVAILABILITY.sql) | US12.1 venue blackout periods | Both `/venues/{id}/unavailability` routes return 500. The other venue routes are unaffected |
+| [`SUPABASE_ADD_NOTIFICATIONS.sql`](backend/SUPABASE_ADD_NOTIFICATIONS.sql) | US10.1 Organiser notifications | `/notifications` returns 500 and no notices are written. Event decisions still succeed; the failure is only logged |
+| [`SUPABASE_ADD_COORDINATOR_NOTIFICATIONS.sql`](backend/SUPABASE_ADD_COORDINATOR_NOTIFICATIONS.sql) | US10.2 Coordinator notifications. Run after the US10.1 and US19 scripts | Coordinator notices are rejected by the `kind` check, so none are written. Assignment still succeeds; the failure is only logged |
 | [`SUPABASE_ADD_VENUE_BOOKINGS.sql`](backend/SUPABASE_ADD_VENUE_BOOKINGS.sql) | US14.1 venue bookings | Every `/events/{id}/bookings` route returns 500, so the bookings card on an event shows an error. `DELETE /venues/{id}` also returns 500, because it checks for bookings first |
 | [`SUPABASE_CANCEL_VENUE_BOOKINGS.sql`](backend/SUPABASE_CANCEL_VENUE_BOOKINGS.sql) | US14.2 cancelling a booking. Run after the US14.1 script | Every `/events/{id}/bookings` route returns 500, not only cancel: each booking read selects the cancellation columns. `DELETE /venues/{id}` is unaffected |
 | [`SUPABASE_ADD_BOOKING_NEEDS.sql`](backend/SUPABASE_ADD_BOOKING_NEEDS.sql) | US18.1 headcount and needs per booking. Run after the US14.2 script | Every `/events/{id}/bookings` route returns 500: each booking read selects the new columns. The suitability check itself still works, because it reads venues only |
 | [`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`](backend/SUPABASE_ALLOW_PARTIAL_DRAFTS.sql) | US4.2 partial drafts | Saving a draft with no date fails |
+| [`SUPABASE_ADD_CHANGE_REQUESTS.sql`](backend/SUPABASE_ADD_CHANGE_REQUESTS.sql) | US11.1 change requests — and every events page | **`GET /events` and every event page return 500**, which the browser reports as a CORS error. See below |
+| [`SUPABASE_US4_5_LIFECYCLE.sql`](backend/SUPABASE_US4_5_LIFECYCLE.sql) | US4.5 lifecycle; run after coordinator assignment, venue bookings and needs, and change requests | Assignment, booking, completion and change-request writes require its RPCs and column; event reads also require `request_note` |
+| [`SUPABASE_ADD_VENUE_HOLDS.sql`](backend/SUPABASE_ADD_VENUE_HOLDS.sql) | US14.3 tentative holds. Run after the US14.2, US18.1 and US4.5 scripts | Every `/events/{id}/bookings` route returns 500, because each booking read selects the hold columns; `/holds` returns 500 and a hold cannot be requested |
+| [`SUPABASE_ADD_BOOKING_DECISIONS.sql`](backend/SUPABASE_ADD_BOOKING_DECISIONS.sql) | US16.1 Venue Staff approve or reject requests. Run after the US14.3, US9.4 and US10.2 scripts | Every `/events/{id}/bookings` route returns 500, because each booking read selects the decision columns; `/booking-requests` returns 500 and nothing can be approved |
+| [`SUPABASE_ADD_BOOKING_CONFLICTS.sql`](backend/SUPABASE_ADD_BOOKING_CONFLICTS.sql) | US15.1 conflict check incl. setup/turnaround and unavailability; US15.2 conflict flags. Run after the US16.1, US12.1 and US4.5 scripts | Every `/events/{id}/bookings` route, `/booking-requests`, `/booking-conflicts` and `/holds` return 500, because each booking read selects the flag columns. Two requests for one slot at the same moment could both be stored |
+| [`SUPABASE_ADD_SAFETY_CHECK_STATUS.sql`](backend/SUPABASE_ADD_SAFETY_CHECK_STATUS.sql) | US4.4 Pending Safety Check status and transitions. Run after the US4.5, US15.2 and US19 scripts | Sending an event for its safety check and the Safety Officer's decisions return 500; nothing else is affected. Without its trigger, an event could still be moved to Confirmed by a direct status write |
+| [`SUPABASE_US4_6_CANCEL_EVENT.sql`](backend/SUPABASE_US4_6_CANCEL_EVENT.sql) | US4.6 cancelling an event. Run after the US4.4, US15.2 and US19 scripts | `POST /events/{id}/cancel` returns 500 (the browser reports "could not reach the API") and nothing changes; every other route is unaffected |
+| [`SUPABASE_US14_4_HOLD_EXPIRY.sql`](backend/SUPABASE_US14_4_HOLD_EXPIRY.sql) | US14.4 step 1: the Expired status and the hold sweep. Run after the US14.3, US10.2 and US15.2 scripts | Nothing: it only adds things, and nothing calls the sweep until step 2 |
+| [`SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql`](backend/SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql) | US14.4 step 2: pg_cron runs the sweep every 15 minutes. **Run only after US14.4 is merged and everyone has pulled** | Holds still free their slot at the deadline, but are never marked Expired and the Coordinator is never told. Run too early, and older checkouts answer 500 on booking pages |
+| [`SUPABASE_ADD_EVENT_NEEDS.sql`](backend/SUPABASE_ADD_EVENT_NEEDS.sql) | US2.1 (Sprint 3) mandatory event needs; run after the US4.5 script | **`GET /events` and every event page return 500**: each event read selects the new columns |
+| [`SUPABASE_ADD_VENUE_TURNAROUND.sql`](backend/SUPABASE_ADD_VENUE_TURNAROUND.sql) | US9.4 venue setup and turnaround time; run after the US14.1 script | **All five `/venues` routes return 500**: each venue read selects the new columns |
 | [`SUPABASE_HARDENING.sql`](backend/SUPABASE_HARDENING.sql) | Row Level Security, indexes | Supabase advisor warnings; the app still works |
 | [`SUPABASE_SEED_VENUES.sql`](backend/SUPABASE_SEED_VENUES.sql) | Optional | The catalogue shows its empty state until Venue Staff add records |
 
@@ -219,10 +232,12 @@ backend/
     security.py        session-token generation
     supabase_client.py the Supabase clients, and which key each one uses
     events.py          /events routes — US4.1, US4.2, and US14.1's venue bookings
-    event_store.py     event data access, over events and status_changes
+    event_store.py     event data access, over events and status_changes and event_change_requests
     booking_store.py   venue booking data access, over venue_bookings
     suitability.py     whether a venue suits one booking (US18.1)
     event_status.py    the status label set, the submit rule and the US7.3 review rule
+    change_requests.py the US11.1 rules: which fields changed, which are
+                       important, and when a change may be requested
     venues.py          /venues routes — US9.1a-c, US9.2 and US9.3
     venue_store.py     venue data access, over the venues table
   tests/               one file per story, plus unit tests for each module

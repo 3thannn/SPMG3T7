@@ -6,14 +6,16 @@ refuses on its own account: every "cannot" here is asserted against a request,
 not against a disabled button.
 """
 
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Faculty Welcome Night",
     "purpose": "Welcome the new intake.",
     "startsAt": "2026-11-02T18:00",
+    "endsAt": "2026-11-02T21:00",
     "description": "Talks.",
     "expectedAttendance": 120,
+    **SUBMITTABLE_NEEDS,
 }
 
 
@@ -256,7 +258,7 @@ class TestVisibility:
         assert body["description"] == "Talks."
         assert body["startsAt"] == "2026-11-02T18:00"
         assert body["expectedAttendance"] == 120
-        assert body["status"] == "Submitted"
+        assert body["status"] == "Under Review"
         assert body["organiserId"] == str(ORGANISER_ID)
         assert body["organiserName"] == "Dylan"
         assert len(body["history"]) >= 2  # At least creation and submission
@@ -350,8 +352,22 @@ class TestSaving:
         assert response.status_code == 404
         assert response.json()["detail"]["code"] == "event_not_found"
 
-    def test_owner_can_edit_their_event(self, client, auth_headers):
-        """US4.2: Original behavior - owners can edit without change tracking."""
+    def test_owner_can_edit_their_draft(self, client, auth_headers):
+        """US4.2: owners edit a Draft directly, without change tracking."""
+        event = create(client, auth_headers("Event Organiser"))
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={**DRAFT, "title": "Renamed by Owner"},
+            headers=auth_headers("Event Organiser"),
+        )
+
+        assert response.status_code == 200
+        saved = response.json()
+        assert saved["title"] == "Renamed by Owner"
+
+    def test_owner_cannot_edit_their_submitted_event_directly(self, client, auth_headers):
+        """US11.1: once submitted, the owner requests a change instead of editing."""
         event = create(client, auth_headers("Event Organiser"))
         client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
@@ -363,9 +379,8 @@ class TestSaving:
             headers=auth_headers("Event Organiser"),
         )
 
-        assert response.status_code == 200
-        saved = response.json()
-        assert saved["title"] == "Renamed by Owner"
+        assert response.status_code == 409
+        assert response.json()["detail"]["reason"] == "change-request-required"
 
     def test_coordinator_can_edit_any_event(self, client, auth_headers):
         """US5.2: Coordinators can edit submitted events they don't own.
@@ -575,7 +590,7 @@ class TestCoordinatorEditing:
 
         response = client.put(
             f"/events/{submitted['id']}",
-            json={**DRAFT, "startsAt": "2026-12-15T20:00"},
+            json={**DRAFT, "startsAt": "2026-12-15T20:00", "endsAt": "2026-12-15T22:00"},
             headers=auth_headers("Event Coordinator"),
         )
 
@@ -695,7 +710,7 @@ class TestCoordinatorEditing:
         assert detail["message"] == "That event no longer exists."
 
     def test_coordinator_can_edit_submitted_event(self, client, auth_headers):
-        """Coordinators can edit events in Submitted status."""
+        """Coordinators can edit assigned events after review begins."""
         event = create(client, auth_headers("Event Organiser"))
         submitted = client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
@@ -717,7 +732,7 @@ class TestCoordinatorEditing:
         assert response.status_code == 200
         saved = response.json()
         assert saved["title"] == "Edited After Submission"
-        assert saved["status"] == "Submitted"  # Status unchanged
+        assert saved["status"] == "Under Review"  # Status unchanged
 
 
 class TestSprintOneReachableStatuses:

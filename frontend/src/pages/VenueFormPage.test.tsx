@@ -8,15 +8,16 @@
  * they are the rule.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import VenueFormPage from './VenueFormPage'
 import {
   VenueRuleError,
   createVenue,
   getVenue,
   saveVenue,
+  type VenueRecheck,
   type VenueRecord,
 } from '../venuesStore'
 import { buildSession } from '../test/sessions'
@@ -121,6 +122,9 @@ it('creates a venue from the three required fields alone', async () => {
         accessibilityFeatures: '',
         operatingHours: '',
         supportedLayouts: '',
+        // US9.4: untouched, both go as the default of 0.
+        setupMinutes: 0,
+        turnaroundMinutes: 0,
       },
       venueStaff,
     )
@@ -340,4 +344,269 @@ it('cancels back to the catalogue when creating', () => {
     'href',
     '#/venues',
   )
+})
+
+// --- US9.4: setup and turnaround time -------------------------------------------
+
+const recheckWith = (conflicts: VenueRecheck['conflicts'], checkedBookings = 2): VenueRecheck => ({
+  setupMinutes: 30,
+  turnaroundMinutes: 45,
+  checkedBookings,
+  conflicts,
+})
+
+const bookingWindow = (bookingId: string, from: string, to: string) => ({
+  bookingId,
+  eventId: `9${bookingId}`,
+  startsAt: from,
+  endsAt: to,
+  occupiedFrom: from,
+  occupiedTo: to,
+})
+
+const clash = (causedByChange: boolean, first = '1', second = '2') => ({
+  first: bookingWindow(first, '2027-03-01T09:30', '2027-03-01T12:45'),
+  second: bookingWindow(second, '2027-03-01T12:00', '2027-03-01T14:45'),
+  causedByChange,
+})
+
+describe('US9.4 — setup and turnaround time', () => {
+  it('offers both fields on create, starting at the default of 0', () => {
+    render(<VenueFormPage venueId={null} session={venueStaff} />)
+
+    expect(screen.getByLabelText('Setup time (minutes)')).toHaveValue('0')
+    expect(screen.getByLabelText('Turnaround time (minutes)')).toHaveValue('0')
+    expect(screen.getByLabelText('Setup time (minutes)')).toHaveAccessibleDescription(
+      'Time to prepare the room before each booking. Whole minutes, 0 to 1440.',
+    )
+    expect(screen.getByLabelText('Turnaround time (minutes)')).toHaveAccessibleDescription(
+      'Time to reset the room after each booking. Whole minutes, 0 to 1440.',
+    )
+  })
+
+  it('sends the values typed on create', async () => {
+    createVenueMock.mockResolvedValue(buildVenue({ id: '42' }))
+
+    render(<VenueFormPage venueId={null} session={venueStaff} />)
+    await fillRequired()
+    await userEvent.clear(screen.getByLabelText('Setup time (minutes)'))
+    await userEvent.type(screen.getByLabelText('Setup time (minutes)'), '30')
+    await userEvent.clear(screen.getByLabelText('Turnaround time (minutes)'))
+    await userEvent.type(screen.getByLabelText('Turnaround time (minutes)'), ' 1440 ')
+    await userEvent.click(screen.getByRole('button', { name: 'Add venue' }))
+
+    await waitFor(() => expect(createVenueMock).toHaveBeenCalled())
+    expect(createVenueMock.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ setupMinutes: 30, turnaroundMinutes: 1440 }),
+    )
+    expect(window.location.hash).toBe('#/venues/42')
+  })
+
+  it('reads an emptied box as 0', async () => {
+    createVenueMock.mockResolvedValue(buildVenue({ id: '42' }))
+
+    render(<VenueFormPage venueId={null} session={venueStaff} />)
+    await fillRequired()
+    await userEvent.clear(screen.getByLabelText('Setup time (minutes)'))
+    await userEvent.click(screen.getByRole('button', { name: 'Add venue' }))
+
+    await waitFor(() => expect(createVenueMock).toHaveBeenCalled())
+    expect(createVenueMock.mock.calls[0][0].setupMinutes).toBe(0)
+  })
+
+  it.each([
+    ['Setup time (minutes)', '-1', 'The setup time cannot be negative.'],
+    ['Setup time (minutes)', '1.5', 'Give the setup time as a whole number of minutes, 0 or more.'],
+    ['Setup time (minutes)', '1441', 'Keep the setup time to 1440 minutes (24 hours) or fewer.'],
+    ['Turnaround time (minutes)', 'abc', 'Give the turnaround time as a whole number of minutes, 0 or more.'],
+    ['Turnaround time (minutes)', '-5', 'The turnaround time cannot be negative.'],
+    ['Turnaround time (minutes)', '2000', 'Keep the turnaround time to 1440 minutes (24 hours) or fewer.'],
+  ])('refuses %s of %o and sends nothing', async (label, value, message) => {
+    render(<VenueFormPage venueId={null} session={venueStaff} />)
+    await fillRequired()
+    await userEvent.clear(screen.getByLabelText(label))
+    await userEvent.type(screen.getByLabelText(label), value)
+    await userEvent.click(screen.getByRole('button', { name: 'Add venue' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(createVenueMock).not.toHaveBeenCalled()
+  })
+
+  it('shows the server’s refusal if it reads a value differently', async () => {
+    createVenueMock.mockRejectedValue(new VenueRuleError('The setup time cannot be negative.'))
+
+    render(<VenueFormPage venueId={null} session={venueStaff} />)
+    await fillRequired()
+    await userEvent.click(screen.getByRole('button', { name: 'Add venue' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The setup time cannot be negative.')
+  })
+
+  it('loads the stored values on edit, and says changing them re-checks bookings', async () => {
+    getVenueMock.mockResolvedValue(buildVenue({ setupMinutes: 30, turnaroundMinutes: 45 }))
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+
+    expect(await screen.findByLabelText('Setup time (minutes)')).toHaveValue('30')
+    expect(screen.getByLabelText('Turnaround time (minutes)')).toHaveValue('45')
+    expect(screen.getByText(/Changing either time re-checks this venue’s bookings/)).toBeVisible()
+  })
+
+  it('shows 0 for a record saved before US9.4', async () => {
+    getVenueMock.mockResolvedValue(buildVenue())
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+
+    expect(await screen.findByLabelText('Setup time (minutes)')).toHaveValue('0')
+    expect(screen.getByLabelText('Turnaround time (minutes)')).toHaveValue('0')
+  })
+
+  it('sends changed values on edit', async () => {
+    getVenueMock.mockResolvedValue(buildVenue())
+    saveVenueMock.mockResolvedValue({ ...buildVenue(), recheck: null })
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+    const setup = await screen.findByLabelText('Setup time (minutes)')
+    await userEvent.clear(setup)
+    await userEvent.type(setup, '15')
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(saveVenueMock).toHaveBeenCalled())
+    expect(saveVenueMock.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ setupMinutes: 15, turnaroundMinutes: 0 }),
+    )
+  })
+
+  it.each([
+    ['no re-check ran', null],
+    ['the re-check found nothing', recheckWith([])],
+  ])('goes to the venue when %s', async (_, recheck) => {
+    getVenueMock.mockResolvedValue(buildVenue({ id: '7' }))
+    saveVenueMock.mockResolvedValue({ ...buildVenue({ id: '7' }), recheck })
+
+    render(<VenueFormPage venueId="7" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(window.location.hash).toBe('#/venues/7'))
+  })
+
+  it('lists the bookings the re-check found clashing, and removes none', async () => {
+    window.location.hash = '#/venues/1/edit'
+    getVenueMock.mockResolvedValue(buildVenue())
+    saveVenueMock.mockResolvedValue({
+      ...buildVenue(),
+      recheck: recheckWith([clash(true), clash(false, '3', '4')], 4),
+    })
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Saved — 2 booking clashes need attention' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "With 30 minutes' setup and 45 minutes' turnaround, 4 active bookings were checked again. These now overlap. Nothing has been cancelled or removed.",
+    )
+    const items = screen.getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(within(items[0]).getByText('New with this change')).toHaveClass('venue-recheck-tag-new')
+    expect(within(items[0]).getByText(/^Booking 1 \(event 91\) occupies/)).toBeInTheDocument()
+    expect(within(items[0]).getByText(/^Booking 2 \(event 92\) occupies/)).toBeInTheDocument()
+    expect(within(items[1]).getByText('Already overlapping')).not.toHaveClass(
+      'venue-recheck-tag-new',
+    )
+    // Stays put until Venue Staff have read it.
+    expect(window.location.hash).toBe('#/venues/1/edit')
+
+    await userEvent.click(screen.getByRole('button', { name: 'View venue' }))
+    expect(window.location.hash).toBe('#/venues/1')
+  })
+
+  it('reads one clash and one booking in the singular', async () => {
+    getVenueMock.mockResolvedValue(buildVenue())
+    saveVenueMock.mockResolvedValue({ ...buildVenue(), recheck: recheckWith([clash(true)], 1) })
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Saved — 1 booking clash needs attention' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('1 active booking was checked again.')
+  })
+})
+
+// --- US15.2: bookings flagged by a setup or turnaround change --------------------
+
+describe('US15.2: flagged bookings after a setup or turnaround change', () => {
+  it('TC-FF18 names the flagged bookings and links to the review list', async () => {
+    window.location.hash = '#/venues/1/edit'
+    getVenueMock.mockResolvedValue(buildVenue())
+    saveVenueMock.mockResolvedValue({
+      ...buildVenue(),
+      recheck: { ...recheckWith([clash(true)]), flaggedBookingIds: ['1', '2'] },
+    })
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    expect(
+      await screen.findByText(
+        /^Bookings #1, #2 are now marked “Conflict – review needed”, and their Coordinators have been notified\.$/,
+      ),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Review booking conflicts' }))
+    expect(window.location.hash).toBe('#/booking-conflicts')
+  })
+
+  it('TC-FF19 shows a booking flagged only by an unavailability period, in the singular', async () => {
+    window.location.hash = '#/venues/1/edit'
+    getVenueMock.mockResolvedValue(buildVenue())
+    saveVenueMock.mockResolvedValue({
+      ...buildVenue(),
+      recheck: { ...recheckWith([], 1), flaggedBookingIds: ['5'], clearedBookingIds: [] },
+    })
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Saved — 1 booking needs attention' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /^Booking #5 is now marked “Conflict – review needed”, and its Coordinator has been notified\.$/,
+      ),
+    ).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/venues/1/edit')
+  })
+
+  it('TC-FF20 counts several bookings flagged by periods in the plural', async () => {
+    getVenueMock.mockResolvedValue(buildVenue())
+    saveVenueMock.mockResolvedValue({
+      ...buildVenue(),
+      recheck: { ...recheckWith([], 2), flaggedBookingIds: ['5', '6'] },
+    })
+
+    render(<VenueFormPage venueId="1" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Saved — 2 bookings need attention' }),
+    ).toBeInTheDocument()
+  })
+
+  it('TC-FF21 goes straight to the venue when the change only cleared flags', async () => {
+    getVenueMock.mockResolvedValue(buildVenue({ id: '7' }))
+    saveVenueMock.mockResolvedValue({
+      ...buildVenue({ id: '7' }),
+      recheck: { ...recheckWith([]), flaggedBookingIds: [], clearedBookingIds: ['5'] },
+    })
+
+    render(<VenueFormPage venueId="7" session={venueStaff} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(window.location.hash).toBe('#/venues/7'))
+    expect(screen.queryByRole('button', { name: 'Review booking conflicts' })).not.toBeInTheDocument()
+  })
 })

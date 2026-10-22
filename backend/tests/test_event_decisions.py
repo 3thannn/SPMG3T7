@@ -7,7 +7,7 @@ from app.event_status import EventStatus, transition_allowed
 from app.event_store import Event, StaleEventStatus, SupabaseEvents
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Faculty Welcome Night",
@@ -16,6 +16,7 @@ DRAFT = {
     "startsAt": "2027-11-02T18:00",
     "endsAt": "2027-11-02T21:00",
     "expectedAttendance": 120,
+    **SUBMITTABLE_NEEDS,
 }
 
 
@@ -79,6 +80,12 @@ class TestTransitionRules:
             (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW),
             (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
             (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
+            (EventStatus.APPROVED, EventStatus.PLANNING),
+            # US4.4: the Pending Safety Check stage.
+            (EventStatus.PLANNING, EventStatus.PENDING_SAFETY_CHECK),
+            (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
+            (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
+            (EventStatus.CONFIRMED, EventStatus.COMPLETED),
         ],
     )
     def test_allowed_transitions(self, before, after):
@@ -90,6 +97,19 @@ class TestTransitionRules:
             (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW),
             (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
             (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
+            (EventStatus.APPROVED, EventStatus.PLANNING),
+            # US4.4: the Pending Safety Check stage.
+            (EventStatus.PLANNING, EventStatus.PENDING_SAFETY_CHECK),
+            (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
+            (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
+            (EventStatus.CONFIRMED, EventStatus.COMPLETED),
+            # US4.6: anything not already Completed, Cancelled or Rejected.
+            *(
+                (status, EventStatus.CANCELLED)
+                for status in EventStatus
+                if status
+                not in (EventStatus.COMPLETED, EventStatus.CANCELLED, EventStatus.REJECTED)
+            ),
         }
         for before in EventStatus:
             for after in EventStatus:
@@ -146,6 +166,7 @@ class TestDecisionHappyPaths:
             "byId": str(COORDINATOR_ID),
             "byName": "Priya",
             "notes": notes,
+            "kind": "",
         }
         assert latest["at"]
 

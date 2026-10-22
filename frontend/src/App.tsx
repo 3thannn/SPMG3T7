@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import TopNav from './components/TopNav'
+import BookingConflictsPage from './pages/BookingConflictsPage'
+import BookingRequestsPage from './pages/BookingRequestsPage'
 import AccessDeniedPage from './pages/AccessDeniedPage'
 import EventDetailPage from './pages/EventDetailPage'
 import EventsPage from './pages/EventsPage'
 import LandingPage from './pages/LandingPage'
 import NewEventPage from './pages/NewEventPage'
+import NotificationsPage from './pages/NotificationsPage'
+import { EquipmentPage, EquipmentDetailPage, EquipmentFormPage } from './pages/EquipmentPage'
+import EquipmentQueuePage from './pages/EquipmentQueuePage'
+import EquipmentRequestDetailPage from './pages/EquipmentRequestDetailPage'
 import SafetyReviewPage from './pages/SafetyReviewPage'
 import SignInPage from './pages/SignInPage'
 import UnassignedQueuePage from './pages/UnassignedQueuePage'
@@ -195,8 +201,29 @@ export default function App() {
       return <NewEventPage session={session} />
     }
 
+    if (route === '/notifications') {
+      return <NotificationsPage session={session} />
+    }
+
+    if (route === '/equipment') return <EquipmentPage session={session} />
+    if (route === '/equipment/new') return <EquipmentFormPage session={session} />
+    const equipmentEdit = /^\/equipment\/([^/]+)\/edit$/.exec(route)
+    if (equipmentEdit) return <EquipmentFormPage session={session} id={equipmentEdit[1]} />
+    const equipmentDetail = /^\/equipment\/([^/]+)$/.exec(route)
+    if (equipmentDetail) return <EquipmentDetailPage session={session} id={equipmentDetail[1]} />
+    if (route === '/equipment-requests') return <EquipmentQueuePage session={session} />
+    const equipmentRequestDetail = /^\/equipment-requests\/([^/]+)$/.exec(route)
+    if (equipmentRequestDetail) return <EquipmentRequestDetailPage session={session} id={equipmentRequestDetail[1]} />
+
     if (route === '/venues') {
       return <VenuesPage session={session} />
+    }
+
+    if (route === '/booking-requests') {
+      return <BookingRequestsPage session={session} />
+    }
+    if (route === '/booking-conflicts') {
+      return <BookingConflictsPage session={session} />
     }
 
     if (route === '/venues/new') {
