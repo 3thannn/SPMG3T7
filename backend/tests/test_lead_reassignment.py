@@ -12,8 +12,14 @@ DRAFT = {
     "title": "Team Building Workshop",
     "purpose": "Improve team collaboration",
     "startsAt": "2026-11-15T14:00",
+    "endsAt": "2026-11-15T17:00",
     "description": "Interactive workshop for staff",
     "expectedAttendance": 30,
+    "venueRequirements": "Stage, Projector",
+    "preferredLayout": "Theatre",
+    "accessibilityNeeds": "Wheelchair access",
+    "equipmentNeeds": "Two wireless microphones",
+    "registrationNeeds": "None / Not required",
 }
 
 
