@@ -46,7 +46,7 @@ function buildUnassignedEvent(
     status: 'Submitted',
     organiserId: '1',
     organiserName: 'Dylan',
-    submittedAt: '2027-02-01T10:00',
+    submittedAt: '2027-02-01T10:00:00+08:00',
     coordinatorId: null,
     ...overrides,
   }
@@ -93,7 +93,7 @@ it('displays event details including organiser and submission time', async () =>
   expect(screen.getByText('Annual tech meetup')).toBeInTheDocument()
   expect(screen.getByText('Dylan')).toBeInTheDocument()
   // Submission time is shown in the redesigned card layout
-  expect(screen.getByText(/Feb 01, 2027/)).toBeInTheDocument()
+  expect(screen.getByText(/01 Feb 2027, 10:00/)).toBeInTheDocument()
 })
 
 it('shows coordinator picker when assign button is clicked', async () => {

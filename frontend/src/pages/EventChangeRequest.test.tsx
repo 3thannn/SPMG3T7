@@ -625,7 +625,7 @@ describe('AC5 — the Coordinator’s answer is shown to both sides', () => {
     expect(screen.getByText(formatTimestamp(ANSWERED_AT))).toHaveAttribute('dateTime', ANSWERED_AT)
     expect(screen.getByText('Reason')).toBeInTheDocument()
     expect(screen.getByText('Hall is booked at 19:00.')).toBeInTheDocument()
-    expect(screen.getByText('Organiser’s note')).toBeInTheDocument()
+    expect(screen.getByText('Organiser\'s note')).toBeInTheDocument()
     expect(screen.getByText('Please adjust the welcome programme.')).toBeInTheDocument()
   })
 

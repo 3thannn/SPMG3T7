@@ -45,6 +45,7 @@ import {
 } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 import { can, canAny } from '../permissions'
+import { listCoordinators, reassignCoordinator, type Coordinator } from '../unassignedQueueStore'
 
 type EventDetailPageProps = {
   eventId: string
@@ -115,6 +116,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const [asking, setAsking] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [deciding, setDeciding] = useState<'approve' | 'reject' | null>(null)
+  //: US8.4: Reassignment state
+  const [showReassignModal, setShowReassignModal] = useState(false)
+  const [coordinators, setCoordinators] = useState<Coordinator[]>([])
+  const [reassigning, setReassigning] = useState(false)
   const [completing, setCompleting] = useState(false)
   const [nowMs, setNowMs] = useState<number | null>(null)
   //: US11.1. `proposing` opens the existing edit form on a submitted event; what
@@ -502,6 +507,43 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     }
   }
 
+  /** US8.4: Load coordinators and show reassignment modal */
+  async function handleShowReassignModal() {
+    setShowReassignModal(true)
+    setBanner(null)
+    try {
+      const coordinatorList = await listCoordinators(session)
+      setCoordinators(coordinatorList)
+    } catch (error) {
+      setBanner({ kind: 'error', text: unexpectedFailureMessage(error, 'load coordinators') })
+      setShowReassignModal(false)
+    }
+  }
+
+  /** US8.4: Reassign event to a different coordinator */
+  async function handleReassign(coordinatorId: string) {
+    setReassigning(true)
+    setBanner(null)
+    try {
+      await reassignCoordinator(session, event.id, coordinatorId)
+      // Reload the event to get updated coordinator info
+      const updated = await getEvent(eventId, session)
+      if (updated) {
+        setPage({ state: 'loaded', event: updated })
+        const newCoord = coordinators.find((c) => c.id === coordinatorId)
+        setBanner({
+          kind: 'ok',
+          text: `Reassigned to ${newCoord?.name || 'coordinator'}. They can now access this event.`,
+        })
+      }
+      setShowReassignModal(false)
+    } catch (error) {
+      setBanner({ kind: 'error', text: unexpectedFailureMessage(error, 'reassign coordinator') })
+    } finally {
+      setReassigning(false)
+    }
+  }
+
   async function handleSubmit() {
     const problem = submissionError(draft, todayIso())
     if (problem) {
@@ -560,7 +602,9 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
           <div className="detail-heading">
             <h1 className="page-title">{displayEventTitle(event.title)}</h1>
             <p className="page-subtitle">
-              Organiser: {event.organiserName} · Created {formatTimestamp(event.createdAt)}
+              Organiser: {event.organiserName}
+              {event.coordinatorName && ` · Coordinator: ${event.coordinatorName}`}
+              {' · Created '}{formatTimestamp(event.createdAt)}
             </p>
           </div>
           <StatusBadge status={event.status} size="lg" />
@@ -803,6 +847,38 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             <p className="detail-side-lede">Event status transitions and requested changes.</p>
             <StatusTimeline history={event.history} />
 
+            {/* US8.4: Reassignment UI for Coordinator Lead */}
+            {can(session, 'coordinators:assign') && event.coordinatorId && event.status !== 'Draft' && (
+              <div className="detail-clarify">
+                <h3 className="detail-clarify-title">Coordinator assignment</h3>
+                <div style={{
+                  background: '#f8f9fa',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '6px',
+                  padding: '0.75rem 1rem',
+                  marginBottom: '0.75rem'
+                }}>
+                  <div style={{ fontSize: '0.8rem', color: '#6c757d', marginBottom: '0.25rem' }}>
+                    Assigned Coordinator
+                  </div>
+                  <div style={{ fontSize: '1rem', fontWeight: '600', color: '#212529' }}>
+                    {event.coordinatorName || `Coordinator ${event.coordinatorId}`}
+                  </div>
+                </div>
+                <p className="detail-clarify-lede">
+                  You can reassign this event to a different coordinator if needed.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleShowReassignModal}
+                  disabled={reassigning}
+                >
+                  Reassign Coordinator
+                </button>
+              </div>
+            )}
+
             {/* US11.1: the Coordinator's answer to the last request. It is not a
                 status change, so it is not in the trail above; it is kept on
                 the request itself and shown here. */}
@@ -821,7 +897,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                 </p>
                 {lastReview.requestNote && (
                   <blockquote className="timeline-note">
-                    <p className="timeline-note-label">Organiser’s note</p>
+                    <p className="timeline-note-label">Organiser's note</p>
                     {lastReview.requestNote}
                   </blockquote>
                 )}
@@ -846,7 +922,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                         'approve or reject the request before deciding the event.'
                       : 'The Organiser has asked to change these details. Approve or reject ' +
                         'the request; the event keeps its current status.'
-                    : 'Awaiting the Coordinator’s review. Your event keeps its current ' +
+                    : 'Awaiting the Coordinator\'s review. Your event keeps its current ' +
                       'details until the changes are approved.'}
                 </p>
                 <ProposedChanges changes={pendingChanges} />
@@ -1011,6 +1087,56 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         {readsEvents && <EventEquipment event={event} session={session} />}
         {can(session, 'safety:review') && (
           <SafetyReviewDetails eventId={event.id} session={session} />
+        )}
+
+        {/* US8.4: Coordinator reassignment modal */}
+        {showReassignModal && (
+          <div className="modal-overlay" onClick={() => setShowReassignModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Reassign Coordinator</h3>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setShowReassignModal(false)}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <p>Select a coordinator to reassign this event to:</p>
+                <div className="coordinator-list">
+                  {coordinators.map((coord) => (
+                    <button
+                      key={coord.id}
+                      type="button"
+                      className="coordinator-option"
+                      onClick={() => handleReassign(coord.id)}
+                      disabled={reassigning}
+                    >
+                      <div className="coordinator-avatar">
+                        {coord.name.split(' ').map(n => n[0]).join('')}
+                      </div>
+                      <div className="coordinator-info">
+                        <span className="coordinator-name">{coord.name}</span>
+                        <span className="coordinator-email">{coord.email}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowReassignModal(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

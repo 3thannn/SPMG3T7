@@ -47,6 +47,7 @@ export type Role =
  * US4.1: status is visible to the Organiser who owns the event. Coordinators
  * can see an event only after its Organiser submits it; later workflow statuses
  * remain visible because they still represent a submitted request.
+ * US8.6: Coordinator Lead can view all non-Draft events (not just assigned ones).
  */
 export function canViewStatus(
   role: Role,
@@ -54,6 +55,7 @@ export function canViewStatus(
   event: { organiserId: string; status: EventStatus },
 ): boolean {
   if (role === 'Event Coordinator') return event.status !== 'Draft'
+  if (role === 'Event Coordinator Lead') return event.status !== 'Draft'
   if (role === 'Event Organiser') return event.organiserId === viewerId
   // US4.4: the Safety Officer sees an event only while it waits for their check.
   if (role === 'Safety Officer') return event.status === 'Pending Safety Check'
@@ -326,11 +328,14 @@ export function isClarificationRequest(change: StatusChange): boolean {
 export function formatTimestamp(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
-  return date.toLocaleString(undefined, {
+  // Display in Singapore timezone (UTC+8)
+  return date.toLocaleString('en-SG', {
+    timeZone: 'Asia/Singapore',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   })
 }

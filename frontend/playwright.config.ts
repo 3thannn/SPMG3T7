@@ -33,6 +33,9 @@ export default defineConfig({
 
     /* Screenshot only on failure */
     screenshot: 'only-on-failure',
+
+    /* Set viewport size to ensure .topnav-identity is visible (needs > 860px) */
+    viewport: { width: 1280, height: 720 },
   },
 
   /* Configure projects for major browsers */

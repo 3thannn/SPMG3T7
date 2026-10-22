@@ -44,12 +44,14 @@ CHANGE_REQUESTS_TABLE = "event_change_requests"
 
 # US8.1: Two foreign keys to users now exist (organiser_id, coordinator_id),
 # so PostgREST requires explicit relationship qualification via constraint name.
+# US8.4: Fetch both organiser and coordinator names via separate joins.
 EVENT_COLUMNS = (
     "id, name, purpose, description, proposed_date, end_date, expected_attendance, "
     "venue_requirements, preferred_layout, accessibility_needs, equipment_needs, "
     "registration_needs, "
     "status, organiser_id, coordinator_id, created_at, updated_at, submitted_at, "
-    "users!events_organiser_id_fkey(name)"
+    "organiser:users!events_organiser_id_fkey(name), "
+    "coordinator:users!events_coordinator_id_fkey(name)"
 )
 CHANGE_COLUMNS = "id, old_status, new_status, changed_at, notes, changed_by_id, users(name)"
 #: US11.1: a request's rows. Pending rows are the request awaiting review; the
@@ -100,6 +102,8 @@ class Event:
     updated_at: str
     #: US8.1: The assigned Event Coordinator's ID, or None if unassigned.
     coordinator_id: int | None = None
+    #: US8.4: The assigned Event Coordinator's name, or empty if unassigned.
+    coordinator_name: str = ""
     history: tuple[StatusChange, ...] = ()
     #: US11.1: the "change requested" flag. Not a column: it is true exactly
     #: when the event has pending `event_change_requests` rows.
@@ -208,6 +212,18 @@ def latest_review(requests: list[dict]) -> ChangeReview | None:
 def to_event(
     row: dict, changes: list[dict] | None = None, requests: list[dict] | None = None
 ) -> Event:
+    # US8.4: Extract both organiser and coordinator names from aliased joins
+    organiser_joined = row.get("organiser")
+    organiser_name = (
+        organiser_joined.get("name", "") if isinstance(organiser_joined, dict) else ""
+    )
+
+    coordinator_joined = row.get("coordinator")
+    coordinator_name = (
+        coordinator_joined.get("name", "") if isinstance(coordinator_joined, dict) else ""
+    )
+
+
     event = Event(
         id=row["id"],
         title=row.get("name") or "",
@@ -218,10 +234,11 @@ def to_event(
         expected_attendance=row.get("expected_attendance"),
         status=EventStatus(row["status"]),
         organiser_id=row["organiser_id"],
-        organiser_name=_embedded_name(row),
+        organiser_name=organiser_name,
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
         coordinator_id=row.get("coordinator_id"),
+        coordinator_name=coordinator_name,
         **{name: row.get(name) or "" for name in NEED_FIELDS},
     )
     stored = sorted(
@@ -1288,26 +1305,38 @@ class InMemoryEvents:
         )
 
     def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
-        """US8.3: Manually assign a Coordinator to an event."""
+        """US8.3/US8.4: Assign or reassign a Coordinator to an event."""
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 - the caller checked it exists
-        if existing.status is not EventStatus.SUBMITTED or existing.coordinator_id is not None:
-            raise StaleEventStatus
+
+        # US8.4: Allow reassignment (coordinator_id is not None)
+        # Only create a status change entry if moving from SUBMITTED to UNDER_REVIEW
         at = _now()
-        entry = StatusChange(
-            from_status=EventStatus.SUBMITTED,
-            to_status=EventStatus.UNDER_REVIEW,
-            at=at,
-            by_id=assigned_by_id,
-            by_name=self.names.get(assigned_by_id, ""),
-        )
+        entry = None
+        new_status = existing.status
+
+        if existing.status is EventStatus.SUBMITTED:
+            # Initial assignment: SUBMITTED -> UNDER_REVIEW
+            entry = StatusChange(
+                from_status=EventStatus.SUBMITTED,
+                to_status=EventStatus.UNDER_REVIEW,
+                at=at,
+                by_id=assigned_by_id,
+                by_name=self.names.get(assigned_by_id, ""),
+            )
+            new_status = EventStatus.UNDER_REVIEW
+
+        # Update coordinator name when assigning/reassigning
+        coordinator_name = self.names.get(coordinator_id, "")
+
         return self._replace(
             replace(
                 existing,
                 coordinator_id=coordinator_id,
-                status=EventStatus.UNDER_REVIEW,
+                coordinator_name=coordinator_name,
+                status=new_status,
                 updated_at=at,
-                history=(*existing.history, entry),
+                history=(*existing.history, entry) if entry else existing.history,
             )
         )
 
