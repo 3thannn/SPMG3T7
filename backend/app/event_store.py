@@ -1305,26 +1305,38 @@ class InMemoryEvents:
         )
 
     def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
-        """US8.3: Manually assign a Coordinator to an event."""
+        """US8.3/US8.4: Assign or reassign a Coordinator to an event."""
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 - the caller checked it exists
-        if existing.status is not EventStatus.SUBMITTED or existing.coordinator_id is not None:
-            raise StaleEventStatus
+
+        # US8.4: Allow reassignment (coordinator_id is not None)
+        # Only create a status change entry if moving from SUBMITTED to UNDER_REVIEW
         at = _now()
-        entry = StatusChange(
-            from_status=EventStatus.SUBMITTED,
-            to_status=EventStatus.UNDER_REVIEW,
-            at=at,
-            by_id=assigned_by_id,
-            by_name=self.names.get(assigned_by_id, ""),
-        )
+        entry = None
+        new_status = existing.status
+
+        if existing.status is EventStatus.SUBMITTED:
+            # Initial assignment: SUBMITTED -> UNDER_REVIEW
+            entry = StatusChange(
+                from_status=EventStatus.SUBMITTED,
+                to_status=EventStatus.UNDER_REVIEW,
+                at=at,
+                by_id=assigned_by_id,
+                by_name=self.names.get(assigned_by_id, ""),
+            )
+            new_status = EventStatus.UNDER_REVIEW
+
+        # Update coordinator name when assigning/reassigning
+        coordinator_name = self.names.get(coordinator_id, "")
+
         return self._replace(
             replace(
                 existing,
                 coordinator_id=coordinator_id,
-                status=EventStatus.UNDER_REVIEW,
+                coordinator_name=coordinator_name,
+                status=new_status,
                 updated_at=at,
-                history=(*existing.history, entry),
+                history=(*existing.history, entry) if entry else existing.history,
             )
         )
 

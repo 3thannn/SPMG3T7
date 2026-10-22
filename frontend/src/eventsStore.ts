@@ -41,7 +41,7 @@ export type EventRecord = {
   createdAt: string
   updatedAt: string
   /** US8.1: The assigned Event Coordinator's ID, or null if unassigned. */
-  coordinatorId: string | null
+  coordinatorId?: string | null
   /** US8.4: The assigned Event Coordinator's name, or empty if unassigned. */
   coordinatorName?: string
   history: StatusChange[]
