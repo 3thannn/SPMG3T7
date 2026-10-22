@@ -10,7 +10,6 @@ export const EVENT_STATUSES = [
   'Draft',
   'Submitted',
   'Under Review',
-  'Pending Safety Check',
   'Approved',
   'Planning',
   // US4.4: between planning and preparation; only the Safety Officer's

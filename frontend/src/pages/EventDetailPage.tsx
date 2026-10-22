@@ -922,7 +922,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                         'approve or reject the request before deciding the event.'
                       : 'The Organiser has asked to change these details. Approve or reject ' +
                         'the request; the event keeps its current status.'
-                    : 'Awaiting the Coordinator's review. Your event keeps its current ' +
+                    : 'Awaiting the Coordinator\'s review. Your event keeps its current ' +
                       'details until the changes are approved.'}
                 </p>
                 <ProposedChanges changes={pendingChanges} />
