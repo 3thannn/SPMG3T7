@@ -38,13 +38,12 @@ export type EventRecord = {
   status: EventStatus
   organiserId: string
   organiserName: string
-  coordinatorId?: string | null
   createdAt: string
   updatedAt: string
   /** US8.1: The assigned Event Coordinator's ID, or null if unassigned. */
   coordinatorId: string | null
   /** US8.4: The assigned Event Coordinator's name, or empty if unassigned. */
-  coordinatorName: string
+  coordinatorName?: string
   history: StatusChange[]
   /**
    * US11.1: the "change requested" flag — set while the Organiser's proposed

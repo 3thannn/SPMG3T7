@@ -17,7 +17,6 @@ class EventStatus(StrEnum):
     DRAFT = "Draft"
     SUBMITTED = "Submitted"
     UNDER_REVIEW = "Under Review"
-    PENDING_SAFETY_CHECK = "Pending Safety Check"
     APPROVED = "Approved"
     PLANNING = "Planning"
     #: US4.4 (Week 7 change #6): between planning and preparation, so that no
