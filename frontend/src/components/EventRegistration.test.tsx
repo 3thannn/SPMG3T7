@@ -20,11 +20,37 @@ import {
 import { buildSession } from '../test/sessions'
 import type { EventStatus } from '../status'
 
+// Each mock has an implementation of its own, not only the beforeEach answers.
+// The list of who registered mounts once the settings have loaded, so its
+// effect can run after a test ends and this file's resetAllMocks has run, but
+// before the card is unmounted. A reset keeps an implementation given to vi.fn;
+// without one, the call would return undefined and fail whichever test was last.
 vi.mock('../registrationStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../registrationStore')>()),
-  getRegistrationSettings: vi.fn(),
-  saveRegistrationSettings: vi.fn(),
-  listEventRegistrations: vi.fn(),
+  getRegistrationSettings: vi.fn(async (eventId: string) => ({
+    eventId,
+    open: false,
+    capacity: null,
+    registered: 0,
+    placesLeft: null,
+    defaultCapacity: 30,
+  })),
+  saveRegistrationSettings: vi.fn(async () => ({
+    eventId: '950',
+    open: false,
+    capacity: null,
+    registered: 0,
+    placesLeft: null,
+    defaultCapacity: 30,
+  })),
+  listEventRegistrations: vi.fn(async (eventId: string) => ({
+    eventId,
+    open: false,
+    capacity: null,
+    registered: 0,
+    placesLeft: null,
+    registrations: [],
+  })),
 }))
 
 const getMock = vi.mocked(getRegistrationSettings)
