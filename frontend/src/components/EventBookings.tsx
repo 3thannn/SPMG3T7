@@ -18,7 +18,7 @@ import {
   type Suitability,
 } from '../eventsStore'
 import { listVenues, listedItems, type VenueRecord } from '../venuesStore'
-import { bookingRefusalMessage, checkBooking, formatTimestamp } from '../status'
+import { bookingRefusalMessage, checkBooking, formatRecordedAt, formatTimestamp } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 import { can } from '../permissions'
 
@@ -492,7 +492,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
         {booking.cancellation && (
           <p className="booking-cancellation">
             Cancelled by {booking.cancellation.byName || 'a former user'},{' '}
-            {formatTimestamp(booking.cancellation.at)}: {booking.cancellation.reason}
+            {formatRecordedAt(booking.cancellation.at)}: {booking.cancellation.reason}
           </p>
         )}
         {cancelOpen && renderCancelForm(booking)}

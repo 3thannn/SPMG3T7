@@ -4,7 +4,7 @@ import StatusBadge from '../components/StatusBadge'
 import { listEvents, type EventRecord } from '../eventsStore'
 import { displayEventTitle } from '../draftRules'
 import { navigate } from '../router'
-import { EVENT_STATUSES, formatTimestamp, type EventStatus } from '../status'
+import { EVENT_STATUSES, formatRecordedAt, type EventStatus } from '../status'
 import type { Session } from '../api'
 
 type EventsPageProps = {
@@ -185,7 +185,7 @@ export default function EventsPage({ session }: EventsPageProps) {
                     <p className="event-meta">
                       {seesAcrossOrganisers && <>Organiser: {event.organiserName}</>}
                     </p>
-                    <p className="event-updated">Updated {formatTimestamp(event.updatedAt)}</p>
+                    <p className="event-updated">Updated {formatRecordedAt(event.updatedAt)}</p>
                   </div>
 
                   <div className="event-arrow">
