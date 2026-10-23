@@ -16,6 +16,7 @@ import EquipmentQueuePage from './pages/EquipmentQueuePage'
 import EquipmentRequestDetailPage from './pages/EquipmentRequestDetailPage'
 import SafetyReviewPage from './pages/SafetyReviewPage'
 import SignInPage from './pages/SignInPage'
+import TeamAssignmentsPage from './pages/TeamAssignmentsPage'
 import UnassignedQueuePage from './pages/UnassignedQueuePage'
 import VenueDetailPage from './pages/VenueDetailPage'
 import VenueFormPage from './pages/VenueFormPage'
@@ -234,6 +235,10 @@ export default function App() {
 
     if (route === '/unassigned-queue') {
       return <UnassignedQueuePage session={session} />
+    }
+
+    if (route === '/team-assignments') {
+      return <TeamAssignmentsPage session={session} />
     }
 
     if (route === '/safety-review') {

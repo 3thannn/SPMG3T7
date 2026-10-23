@@ -52,6 +52,11 @@ const GUARDED: Record<string, GuardedRoute> = {
     what: 'the unassigned event queue',
     who: 'Event Coordinator Lead',
   },
+  '/team-assignments': {
+    anyOf: ['queue:view:unassigned'],
+    what: 'team assignments and workload distribution',
+    who: 'Event Coordinator Lead',
+  },
   '/safety-review': {
     anyOf: ['safety:review'],
     what: 'the safety review queue',

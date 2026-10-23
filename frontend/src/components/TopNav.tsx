@@ -23,6 +23,7 @@ const NAV_LINKS: NavLink[] = [
   { label: 'Events', path: '/events' },
   { label: 'Create', path: '/events/new' },
   { label: 'Unassigned Queue', path: '/unassigned-queue' },
+  { label: 'Team Assignments', path: '/team-assignments' },
   { label: 'Safety Review', path: '/safety-review' },
   { label: 'Venues', path: '/venues' },
   { label: 'Booking Requests', path: '/booking-requests' },
