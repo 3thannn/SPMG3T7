@@ -24,10 +24,16 @@ registered for, with its current date, time and venues, the registration's
 status, and whether they can still withdraw or register again. Withdrawing is
 allowed until the event starts and gives the place back; registering again is
 US20.1's route, because a withdrawn registration no longer takes a place.
+
+US20.3 lets the owning Organiser and the assigned Coordinator see who registered
+(`GET /events/{id}/registrations`): each person's name, email, when they
+registered and their status, with the count against the capacity. Nobody else
+sees the names, Attendees included.
 """
 
 import logging
 import re
+from collections.abc import Callable
 from enum import StrEnum
 from typing import Annotated
 
@@ -482,16 +488,17 @@ def _my_out(registration: Registration, open_event: OpenEvent | None) -> MyRegis
     )
 
 
-def _latest_per_event(registrations: list[Registration]) -> list[Registration]:
-    """One entry per event: the newest registration for it.
+def _newest_by(
+    registrations: list[Registration], key: Callable[[Registration], int]
+) -> list[Registration]:
+    """One registration per key (an event, or an Attendee): the newest.
 
     Someone who withdrew and registered again has two rows for the event; the
     newer one is where they stand now. The older stays in the table as history.
     """
-    newest = sorted(registrations, key=lambda item: item.id, reverse=True)
     latest: dict[int, Registration] = {}
-    for item in newest:
-        latest.setdefault(item.event_id, item)
+    for item in sorted(registrations, key=lambda item: item.id, reverse=True):
+        latest.setdefault(key(item), item)
     return list(latest.values())
 
 
@@ -499,7 +506,7 @@ def _latest_per_event(registrations: list[Registration]) -> list[Registration]:
 def list_my_registrations(user: Attendee) -> list[MyRegistrationOut]:
     """US20.2 AC1: the Attendee's registrations, soonest event first."""
     store = registration_store.repository()
-    latest = _latest_per_event(store.list_for_attendee(user.id))
+    latest = _newest_by(store.list_for_attendee(user.id), key=lambda item: item.event_id)
     open_events = {item.event_id: item for item in store.list_open()}
     ordered = sorted(
         latest,
@@ -540,3 +547,74 @@ def withdraw(registration_id: str, user: Attendee) -> MyRegistrationOut:
         raise _refused(reason, message)
     assert result.registration is not None  # noqa: S101 - WITHDRAWN carries it
     return _my_out(result.registration, store.get_open(result.registration.event_id))
+
+
+# -- US20.3: who registered, for the Organiser and the Coordinator --------------
+
+
+class RegistrantOut(BaseModel):
+    """One person on an event's registration list."""
+
+    id: str
+    name: str
+    email: str
+    #: Registered or Withdrawn.
+    status: str
+    #: Recorded times: naive UTC.
+    registered_at: str = Field(serialization_alias="registeredAt")
+    withdrawn_at: str = Field(serialization_alias="withdrawnAt")
+
+
+class EventRegistrationsOut(BaseModel):
+    """US20.3 AC1: the list, and the count against the capacity."""
+
+    event_id: str = Field(serialization_alias="eventId")
+    open: bool
+    capacity: int | None
+    #: Places taken: Registered only.
+    registered: int
+    places_left: int | None = Field(serialization_alias="placesLeft")
+    registrations: list[RegistrantOut]
+
+
+@router.get("/events/{event_id}/registrations", response_model=EventRegistrationsOut)
+def list_event_registrations(
+    event_id: str,
+    user: Annotated[User, Depends(require_permission(Permission.REGISTRATIONS_READ))],
+) -> EventRegistrationsOut:
+    """US20.3: who registered, for the owning Organiser and the assigned Coordinator.
+
+    The permission admits the two roles (and not the Lead, the Safety Officer,
+    Venue Staff, Tech Support or an Attendee: 403). `_readable` then admits
+    only the Organiser's own events and the Coordinator's assigned ones,
+    answering 404 for any other, as US3.1 and US8.6 do for the event itself.
+
+    One entry per person, their newest registration, ordered by when it was
+    made (the time shown): someone who withdrew and registered again is listed
+    once, as Registered, at the time they registered again.
+    """
+    event = _readable(_as_id(event_id), user)
+    store = registration_store.repository()
+    settings = store.settings_for(event.id)
+    people = sorted(
+        _newest_by(store.list_for_event(event.id), key=lambda item: item.attendee_id),
+        key=lambda item: item.id,
+    )
+    return EventRegistrationsOut(
+        event_id=str(event.id),
+        open=settings.is_open,
+        capacity=settings.capacity,
+        registered=settings.registered,
+        places_left=settings.places_left,
+        registrations=[
+            RegistrantOut(
+                id=str(item.id),
+                name=item.name,
+                email=item.email,
+                status=str(item.status),
+                registered_at=item.created_at,
+                withdrawn_at=item.withdrawn_at,
+            )
+            for item in people
+        ],
+    )

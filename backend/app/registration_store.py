@@ -234,6 +234,8 @@ class Repository(Protocol):
 
     def list_for_attendee(self, attendee_id: int) -> list[Registration]: ...
 
+    def list_for_event(self, event_id: int) -> list[Registration]: ...
+
     def get_registration(self, registration_id: int) -> Registration | None: ...
 
     def withdraw(self, registration_id: int, *, attendee_id: int) -> WithdrawResult: ...
@@ -390,6 +392,18 @@ class SupabaseRegistrations:
             .select(WITH_EVENT_COLUMNS)
             .eq("attendee_id", attendee_id)
             .order("id", desc=True)
+            .execute()
+        )
+        return [to_registration(row) for row in response.data or []]
+
+    def list_for_event(self, event_id: int) -> list[Registration]:
+        """US20.3: every registration for one event, in the order they were made."""
+        response = (
+            supabase_client.admin()
+            .table(TABLE)
+            .select(COLUMNS)
+            .eq("event_id", event_id)
+            .order("id")
             .execute()
         )
         return [to_registration(row) for row in response.data or []]
@@ -554,6 +568,12 @@ class InMemoryRegistrations:
     def list_for_attendee(self, attendee_id: int) -> list[Registration]:
         mine = (item for item in self.registrations if item.attendee_id == attendee_id)
         return [self._with_event(item) for item in sorted(mine, key=lambda item: -item.id)]
+
+    def list_for_event(self, event_id: int) -> list[Registration]:
+        return sorted(
+            (item for item in self.registrations if item.event_id == event_id),
+            key=lambda item: item.id,
+        )
 
     def get_registration(self, registration_id: int) -> Registration | None:
         found = next((item for item in self.registrations if item.id == registration_id), None)

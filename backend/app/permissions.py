@@ -65,6 +65,11 @@ class Permission(StrEnum):
     capacity (`registration:manage`), and an Attendee registers
     (`registrations:create`). Seeing which events are open is part of
     registering, so it is the same grant rather than a third.
+
+    US20.3: who registered, with their names and emails, is for the owning
+    Organiser and the assigned Coordinator (`registrations:read`). Its own
+    permission because it is personal data: the Coordinator Lead reads every
+    event (US8.6) but is not given the people registered for it.
     """
 
     EVENTS_CREATE = "events:create"
@@ -95,6 +100,7 @@ class Permission(StrEnum):
     EQUIPMENT_QUEUE = "equipment:queue"
     REGISTRATION_MANAGE = "registration:manage"  # US20.1: assigned Coordinator
     REGISTRATIONS_CREATE = "registrations:create"  # US20.1: Attendee
+    REGISTRATIONS_READ = "registrations:read"  # US20.3: owning Organiser, assigned Coordinator
 
 
 #: Said in the first person, to be dropped into a denial message.
@@ -127,6 +133,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.EQUIPMENT_QUEUE: "review equipment requests",
     Permission.REGISTRATION_MANAGE: "open or close registration for events",
     Permission.REGISTRATIONS_CREATE: "register for events",
+    Permission.REGISTRATIONS_READ: "see who has registered for events",
 }
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -139,6 +146,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.EVENTS_CANCEL,
             # US10.1: told when a Coordinator moves one of their events.
             Permission.NOTIFICATIONS_READ,
+            # US20.3: who registered for an event they own.
+            Permission.REGISTRATIONS_READ,
         }
     ),
     Role.COORDINATOR: frozenset(
@@ -163,6 +172,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.NOTIFICATIONS_READ,
             # US20.1: registration on the events assigned to them (US8.6).
             Permission.REGISTRATION_MANAGE,
+            # US20.3: who registered for the events assigned to them.
+            Permission.REGISTRATIONS_READ,
         }
     ),
     # US1.4/US8.2/US8.3: Coordinator Lead manages the unassigned queue and

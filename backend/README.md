@@ -652,6 +652,25 @@ Run [`SUPABASE_US20_2_WITHDRAW.sql`](SUPABASE_US20_2_WITHDRAW.sql) after the US2
 script; [`TEST_US20_2_WITHDRAW.sql`](TEST_US20_2_WITHDRAW.sql) checks it in the SQL
 Editor and saves nothing.
 
+### Who registered (US20.3)
+
+```bash
+curl http://localhost:8000/events/12/registrations -H "Authorization: Bearer <token>"
+# {"eventId":"12","open":true,"capacity":50,"registered":1,"placesLeft":49,
+#  "registrations":[{"id":"5","name":"Casey Tan","email":"casey@example.com",
+#                    "status":"Registered","registeredAt":"…","withdrawnAt":""}]}
+```
+
+- **Who.** The owning Organiser and the assigned Coordinator. The
+  `registrations:read` permission admits those two roles; the event check admits
+  only the Organiser's own events and the Coordinator's assigned ones, answering
+  `404` otherwise. The Coordinator Lead, Venue Staff, the Safety Officer, Tech
+  Support and Attendees get `403`: the list is personal data.
+- **What.** One entry per person, their newest registration, in the order they
+  registered: name, email, when, and Registered or Withdrawn (with when). The
+  count is places taken against the capacity.
+- **No database change**: it reads what US20.1 and US20.2 store.
+
 ## Venues
 
 Four stories over one table, and they do not share a role. A Coordinator reads

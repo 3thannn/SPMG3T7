@@ -1,8 +1,9 @@
 /**
- * Registration — US20.1 and US20.2.
+ * Registration — US20.1, US20.2 and US20.3.
  *
  * Two halves for two roles. The assigned Coordinator turns registration on for
- * an event and sets its capacity; an Attendee sees the Confirmed events taking
+ * an event and sets its capacity, and with the owning Organiser sees who
+ * registered (US20.3); an Attendee sees the Confirmed events taking
  * registrations and registers for one with a name and an email (US20.1), then
  * sees their registrations and withdraws before the event starts (US20.2). The
  * server enforces every rule, the capacity under two people at once included;
@@ -22,6 +23,28 @@ export type RegistrationSettings = {
   placesLeft: number | null
   /** Where the capacity starts before one is set: the expected attendance. */
   defaultCapacity: number | null
+}
+
+/** US20.3: one person on an event's registration list. */
+export type Registrant = {
+  id: string
+  name: string
+  email: string
+  status: 'Registered' | 'Withdrawn'
+  /** Recorded times: naive UTC, shown in Singapore time. */
+  registeredAt: string
+  /** Empty unless Withdrawn. */
+  withdrawnAt: string
+}
+
+/** US20.3 AC1: who registered, and the count against the capacity. */
+export type EventRegistrations = {
+  eventId: string
+  open: boolean
+  capacity: number | null
+  registered: number
+  placesLeft: number | null
+  registrations: Registrant[]
 }
 
 /** US20.1 AC2: what an Attendee is shown of an event. Nothing of its planning. */
@@ -112,6 +135,18 @@ export async function saveRegistrationSettings(
   } catch (error) {
     return asRuleError(error)
   }
+}
+
+/**
+ * US20.3: who registered for an event, for its Organiser and its assigned
+ * Coordinator. Anyone else is refused by the server.
+ */
+export async function listEventRegistrations(
+  eventId: string,
+  session: Session,
+): Promise<EventRegistrations> {
+  const response = await authorizedFetch(`/events/${eventId}/registrations`, session.token)
+  return (await response.json()) as EventRegistrations
 }
 
 /** US20.1 AC2: the Confirmed events taking registrations, soonest first. */

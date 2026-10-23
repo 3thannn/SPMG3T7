@@ -14,6 +14,7 @@ import pytest
 from app import supabase_client
 from app.event_status import EventStatus
 from app.registration_store import (
+    COLUMNS,
     EVENTS_TABLE,
     OPEN_EVENT_COLUMNS,
     SETTINGS_COLUMNS,
@@ -388,6 +389,24 @@ class TestAnAttendeesRegistrations:
 
     def test_no_such_registration_is_none(self, fake):
         assert SupabaseRegistrations().get_registration(5) is None
+
+
+class TestAnEventsRegistrations:
+    """US20.3: every registration for one event, oldest first, without the event."""
+
+    def test_it_reads_the_events_rows_in_the_order_they_were_made(self, fake):
+        row = {key: value for key, value in REGISTRATION_ROW.items() if key != "events"}
+        fake.rows = {TABLE: [row]}
+
+        listed = SupabaseRegistrations().list_for_event(950)
+
+        assert [(item.id, item.status, item.event) for item in listed] == [
+            (5, RegistrationStatus.WITHDRAWN, None)
+        ]
+        (query,) = fake.on(TABLE)
+        assert query.calls[0] == ("select", COLUMNS)
+        assert ("eq", "event_id", 950) in query.calls
+        assert ("order", "id", False) in query.calls
 
 
 class TestWithdrawing:

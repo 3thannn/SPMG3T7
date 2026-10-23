@@ -43,6 +43,7 @@ export type Permission =
   | 'bookings:decide'
   | 'registration:manage'
   | 'registrations:create'
+  | 'registrations:read'
 
 /**
  * The signed-in user, exactly as the server issued it.

@@ -18,6 +18,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     // US4.6: cancel an event they own.
     'events:cancel',
     'notifications:read',
+    // US20.3: who registered for an event they own.
+    'registrations:read',
   ],
   'Event Coordinator': [
     'events:read:submitted',
@@ -37,6 +39,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'notifications:read',
     // US20.1: registration on the events assigned to them.
     'registration:manage',
+    // US20.3: who registered for the events assigned to them.
+    'registrations:read',
   ],
   // US1.4 + US8.2/8.3/8.6: Coordinator Lead sees all events, manages assignments.
   'Event Coordinator Lead': [

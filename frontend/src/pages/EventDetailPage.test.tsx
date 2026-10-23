@@ -66,6 +66,15 @@ vi.mock('../registrationStore', async (importOriginal) => ({
     placesLeft: null,
     defaultCapacity: 20,
   })),
+  // US20.3: and, for the Organiser and the assigned Coordinator, who registered.
+  listEventRegistrations: vi.fn(async (eventId: string) => ({
+    eventId,
+    open: false,
+    capacity: null,
+    registered: 0,
+    placesLeft: null,
+    registrations: [],
+  })),
 }))
 
 const getEventMock = vi.mocked(getEvent)

@@ -5,14 +5,16 @@
  * sends and says.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import EventRegistration from './EventRegistration'
 import { EventRuleError, type EventRecord } from '../eventsStore'
 import {
   getRegistrationSettings,
+  listEventRegistrations,
   saveRegistrationSettings,
+  type EventRegistrations,
   type RegistrationSettings,
 } from '../registrationStore'
 import { buildSession } from '../test/sessions'
@@ -22,10 +24,12 @@ vi.mock('../registrationStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../registrationStore')>()),
   getRegistrationSettings: vi.fn(),
   saveRegistrationSettings: vi.fn(),
+  listEventRegistrations: vi.fn(),
 }))
 
 const getMock = vi.mocked(getRegistrationSettings)
 const saveMock = vi.mocked(saveRegistrationSettings)
+const listMock = vi.mocked(listEventRegistrations)
 
 const coordinator = buildSession({ role: 'Event Coordinator', id: '2', name: 'Priya' })
 const organiser = buildSession({ role: 'Event Organiser', id: '1', name: 'Dylan' })
@@ -62,8 +66,21 @@ function settings(overrides: Partial<RegistrationSettings> = {}): RegistrationSe
   }
 }
 
+function people(overrides: Partial<EventRegistrations> = {}): EventRegistrations {
+  return {
+    eventId: '950',
+    open: false,
+    capacity: null,
+    registered: 0,
+    placesLeft: null,
+    registrations: [],
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   getMock.mockResolvedValue(settings())
+  listMock.mockResolvedValue(people())
 })
 
 afterEach(() => {
@@ -237,4 +254,97 @@ it('reports settings that will not load', async () => {
   await waitFor(() =>
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load the registration settings.'),
   )
+})
+
+/* ---------- US20.3: who registered ---------- */
+
+const TWO_PEOPLE = people({
+  open: true,
+  capacity: 50,
+  registered: 1,
+  placesLeft: 49,
+  registrations: [
+    {
+      id: '5',
+      name: 'Casey Tan',
+      email: 'casey@example.com',
+      status: 'Registered',
+      registeredAt: '2026-10-22T15:51:40',
+      withdrawnAt: '',
+    },
+    {
+      id: '6',
+      name: 'Morgan Lee',
+      email: 'morgan@example.com',
+      status: 'Withdrawn',
+      registeredAt: '2026-10-22T16:00:00',
+      withdrawnAt: '2026-10-23T01:00:00',
+    },
+  ],
+})
+
+it('shows the assigned Coordinator who registered, with the count against the capacity', async () => {
+  listMock.mockResolvedValue(TWO_PEOPLE)
+  render(<EventRegistration event={event('Confirmed')} session={coordinator} />)
+
+  const table = await screen.findByRole('table', { name: 'People registered for this event' })
+  const rows = within(table).getAllByRole('row')
+  expect(rows[0]).toHaveTextContent('NameEmailRegisteredStatus')
+  // Recorded in UTC, shown in Singapore time.
+  expect(rows[1]).toHaveTextContent('Casey Tancasey@example.com22 Oct 2026, 23:51Registered')
+  expect(rows[2]).toHaveTextContent('Morgan Leemorgan@example.com23 Oct 2026, 00:00Withdrawn 23 Oct 2026, 09:00')
+  expect(screen.getByText('1 of 50 registered')).toBeInTheDocument()
+  expect(listMock).toHaveBeenCalledWith('950', coordinator)
+})
+
+it('shows the owning Organiser the same list', async () => {
+  listMock.mockResolvedValue(TWO_PEOPLE)
+  render(<EventRegistration event={event('Confirmed')} session={organiser} />)
+
+  expect(await screen.findByRole('heading', { name: 'Who has registered' })).toBeInTheDocument()
+  expect(await screen.findByText('Casey Tan')).toBeInTheDocument()
+})
+
+it('says when nobody has registered, before a capacity is set', async () => {
+  render(<EventRegistration event={event()} session={organiser} />)
+
+  expect(await screen.findByText('Nobody has registered yet.')).toBeInTheDocument()
+  expect(screen.getByText('0 registered')).toBeInTheDocument()
+})
+
+it('does not ask for the list for anyone else', async () => {
+  const lead = buildSession({ role: 'Event Coordinator Lead', id: '3' })
+  const otherOrganiser = buildSession({ role: 'Event Organiser', id: '44' })
+  for (const session of [lead, otherOrganiser]) {
+    const { unmount } = render(<EventRegistration event={event('Confirmed')} session={session} />)
+    await screen.findByText('Registration is off.')
+    expect(screen.queryByRole('heading', { name: 'Who has registered' })).not.toBeInTheDocument()
+    unmount()
+  }
+  render(
+    <EventRegistration event={event('Confirmed', { coordinatorId: '99' })} session={coordinator} />,
+  )
+  await screen.findByText('Registration is off.')
+  expect(screen.queryByRole('heading', { name: 'Who has registered' })).not.toBeInTheDocument()
+  expect(listMock).not.toHaveBeenCalled()
+})
+
+it('reports a list that will not load', async () => {
+  listMock.mockRejectedValue(new TypeError('Failed to fetch'))
+  render(<EventRegistration event={event()} session={organiser} />)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not load who has registered.')
+})
+
+it('reads the list again after the Coordinator saves', async () => {
+  const user = userEvent.setup()
+  saveMock.mockResolvedValue(settings({ open: true, capacity: 30, placesLeft: 30 }))
+  render(<EventRegistration event={event()} session={coordinator} />)
+
+  await screen.findByText('Nobody has registered yet.')
+  listMock.mockResolvedValue(people({ open: true, capacity: 30, placesLeft: 30 }))
+  await user.click(screen.getByRole('button', { name: 'Save registration' }))
+
+  expect(await screen.findByText('0 of 30 registered')).toBeInTheDocument()
+  expect(listMock).toHaveBeenCalledTimes(2)
 })

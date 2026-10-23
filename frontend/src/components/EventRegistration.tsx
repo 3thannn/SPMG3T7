@@ -3,14 +3,16 @@ import './EventRegistration.css'
 import { EventRuleError, type EventRecord } from '../eventsStore'
 import {
   getRegistrationSettings,
+  listEventRegistrations,
   parseCapacity,
   REGISTRATION_CAPACITY_MAX,
   saveRegistrationSettings,
+  type EventRegistrations,
   type RegistrationSettings,
 } from '../registrationStore'
 import { unexpectedFailureMessage, type Session } from '../api'
 import { can } from '../permissions'
-import type { EventStatus } from '../status'
+import { formatRecordedAt, type EventStatus } from '../status'
 
 type Props = {
   event: EventRecord
@@ -44,13 +46,111 @@ function startingCapacity(settings: RegistrationSettings): string {
   return value === null ? '' : String(value)
 }
 
+type People =
+  | { state: 'loading' }
+  | { state: 'loaded'; list: EventRegistrations }
+  | { state: 'error'; message: string }
+
+/** "3 of 50 registered", or "3 registered" before a capacity is set. */
+function registeredCount(list: EventRegistrations): string {
+  return list.capacity === null
+    ? `${list.registered} registered`
+    : `${list.registered} of ${list.capacity} registered`
+}
+
+/**
+ * US20.3: who registered — name, email, when, and status — with the count
+ * against the capacity. Only for the owning Organiser and the assigned
+ * Coordinator; the server refuses everyone else.
+ */
+function WhoRegistered({ event, session }: Props) {
+  const [people, setPeople] = useState<People>({ state: 'loading' })
+
+  useEffect(() => {
+    let cancelled = false
+    listEventRegistrations(event.id, session)
+      .then((list) => {
+        if (!cancelled) setPeople({ state: 'loaded', list })
+      })
+      .catch((failure: unknown) => {
+        if (!cancelled) {
+          setPeople({
+            state: 'error',
+            message: unexpectedFailureMessage(failure, 'load who has registered'),
+          })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [event.id, session])
+
+  return (
+    <section className="registrants" aria-labelledby="registrants-title">
+      <h3 className="registrants-title" id="registrants-title">
+        Who has registered
+      </h3>
+      {renderPeople()}
+    </section>
+  )
+
+  function renderPeople() {
+    if (people.state === 'loading') return <p className="muted">Loading who has registered…</p>
+    if (people.state === 'error') {
+      return (
+        <p className="form-error" role="alert">
+          {people.message}
+        </p>
+      )
+    }
+    const { list } = people
+    return (
+      <>
+        <p className="registrants-count">{registeredCount(list)}</p>
+        {list.registrations.length === 0 ? (
+          <p className="muted">Nobody has registered yet.</p>
+        ) : (
+          <div className="registrants-scroll">
+            <table className="registrants-table">
+              <caption className="sr-only">People registered for this event</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Registered</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.registrations.map((person) => (
+                  <tr key={person.id} className={person.status === 'Withdrawn' ? 'is-withdrawn' : undefined}>
+                    <td>{person.name}</td>
+                    <td>{person.email}</td>
+                    <td>{formatRecordedAt(person.registeredAt)}</td>
+                    <td>
+                      {person.status === 'Withdrawn'
+                        ? `Withdrawn ${formatRecordedAt(person.withdrawnAt)}`
+                        : 'Registered'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </>
+    )
+  }
+}
+
 /**
  * US20.1 AC1: registration on the event page.
  *
  * The Coordinator the event is assigned to turns it on or off and sets the
  * capacity, which starts from the expected attendance. Everyone else who can
  * open the event sees where it stands. Attendees see the event only once it is
- * Confirmed, so it can be opened ahead of that.
+ * Confirmed, so it can be opened ahead of that. US20.3 adds who registered,
+ * for the owning Organiser and the assigned Coordinator.
  */
 export default function EventRegistration({ event, session }: Props) {
   const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' })
@@ -59,9 +159,14 @@ export default function EventRegistration({ event, session }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
+  // Bumped on every save, so the list's count against the capacity is read again.
+  const [saves, setSaves] = useState(0)
 
   const manages = can(session, 'registration:manage') && event.coordinatorId === session.id
   const settable = SETTABLE.includes(event.status)
+  const seesPeople =
+    can(session, 'registrations:read') &&
+    (event.organiserId === session.id || event.coordinatorId === session.id)
 
   useEffect(() => {
     let cancelled = false
@@ -100,6 +205,7 @@ export default function EventRegistration({ event, session }: Props) {
       setLoaded({ state: 'loaded', settings })
       setOpen(settings.open)
       setCapacityText(startingCapacity(settings))
+      setSaves((count) => count + 1)
       setSaved(
         settings.open
           ? `Saved. Registration is on, for ${settings.capacity} ${settings.capacity === 1 ? 'place' : 'places'}.`
@@ -145,6 +251,7 @@ export default function EventRegistration({ event, session }: Props) {
           <p className="detail-note">Registration can be opened once the event is approved.</p>
         )}
         {manages && settable && renderForm()}
+        {seesPeople && <WhoRegistered key={saves} event={event} session={session} />}
       </>
     )
   }

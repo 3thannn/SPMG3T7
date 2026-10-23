@@ -12,6 +12,7 @@ import {
   EVENT_FULL_MESSAGE,
   describePlacesLeft,
   getRegistrationSettings,
+  listEventRegistrations,
   listMyRegistrations,
   listOpenEvents,
   parseCapacity,
@@ -109,6 +110,33 @@ describe('the Coordinator’s settings', () => {
     await expect(
       saveRegistrationSettings('950', { open: true, capacity: 1 }, coordinator),
     ).rejects.not.toBeInstanceOf(EventRuleError)
+  })
+})
+
+describe('who registered (US20.3)', () => {
+  it('reads an event’s list with the session’s token', async () => {
+    const list = {
+      eventId: '950',
+      open: true,
+      capacity: 50,
+      registered: 1,
+      placesLeft: 49,
+      registrations: [
+        {
+          id: '5',
+          name: 'Casey Tan',
+          email: 'casey@example.com',
+          status: 'Registered',
+          registeredAt: '2026-10-22T15:51:40',
+          withdrawnAt: '',
+        },
+      ],
+    }
+    const spy = stubFetch(ok(list))
+
+    expect(await listEventRegistrations('950', coordinator)).toEqual(list)
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/950/registrations')
+    expect(spy.mock.calls[0][1].headers.Authorization).toBe('Bearer coordinator-token')
   })
 })
 

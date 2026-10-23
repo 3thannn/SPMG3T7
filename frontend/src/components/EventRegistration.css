@@ -60,3 +60,56 @@
 .registration-capacity {
   max-width: 14rem;
 }
+
+/* US20.3: who registered, ruled off like the form above it. */
+.registrants {
+  margin-top: 1.1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.6rem;
+}
+
+.registrants-title {
+  font-size: 1rem;
+  color: var(--ink-strong);
+}
+
+.registrants-count {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* A wide table scrolls inside the card rather than widening the page. */
+.registrants-scroll {
+  overflow-x: auto;
+}
+
+.registrants-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.registrants-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.4rem 0.75rem 0.4rem 0;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.registrants-table td {
+  padding: 0.55rem 0.75rem 0.55rem 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-strong);
+  overflow-wrap: anywhere;
+}
+
+/* A withdrawn registration stays on the list but steps back from it. */
+.registrants-table tr.is-withdrawn td {
+  color: var(--muted);
+}
