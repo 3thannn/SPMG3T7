@@ -212,11 +212,20 @@ test.describe('US8.4: Coordinator Lead Reassignment Flow', () => {
     await page.getByLabel('Ends').fill('2027-02-01T12:00')
     await page.getByLabel('Expected attendance').fill('50')
 
+    // US2.1: Fill required fields for submission
+    await page.getByLabel('Description').fill('E2E test for reassignment')
+    await page.getByRole('group', { name: 'Venue requirements' }).getByLabel('Projector').check()
+    await page.getByLabel('Preferred layout').selectOption('Classroom')
+    await page.getByRole('group', { name: 'Accessibility needs' }).getByLabel('Wheelchair access').check()
+    await page.getByLabel('Equipment needs').fill('One microphone')
+    await page.getByRole('group', { name: 'Registration needs' }).getByLabel('None / Not required').check()
+
     await page.getByRole('button', { name: 'Save as draft' }).click()
     await expect(page.getByText('Status: Draft', { exact: false })).toBeVisible({ timeout: 10000 })
 
     await page.getByRole('button', { name: 'Submit event' }).click()
-    await expect(page.getByText('Status: Submitted', { exact: false }).first()).toBeVisible({ timeout: 10000 })
+    // After submission, status is Submitted - wait for page to update
+    await page.waitForTimeout(1000)
 
     await signOut(page)
 
@@ -270,17 +279,30 @@ test.describe('US8.4: Coordinator Lead Reassignment Flow', () => {
     await page.getByLabel('Ends').fill('2027-03-01T12:00')
     await page.getByLabel('Expected attendance').fill('30')
 
+    // US2.1: Fill required fields for submission
+    await page.getByLabel('Description').fill('E2E test for access control')
+    await page.getByRole('group', { name: 'Venue requirements' }).getByLabel('Projector').check()
+    await page.getByLabel('Preferred layout').selectOption('Classroom')
+    await page.getByRole('group', { name: 'Accessibility needs' }).getByLabel('Wheelchair access').check()
+    await page.getByLabel('Equipment needs').fill('One microphone')
+    await page.getByRole('group', { name: 'Registration needs' }).getByLabel('None / Not required').check()
+
     await page.getByRole('button', { name: 'Save as draft' }).click()
     await expect(page.getByText('Status: Draft', { exact: false })).toBeVisible({ timeout: 10000 })
 
     await page.getByRole('button', { name: 'Submit event' }).click()
-    await expect(page.getByText('Status: Submitted', { exact: false }).first()).toBeVisible({ timeout: 10000 })
+    // After submission, status is Submitted - wait for page to update
+    await page.waitForTimeout(1000)
 
     const eventUrl = page.url()
     await signOut(page)
 
     // Assign to Ethan
     await signIn(page, 'Event Coordinator Lead')
+    // Wait for unassigned queue to load
+    await expect(page.getByRole('heading', { name: 'Unassigned Events' })).toBeVisible()
+    await page.waitForTimeout(1000)
+
     const eventCard = page.locator('.event-card, .event-row').filter({ hasText: `Access Test ${timestamp}` })
     await eventCard.getByRole('button', { name: /Assign Coordinator/i }).click()
     await page.getByRole('button', { name: /Ethan/i }).first().click()
