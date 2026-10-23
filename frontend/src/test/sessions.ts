@@ -18,6 +18,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     // US4.6: cancel an event they own.
     'events:cancel',
     'notifications:read',
+    // US20.3: who registered for an event they own.
+    'registrations:read',
   ],
   'Event Coordinator': [
     'events:read:submitted',
@@ -35,6 +37,10 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'safety:submit',
     // US10.2: told about assignments and booking or safety problems.
     'notifications:read',
+    // US20.1: registration on the events assigned to them.
+    'registration:manage',
+    // US20.3: who registered for the events assigned to them.
+    'registrations:read',
   ],
   // US1.4 + US8.2/8.3/8.6: Coordinator Lead sees all events, manages assignments.
   'Event Coordinator Lead': [
@@ -61,6 +67,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
   // US1.4: Safety Officer reviews safety aspects.
   'Safety Officer': ['safety:review'],
   'Technical Support': ['equipment:read', 'equipment:write', 'equipment:queue', 'notifications:read'],
+  // US20.1: registers for Confirmed events, and holds nothing else.
+  Attendee: ['registrations:create'],
 }
 
 const HOME: Record<Role, string> = {
@@ -73,6 +81,7 @@ const HOME: Record<Role, string> = {
   // US1.4: Safety Officer lands on their review queue.
   'Safety Officer': '/safety-review',
   'Technical Support': '/equipment-requests',
+  Attendee: '/attend',
 }
 
 export function buildSession(overrides: Partial<Session> = {}): Session {

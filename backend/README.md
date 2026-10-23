@@ -572,6 +572,105 @@ curl -X POST http://localhost:8000/events/12/bookings/suitability \
   when it fails. The check takes exactly the request's body and is refused the
   same ways (`404`, then `409`, then `400`), so the form and the rule agree.
 
+### Registering for an event (US20.1)
+
+The assigned Coordinator turns registration on for an event and sets its
+capacity; Attendees see the Confirmed events taking registrations and register
+for one ([`app/registrations.py`](app/registrations.py)).
+
+```bash
+# Coordinator: turn it on. Without "capacity", the expected attendance is used.
+curl -X PUT http://localhost:8000/events/12/registration \
+  -H "Authorization: Bearer <coordinator token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"open":true,"capacity":50}'
+
+# Attendee: what is open, then register.
+curl http://localhost:8000/attendee/events -H "Authorization: Bearer <attendee token>"
+curl -X POST http://localhost:8000/attendee/events/12/registrations \
+  -H "Authorization: Bearer <attendee token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Casey Tan","email":"casey@example.com"}'
+```
+
+- **Settings.** `PUT /events/{id}/registration` takes `open` and an optional
+  `capacity`, a whole number of at least 1. Left out, the stored capacity is
+  kept, or the expected attendance used the first time. Allowed from Approved to
+  Confirmed, so it can be opened before Attendees can see the event; `409`
+  `not-approved` before that and `event-closed` (or US4.6's `event-cancelled`)
+  after. A capacity below the places already taken is `409`
+  `below-registered`. `GET` on the same path reads the settings and the places
+  taken, for anyone who can open the event.
+- **What Attendees see.** `GET /attendee/events` lists Confirmed events with
+  registration on, soonest first: the name, when, the venues of its Confirmed
+  bookings and the places left, and whether the caller is registered. Nothing
+  else about the event is sent. An event not open is `404` `event_not_open`.
+- **Registering.** A name and an email, both required (`400`
+  `invalid_registration`, one problem at a time). One active registration per
+  Attendee per event (`409` `already-registered`); none past the capacity
+  (`409` `event-full`, "Event is full.").
+- **Enforced in the database.** `register_for_event` locks the event row before
+  it counts, so two Attendees after the last place queue on the lock and the
+  second is told the event is full. A trigger re-checks any other write the same
+  way, and a partial unique index holds one active registration per Attendee.
+- **Full notice.** The registration that takes the last place tells the
+  assigned Coordinator and the Organiser (kind `event-full`), best effort.
+- **Attendee accounts.** `python seed_new_users.py --attendees-only` creates
+  `attendee@spmg3t7.edu` and `attendee2@spmg3t7.edu`.
+
+Run [`SUPABASE_US20_1_REGISTRATION.sql`](SUPABASE_US20_1_REGISTRATION.sql)
+first. [`TEST_US20_1_REGISTRATION.sql`](TEST_US20_1_REGISTRATION.sql) checks it in
+the SQL Editor and saves nothing, and `tests/test_registration_db.py` (opt-in,
+`SPMG3T7_DB_TESTS=1`) also tries two registrations at the same moment.
+
+### Seeing and withdrawing registrations (US20.2)
+
+```bash
+# The Attendee's registrations, one per event, with each event as it is now.
+curl http://localhost:8000/attendee/registrations -H "Authorization: Bearer <attendee token>"
+
+# Withdraw one, before the event starts.
+curl -X POST http://localhost:8000/attendee/registrations/5/withdraw \
+  -H "Authorization: Bearer <attendee token>"
+```
+
+- **The list** gives, per event, the newest registration: its status
+  (Registered or Withdrawn), the name and email it was made with, when it was
+  made or withdrawn, and the event's current title, date, time and venues. It
+  also says whether the Attendee can withdraw (`canWithdraw`) or register again
+  (`canRegisterAgain`), and the places left while the event takes registrations.
+- **Withdrawing** is allowed while the event is Confirmed and before its start
+  (Singapore time). `404` for a registration that is not the caller's; `409`
+  `already-withdrawn`, `event-started` or `event-closed`. The database function
+  `withdraw_registration` locks the event before the row, as registering does,
+  and the row is kept as Withdrawn with `withdrawn_at`. The place counts as free
+  at once.
+- **Registering again** is US20.1's route: a withdrawn registration no longer
+  counts, so a new one is taken while places are left.
+
+Run [`SUPABASE_US20_2_WITHDRAW.sql`](SUPABASE_US20_2_WITHDRAW.sql) after the US20.1
+script; [`TEST_US20_2_WITHDRAW.sql`](TEST_US20_2_WITHDRAW.sql) checks it in the SQL
+Editor and saves nothing.
+
+### Who registered (US20.3)
+
+```bash
+curl http://localhost:8000/events/12/registrations -H "Authorization: Bearer <token>"
+# {"eventId":"12","open":true,"capacity":50,"registered":1,"placesLeft":49,
+#  "registrations":[{"id":"5","name":"Casey Tan","email":"casey@example.com",
+#                    "status":"Registered","registeredAt":"…","withdrawnAt":""}]}
+```
+
+- **Who.** The owning Organiser and the assigned Coordinator. The
+  `registrations:read` permission admits those two roles; the event check admits
+  only the Organiser's own events and the Coordinator's assigned ones, answering
+  `404` otherwise. The Coordinator Lead, Venue Staff, the Safety Officer, Tech
+  Support and Attendees get `403`: the list is personal data.
+- **What.** One entry per person, their newest registration, in the order they
+  registered: name, email, when, and Registered or Withdrawn (with when). The
+  count is places taken against the capacity.
+- **No database change**: it reads what US20.1 and US20.2 store.
+
 ## Venues
 
 Four stories over one table, and they do not share a role. A Coordinator reads
@@ -753,16 +852,17 @@ server put on the session.
 | Role              | May                                                   |
 | ----------------- | ----------------------------------------------------- |
 | Event Organiser   | create, read own, and submit events                   |
-| Event Coordinator | read submitted events, review and edit them, read the user directory, read the venue catalogue, request and cancel venue bookings for their events |
+| Event Coordinator | read submitted events, review and edit them, read the user directory, read the venue catalogue, request and cancel venue bookings for their events, open registration for their events |
 | Venue Staff       | read the venue catalogue, and add, update and delete the records in it |
+| Attendee          | see the Confirmed events taking registrations, and register for them (US20.1) |
 
-Technical Support and Attendee are part of the wider plan and are deliberately
-not modelled yet: a role that can sign in but can do nothing is a dead end for
-whoever holds it. They come back with the epics that give them something to do,
-and adding one means a row in `ROLE_PERMISSIONS`, a landing route, and nothing
-else — which is exactly how Venue Staff arrived with US9.1a-c. The database already declares all five in `user_role`;
-a row holding one of the other three is skipped by the directory and refused at
-sign-in rather than being forced into a role it does not have.
+A role arrives with the epic that gives it something to do, never before: a
+role that can sign in but can do nothing is a dead end for whoever holds it.
+Adding one means a row in `ROLE_PERMISSIONS`, a landing route, and nothing
+else — which is how Venue Staff arrived with US9.1a-c and Attendee with US20.1.
+A `users` row holding a role this build does not model is skipped by the
+directory and refused at sign-in rather than being forced into a role it does
+not have.
 
 Several of the permissions above have no route behind them yet. They are
 declared now so the roles mean something consistent as each epic lands, and so a

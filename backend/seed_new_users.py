@@ -2,11 +2,14 @@
 """Seed development accounts in Supabase Auth and public.users.
 
 For Coordinator Lead and Safety Officer, run SUPABASE_ADD_NEW_ROLES.sql first.
-Technical Support is already in the base role enum.
+Technical Support and Attendee are already in the base role enum. The two
+Attendees (US20.1) are two so that registering for the last place can be tried
+by two people.
 
 Usage:
     python seed_new_users.py
     python seed_new_users.py --tech-only
+    python seed_new_users.py --attendees-only
 """
 
 import argparse
@@ -47,6 +50,22 @@ NEW_USERS = [
         "password": PASSWORD,
         "email_confirm": True,
         "user_metadata": {"name": "Bryan", "role": "Technical Support Staff"},
+    },
+]
+
+#: US20.1: registering for Confirmed events.
+ATTENDEES = [
+    {
+        "email": "attendee@spmg3t7.edu",
+        "password": PASSWORD,
+        "email_confirm": True,
+        "user_metadata": {"name": "Casey", "role": "Attendee"},
+    },
+    {
+        "email": "attendee2@spmg3t7.edu",
+        "password": PASSWORD,
+        "email_confirm": True,
+        "user_metadata": {"name": "Morgan", "role": "Attendee"},
     },
 ]
 
@@ -91,8 +110,16 @@ def seed_user(user_data: dict) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tech-only", action="store_true", help="Set up Bryan only")
+    parser.add_argument(
+        "--attendees-only", action="store_true", help="Set up the two Attendees only (US20.1)"
+    )
     arguments = parser.parse_args()
-    selected = NEW_USERS[-1:] if arguments.tech_only else NEW_USERS
+    if arguments.tech_only:
+        selected = NEW_USERS[-1:]
+    elif arguments.attendees_only:
+        selected = ATTENDEES
+    else:
+        selected = NEW_USERS + ATTENDEES
     for account in selected:
         seed_user(account)
     print("Account setup complete. Newly created accounts use the configured seed password.")

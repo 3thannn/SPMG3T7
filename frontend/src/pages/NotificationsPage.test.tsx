@@ -207,6 +207,21 @@ it('TC-DF20 labels the booking decision notices', async () => {
   expect(screen.getAllByRole('link', { name: 'Open Gala' })).toHaveLength(2)
 })
 
+it('labels the event-full notice and links to the event (US20.1)', async () => {
+  listMock.mockResolvedValue([
+    notice({
+      id: '1',
+      status: null,
+      kind: 'event-full',
+      message: '"Gala" is full: all 50 places are taken.',
+    }),
+  ])
+  render(<NotificationsPage session={coordinator} />)
+  expect(await screen.findByText('Event full')).toBeInTheDocument()
+  expect(screen.getByText('"Gala" is full: all 50 places are taken.')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Open Gala' })).toBeInTheDocument()
+})
+
 /* ---------- US4.6: cancelled events ---------- */
 
 const venueStaff = buildSession({ role: 'Venue Staff', id: '4' })

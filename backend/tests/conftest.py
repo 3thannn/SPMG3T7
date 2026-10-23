@@ -22,6 +22,7 @@ from app import (
     equipment_store,
     event_store,
     notification_store,
+    registration_store,
     venue_store,
     venue_unavailability_store,
 )
@@ -31,6 +32,7 @@ from app.event_store import InMemoryEvents
 from app.main import app
 from app.notification_store import InMemoryNotifications
 from app.permissions import Role
+from app.registration_store import InMemoryRegistrations
 from app.users import InMemoryUsers, User, use_repository
 from app.venue_store import InMemoryVenues, Venue
 from app.venue_unavailability_store import InMemoryUnavailability
@@ -46,6 +48,9 @@ ACCOUNTS = {
     "Venue Staff": "venuestaff@spmg3t7.edu",
     "Safety Officer": "safetyofficer@spmg3t7.edu",  # US1.4
     "Technical Support": "technicalsupport@spmg3t7.edu",
+    # US20.1. Two, so a test can have two people after the last place.
+    "Attendee": "attendee@spmg3t7.edu",
+    "Second Attendee": "attendee2@spmg3t7.edu",
 }
 
 #: US2.1 (Sprint 3): every need answered, so a fixture event can be submitted.
@@ -72,6 +77,9 @@ COORDINATOR_LEAD_ID = 3
 VENUE_STAFF_ID = 4
 SAFETY_OFFICER_ID = 5
 TECH_SUPPORT_ID = 6
+#: Well clear of the ids tests add their own users under (7, 8, 99).
+ATTENDEE_ID = 20
+SECOND_ATTENDEE_ID = 21
 
 
 def fixture_users() -> list[User]:
@@ -118,6 +126,19 @@ def fixture_users() -> list[User]:
             name="Bryan",
             role=Role.TECH_SUPPORT,
         ),
+        # US20.1: registers for Confirmed events, and holds nothing else.
+        User(
+            id=ATTENDEE_ID,
+            email=ACCOUNTS["Attendee"],
+            name="Casey",
+            role=Role.ATTENDEE,
+        ),
+        User(
+            id=SECOND_ATTENDEE_ID,
+            email=ACCOUNTS["Second Attendee"],
+            name="Morgan",
+            role=Role.ATTENDEE,
+        ),
     ]
 
 
@@ -144,6 +165,8 @@ def event_repository():
             VENUE_STAFF_ID: "Sam",
             SAFETY_OFFICER_ID: "Alex",  # US1.4
             TECH_SUPPORT_ID: "Bryan",
+            ATTENDEE_ID: "Casey",
+            SECOND_ATTENDEE_ID: "Morgan",
         },
     )
     previous = event_store.use_repository(store)
@@ -233,6 +256,15 @@ def booking_repository():
     previous = booking_store.use_repository(store)
     yield store
     booking_store.use_repository(previous)
+
+
+@pytest.fixture(autouse=True)
+def registration_repository():
+    """US20.1: registration is off on every event until a test turns it on."""
+    store = InMemoryRegistrations()
+    previous = registration_store.use_repository(store)
+    yield store
+    registration_store.use_repository(previous)
 
 
 @pytest.fixture(autouse=True)

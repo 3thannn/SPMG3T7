@@ -10,7 +10,7 @@ import {
   type VenueRecord,
 } from '../venuesStore'
 import { navigate } from '../router'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt } from '../status'
 import { can } from '../permissions'
 import { unexpectedFailureMessage, type Session } from '../api'
 import VenueHolds from '../components/VenueHolds'
@@ -187,7 +187,7 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
 
           {venue.updatedAt && (
             <p className="venue-detail-note">
-              Catalogue record last updated {formatTimestamp(venue.updatedAt)}.
+              Catalogue record last updated {formatRecordedAt(venue.updatedAt)}.
             </p>
           )}
         </section>

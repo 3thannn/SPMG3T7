@@ -31,6 +31,9 @@ const NAV_LINKS: NavLink[] = [
   { label: 'Equipment', path: '/equipment' },
   { label: 'Equipment Requests', path: '/equipment-requests' },
   { label: 'Add venue', path: '/venues/new' },
+  // US20.1 and US20.2: an Attendee's two pages.
+  { label: 'Upcoming Events', path: '/attend' },
+  { label: 'My Registrations', path: '/my-registrations' },
   { label: 'Notifications', path: '/notifications' },
 ]
 

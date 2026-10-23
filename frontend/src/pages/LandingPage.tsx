@@ -87,7 +87,8 @@ export default function LandingPage({ session }: LandingPageProps) {
             <button
               type="button"
               className="btn btn-primary btn-lg"
-              onClick={() => navigate(session ? '/events' : '/signin')}
+              // The role's own landing page: an Attendee's events are /attend (US20.1).
+              onClick={() => navigate(session ? session.home : '/signin')}
             >
               {session ? 'Go to events' : 'Sign in'} <span aria-hidden="true">→</span>
             </button>

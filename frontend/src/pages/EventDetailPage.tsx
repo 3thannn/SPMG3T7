@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import './EventDetailPage.css'
 import EventBookings from '../components/EventBookings'
 import EventEquipment from '../components/EventEquipment'
+import EventRegistration from '../components/EventRegistration'
 import EventNeedsFields from '../components/EventNeedsFields'
 import StatusBadge from '../components/StatusBadge'
 import StatusTimeline from '../components/StatusTimeline'
@@ -40,6 +41,7 @@ import {
   checkClarification,
   checkSubmit,
   clarificationRefusalMessage,
+  formatRecordedAt,
   formatTimestamp,
   submitRefusalMessage,
 } from '../status'
@@ -604,7 +606,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             <p className="page-subtitle">
               Organiser: {event.organiserName}
               {event.coordinatorName && ` · Coordinator: ${event.coordinatorName}`}
-              {' · Created '}{formatTimestamp(event.createdAt)}
+              {' · Created '}{formatRecordedAt(event.createdAt)}
             </p>
           </div>
           <StatusBadge status={event.status} size="lg" />
@@ -1084,6 +1086,9 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             card would only ever say so. */}
         {/* US4.6: keyed so a cancellation reloads the card with its bookings released. */}
         {readsEvents && event.status !== 'Draft' && <EventBookings key={cancelled ? 'cancelled' : 'open'} event={event} session={session} onBookingRequested={refreshAfterBooking} />}
+        {/* US20.1. Not on a Draft either: nobody registers for one. Keyed so a
+            status change reloads what the card offers. */}
+        {readsEvents && event.status !== 'Draft' && <EventRegistration key={event.status} event={event} session={session} />}
         {readsEvents && <EventEquipment event={event} session={session} />}
         {can(session, 'safety:review') && (
           <SafetyReviewDetails eventId={event.id} session={session} />

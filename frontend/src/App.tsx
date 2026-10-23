@@ -4,9 +4,11 @@ import TopNav from './components/TopNav'
 import BookingConflictsPage from './pages/BookingConflictsPage'
 import BookingRequestsPage from './pages/BookingRequestsPage'
 import AccessDeniedPage from './pages/AccessDeniedPage'
+import AttendPage from './pages/AttendPage'
 import EventDetailPage from './pages/EventDetailPage'
 import EventsPage from './pages/EventsPage'
 import LandingPage from './pages/LandingPage'
+import MyRegistrationsPage from './pages/MyRegistrationsPage'
 import NewEventPage from './pages/NewEventPage'
 import NotificationsPage from './pages/NotificationsPage'
 import { EquipmentPage, EquipmentDetailPage, EquipmentFormPage } from './pages/EquipmentPage'
@@ -241,6 +243,14 @@ export default function App() {
 
     if (route === '/safety-review') {
       return <SafetyReviewPage session={session} />
+    }
+
+    if (route === '/attend') {
+      return <AttendPage session={session} />
+    }
+
+    if (route === '/my-registrations') {
+      return <MyRegistrationsPage session={session} />
     }
 
     const eventId = matchEventDetail(route)

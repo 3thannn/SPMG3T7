@@ -257,3 +257,39 @@ describe('booking conflicts (US15.2)', () => {
     )
   })
 })
+
+describe('registering for events (US20.1)', () => {
+  it('lets only Attendees open the events open for registration', () => {
+    expect(canOpen(buildSession({ role: 'Attendee' }), '/attend')).toBe(true)
+    for (const role of [
+      'Event Organiser',
+      'Event Coordinator',
+      'Event Coordinator Lead',
+      'Venue Staff',
+      'Safety Officer',
+      'Technical Support',
+    ] as const) {
+      expect(canOpen(buildSession({ role }), '/attend')).toBe(false)
+    }
+    expect(denialMessage(buildSession({ role: 'Event Organiser' }), '/attend')).toBe(
+      'The Event Organiser role cannot open the events open for registration. That is available to Attendees.',
+    )
+  })
+
+  it('lets only Attendees open their registrations (US20.2)', () => {
+    expect(canOpen(buildSession({ role: 'Attendee' }), '/my-registrations')).toBe(true)
+    for (const role of ['Event Organiser', 'Event Coordinator', 'Venue Staff'] as const) {
+      expect(canOpen(buildSession({ role }), '/my-registrations')).toBe(false)
+    }
+    expect(denialMessage(buildSession({ role: 'Event Coordinator' }), '/my-registrations')).toBe(
+      'The Event Coordinator role cannot open your registrations. That is available to Attendees.',
+    )
+  })
+
+  it('keeps Attendees out of every internal page', () => {
+    const attendee = buildSession({ role: 'Attendee' })
+    for (const route of ['/events', '/events/950', '/events/new', '/venues', '/notifications', '/equipment']) {
+      expect(canOpen(attendee, route)).toBe(false)
+    }
+  })
+})

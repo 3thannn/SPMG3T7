@@ -32,6 +32,7 @@ vi.mock('../venuesStore', async (importOriginal) => ({
 }))
 
 vi.mock('../components/EventEquipment', () => ({ default: () => null }))
+vi.mock('../components/EventRegistration', () => ({ default: () => null }))
 
 const getEventMock = vi.mocked(getEvent)
 const approveEventMock = vi.mocked(approveEvent)
