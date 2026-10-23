@@ -49,6 +49,7 @@ vi.mock('../components/EventBookings', () => ({
 }))
 
 vi.mock('../components/EventEquipment', () => ({ default: () => null }))
+vi.mock('../components/EventRegistration', () => ({ default: () => null }))
 
 const getEventMock = vi.mocked(getEvent)
 const requestEventChangeMock = vi.mocked(requestEventChange)

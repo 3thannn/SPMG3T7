@@ -21,8 +21,8 @@ and a profile row with no Auth account cannot sign in either (nothing to prove
 themselves with). Both are refused the same way as a wrong password.
 
 **Roles.** `users.role` is a Postgres enum. Technical Support is active for US19
-equipment work. Attendee remains unavailable until its own features arrive;
-that role is skipped by the directory and refused at sign-in.
+equipment work, and Attendee since US20.1, registering for events. A role this
+build does not model is skipped by the directory and refused at sign-in.
 
 The repository behind these functions is swappable. Tests install an in-memory
 one so the suite — and CI, which holds no Supabase credentials — runs without a
@@ -62,7 +62,7 @@ def _normalise(email: str) -> str:
 def to_user(row: dict) -> User | None:
     """Build a User from a table row, or None if this build cannot represent it.
 
-    The one reason to refuse is a role outside the three modelled here. Returning
+    The one reason to refuse is a role outside the ones modelled here. Returning
     None rather than raising keeps one unmodelled account from breaking a query
     that returned it alongside twenty usable ones.
     """

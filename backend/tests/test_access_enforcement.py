@@ -84,9 +84,14 @@ class TestPermissionCatalogue:
 
     def test_organisers_and_coordinators_hold_different_things(self):
         # US10.2: both read their own notifications. US4.6: both may cancel an
-        # event (their own, or one assigned to them). They share nothing else.
+        # event (their own, or one assigned to them). US20.3: both see who
+        # registered for it, on the same terms. They share nothing else.
         shared = permissions_for(Role.ORGANISER) & permissions_for(Role.COORDINATOR)
-        assert shared == {Permission.NOTIFICATIONS_READ, Permission.EVENTS_CANCEL}
+        assert shared == {
+            Permission.NOTIFICATIONS_READ,
+            Permission.EVENTS_CANCEL,
+            Permission.REGISTRATIONS_READ,
+        }
 
     def test_only_organisers_create_and_submit_events(self):
         assert roles_with(Permission.EVENTS_CREATE) == [Role.ORGANISER]

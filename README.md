@@ -80,6 +80,8 @@ so running one twice is a no-op.
 | [`SUPABASE_US4_6_CANCEL_EVENT.sql`](backend/SUPABASE_US4_6_CANCEL_EVENT.sql) | US4.6 cancelling an event. Run after the US4.4, US15.2 and US19 scripts | `POST /events/{id}/cancel` returns 500 (the browser reports "could not reach the API") and nothing changes; every other route is unaffected |
 | [`SUPABASE_US14_4_HOLD_EXPIRY.sql`](backend/SUPABASE_US14_4_HOLD_EXPIRY.sql) | US14.4 step 1: the Expired status and the hold sweep. Run after the US14.3, US10.2 and US15.2 scripts | Nothing: it only adds things, and nothing calls the sweep until step 2 |
 | [`SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql`](backend/SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql) | US14.4 step 2: pg_cron runs the sweep every 15 minutes. **Run only after US14.4 is merged and everyone has pulled** | Holds still free their slot at the deadline, but are never marked Expired and the Coordinator is never told. Run too early, and older checkouts answer 500 on booking pages |
+| [`SUPABASE_US20_1_REGISTRATION.sql`](backend/SUPABASE_US20_1_REGISTRATION.sql) | US20.1 registration: the settings columns, the `registrations` table, the two functions and the `event-full` notice kind. Run after the US4.4 and US16.1 scripts | The registration card on an event and the Attendee's Upcoming Events page return 500; every other route is unaffected |
+| [`SUPABASE_US20_2_WITHDRAW.sql`](backend/SUPABASE_US20_2_WITHDRAW.sql) | US20.2 withdrawing: the Withdrawn status, `withdrawn_at` and `withdraw_registration`. Run after the US20.1 script | My Registrations and withdrawing return 500; registering and every other route are unaffected |
 | [`SUPABASE_ADD_EVENT_NEEDS.sql`](backend/SUPABASE_ADD_EVENT_NEEDS.sql) | US2.1 (Sprint 3) mandatory event needs; run after the US4.5 script | **`GET /events` and every event page return 500**: each event read selects the new columns |
 | [`SUPABASE_ADD_VENUE_TURNAROUND.sql`](backend/SUPABASE_ADD_VENUE_TURNAROUND.sql) | US9.4 venue setup and turnaround time; run after the US14.1 script | **All five `/venues` routes return 500**: each venue read selects the new columns |
 | [`SUPABASE_HARDENING.sql`](backend/SUPABASE_HARDENING.sql) | Row Level Security, indexes | Supabase advisor warnings; the app still works |
@@ -123,6 +125,7 @@ User** on) and a `public.users` row holding the name and role.
 | `organiser@spmg3t7.edu` | Event Organiser | create, read own and submit events |
 | `coordinator@spmg3t7.edu` | Event Coordinator | review and edit submitted events, read the venue catalogue |
 | `venuestaff@spmg3t7.edu` | Venue Staff | read the venue catalogue and maintain the records in it |
+| `attendee@spmg3t7.edu`, `attendee2@spmg3t7.edu` | Attendee | see the Confirmed events taking registrations and register for them (US20.1). Created by `python backend/seed_new_users.py --attendees-only` |
 
 The role strings are `user_role` enum values, so Postgres rejects a typo rather
 than creating a user nobody has permissions for. These are development

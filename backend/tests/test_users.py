@@ -22,8 +22,8 @@ class TestReadingARow:
         assert Permission.EVENTS_CREATE in user.permissions
 
     def test_an_unmodelled_role_is_skipped_not_raised(self):
-        """Attendee remains unavailable until its own features arrive."""
-        for role in ("Attendee",):
+        """Every `user_role` value is modelled since US20.1, so this is a made-up one."""
+        for role in ("Caterer",):
             assert to_user({**ROW, "role": role}) is None
 
     def test_venue_staff_became_a_modelled_role_with_us9_1(self):
@@ -34,8 +34,16 @@ class TestReadingARow:
         assert user.role is Role.VENUE_STAFF
         assert Permission.VENUES_CREATE in user.permissions
 
+    def test_attendee_became_a_modelled_role_with_us20_1(self):
+        """It was skipped until there were events to register for."""
+        user = to_user({**ROW, "role": "Attendee"})
+
+        assert user is not None
+        assert user.role is Role.ATTENDEE
+        assert user.permissions == {Permission.REGISTRATIONS_CREATE}
+
     def test_one_unusable_row_does_not_take_the_directory_with_it(self):
-        rows = [ROW, {**ROW, "id": 2, "email": "a@spmg3t7.edu", "role": "Attendee"}]
+        rows = [ROW, {**ROW, "id": 2, "email": "a@spmg3t7.edu", "role": "Caterer"}]
 
         usable = [user for user in (to_user(row) for row in rows) if user is not None]
 

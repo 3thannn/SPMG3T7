@@ -20,6 +20,9 @@ Officer asking for changes. Only assignment (US8.3) exists yet; the other
 once the change they describe has been stored. Same best-effort rule. US14.4's
 two hold notices are written by the database's scheduled sweep instead, in the
 words `notify_hold_expiring` and `notify_hold_expired` set out.
+
+US20.1 adds one more of the same kind of notice, for the Organiser as well as
+the Coordinator: the event's registrations have reached capacity.
 """
 
 import logging
@@ -209,6 +212,8 @@ class CoordinatorNotice(StrEnum):
     #: US16.1: Venue Staff decided one of the event's booking requests.
     BOOKING_CONFIRMED = "booking-confirmed"
     BOOKING_REJECTED = "booking-rejected"
+    #: US20.1: registrations reached capacity. The Organiser is told too.
+    EVENT_FULL = "event-full"
 
 
 def _event_title(event: Event) -> str:
@@ -345,6 +350,18 @@ def notify_booking_decision(
         CoordinatorNotice.BOOKING_CONFIRMED if confirmed else CoordinatorNotice.BOOKING_REJECTED,
         message,
     )
+
+
+def notify_event_full(event: Event, capacity: int) -> None:
+    """US20.1: the last place was taken. The assigned Coordinator and the Organiser hear.
+
+    Called once, by the registration that filled the event: the database lets
+    only one registration take the last place, so only one call can say so.
+    """
+    places = "its one place is" if capacity == 1 else f"all {capacity} places are"
+    message = f'"{_event_title(event)}" is full: {places} taken.'
+    for person in dict.fromkeys((event.coordinator_id, event.organiser_id)):
+        _notify_coordinator(person, event, CoordinatorNotice.EVENT_FULL, message)
 
 
 class NotificationOut(BaseModel):
