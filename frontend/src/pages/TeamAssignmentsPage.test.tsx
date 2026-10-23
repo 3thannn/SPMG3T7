@@ -5,7 +5,7 @@
  * and view workload statistics.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import TeamAssignmentsPage from './TeamAssignmentsPage'
@@ -40,7 +40,8 @@ function buildEvent(overrides: Partial<EventRecord> = {}): EventRecord {
     organiserName: 'Dylan',
     coordinatorId: '2',
     coordinatorName: 'Alice Chen',
-    submittedAt: '2027-02-01T10:00:00+08:00',
+    createdAt: '2027-02-01T10:00:00+08:00',
+    updatedAt: '2027-02-01T10:00:00+08:00',
     history: [],
     ...overrides,
   }
@@ -91,7 +92,7 @@ it('displays workload distribution statistics', async () => {
     buildEvent({ id: '101', coordinatorId: '2', coordinatorName: 'Alice Chen' }),
     buildEvent({ id: '102', coordinatorId: '2', coordinatorName: 'Alice Chen' }),
     buildEvent({ id: '103', coordinatorId: '3', coordinatorName: 'Bob Smith' }),
-    buildEvent({ id: '104', coordinatorId: null, coordinatorName: null }),
+    buildEvent({ id: '104', coordinatorId: null, coordinatorName: undefined }),
   ])
 
   render(<TeamAssignmentsPage session={lead} />)
@@ -130,7 +131,7 @@ it('allows filtering by coordinator', async () => {
 it('allows filtering to unassigned events', async () => {
   listEventsMock.mockResolvedValue([
     buildEvent({ id: '101', title: 'Assigned Event', coordinatorId: '2', coordinatorName: 'Alice Chen' }),
-    buildEvent({ id: '102', title: 'Unassigned Event', coordinatorId: null, coordinatorName: null }),
+    buildEvent({ id: '102', title: 'Unassigned Event', coordinatorId: null, coordinatorName: undefined }),
   ])
 
   render(<TeamAssignmentsPage session={lead} />)

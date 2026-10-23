@@ -62,7 +62,7 @@ export default function TeamAssignmentsPage({ session }: TeamAssignmentsPageProp
     if (selectedCoordinator === 'all') {
       setFilteredEvents(allEvents)
     } else if (selectedCoordinator === 'unassigned') {
-      setFilteredEvents(allEvents.filter((e) => e.coordinatorId === null))
+      setFilteredEvents(allEvents.filter((e) => !e.coordinatorId))
     } else {
       setFilteredEvents(allEvents.filter((e) => e.coordinatorId === selectedCoordinator))
     }
@@ -73,7 +73,7 @@ export default function TeamAssignmentsPage({ session }: TeamAssignmentsPageProp
     const statsMap = new Map<string | null, CoordinatorStats>()
 
     allEvents.forEach((event) => {
-      const key = event.coordinatorId
+      const key = event.coordinatorId ?? null
       const existing = statsMap.get(key)
 
       if (existing) {
