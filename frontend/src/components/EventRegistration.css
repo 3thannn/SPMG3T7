@@ -9,6 +9,87 @@
   color: var(--ink-strong);
 }
 
+/* Whether Attendees can see the event: a label in the status badges' colours,
+   the count, and what it is still waiting for. The label is words, so it does
+   not rely on the colour. */
+.registration-visibility {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+
+.registration-visibility-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.32rem 0.75rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid #e3e5e9;
+  background: #f3f4f6;
+  color: #545c6b;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.registration-visibility-label::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.is-visible > .registration-visibility-label {
+  background: #eaf7ef;
+  border-color: #cfead9;
+  color: #1f6b3f;
+}
+
+.is-full > .registration-visibility-label {
+  background: #eef1f4;
+  border-color: #dae0e7;
+  color: #34455c;
+}
+
+.is-waiting > .registration-visibility-label {
+  background: #fff6e8;
+  border-color: #ffe6c2;
+  color: #97590d;
+}
+
+.registration-visibility-lede {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.registration-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--ink-strong);
+}
+
+.registration-checklist li {
+  display: flex;
+  gap: 0.55rem;
+  align-items: baseline;
+}
+
+.registration-check {
+  flex: none;
+  width: 1.1rem;
+  text-align: center;
+  font-weight: 700;
+  color: var(--muted-soft);
+}
+
+.registration-checklist li.is-done .registration-check {
+  color: #1f6b3f;
+}
+
 /* The assigned Coordinator's controls, ruled off from where it stands. */
 .registration-form {
   margin-top: 1.1rem;

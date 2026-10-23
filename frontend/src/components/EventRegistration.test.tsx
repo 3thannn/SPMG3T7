@@ -132,8 +132,25 @@ it('turns registration on with the capacity shown', async () => {
   await user.click(screen.getByRole('button', { name: 'Save registration' }))
 
   expect(saveMock).toHaveBeenCalledWith('950', { open: true, capacity: 30 }, coordinator)
-  expect(await screen.findByText('Saved. Registration is on, for 30 places.')).toBeInTheDocument()
+  // A Planning event: on, but not yet something Attendees can see.
+  expect(
+    await screen.findByText(
+      'Saved. Registration is on, for 30 places. Attendees will see the event once it is Confirmed.',
+    ),
+  ).toBeInTheDocument()
   expect(screen.getByText('Registration is on: 0 of 30 places taken.')).toBeInTheDocument()
+})
+
+it('says only that it saved when the event is already Confirmed', async () => {
+  const user = userEvent.setup()
+  saveMock.mockResolvedValue(settings({ open: true, capacity: 30, placesLeft: 30 }))
+  render(<EventRegistration event={event('Confirmed')} session={coordinator} />)
+
+  await user.click(await screen.findByRole('checkbox', { name: 'Open registration to Attendees' }))
+  await user.click(screen.getByRole('button', { name: 'Save registration' }))
+
+  expect(await screen.findByText('Saved. Registration is on, for 30 places.')).toBeInTheDocument()
+  expect(screen.getByText('Visible to Attendees')).toBeInTheDocument()
 })
 
 it('sends a capacity the Coordinator typed', async () => {
@@ -239,13 +256,82 @@ it('says when the event is full', async () => {
   ).toBeInTheDocument()
 })
 
-it('says Attendees see it only once it is Confirmed', async () => {
+/* ---------- Whether Attendees can see it, and what it is waiting for ---------- */
+
+function checklist() {
+  return within(screen.getByRole('list')).getAllByRole('listitem')
+}
+
+it('tells the Organiser registration is on but the event is waiting for the Safety Officer', async () => {
+  getMock.mockResolvedValue(settings({ open: true, capacity: 30, placesLeft: 30 }))
+  render(<EventRegistration event={event('Pending Safety Check')} session={organiser} />)
+
+  expect(await screen.findByText('Not visible to Attendees yet')).toBeInTheDocument()
+  expect(screen.getByText('Registration is on: 0 of 30 places taken.')).toBeInTheDocument()
+  const [turnedOn, confirmed] = checklist()
+  expect(turnedOn).toHaveTextContent('Done: Registration is turned on.')
+  expect(confirmed).toHaveTextContent(
+    'Not yet: The event is Confirmed. It is Pending Safety Check, waiting for the Safety Officer to sign it off.',
+  )
+  expect(
+    screen.getByText(
+      'Only the event’s assigned Coordinator can turn registration on or change the capacity.',
+    ),
+  ).toBeInTheDocument()
+})
+
+it('names the safety check as the step left for a Planning event', async () => {
   getMock.mockResolvedValue(settings({ open: true, capacity: 30, placesLeft: 30 }))
   render(<EventRegistration event={event('Planning')} session={coordinator} />)
 
+  expect(await screen.findByText('Not visible to Attendees yet')).toBeInTheDocument()
+  expect(checklist()[1]).toHaveTextContent(
+    'Not yet: The event is Confirmed. It is Planning. It is Confirmed after the Coordinator ' +
+      'sends it for its safety check and the Safety Officer signs it off.',
+  )
+  // The Coordinator is the one who can change it, so is not told to ask someone.
+  expect(screen.queryByText(/Only the event’s assigned Coordinator/)).not.toBeInTheDocument()
+})
+
+it('says a Confirmed event with registration on is visible to Attendees', async () => {
+  getMock.mockResolvedValue(settings({ open: true, capacity: 50, registered: 3, placesLeft: 47 }))
+  render(<EventRegistration event={event('Confirmed')} session={organiser} />)
+
+  expect(await screen.findByText('Visible to Attendees')).toBeInTheDocument()
   expect(
-    await screen.findByText('Attendees will see this event once it is Confirmed.'),
+    screen.getByText('Attendees can see this event on their Upcoming Events page and register for it.'),
   ).toBeInTheDocument()
+  expect(screen.queryByRole('list')).not.toBeInTheDocument()
+})
+
+it('says a full event is still visible, with every place taken', async () => {
+  getMock.mockResolvedValue(settings({ open: true, capacity: 2, registered: 2, placesLeft: 0 }))
+  render(<EventRegistration event={event('Confirmed')} session={organiser} />)
+
+  expect(await screen.findByText('Visible to Attendees: full')).toBeInTheDocument()
+  expect(
+    screen.getByText('Attendees can see this event on their Upcoming Events page, but every place is taken.'),
+  ).toBeInTheDocument()
+})
+
+it('shows a Confirmed event with registration off as waiting only for it to be turned on', async () => {
+  render(<EventRegistration event={event('Confirmed')} session={organiser} />)
+
+  expect(await screen.findByText('Not open to Attendees')).toBeInTheDocument()
+  const [turnedOn, confirmed] = checklist()
+  expect(turnedOn).toHaveTextContent('Not yet: Registration is turned on.')
+  expect(confirmed).toHaveTextContent('Done: The event is Confirmed.')
+})
+
+it('says a closed event no longer takes registrations', async () => {
+  getMock.mockResolvedValue(settings({ open: true, capacity: 30, registered: 12, placesLeft: 18 }))
+  render(<EventRegistration event={event('Cancelled')} session={organiser} />)
+
+  expect(await screen.findByText('Closed to Attendees')).toBeInTheDocument()
+  expect(
+    screen.getByText('This event is Cancelled, so Attendees can no longer register for it.'),
+  ).toBeInTheDocument()
+  expect(screen.queryByText(/Only the event’s assigned Coordinator/)).not.toBeInTheDocument()
 })
 
 it('tells the Coordinator it opens after approval, rather than offering it', async () => {

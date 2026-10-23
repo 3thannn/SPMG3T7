@@ -26,6 +26,44 @@ type Loaded =
 
 /** From approval until the event is over, as the server allows. */
 const SETTABLE: readonly EventStatus[] = ['Approved', 'Planning', 'Pending Safety Check', 'Confirmed']
+/** Over, or not going ahead: nobody registers any more. */
+const CLOSED: readonly EventStatus[] = ['Completed', 'Cancelled', 'Rejected']
+
+/**
+ * Whether Attendees can see the event on Upcoming Events, which needs two
+ * things: registration turned on, and the event Confirmed. Turning it on early
+ * is allowed, so "on" alone does not mean anyone can see it yet.
+ */
+type Visibility = 'visible' | 'full' | 'waiting' | 'off' | 'closed'
+
+function visibilityOf(status: EventStatus, settings: RegistrationSettings): Visibility {
+  if (CLOSED.includes(status)) return 'closed'
+  if (!settings.open) return 'off'
+  if (status !== 'Confirmed') return 'waiting'
+  return settings.placesLeft === 0 ? 'full' : 'visible'
+}
+
+const VISIBILITY_LABELS: Record<Visibility, string> = {
+  visible: 'Visible to Attendees',
+  full: 'Visible to Attendees: full',
+  waiting: 'Not visible to Attendees yet',
+  off: 'Not open to Attendees',
+  closed: 'Closed to Attendees',
+}
+
+/** The step the event still has to take to be Confirmed, from where it is now. */
+function untilConfirmed(status: EventStatus): string {
+  if (status === 'Pending Safety Check') {
+    return 'It is Pending Safety Check, waiting for the Safety Officer to sign it off.'
+  }
+  if (status === 'Approved' || status === 'Planning') {
+    return (
+      `It is ${status}. It is Confirmed after the Coordinator sends it for its safety check ` +
+      'and the Safety Officer signs it off.'
+    )
+  }
+  return `It is ${status}. It is Confirmed after it is approved and passes its safety check.`
+}
 
 /** "Registration is on: 3 of 50 places taken." */
 function summarise(settings: RegistrationSettings): string {
@@ -206,10 +244,13 @@ export default function EventRegistration({ event, session }: Props) {
       setOpen(settings.open)
       setCapacityText(startingCapacity(settings))
       setSaves((count) => count + 1)
+      const places = `${settings.capacity} ${settings.capacity === 1 ? 'place' : 'places'}`
       setSaved(
-        settings.open
-          ? `Saved. Registration is on, for ${settings.capacity} ${settings.capacity === 1 ? 'place' : 'places'}.`
-          : 'Saved. Registration is off.',
+        !settings.open
+          ? 'Saved. Registration is off.'
+          : event.status === 'Confirmed'
+            ? `Saved. Registration is on, for ${places}.`
+            : `Saved. Registration is on, for ${places}. Attendees will see the event once it is Confirmed.`,
       )
     } catch (failure) {
       setError(
@@ -243,9 +284,11 @@ export default function EventRegistration({ event, session }: Props) {
     const { settings } = loaded
     return (
       <>
-        <p className="registration-summary">{summarise(settings)}</p>
-        {settings.open && event.status !== 'Confirmed' && (
-          <p className="detail-note">Attendees will see this event once it is Confirmed.</p>
+        {renderVisibility(settings)}
+        {!manages && !CLOSED.includes(event.status) && (
+          <p className="detail-note">
+            Only the event’s assigned Coordinator can turn registration on or change the capacity.
+          </p>
         )}
         {manages && !settable && ['Submitted', 'Under Review'].includes(event.status) && (
           <p className="detail-note">Registration can be opened once the event is approved.</p>
@@ -253,6 +296,62 @@ export default function EventRegistration({ event, session }: Props) {
         {manages && settable && renderForm()}
         {seesPeople && <WhoRegistered key={saves} event={event} session={session} />}
       </>
+    )
+  }
+
+  /**
+   * Whether Attendees can see the event now, in words rather than colour alone,
+   * and, when they cannot, which of the two things it needs is still missing.
+   */
+  function renderVisibility(settings: RegistrationSettings) {
+    const visibility = visibilityOf(event.status, settings)
+    const confirmed = event.status === 'Confirmed'
+    return (
+      <div className={`registration-visibility is-${visibility}`}>
+        <p className="registration-visibility-label">{VISIBILITY_LABELS[visibility]}</p>
+        <p className="registration-summary">{summarise(settings)}</p>
+        {visibility === 'visible' && (
+          <p className="registration-visibility-lede">
+            Attendees can see this event on their Upcoming Events page and register for it.
+          </p>
+        )}
+        {visibility === 'full' && (
+          <p className="registration-visibility-lede">
+            Attendees can see this event on their Upcoming Events page, but every place is taken.
+          </p>
+        )}
+        {visibility === 'closed' && (
+          <p className="registration-visibility-lede">
+            This event is {event.status}, so Attendees can no longer register for it.
+          </p>
+        )}
+        {(visibility === 'waiting' || visibility === 'off') && (
+          <>
+            <p className="registration-visibility-lede">
+              Attendees see this event on their Upcoming Events page once both of these are done:
+            </p>
+            <ul className="registration-checklist">
+              {checklistItem(settings.open, 'Registration is turned on.')}
+              {checklistItem(
+                confirmed,
+                confirmed ? 'The event is Confirmed.' : `The event is Confirmed. ${untilConfirmed(event.status)}`,
+              )}
+            </ul>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  function checklistItem(done: boolean, text: string) {
+    return (
+      <li className={done ? 'is-done' : undefined}>
+        <span className="registration-check" aria-hidden="true">
+          {done ? '✓' : '○'}
+        </span>
+        <span className="sr-only">{done ? 'Done: ' : 'Not yet: '}</span>
+        {text}
+      </li>
     )
   }
 
