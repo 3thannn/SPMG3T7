@@ -339,3 +339,20 @@ export function formatTimestamp(iso: string): string {
     hour12: false,
   })
 }
+
+/** A trailing UTC offset: `Z`, `+08:00` or `+0800`. */
+const HAS_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/i
+
+/**
+ * When something was recorded (created, updated, changed, cancelled), in
+ * Singapore time. The database keeps these as naive UTC, and `new Date` reads a
+ * naive time as the viewer's own, which in Singapore shows it 8 hours early. So
+ * a time without an offset is read as UTC here. Planned times, an event's or a
+ * booking's start and end, are naive Singapore times and stay with
+ * `formatTimestamp`.
+ */
+export function formatRecordedAt(iso: string): string {
+  if (!iso || HAS_OFFSET.test(iso)) return formatTimestamp(iso)
+  const utc = `${iso}Z`
+  return Number.isNaN(new Date(utc).getTime()) ? iso : formatTimestamp(utc)
+}

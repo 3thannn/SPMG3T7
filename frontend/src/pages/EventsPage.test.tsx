@@ -61,6 +61,15 @@ it('shows a status badge on every event in the list', async () => {
   expect(screen.getByText('Draft')).toBeInTheDocument()
 })
 
+it('shows when each event was last updated, in Singapore time', async () => {
+  listEventsMock.mockResolvedValue([buildEvent({ updatedAt: '2026-10-22T15:51:40' })])
+
+  render(<EventsPage session={organiser} />)
+
+  // updated_at is naive UTC, so 15:51 there is 23:51 in Singapore.
+  expect(await screen.findByText('Updated 22 Oct 2026, 23:51')).toBeInTheDocument()
+})
+
 it('labels an untitled and undated draft without inventing stored details', async () => {
   listEventsMock.mockResolvedValue([buildEvent({ title: '---', startsAt: '' })])
 

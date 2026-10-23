@@ -18,3 +18,10 @@ it('shows event status transitions in order', () => {
   expect(entries[2]).toHaveTextContent('Planning')
   expect(screen.queryByText(/equipment request/i)).not.toBeInTheDocument()
 })
+
+it('shows when each change was made, in Singapore time', () => {
+  render(<StatusTimeline history={status} />)
+  // changed_at is naive UTC, so 09:00 there is 17:00 in Singapore.
+  expect(screen.getByText('13 Oct 2026, 17:00')).toBeInTheDocument()
+  expect(screen.getByText('13 Oct 2026, 19:00')).toBeInTheDocument()
+})

@@ -98,6 +98,17 @@ it('shows the venue and every recorded detail', async () => {
   expect(screen.getByText('08:00-22:00')).toBeInTheDocument()
 })
 
+it('shows when the record was last updated, in Singapore time', async () => {
+  getVenueMock.mockResolvedValue(buildVenue())
+
+  render(<VenueDetailPage venueId="1" session={coordinator} />)
+
+  // updated_at is naive UTC, so 09:00 there is 17:00 in Singapore.
+  expect(
+    await screen.findByText('Catalogue record last updated 05 Jan 2026, 17:00.'),
+  ).toBeInTheDocument()
+})
+
 it('labels every detail, so an empty one is still accounted for', async () => {
   getVenueMock.mockResolvedValue(buildVenue())
 

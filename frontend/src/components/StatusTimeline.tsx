@@ -1,7 +1,7 @@
 import './StatusTimeline.css'
 import StatusBadge from './StatusBadge'
 import {
-  formatTimestamp, statusNoteKind, statusNoteLabel, type StatusChange,
+  formatRecordedAt, statusNoteKind, statusNoteLabel, type StatusChange,
 } from '../status'
 
 /** Event status transitions, with notes for requested event changes. */
@@ -23,7 +23,7 @@ export default function StatusTimeline({ history }: { history: readonly StatusCh
             <StatusBadge status={change.to} />
           </div>
           <p className="timeline-meta">
-            {change.byName} · <time dateTime={change.at}>{formatTimestamp(change.at)}</time>
+            {change.byName} · <time dateTime={change.at}>{formatRecordedAt(change.at)}</time>
           </p>
           {noteKind && <blockquote className="timeline-note">
             <p className="timeline-note-label">{statusNoteLabel(noteKind)}</p>

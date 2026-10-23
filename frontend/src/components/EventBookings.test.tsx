@@ -514,9 +514,7 @@ it('cancels the one booking with the reason, and shows who, when and why', async
   ).toBeInTheDocument()
   const row = rowFor('Great Hall')
   expect(row).toHaveTextContent('Cancelled')
-  expect(row).toHaveTextContent(
-    `Cancelled by Priya, ${formatTimestamp('2026-10-08T10:00:00')}: ${REASON}`,
-  )
+  expect(row).toHaveTextContent(`Cancelled by Priya, 08 Oct 2026, 18:00: ${REASON}`)
   expect(screen.queryByLabelText('Why are you cancelling this booking?')).not.toBeInTheDocument()
 })
 
@@ -590,6 +588,8 @@ it('shows a cancelled booking from the server with who, when and why', async () 
 
   const row = await screen.findByRole('listitem')
   expect(row).toHaveTextContent('Cancelled by Priya')
+  // cancelled_at is naive UTC, so 10:00 there is 18:00 in Singapore.
+  expect(row).toHaveTextContent('08 Oct 2026, 18:00')
   expect(row).toHaveTextContent(REASON)
 })
 
@@ -603,7 +603,7 @@ it('still shows the reason when the user who cancelled has been removed', async 
   render(<EventBookings event={event()} session={organiser} />)
 
   expect(await screen.findByRole('listitem')).toHaveTextContent(
-    `Cancelled by a former user, ${formatTimestamp('2026-10-08T10:00:00')}: ${REASON}`,
+    `Cancelled by a former user, 08 Oct 2026, 18:00: ${REASON}`,
   )
 })
 

@@ -8,6 +8,7 @@ import {
   checkCancel,
   checkChangeRequest,
   checkSubmit,
+  formatRecordedAt,
   statusNoteKind,
   statusNoteLabel,
   type ChangeRequestRefusal,
@@ -254,5 +255,29 @@ describe('US4.6 — which events can be cancelled', () => {
     }
     expect(statusNoteKind(change)).toBe('cancellation')
     expect(statusNoteLabel('cancellation')).toBe('Cancellation reason')
+  })
+})
+
+describe('recorded times, shown in Singapore time', () => {
+  it('reads a naive time from the database as UTC', () => {
+    expect(formatRecordedAt('2026-10-22T15:51:40')).toBe('22 Oct 2026, 23:51')
+  })
+
+  it('reads the microseconds PostgREST sends', () => {
+    expect(formatRecordedAt('2026-10-22T15:51:40.123456')).toBe('22 Oct 2026, 23:51')
+  })
+
+  it('moves to the next day when UTC is still on the day before', () => {
+    expect(formatRecordedAt('2026-10-22T16:30:00')).toBe('23 Oct 2026, 00:30')
+  })
+
+  it('trusts a time that carries its own offset', () => {
+    expect(formatRecordedAt('2026-10-22T15:51:40Z')).toBe('22 Oct 2026, 23:51')
+    expect(formatRecordedAt('2026-10-22T23:51:40+08:00')).toBe('22 Oct 2026, 23:51')
+  })
+
+  it('shows text it cannot read as it is', () => {
+    expect(formatRecordedAt('')).toBe('')
+    expect(formatRecordedAt('not a time')).toBe('not a time')
   })
 })

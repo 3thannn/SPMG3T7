@@ -224,6 +224,15 @@ it('shows the full status history, not just the current status', async () => {
   expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0)
 })
 
+it('shows when the event was created, in Singapore time', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, createdAt: '2026-10-22T15:51:40' })
+
+  render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  // created_at is naive UTC, so 15:51 there is 23:51 in Singapore.
+  expect(await screen.findByText(/Created 22 Oct 2026, 23:51/)).toBeInTheDocument()
+})
+
 it.each([coordinator, organiser])('keeps status history about event transitions for %s', async (session) => {
   getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Planning', coordinatorId: coordinator.id })
   render(<EventDetailPage eventId="101" session={session} />)

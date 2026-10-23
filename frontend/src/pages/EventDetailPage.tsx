@@ -40,6 +40,7 @@ import {
   checkClarification,
   checkSubmit,
   clarificationRefusalMessage,
+  formatRecordedAt,
   formatTimestamp,
   submitRefusalMessage,
 } from '../status'
@@ -604,7 +605,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             <p className="page-subtitle">
               Organiser: {event.organiserName}
               {event.coordinatorName && ` · Coordinator: ${event.coordinatorName}`}
-              {' · Created '}{formatTimestamp(event.createdAt)}
+              {' · Created '}{formatRecordedAt(event.createdAt)}
             </p>
           </div>
           <StatusBadge status={event.status} size="lg" />
