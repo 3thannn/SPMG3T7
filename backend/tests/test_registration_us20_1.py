@@ -645,7 +645,8 @@ class TestWhatAttendeesSee:
             f"/events/{EVENT_ID}/equipment-requests",
             f"/events/{EVENT_ID}/registration",
             "/venues",
-            "/notifications",
+            # Not /notifications: since US4.6 an Attendee reads their own, which
+            # say only that an event they registered for was cancelled.
         ],
     )
     def test_an_attendee_reaches_none_of_the_internal_routes(
@@ -1061,7 +1062,8 @@ class TestTheAttendeeRole:
 
         assert session["role"] == "Attendee"
         assert session["home"] == "/attend"
-        assert session["permissions"] == ["registrations:create"]
+        # US4.6 added notifications:read, for an event they registered for being cancelled.
+        assert sorted(session["permissions"]) == ["notifications:read", "registrations:create"]
 
     def test_each_permission_belongs_to_one_role(self):
         assert roles_with(Permission.REGISTRATIONS_CREATE) == [Role.ATTENDEE]

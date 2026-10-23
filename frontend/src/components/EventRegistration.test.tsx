@@ -461,3 +461,29 @@ it('reads the list again after the Coordinator saves', async () => {
   expect(await screen.findByText('0 of 30 registered')).toBeInTheDocument()
   expect(listMock).toHaveBeenCalledTimes(2)
 })
+
+it('shows who was registered when the event was cancelled (US4.6)', async () => {
+  listMock.mockResolvedValue(
+    people({
+      capacity: 30,
+      registrations: [
+        {
+          id: '5',
+          name: 'Casey Tan',
+          email: 'casey@example.com',
+          status: 'Event Cancelled',
+          registeredAt: '2026-10-22T15:51:40',
+          withdrawnAt: '',
+        },
+      ],
+    }),
+  )
+  getMock.mockResolvedValue(settings({ open: false, capacity: 30 }))
+  render(<EventRegistration event={event('Cancelled')} session={organiser} />)
+
+  const table = await screen.findByRole('table', { name: 'People registered for this event' })
+  const row = within(table).getAllByRole('row')[1]
+  expect(row).toHaveTextContent('Casey Tancasey@example.com22 Oct 2026, 23:51Event Cancelled')
+  expect(row).toHaveClass('is-withdrawn')
+  expect(screen.getByText('Closed to Attendees')).toBeInTheDocument()
+})

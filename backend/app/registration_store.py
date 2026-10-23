@@ -50,6 +50,8 @@ class RegistrationStatus(StrEnum):
     REGISTERED = "Registered"
     #: US20.2: given back before the event started. Final for this row.
     WITHDRAWN = "Withdrawn"
+    #: US4.6: the event was cancelled while this registration held a place. Final.
+    EVENT_CANCELLED = "Event Cancelled"
 
 
 #: Statuses that take a place.
@@ -172,11 +174,17 @@ def withdrawal_refusal(
 
     Before the event starts, while it is Confirmed. `now` and the start are
     naive Singapore local times, as every event time is. The database function
-    asks the same three questions in the same order.
+    asks the same three questions in the same order. A registration the event's
+    cancellation ended (US4.6) is closed, not "already withdrawn": its Attendee
+    did not withdraw it.
     """
-    if registration.status not in ACTIVE:
+    if registration.status is RegistrationStatus.WITHDRAWN:
         return WithdrawOutcome.ALREADY_WITHDRAWN
-    if event is None or event.status is not EventStatus.CONFIRMED:
+    if (
+        registration.status not in ACTIVE
+        or event is None
+        or event.status is not EventStatus.CONFIRMED
+    ):
         return WithdrawOutcome.CLOSED
     if event.starts_at and datetime.fromisoformat(event.starts_at) <= now:
         return WithdrawOutcome.STARTED
@@ -574,6 +582,28 @@ class InMemoryRegistrations:
             (item for item in self.registrations if item.event_id == event_id),
             key=lambda item: item.id,
         )
+
+    def cancel_for_event(self, event_id: int) -> tuple[int, ...]:
+        """US4.6: `cancel_event`'s registration half, for InMemoryEvents to call.
+
+        Every Registered registration becomes Event Cancelled, registration
+        closes (the capacity is kept), and the ids moved are returned.
+        """
+        with self.lock:
+            moved = tuple(
+                item.id
+                for item in self.registrations
+                if item.event_id == event_id and item.status in ACTIVE
+            )
+            self.registrations = [
+                replace(item, status=RegistrationStatus.EVENT_CANCELLED)
+                if item.id in moved
+                else item
+                for item in self.registrations
+            ]
+            if event_id in self.settings:
+                self.settings[event_id] = (False, self.settings[event_id][1])
+        return moved
 
     def get_registration(self, registration_id: int) -> Registration | None:
         found = next((item for item in self.registrations if item.id == registration_id), None)

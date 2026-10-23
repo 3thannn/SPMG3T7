@@ -49,6 +49,13 @@
   background: var(--bg-sunken);
 }
 
+/* US4.6: ended by the event's cancellation, in the Rejected badge's colours. */
+.mine-status.is-cancelled {
+  color: #a3302a;
+  background: #fdf2f1;
+  border-color: #f6d5d2;
+}
+
 .mine-facts {
   width: 100%;
   display: grid;

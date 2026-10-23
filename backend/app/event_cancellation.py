@@ -12,23 +12,23 @@ SUPABASE_US4_6_CANCEL_EVENT.sql, or `InMemoryEvents.cancel_event` in tests):
 * every venue booking that still holds its venue - Requested, Confirmed, or a
   hold that has not expired - is Cancelled with the same reason, so its slot is
   free. Cancelled, Rejected and expired holds are history and are left alone;
-* every equipment line not already removed is Removed, so its quantity is free.
+* every equipment line not already removed is Removed, so its quantity is free;
+* every registration still Registered is Event Cancelled (US20.1), and
+  registration closes. Withdrawn registrations are history and are left alone.
 
 Then, best effort, because the cancellation has already happened: flags at the
 freed venues are re-checked (US15.2), and the Organiser, the Coordinator,
-Venue Staff and Tech Support are told (`notify_event_cancelled`).
+Venue Staff, Tech Support and the registered Attendees are told
+(`notify_event_cancelled`).
 
 A cancelled event is read-only. The routes that change an event refuse it,
 most of them already through their own status rules.
-
-Registrations and Attendees are not modelled yet, so there is nothing to mark
-"Event Cancelled" and nobody registered to tell. They join with their epic.
 """
 
 import logging
 from enum import StrEnum
 
-from app import booking_store, conflict_flags, equipment_store
+from app import booking_store, conflict_flags, equipment_store, registration_store
 from app.event_status import EventStatus
 from app.event_store import CancelledEvent
 from app.notifications import notify_event_cancelled
@@ -111,6 +111,18 @@ def settle_quietly(cancelled: CancelledEvent, *, actor: User, reason: str) -> No
         logger.exception("Could not read what the cancellation of event %s released", event.id)
         bookings, lines = [], []
 
+    # Read on its own, so a failure here loses only the Attendees' notices.
+    try:
+        ended = set(cancelled.registration_ids)
+        attendee_ids = [
+            registration.attendee_id
+            for registration in registration_store.repository().list_for_event(event.id)
+            if registration.id in ended
+        ]
+    except Exception:
+        logger.exception("Could not read the registrations event %s's cancellation ended", event.id)
+        attendee_ids = []
+
     # US15.2: a freed slot may resolve a flagged clash at its venue.
     for venue_id in sorted({booking.venue_id for booking in bookings}):
         conflict_flags.resolve_quietly(venue_id)
@@ -122,4 +134,5 @@ def settle_quietly(cancelled: CancelledEvent, *, actor: User, reason: str) -> No
         reason=reason,
         venue_names=[booking.venue_name or "a venue" for booking in bookings],
         equipment=lines,
+        attendee_ids=attendee_ids,
     )

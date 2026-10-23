@@ -101,6 +101,15 @@ class TestTheRule:
         )
         assert refusal is WithdrawOutcome.ALREADY_WITHDRAWN
 
+    def test_one_the_events_cancellation_ended_is_closed_not_withdrawn(self):
+        """US4.6: the Attendee did not withdraw it, so it does not say they did."""
+        refusal = withdrawal_refusal(
+            self.registration(RegistrationStatus.EVENT_CANCELLED),
+            self.event(status=EventStatus.CANCELLED),
+            self.NOW,
+        )
+        assert refusal is WithdrawOutcome.CLOSED
+
     @pytest.mark.parametrize("starts_at", ["2026-10-23T12:00", "2026-10-23T11:59", PAST])
     def test_not_at_or_after_the_start(self, starts_at):
         refusal = withdrawal_refusal(self.registration(), self.event(starts_at), self.NOW)

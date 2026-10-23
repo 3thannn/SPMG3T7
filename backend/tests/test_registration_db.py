@@ -1,8 +1,8 @@
-"""US20.1 and US20.2 against the real database: the functions, the trigger, and two at once.
+"""US20.1, US20.2 and US4.6 against the real database: the functions, the trigger, two at once.
 
 CI has no database, so this file is opt-in. Apply
-SUPABASE_US20_1_REGISTRATION.sql and SUPABASE_US20_2_WITHDRAW.sql first, then
-run it from backend/:
+SUPABASE_US20_1_REGISTRATION.sql, SUPABASE_US20_2_WITHDRAW.sql and
+SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql first, then run it from backend/:
 
     SPMG3T7_DB_TESTS=1 python -m pytest tests/test_registration_db.py          # bash
     $env:SPMG3T7_DB_TESTS=1; python -m pytest tests/test_registration_db.py    # PowerShell
@@ -378,6 +378,76 @@ class TestWithdrawingInTheDatabase:
                 "WHERE id = %s",
                 (taken["id"],),
             )
+
+
+class TestCancellingTheEvent:
+    """US4.6: `cancel_event` ends the event's registrations.
+
+    SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql.
+    """
+
+    def cancel(self, world, *, expected="Confirmed", actor=None):
+        return one(
+            world.cursor,
+            "SELECT public.cancel_event(%s, %s, %s, 'Funding was withdrawn.')",
+            world.event,
+            expected,
+            actor or world.coordinator,
+        )
+
+    def status_of(self, db, registration_id):
+        return one(
+            db, "SELECT status::text FROM public.registrations WHERE id = %s", registration_id
+        )
+
+    def test_registered_ones_become_event_cancelled_and_withdrawn_ones_stay(self, db):
+        world = World(db, capacity=5)
+        casey = world.register()
+        morgan = world.register(world.second, name="Morgan", email="morgan@example.com")
+        world.withdraw(morgan["id"], world.second)
+
+        released = self.cancel(world)
+
+        assert released["registrations"] == [casey["id"]]
+        assert self.status_of(db, casey["id"]) == "Event Cancelled"
+        assert self.status_of(db, morgan["id"]) == "Withdrawn"
+        assert world.taken() == 0
+
+    def test_registration_closes_and_keeps_its_capacity(self, db):
+        world = World(db, capacity=5)
+        self.cancel(world)
+
+        row = one(
+            db,
+            "SELECT row(registration_open, registration_capacity)::text "
+            "FROM public.events WHERE id = %s",
+            world.event,
+        )
+        assert row == "(f,5)"
+
+    def test_an_event_nobody_registered_for_releases_none(self, db):
+        world = World(db)
+        assert self.cancel(world, actor=world.organiser)["registrations"] == []
+
+    def test_a_refused_cancellation_ends_nothing(self, db):
+        world = World(db)
+        taken = world.register()
+
+        assert self.cancel(world, expected="Planning") is None
+        assert self.status_of(db, taken["id"]) == "Registered"
+
+    def test_a_cancelled_registration_answers_closed_not_withdrawn(self, db):
+        world = World(db)
+        taken = world.register()
+        self.cancel(world)
+
+        assert world.withdraw(taken["id"]) == {"outcome": "closed"}
+
+    def test_nobody_registers_afterwards(self, db):
+        world = World(db)
+        self.cancel(world)
+
+        assert world.register(world.second) == {"outcome": "closed"}
 
 
 class TestTwoAtOnce:

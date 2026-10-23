@@ -11,32 +11,26 @@
 | AC1 | The owning Organiser or the assigned Coordinator can cancel any event that isn't Completed, Cancelled or Rejected. Reason required | Done |
 | AC2 | Status → Cancelled, logged with who/when. The cancelled event becomes read-only | Done |
 | AC3 | All its active venue bookings and holds → Cancelled, and all equipment reservations are released, so the slots and quantities free up | Done |
-| AC4 | Registrations are marked Event Cancelled | **Not built — see "What is missing"** |
-| AC5 | The Coordinator, Organiser, affected Venue Staff, Tech Support and registered Attendees are notified | Done, **except registered Attendees** |
+| AC4 | Registrations are marked Event Cancelled | Done — once US20.1 brought registrations; see "Finishing AC4 and AC5" |
+| AC5 | The Coordinator, Organiser, affected Venue Staff, Tech Support and registered Attendees are notified | Done |
 | — | Not one of the 20 Release 1 core features; first story to drop if Sprint 4 runs short | — |
 
-## What is missing, and what has to happen before it can be built
+## Finishing AC4 and AC5
 
-**AC4 (registrations) and the Attendee half of AC5 are not implemented.** There is
-nothing to build them on yet:
+AC4 and the Attendee half of AC5 waited for the registration epic, because there
+were no registrations or Attendees to build them on. US20.1–20.3 brought both, and
+they were finished as this document planned:
 
-- There is no registrations table, no registration status, and no registration
-  routes or pages. `events.registration_needs` (US2.1) is free text describing what
-  an event needs; it is not a list of who registered.
-- The `Attendee` role exists only as a value in the `user_role` Postgres enum. It
-  is deliberately not modelled in `app/permissions.py` (team rule: a role arrives
-  with the feature it exists for), so no Attendee can sign in or receive a notice.
-
-**To finish them once the registration epic lands** (whoever builds it):
-
-1. Give registrations a status that includes `Event Cancelled`.
-2. In `cancel_event` (`SUPABASE_US4_6_CANCEL_EVENT.sql`), add an `UPDATE` of the
-   event's registrations to `Event Cancelled`, inside the same transaction, after
-   the equipment update, and return their ids alongside `bookings` and `equipment`.
-3. Mirror it in `InMemoryEvents.cancel_event` (`app/event_store.py`).
-4. In `notify_event_cancelled` (`app/notifications.py`), notify each registered
-   Attendee; Attendees then need `notifications:read`.
-5. Add the tests to `tests/test_cancel_event_us4_6.py` and tick AC4/AC5 here.
+1. Registrations gained the status `Event Cancelled`.
+2. `cancel_event` marks the event's Registered registrations Event Cancelled in the
+   same transaction, after the equipment update, closes registration, and returns
+   their ids as `registrations` beside `bookings` and `equipment`
+   (`SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql`, a new script because the first one
+   is already applied to the live project).
+3. `InMemoryEvents.cancel_event` mirrors it (`InMemoryRegistrations.cancel_for_event`).
+4. `notify_event_cancelled` tells each Attendee whose registration it ended.
+   Attendees gained `notifications:read`.
+5. The tests are `TestRegistrations` in `tests/test_cancel_event_us4_6.py`.
 
 ## Test Case Design Approach
 Following the 5-step test case design methodology:
@@ -65,6 +59,15 @@ Following the 5-step test case design methodology:
   Staff user is told, and only when the event had bookings to release. Tech Support
   are told only when equipment was released. Venue Staff gained
   `notifications:read` for this.
+- **Registrations**: only Registered ones become Event Cancelled; a Withdrawn one
+  (US20.2) is history and keeps its status. Registration also closes
+  (`registration_open` = false, the capacity kept), and an Event Cancelled
+  registration answers `event-closed` to a withdrawal, not "already withdrawn".
+- **Attendees are told without the reason.** It is written for the people
+  planning the event, and US20.1 keeps internal planning from Attendees. Their
+  notice is `"Open House" has been cancelled, so your registration for it is
+  cancelled too.` and links to My Registrations, since they cannot open events.
+  Only Attendees whose registration was ended are told, each once.
 - **Read-only**: every route that changes an event, its bookings, holds or
   equipment refuses a Cancelled event. An Organiser's change request still waiting
   when the event is cancelled stays on record unanswered; nobody can answer it, and
@@ -80,12 +83,14 @@ Pending Safety Check, Confirmed ──────────────►  r
        one transaction (cancel_event RPC) ◄───────────┘
        ├─ event → Cancelled, history entry: who, when, reason
        ├─ Requested / Confirmed / live Held bookings → Cancelled (reason, who, when)
-       └─ equipment lines → Removed (history: who)
+       ├─ equipment lines → Removed (history: who)
+       └─ Registered registrations → Event Cancelled; registration closes
                                                       │
        afterwards, best effort ◄──────────────────────┘
        ├─ US15.2 conflict flags at the freed venues re-checked
        └─ notices: Organiser / Coordinator (not the canceller),
-                   Venue Staff (if bookings released), Tech Support (if equipment released)
+                   Venue Staff (if bookings released), Tech Support (if equipment released),
+                   each Attendee whose registration was ended (without the reason)
 
 Completed, Cancelled, Rejected ──► 409, nothing changes
 ```
@@ -97,7 +102,9 @@ Completed, Cancelled, Rejected ──► 409, nothing changes
 | Backend | `backend/tests/test_cancel_event_us4_6.py` |
 | Backend (regressions) | `test_event_decisions.py` (allowlist), `test_safety_check_us4_4.py` (Pending Safety Check exits), `test_access_enforcement.py`, `test_notifications.py`, `test_venue_booking_cancellation.py` |
 | Frontend | `CancelEventPanel.test.tsx`, `EventDetailPage.test.tsx` (US4.6 block), `NotificationsPage.test.tsx` (US4.6 block), `status.test.ts`, `eventsStore.test.ts`, `permissions.test.ts`, `TopNav.test.tsx` |
-| Database | `backend/SUPABASE_US4_6_CANCEL_EVENT.sql` — see §6 |
+| Backend (registrations) | `test_cancel_event_us4_6.py` (`TestRegistrations`), `test_registration_us20_2.py` (`test_one_the_events_cancellation_ended_is_closed_not_withdrawn`), `test_registration_db.py` (`TestCancellingTheEvent`, opt-in) |
+| Frontend (registrations) | `MyRegistrationsPage.test.tsx`, `NotificationsPage.test.tsx` (Attendee block), `EventRegistration.test.tsx`, `CancelEventPanel.test.tsx`, `permissions.test.ts` |
+| Database | `backend/SUPABASE_US4_6_CANCEL_EVENT.sql`, then `backend/SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql` — see §6 |
 
 ---
 
@@ -107,7 +114,7 @@ Completed, Cancelled, Rejected ──► 409, nothing changes
 - **Pre-conditions**: Event in Planning, assigned to Priya
 - **Test Steps**: `POST /events/800/cancel` with `{"reason": "Funding was withdrawn."}`
 - **Expected Result**: HTTP 200; status Cancelled; last history entry Planning → Cancelled by Priya, with a time, the reason as its note and `kind: "cancellation"` (shown as "Cancellation reason")
-- **Automated**: `test_the_assigned_coordinator_cancels`, `test_the_move_is_logged_with_who_when_and_why`; frontend "lets the assigned Coordinator cancel the event"
+- **Automated**: `test_the_assigned_coordinator_cancels`, `test_the_move_is_logged_with_who_when_and_why`; frontend "lets the assigned Coordinator cancel the event, and then shows it read-only"
 
 ### TC-C02: The owning Organiser cancels, including their own Draft (AC1)
 - **Automated**: `test_the_owning_organiser_cancels`, `test_the_organiser_can_cancel_their_own_draft`, `test_an_organisers_cancellation_names_them`
@@ -142,7 +149,7 @@ Completed, Cancelled, Rejected ──► 409, nothing changes
 
 ### TC-C10: The cancelled event is read-only (AC2)
 - **Expected Result**: Save (Organiser or Coordinator) → 409 `event-cancelled`; request a venue → 409 `event-closed`; equipment, change request, clarification, safety check, submit → 409; a waiting change request can no longer be answered; the event still reads for both
-- **Automated**: `TestReadOnly`, `test_a_cancelled_event_is_read_only` (US14.2 file); frontend "shows the owning Organiser a cancelled event as read-only", "gives an editing Coordinator no form on a cancelled event"
+- **Automated**: `TestReadOnly`, `test_a_cancelled_event_is_read_only` (US14.2 file); frontend "shows the owning Organiser a cancelled event as read-only, with nothing waiting", "gives an editing Coordinator no form on a cancelled event"
 
 ### TC-C11: A notice that cannot be written never undoes the cancellation
 - **Automated**: `test_a_notice_that_cannot_be_written_does_not_undo_the_cancellation`, `test_a_failed_read_of_what_was_released_does_not_undo_it`
@@ -172,6 +179,23 @@ Completed, Cancelled, Rejected ──► 409, nothing changes
 | TC-C25 | Signed out; unknown or non-numeric id | 401; 404 | `test_signed_out_is_refused`, `test_unknown_event` |
 | TC-C26 | Race lost in the store | 409 `invalid-transition` | `test_a_race_lost_in_the_store_is_reported_as_stale`, `TestInMemoryStore` |
 
+## 3a. REGISTRATIONS (AC4, AC5)
+
+| ID | Scenario | Expected | Automated |
+| --- | --- | --- | --- |
+| TC-C40 | Cancel an event with a Registered and a Withdrawn registration, and another event's | Registered → Event Cancelled; Withdrawn stays; the other event's untouched | `test_every_registered_registration_is_marked_event_cancelled_and_nothing_else`; DB: `test_registered_ones_become_event_cancelled_and_withdrawn_ones_stay` |
+| TC-C41 | Registration settings afterwards | Closed, capacity kept; 0 places taken | `test_registration_closes_and_keeps_its_capacity` (API and DB) |
+| TC-C42 | The registered Attendee | One Cancelled notice, `"Open House" has been cancelled, so your registration for it is cancelled too.`, without the reason; a withdrawn Attendee is not told | `test_registered_attendees_are_told_without_the_reason`, `test_each_attendee_is_told_once` |
+| TC-C43 | The Attendee's notifications page | The notice, linking to My Registrations, not to the event | `test_an_attendee_reads_it_on_their_notifications_page`; frontend "links an Attendee to My Registrations, since they cannot open the event" |
+| TC-C44 | The Attendee's My Registrations | `Event Cancelled`, no Withdraw or Register again, "There is nothing you need to do." | `test_the_attendee_sees_event_cancelled_on_my_registrations`; frontend "shows a registration the event’s cancellation ended, with nothing to do" |
+| TC-C45 | The Attendee tries to withdraw afterwards | 409 `event-closed`, not `already-withdrawn` | `test_a_cancelled_registration_cannot_be_withdrawn`, `test_one_the_events_cancellation_ended_is_closed_not_withdrawn`; DB: `test_a_cancelled_registration_answers_closed_not_withdrawn` |
+| TC-C46 | Someone registers afterwards | Refused: the event is not Confirmed | DB: `test_nobody_registers_afterwards` |
+| TC-C47 | The Organiser's list of who registered (US20.3) | Still shown, each as Event Cancelled or Withdrawn | `test_the_organiser_still_sees_who_was_registered`; frontend "shows who was registered when the event was cancelled (US4.6)" |
+| TC-C48 | Nobody registered | Cancels; no Attendee notice | `test_an_event_nobody_registered_for_tells_no_attendee`, `test_an_event_nobody_registered_for_releases_none` |
+| TC-C49 | Reading the ended registrations fails after the cancellation | Still 200 and Event Cancelled; only the Attendees' notices are lost | `test_a_failed_read_of_the_registrations_does_not_undo_it` |
+| TC-C50 | The cancel box's warning | Says every registration is marked Event Cancelled, and that Attendees are told without the reason | `CancelEventPanel.test.tsx` |
+| TC-C51 | A refused cancellation | No registration changes | DB: `test_a_refused_cancellation_ends_nothing` |
+
 ## 4. BOUNDARY TEST CASES
 
 | ID | Boundary | Expected | Automated |
@@ -184,13 +208,21 @@ Completed, Cancelled, Rejected ──► 409, nothing changes
 ## 5. The database function
 
 `cancel_event(p_event_id, p_expected_status, p_actor_id, p_reason)` returns
-`{"bookings": [ids], "equipment": [ids]}`, or NULL when it changes nothing (missing
-event, status moved, closed status, blank reason, or an actor who neither owns the
-event nor is its assigned Coordinator). **Automated**: `TestSupabaseStore`.
+`{"bookings": [ids], "equipment": [ids], "registrations": [ids]}`, or NULL when it
+changes nothing (missing event, status moved, closed status, blank reason, or an
+actor who neither owns the event nor is its assigned Coordinator). **Automated**:
+`TestSupabaseStore`, which also reads an answer from before the registrations
+script (no `"registrations"`) as none released.
 
-The script also relaxes `venue_bookings_decision_recorded` (a Cancelled booking may
-keep its decision) and lets the two US19 equipment triggers release a cancelled
-event's lines, and nothing else.
+`SUPABASE_US4_6_CANCEL_EVENT.sql` also relaxes `venue_bookings_decision_recorded` (a
+Cancelled booking may keep its decision) and lets the two US19 equipment triggers
+release a cancelled event's lines, and nothing else.
+
+`SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql` adds the `Event Cancelled` registration
+status, redefines `cancel_event` with the registration step and closing registration
+(nothing else in it changes), and redefines US20.2's `withdraw_registration` so an
+Event Cancelled registration answers `closed`. Its SQL Editor check is
+`TEST_US4_6_CANCEL_REGISTRATIONS.sql`, which saves nothing.
 
 ## 6. Database checks (run manually in the Supabase SQL editor)
 
@@ -206,6 +238,10 @@ message. Nothing is saved either way.
 | Check | Date | Result |
 | --- | --- | --- |
 | `TEST_US4_6_CANCEL_EVENT.sql` against the live Supabase project | 2026-10-21 | **US4.6 PASSED - all 20 checks**; rolled back |
+| `SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql` applied twice to a local Postgres built from every earlier script | 2026-10-23 | Applied cleanly both times. `TEST_US4_6_CANCEL_EVENT.sql` still **PASSED - all 20 checks** against the new `cancel_event`; `TEST_US4_6_CANCEL_REGISTRATIONS.sql` **PASSED - all 9 checks**; `test_registration_db.py` 41 passed. With the registrations update removed, the SQL check (2 checks) and the DB test fail |
+| Backend `ruff check`, `compileall`, `pytest` | 2026-10-23 | Clean; 1969 passed, 2 skipped (the opt-in database files) |
+| Frontend `oxlint`, `tsc -b`, `vitest`, `build` | 2026-10-23 | Clean; 1043 passed. One 5-second timeout under full-suite load (`NewEventPage`) passes alone |
+| `SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql` on the live Supabase project | — | **Not yet**: run it after the US20.1 and US20.2 scripts, then `TEST_US4_6_CANCEL_REGISTRATIONS.sql`, and record the result here |
 | Backend `ruff check`, `compileall`, `pytest` | 2026-10-21 | 1693 passed |
 | Frontend `oxlint`, `build`, `vitest` | 2026-10-21 | Clean; 917 passed. Unrelated: the `UnassignedQueuePage` date test fails on a non-US locale, and one 5-second timeout under full-suite load passes alone |
 

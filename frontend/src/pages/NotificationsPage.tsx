@@ -32,6 +32,8 @@ const SUBTITLES: Partial<Record<Session['role'], string>> = {
   'Event Coordinator': 'Assignments and booking or safety problems on your events, unread first.',
   // US4.6: Venue Staff are told when a cancelled event gives its bookings back.
   'Venue Staff': 'Bookings released by cancelled events, unread first.',
+  // US4.6: Attendees are told when an event they registered for is cancelled.
+  Attendee: 'Events you registered for that have been cancelled, unread first.',
 }
 
 const EMPTY_TEXT: Partial<Record<Session['role'], string>> = {
@@ -40,6 +42,7 @@ const EMPTY_TEXT: Partial<Record<Session['role'], string>> = {
   'Event Coordinator':
     'When an event is assigned to you, or one of yours has a hold, booking or safety problem, it shows up here.',
   'Venue Staff': 'When a cancelled event gives back its venue bookings, it shows up here.',
+  Attendee: 'If an event you registered for is cancelled, it shows up here.',
 }
 
 /**
@@ -47,6 +50,8 @@ const EMPTY_TEXT: Partial<Record<Session['role'], string>> = {
  *
  * US4.6: Venue Staff and Tech Support are told about cancelled events but
  * cannot open events, so their notice links nowhere rather than to a refusal.
+ * Attendees cannot open events either, but their cancelled registration is on
+ * My Registrations, so their notice links there.
  */
 function target(
   item: NotificationRecord,
@@ -58,7 +63,11 @@ function target(
   // US10.2: the event was taken off this Coordinator, so they can no longer open it.
   if (item.kind === 'unassigned') return null
   const path = `/events/${item.eventId}`
-  if (!canOpen(session, path)) return null
+  if (!canOpen(session, path)) {
+    return canOpen(session, '/my-registrations')
+      ? { path: '/my-registrations', label: 'Open My Registrations' }
+      : null
+  }
   return { path, label: `Open ${displayEventTitle(item.eventTitle)}` }
 }
 

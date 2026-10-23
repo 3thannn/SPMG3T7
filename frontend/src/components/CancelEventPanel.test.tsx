@@ -123,6 +123,11 @@ describe('cancelling', () => {
 
     expect(screen.getByRole('note')).toHaveTextContent(/cannot be undone/)
     expect(screen.getByRole('note')).toHaveTextContent(/every equipment request is released/)
+    // US4.6 with US20.1: registrations end too, and Attendees are not given the reason.
+    expect(screen.getByRole('note')).toHaveTextContent(
+      /every registration is marked Event Cancelled/,
+    )
+    expect(screen.getByRole('note')).toHaveTextContent(/without the reason/)
     expect(screen.getByRole('button', { name: 'Confirm cancellation' })).toBeDisabled()
     expect(screen.getByLabelText('Why is this event being cancelled?')).toHaveAttribute(
       'maxLength',

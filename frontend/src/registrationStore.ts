@@ -30,7 +30,8 @@ export type Registrant = {
   id: string
   name: string
   email: string
-  status: 'Registered' | 'Withdrawn'
+  /** US4.6: Event Cancelled when the event's cancellation ended it. */
+  status: 'Registered' | 'Withdrawn' | 'Event Cancelled'
   /** Recorded times: naive UTC, shown in Singapore time. */
   registeredAt: string
   /** Empty unless Withdrawn. */
@@ -78,7 +79,8 @@ export type MyRegistration = {
   startsAt: string
   endsAt: string
   venues: string[]
-  status: 'Registered' | 'Withdrawn'
+  /** US4.6: Event Cancelled when the event's cancellation ended it. */
+  status: 'Registered' | 'Withdrawn' | 'Event Cancelled'
   name: string
   email: string
   /** Recorded times: naive UTC, shown in Singapore time. */

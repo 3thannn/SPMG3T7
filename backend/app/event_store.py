@@ -144,6 +144,8 @@ class CancelledEvent:
     booking_ids: tuple[int, ...] = ()
     #: Equipment lines moved to Removed: every one not already removed.
     equipment_ids: tuple[int, ...] = ()
+    #: Registrations moved to Event Cancelled: every one still Registered (US20.1).
+    registration_ids: tuple[int, ...] = ()
 
 
 def _now() -> str:
@@ -977,6 +979,8 @@ class SupabaseEvents:
             event=cancelled,
             booking_ids=tuple(released.get("bookings") or ()),
             equipment_ids=tuple(released.get("equipment") or ()),
+            # Absent until SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql is applied.
+            registration_ids=tuple(released.get("registrations") or ()),
         )
 
 @dataclass
@@ -1392,9 +1396,9 @@ class InMemoryEvents:
     ) -> CancelledEvent:
         """The RPC's checks and writes, against the in-memory stores beside this one.
 
-        Imported here because both of those stores import this module.
+        Imported here because all three of those stores import this module.
         """
-        from app import booking_store, equipment_store
+        from app import booking_store, equipment_store, registration_store
 
         existing = self.get_event(event_id)
         assert existing is not None  # noqa: S101 - the caller checked it exists
@@ -1407,6 +1411,8 @@ class InMemoryEvents:
         equipment = equipment_store.repository()
         assert isinstance(bookings, booking_store.InMemoryBookings)  # noqa: S101
         assert isinstance(equipment, equipment_store.InMemoryEquipment)  # noqa: S101
+        registrations = registration_store.repository()
+        assert isinstance(registrations, registration_store.InMemoryRegistrations)  # noqa: S101
         cancelled = self.decide_event(
             event_id, actor_id=actor_id, from_status=from_status,
             to_status=EventStatus.CANCELLED, reason=reason,
@@ -1415,6 +1421,7 @@ class InMemoryEvents:
             event=cancelled,
             booking_ids=bookings.release_for_event(event_id, actor_id=actor_id, reason=reason),
             equipment_ids=equipment.release_for_event(event_id, actor_id=actor_id),
+            registration_ids=registrations.cancel_for_event(event_id),
         )
 
 
