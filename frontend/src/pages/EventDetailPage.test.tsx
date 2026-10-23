@@ -17,6 +17,7 @@ import {
   submitEvent,
   type EventRecord,
 } from '../eventsStore'
+import { getRegistrationSettings } from '../registrationStore'
 import { ANSWERED_NEEDS } from '../test/eventNeeds'
 import { buildSession } from '../test/sessions'
 
@@ -51,6 +52,20 @@ vi.mock('../equipmentStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../equipmentStore')>()),
   listEventEquipmentRequests: vi.fn(async () => []),
   listEquipment: vi.fn(async () => []),
+}))
+
+// US20.1: the registration card loads its own settings. Off, as on a new event,
+// for the same reason the cards above get empty answers.
+vi.mock('../registrationStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../registrationStore')>()),
+  getRegistrationSettings: vi.fn(async (eventId: string) => ({
+    eventId,
+    open: false,
+    capacity: null,
+    registered: 0,
+    placesLeft: null,
+    defaultCapacity: 20,
+  })),
 }))
 
 const getEventMock = vi.mocked(getEvent)
@@ -262,6 +277,23 @@ it('shows no venue bookings card on a Draft, which cannot have any', async () =>
   expect(screen.queryByRole('heading', { name: 'Venue bookings' })).not.toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Equipment requests' })).not.toBeInTheDocument()
   expect(vi.mocked(listBookings)).not.toHaveBeenCalled()
+})
+
+it('shows the registration card for a submitted event, and none on a Draft (US20.1)', async () => {
+  getEventMock.mockResolvedValue(submittedEvent)
+  const { unmount } = render(<EventDetailPage eventId="101" session={coordinator} />)
+
+  expect(await screen.findByRole('heading', { name: 'Registration' })).toBeInTheDocument()
+  expect(await screen.findByText('Registration is off.')).toBeInTheDocument()
+  await waitFor(() =>
+    expect(vi.mocked(getRegistrationSettings)).toHaveBeenCalledWith('101', coordinator),
+  )
+  unmount()
+
+  getEventMock.mockResolvedValue(event)
+  render(<EventDetailPage eventId="101" session={organiser} />)
+  await screen.findByLabelText('Title')
+  expect(screen.queryByRole('heading', { name: 'Registration' })).not.toBeInTheDocument()
 })
 
 it('lets the assigned Coordinator complete an ended Confirmed event', async () => {

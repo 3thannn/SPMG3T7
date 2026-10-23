@@ -30,6 +30,8 @@ const NAV_LINKS: NavLink[] = [
   { label: 'Equipment', path: '/equipment' },
   { label: 'Equipment Requests', path: '/equipment-requests' },
   { label: 'Add venue', path: '/venues/new' },
+  // US20.1: an Attendee's one page.
+  { label: 'Upcoming Events', path: '/attend' },
   { label: 'Notifications', path: '/notifications' },
 ]
 

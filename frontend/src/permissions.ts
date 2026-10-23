@@ -98,6 +98,12 @@ const GUARDED: Record<string, GuardedRoute> = {
     what: 'the equipment request queue',
     who: 'Technical Support',
   },
+  // US20.1: the Confirmed events taking registrations, as Attendees see them.
+  '/attend': {
+    anyOf: ['registrations:create'],
+    what: 'the events open for registration',
+    who: 'Attendees',
+  },
 }
 
 /**

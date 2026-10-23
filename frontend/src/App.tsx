@@ -4,6 +4,7 @@ import TopNav from './components/TopNav'
 import BookingConflictsPage from './pages/BookingConflictsPage'
 import BookingRequestsPage from './pages/BookingRequestsPage'
 import AccessDeniedPage from './pages/AccessDeniedPage'
+import AttendPage from './pages/AttendPage'
 import EventDetailPage from './pages/EventDetailPage'
 import EventsPage from './pages/EventsPage'
 import LandingPage from './pages/LandingPage'
@@ -236,6 +237,10 @@ export default function App() {
 
     if (route === '/safety-review') {
       return <SafetyReviewPage session={session} />
+    }
+
+    if (route === '/attend') {
+      return <AttendPage session={session} />
     }
 
     const eventId = matchEventDetail(route)

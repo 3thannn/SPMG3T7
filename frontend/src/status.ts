@@ -33,7 +33,7 @@ export const SPRINT_1_REACHABLE: readonly EventStatus[] = ['Draft', 'Submitted']
 /**
  * The roles the system knows about.
  *
- * US19 adds Technical Support. Attendee remains unavailable.
+ * US19 adds Technical Support, and US20.1 Attendee.
  */
 export type Role =
   | 'Event Organiser'
@@ -42,6 +42,7 @@ export type Role =
   | 'Venue Staff'
   | 'Safety Officer'
   | 'Technical Support'
+  | 'Attendee'
 
 /**
  * US4.1: status is visible to the Organiser who owns the event. Coordinators

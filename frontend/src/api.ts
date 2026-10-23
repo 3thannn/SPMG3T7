@@ -41,6 +41,8 @@ export type Permission =
   | 'equipment:queue'
   | 'holds:place'
   | 'bookings:decide'
+  | 'registration:manage'
+  | 'registrations:create'
 
 /**
  * The signed-in user, exactly as the server issued it.

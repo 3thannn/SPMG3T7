@@ -18,7 +18,7 @@ class Role(StrEnum):
     (US8.3). Safety Officer runs the Operational Safety Check (US17.x).
 
     Technical Support joins with the US19 equipment catalogue and request queue.
-    Attendee remains unavailable until its own features arrive.
+    Attendee joins with US20.1, registering for Confirmed events.
     """
 
     ORGANISER = "Event Organiser"
@@ -27,14 +27,15 @@ class Role(StrEnum):
     VENUE_STAFF = "Venue Staff"
     SAFETY_OFFICER = "Safety Officer"
     TECH_SUPPORT = "Technical Support"
+    ATTENDEE = "Attendee"
 
 
 class Permission(StrEnum):
     """A single thing a role may do, named `resource:action`.
 
-    Only permissions some role actually holds are listed. Declaring the ones for
-    booking approval or registration now would put names in the catalogue that
-    nothing grants and nothing checks; they arrive with their own stories.
+    Only permissions some role actually holds are listed. Declaring one before
+    its story would put a name in the catalogue that nothing grants and nothing
+    checks; each arrives with its own story.
 
     Note that reading the catalogue and maintaining it are separate permissions
     held by different roles: a Coordinator reads (US9.2) and Venue Staff write
@@ -59,6 +60,11 @@ class Permission(StrEnum):
     and the Coordinator, so neither role's existing grant could stand in for
     it. The role is the first half of the rule; owning the event, or being
     assigned to it, is the second, checked per event.
+
+    US20.1: the assigned Coordinator turns registration on and sets the
+    capacity (`registration:manage`), and an Attendee registers
+    (`registrations:create`). Seeing which events are open is part of
+    registering, so it is the same grant rather than a third.
     """
 
     EVENTS_CREATE = "events:create"
@@ -87,6 +93,8 @@ class Permission(StrEnum):
     EQUIPMENT_WRITE = "equipment:write"
     EQUIPMENT_REQUEST = "equipment:request"
     EQUIPMENT_QUEUE = "equipment:queue"
+    REGISTRATION_MANAGE = "registration:manage"  # US20.1: assigned Coordinator
+    REGISTRATIONS_CREATE = "registrations:create"  # US20.1: Attendee
 
 
 #: Said in the first person, to be dropped into a denial message.
@@ -117,6 +125,8 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.EQUIPMENT_WRITE: "maintain equipment",
     Permission.EQUIPMENT_REQUEST: "request equipment for assigned events",
     Permission.EQUIPMENT_QUEUE: "review equipment requests",
+    Permission.REGISTRATION_MANAGE: "open or close registration for events",
+    Permission.REGISTRATIONS_CREATE: "register for events",
 }
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -151,6 +161,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.SAFETY_SUBMIT,
             # US10.2: told about assignments and booking or safety problems.
             Permission.NOTIFICATIONS_READ,
+            # US20.1: registration on the events assigned to them (US8.6).
+            Permission.REGISTRATION_MANAGE,
         }
     ),
     # US1.4/US8.2/US8.3: Coordinator Lead manages the unassigned queue and
@@ -198,6 +210,14 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.NOTIFICATIONS_READ,
         }
     ),
+    # US20.1: Attendees see the Confirmed events taking registrations and
+    # register for them, and hold nothing else: no event, venue or planning
+    # permission, so the internal pages are not theirs.
+    Role.ATTENDEE: frozenset(
+        {
+            Permission.REGISTRATIONS_CREATE,
+        }
+    ),
 }
 
 #: Where each role lands after signing in — the "role-appropriate view" of
@@ -214,6 +234,7 @@ HOME_ROUTE: dict[Role, str] = {
     Role.VENUE_STAFF: "/venues",
     Role.SAFETY_OFFICER: "/safety-review",
     Role.TECH_SUPPORT: "/equipment-requests",
+    Role.ATTENDEE: "/attend",
 }
 
 

@@ -57,6 +57,11 @@ function stubApi({ me = 'ok', role = 'Event Organiser' }: { me?: MeOutcome; role
       return { ok: true, status: 200, json: async () => [] }
     }
 
+    // US20.1: the Attendee's events open for registration
+    if (url.endsWith('/attendee/events')) {
+      return { ok: true, status: 200, json: async () => [] }
+    }
+
     throw new Error(`unexpected request to ${url}`)
   })
 
@@ -395,4 +400,28 @@ it('TC-FF24 routes Venue Staff to the booking conflicts page', async () => {
   render(<App />)
 
   expect(await screen.findByRole('heading', { name: 'Booking conflicts' })).toBeInTheDocument()
+})
+
+/* ---------- US20.1: Attendees ---------- */
+
+it('routes an Attendee to the events open for registration on sign-in', async () => {
+  signedInAs('Attendee')
+  stubApi({ me: 'ok', role: 'Attendee' })
+  window.location.hash = '/signin'
+
+  render(<App />)
+
+  expect(await screen.findByRole('heading', { name: 'Upcoming Events' })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Upcoming Events' })).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'Events' })).not.toBeInTheDocument()
+})
+
+it('keeps an Attendee out of the internal events list', async () => {
+  signedInAs('Attendee')
+  stubApi({ me: 'ok', role: 'Attendee' })
+  window.location.hash = '/events'
+
+  render(<App />)
+
+  expect(await screen.findByText('Access denied')).toBeInTheDocument()
 })

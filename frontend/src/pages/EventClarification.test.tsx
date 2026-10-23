@@ -37,6 +37,9 @@ vi.mock('../venuesStore', async (importOriginal) => ({
   listVenues: vi.fn(async () => []),
 }))
 
+// US20.1: the registration card loads its own data and is not what these test.
+vi.mock('../components/EventRegistration', () => ({ default: () => null }))
+
 const getEventMock = vi.mocked(getEvent)
 const requestClarificationMock = vi.mocked(requestClarification)
 
