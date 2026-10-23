@@ -9,10 +9,10 @@ Acceptance criteria, and the tests that hold each one:
   `TestHistory`, `TestReadOnly`.
 * Every active venue booking and hold -> Cancelled, and every equipment line
   released, so the slots and quantities free up -> `TestReleases`.
-* Registrations are marked Event Cancelled -> not built: there are no
-  registrations or Attendees yet (see test_cases_us4_6.md).
-* The Coordinator, Organiser, affected Venue Staff and Tech Support are
-  notified (registered Attendees once they exist) -> `TestNotifications`.
+* Registrations are marked Event Cancelled -> `TestRegistrations` (built once
+  US20.1 brought registrations).
+* The Coordinator, Organiser, affected Venue Staff, Tech Support and registered
+  Attendees are notified -> `TestNotifications`, `TestRegistrations`.
 """
 
 from types import SimpleNamespace
@@ -36,9 +36,12 @@ from app.event_status import CANCELLABLE, CLOSED, EventStatus, transition_allowe
 from app.event_store import CancelledEvent, Event, StaleEventStatus, SupabaseEvents
 from app.notifications import _listed
 from app.permissions import Permission, Role, has_permission, roles_with
+from app.registration_store import Registration, RegistrationStatus
 from tests.conftest import (
+    ATTENDEE_ID,
     COORDINATOR_ID,
     ORGANISER_ID,
+    SECOND_ATTENDEE_ID,
     SUBMITTABLE_NEED_ATTRS,
     SUBMITTABLE_NEEDS,
     TECH_SUPPORT_ID,
@@ -678,12 +681,188 @@ class TestNotifications:
         assert _listed(items) == joined
 
 
+def registration(registration_id, attendee_id, status=RegistrationStatus.REGISTERED, **changes):
+    return Registration(
+        id=registration_id,
+        event_id=changes.pop("event_id", EVENT_ID),
+        attendee_id=attendee_id,
+        name="Casey Tan" if attendee_id == ATTENDEE_ID else "Morgan Lee",
+        email="casey@example.com" if attendee_id == ATTENDEE_ID else "morgan@example.com",
+        status=status,
+        created_at="2099-01-02T09:00:00",
+        **changes,
+    )
+
+
+class TestRegistrations:
+    """AC4, and the Attendee half of AC5 (US20.1 brought registrations)."""
+
+    ATTENDEE_NOTICE = (
+        '"Open House" has been cancelled, so your registration for it is cancelled too.'
+    )
+
+    def registered_event(self, event_repository, registration_repository):
+        seed_event(event_repository, EventStatus.CONFIRMED)
+        registration_repository.settings[EVENT_ID] = (True, 30)
+        registration_repository.registrations.extend(
+            [
+                registration(1, ATTENDEE_ID),
+                registration(
+                    2,
+                    SECOND_ATTENDEE_ID,
+                    RegistrationStatus.WITHDRAWN,
+                    withdrawn_at="2099-01-03T09:00:00",
+                ),
+                registration(3, SECOND_ATTENDEE_ID, event_id=OTHER_EVENT_ID),
+            ]
+        )
+
+    def statuses(self, registration_repository):
+        return {item.id: item.status for item in registration_repository.registrations}
+
+    def test_every_registered_registration_is_marked_event_cancelled_and_nothing_else(
+        self, client, auth_headers, event_repository, registration_repository
+    ):
+        self.registered_event(event_repository, registration_repository)
+
+        assert cancel(client, auth_headers("Event Coordinator")).status_code == 200
+
+        assert self.statuses(registration_repository) == {
+            1: RegistrationStatus.EVENT_CANCELLED,
+            # A withdrawal is history, and another event's registration is not this one's.
+            2: RegistrationStatus.WITHDRAWN,
+            3: RegistrationStatus.REGISTERED,
+        }
+
+    def test_registration_closes_and_keeps_its_capacity(
+        self, client, auth_headers, event_repository, registration_repository
+    ):
+        self.registered_event(event_repository, registration_repository)
+        cancel(client, auth_headers("Event Organiser"))
+
+        assert registration_repository.settings[EVENT_ID] == (False, 30)
+        assert registration_repository.settings_for(EVENT_ID).registered == 0
+
+    def test_registered_attendees_are_told_without_the_reason(
+        self, client, auth_headers, event_repository, registration_repository,
+        notification_repository,
+    ):
+        self.registered_event(event_repository, registration_repository)
+        cancel(client, auth_headers("Event Coordinator"))
+
+        told = notification_repository.list_for_user(ATTENDEE_ID)
+        assert [notice.message for notice in told] == [self.ATTENDEE_NOTICE]
+        assert REASON not in told[0].message
+        assert (told[0].status, told[0].event_id) == (EventStatus.CANCELLED, EVENT_ID)
+        # Morgan withdrew, so their place was not taken away and they are not told.
+        assert notification_repository.list_for_user(SECOND_ATTENDEE_ID) == []
+
+    def test_each_attendee_is_told_once(
+        self, client, auth_headers, event_repository, registration_repository,
+        notification_repository,
+    ):
+        seed_event(event_repository, EventStatus.CONFIRMED)
+        registration_repository.registrations.extend(
+            [registration(1, ATTENDEE_ID), registration(4, SECOND_ATTENDEE_ID)]
+        )
+        cancel(client, auth_headers("Event Organiser"))
+
+        for attendee in (ATTENDEE_ID, SECOND_ATTENDEE_ID):
+            assert len(notification_repository.list_for_user(attendee)) == 1
+
+    def test_an_attendee_reads_it_on_their_notifications_page(
+        self, client, auth_headers, event_repository, registration_repository
+    ):
+        self.registered_event(event_repository, registration_repository)
+        cancel(client, auth_headers("Event Coordinator"))
+
+        listed = client.get("/notifications", headers=auth_headers("Attendee"))
+
+        assert listed.status_code == 200, listed.text
+        shown = [(item["status"], item["eventTitle"], item["message"]) for item in listed.json()]
+        assert shown == [("Cancelled", "Open House", self.ATTENDEE_NOTICE)]
+
+    def test_the_attendee_sees_event_cancelled_on_my_registrations(
+        self, client, auth_headers, event_repository, registration_repository
+    ):
+        self.registered_event(event_repository, registration_repository)
+        cancel(client, auth_headers("Event Coordinator"))
+
+        (item,) = client.get("/attendee/registrations", headers=auth_headers("Attendee")).json()
+
+        assert (item["status"], item["canWithdraw"], item["canRegisterAgain"]) == (
+            "Event Cancelled",
+            False,
+            False,
+        )
+
+    def test_a_cancelled_registration_cannot_be_withdrawn(
+        self, client, auth_headers, event_repository, registration_repository
+    ):
+        self.registered_event(event_repository, registration_repository)
+        cancel(client, auth_headers("Event Coordinator"))
+
+        response = client.post(
+            "/attendee/registrations/1/withdraw", headers=auth_headers("Attendee")
+        )
+
+        assert response.status_code == 409
+        # Closed, not "already withdrawn": the Attendee did not withdraw it.
+        assert response.json()["detail"]["reason"] == "event-closed"
+
+    def test_the_organiser_still_sees_who_was_registered(
+        self, client, auth_headers, event_repository, registration_repository
+    ):
+        self.registered_event(event_repository, registration_repository)
+        cancel(client, auth_headers("Event Coordinator"))
+
+        body = client.get(
+            f"/events/{EVENT_ID}/registrations", headers=auth_headers("Event Organiser")
+        ).json()
+
+        assert [(person["name"], person["status"]) for person in body["registrations"]] == [
+            ("Casey Tan", "Event Cancelled"),
+            ("Morgan Lee", "Withdrawn"),
+        ]
+        assert (body["open"], body["registered"]) == (False, 0)
+
+    def test_an_event_nobody_registered_for_tells_no_attendee(
+        self, client, auth_headers, event_repository, notification_repository
+    ):
+        seed_event(event_repository, EventStatus.CONFIRMED)
+        cancel(client, auth_headers("Event Coordinator"))
+
+        assert notification_repository.list_for_user(ATTENDEE_ID) == []
+
+    def test_a_failed_read_of_the_registrations_does_not_undo_it(
+        self, client, auth_headers, event_repository, booking_repository,
+        registration_repository, notification_repository, monkeypatch,
+    ):
+        self.registered_event(event_repository, registration_repository)
+        booking_repository.bookings.append(booking(1, BookingStatus.CONFIRMED))
+
+        def broken(_event_id):
+            raise RuntimeError("database unavailable")
+
+        monkeypatch.setattr(registration_repository, "list_for_event", broken)
+
+        assert cancel(client, auth_headers("Event Coordinator")).status_code == 200
+        assert self.statuses(registration_repository)[1] is RegistrationStatus.EVENT_CANCELLED
+        # Only the Attendees' notices are lost; everyone else is still told.
+        assert notification_repository.list_for_user(ATTENDEE_ID) == []
+        assert len(notification_repository.list_for_user(ORGANISER_ID)) == 1
+        assert len(notification_repository.list_for_user(VENUE_STAFF_ID)) == 1
+
+
 class TestPermissions:
     def test_organisers_and_coordinators_cancel(self):
         assert roles_with(Permission.EVENTS_CANCEL) == [Role.ORGANISER, Role.COORDINATOR]
 
     def test_venue_staff_now_read_notifications(self):
         assert has_permission(Role.VENUE_STAFF, Permission.NOTIFICATIONS_READ)
+
+    def test_attendees_now_read_notifications(self):
+        assert has_permission(Role.ATTENDEE, Permission.NOTIFICATIONS_READ)
 
 
 class TestInMemoryStore:
@@ -774,6 +953,31 @@ class TestSupabaseStore:
             42, actor_id=ORGANISER_ID, from_status=EventStatus.DRAFT, reason=REASON
         )
         assert (result.booking_ids, result.equipment_ids) == ((), ())
+
+    def test_the_registrations_it_ended_are_read_back(self, monkeypatch):
+        admin = RpcAdmin({"bookings": [], "equipment": [], "registrations": [5, 6]})
+        store = SupabaseEvents()
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+        monkeypatch.setattr(store, "get_event", lambda _id: "event")
+
+        result = store.cancel_event(
+            42, actor_id=ORGANISER_ID, from_status=EventStatus.CONFIRMED, reason=REASON
+        )
+
+        assert result.registration_ids == (5, 6)
+
+    def test_an_rpc_from_before_registrations_releases_none(self, monkeypatch):
+        """SUPABASE_US4_6_CANCEL_EVENT.sql's answer, before the registrations script."""
+        admin = RpcAdmin({"bookings": [3], "equipment": []})
+        store = SupabaseEvents()
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+        monkeypatch.setattr(store, "get_event", lambda _id: "event")
+
+        result = store.cancel_event(
+            42, actor_id=ORGANISER_ID, from_status=EventStatus.CONFIRMED, reason=REASON
+        )
+
+        assert (result.booking_ids, result.registration_ids) == ((3,), ())
 
     def test_null_from_the_rpc_is_stale(self, monkeypatch):
         monkeypatch.setattr(supabase_client, "admin", lambda: RpcAdmin(None))

@@ -227,6 +227,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     Role.ATTENDEE: frozenset(
         {
             Permission.REGISTRATIONS_CREATE,
+            # US4.6: told when an event they registered for is cancelled.
+            Permission.NOTIFICATIONS_READ,
         }
     ),
 }

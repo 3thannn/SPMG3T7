@@ -270,3 +270,33 @@ it('tells Venue Staff what will show up here', async () => {
     await screen.findByText('When a cancelled event gives back its venue bookings, it shows up here.'),
   ).toBeInTheDocument()
 })
+
+/* ---------- US4.6 with US20.1: registered Attendees ---------- */
+
+const attendee = buildSession({ role: 'Attendee', id: '20' })
+
+it('links an Attendee to My Registrations, since they cannot open the event', async () => {
+  listMock.mockResolvedValue([
+    cancellation('"Open House" has been cancelled, so your registration for it is cancelled too.'),
+  ])
+  render(<NotificationsPage session={attendee} />)
+
+  expect(await screen.findByText(/your registration for it is cancelled too/)).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Open My Registrations' })).toHaveAttribute(
+    'href',
+    '#/my-registrations',
+  )
+  expect(screen.queryByRole('link', { name: 'Open Open House' })).not.toBeInTheDocument()
+  expect(
+    screen.getByText('Events you registered for that have been cancelled, unread first.'),
+  ).toBeInTheDocument()
+})
+
+it('tells an Attendee with no notices what will show up here', async () => {
+  listMock.mockResolvedValue([])
+  render(<NotificationsPage session={attendee} />)
+
+  expect(
+    await screen.findByText('If an event you registered for is cancelled, it shows up here.'),
+  ).toBeInTheDocument()
+})

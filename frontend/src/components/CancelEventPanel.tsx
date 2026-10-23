@@ -53,8 +53,8 @@ export default function CancelEventPanel({ event, session, disabled, onUpdated, 
       const updated = await cancelEvent(event.id, reason.trim(), session)
       onUpdated(
         updated,
-        'Cancelled. Its venue bookings and equipment have been released, and everyone ' +
-          'involved has been told.',
+        'Cancelled. Its venue bookings and equipment have been released, its registrations ' +
+          'cancelled, and everyone involved has been told.',
       )
     } catch (error) {
       onError(
@@ -75,8 +75,9 @@ export default function CancelEventPanel({ event, session, disabled, onUpdated, 
         <>
           <p className="detail-clarify-lede event-cancel-warning" role="note">
             This cannot be undone. Every venue booking and hold still keeping a slot is
-            cancelled, every equipment request is released, and the event becomes read-only.
-            Everyone involved is told, with your reason.
+            cancelled, every equipment request is released, every registration is marked Event
+            Cancelled, and the event becomes read-only. Everyone involved is told, with your
+            reason; registered Attendees are told it is cancelled, without the reason.
           </p>
           <label className="detail-clarify-field detail-decision-reason">
             <span className="detail-clarify-label">Why is this event being cancelled?</span>
@@ -145,7 +146,8 @@ export function CancelledNotice({ event }: { event: EventRecord }) {
       </p>
       {entry?.notes && <p className="event-cancelled-reason">Reason: {entry.notes}</p>}
       <p className="event-cancelled-lede">
-        This event is read-only. Its venue bookings and equipment were released.
+        This event is read-only. Its venue bookings and equipment were released and its
+        registrations cancelled.
       </p>
     </div>
   )

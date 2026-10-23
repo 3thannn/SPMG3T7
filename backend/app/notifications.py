@@ -136,14 +136,18 @@ def notify_event_cancelled(
     reason: str,
     venue_names: list[str],
     equipment: list[EquipmentRequest],
+    attendee_ids: list[int] | None = None,
 ) -> None:
     """US4.6: tell everyone a cancellation affects. Not the person who cancelled.
 
     The Organiser and the assigned Coordinator are told who cancelled and why.
     Venue Staff are told when bookings were released and Tech Support when
     equipment was; there is no per-venue or per-item owner, so, as for new
-    equipment requests, every member of the role hears. Each notice is a status
-    notice (Cancelled), written best effort: the cancellation already happened.
+    equipment requests, every member of the role hears. Each Attendee whose
+    registration the cancellation ended is told too, without the reason: it is
+    written for the people planning the event, and US20.1 keeps internal
+    planning from Attendees. Each notice is a status notice (Cancelled), written
+    best effort: the cancellation already happened.
     """
     title = event.title.strip()
     subject = f'"{title}"' if title else "An untitled event"
@@ -152,6 +156,14 @@ def notify_event_cancelled(
     for person in dict.fromkeys((event.organiser_id, event.coordinator_id)):
         if person is not None and person != actor_id:
             _notify_cancelled(person, event, f"{subject} was cancelled by {actor_name}.{because}")
+
+    for attendee in dict.fromkeys(attendee_ids or ()):
+        if attendee != actor_id:
+            _notify_cancelled(
+                attendee,
+                event,
+                f"{subject} has been cancelled, so your registration for it is cancelled too.",
+            )
 
     if not venue_names and not equipment:
         return

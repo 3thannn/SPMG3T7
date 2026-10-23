@@ -27,10 +27,20 @@ function when(item: MyRegistration): string {
   return item.endsAt ? formatBookingTimes(item.startsAt, item.endsAt) : formatTimestamp(item.startsAt)
 }
 
-/** Why a Withdrawn registration offers no way back in. */
+/** Why a Withdrawn or cancelled registration offers no way back in. */
 function noWayBack(item: MyRegistration): string {
+  // US4.6: the event's cancellation ended it, so there is nothing left to do.
+  if (item.status === 'Event Cancelled') {
+    return 'This event has been cancelled, so your registration is cancelled too. There is nothing you need to do.'
+  }
   if (item.placesLeft === null) return 'This event is no longer taking registrations.'
   return 'No places are left to register again.'
+}
+
+const STATUS_CLASS: Record<MyRegistration['status'], string> = {
+  Registered: 'is-registered',
+  Withdrawn: 'is-withdrawn',
+  'Event Cancelled': 'is-cancelled',
 }
 
 /**
@@ -165,11 +175,7 @@ export default function MyRegistrationsPage({ session }: Props) {
           <li key={item.id} className="card mine-item">
             <div className="mine-head">
               <h2 className="mine-title">{displayEventTitle(item.title)}</h2>
-              <span
-                className={`mine-status ${item.status === 'Registered' ? 'is-registered' : 'is-withdrawn'}`}
-              >
-                {item.status}
-              </span>
+              <span className={`mine-status ${STATUS_CLASS[item.status]}`}>{item.status}</span>
             </div>
             <dl className="mine-facts">
               <div>

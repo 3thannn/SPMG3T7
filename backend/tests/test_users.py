@@ -40,7 +40,8 @@ class TestReadingARow:
 
         assert user is not None
         assert user.role is Role.ATTENDEE
-        assert user.permissions == {Permission.REGISTRATIONS_CREATE}
+        # US4.6 added notifications:read, for an event they registered for being cancelled.
+        assert user.permissions == {Permission.REGISTRATIONS_CREATE, Permission.NOTIFICATIONS_READ}
 
     def test_one_unusable_row_does_not_take_the_directory_with_it(self):
         rows = [ROW, {**ROW, "id": 2, "email": "a@spmg3t7.edu", "role": "Caterer"}]

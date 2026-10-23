@@ -301,11 +301,19 @@ curl -X POST http://localhost:8000/events/12/cancel \
 - **Refusals.** `404` for an event that is not the caller's; `409`
   `already-cancelled`, `event-completed` or `event-rejected`; `400` for a missing
   reason or one over 2,000 characters.
-- **Not built:** registrations marked Event Cancelled and notices to registered
-  Attendees. Neither exists yet; see `tests/test_cases_us4_6.md` for what to add
-  when the registration epic lands.
+- **Registrations** (once US20.1 brought them). In the same transaction, every
+  Registered registration becomes Event Cancelled and registration closes; a
+  Withdrawn one keeps its status. Each Attendee whose registration was ended gets a
+  Cancelled notice *without* the reason, which is written for the people planning
+  the event. Attendees now hold `notifications:read`, and their notice links to My
+  Registrations. Withdrawing an Event Cancelled registration answers `409`
+  `event-closed`.
 
-Run [`SUPABASE_US4_6_CANCEL_EVENT.sql`](SUPABASE_US4_6_CANCEL_EVENT.sql) first.
+Run [`SUPABASE_US4_6_CANCEL_EVENT.sql`](SUPABASE_US4_6_CANCEL_EVENT.sql) first, and
+[`SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql`](SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql)
+after the US20.1 and US20.2 scripts. Without the second, cancelling works as before
+but leaves registrations untouched. [`TEST_US4_6_CANCEL_REGISTRATIONS.sql`](TEST_US4_6_CANCEL_REGISTRATIONS.sql)
+checks it in the SQL Editor and saves nothing.
 
 ### Safety Officer review (US17.1)
 

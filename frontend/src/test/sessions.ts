@@ -67,8 +67,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
   // US1.4: Safety Officer reviews safety aspects.
   'Safety Officer': ['safety:review'],
   'Technical Support': ['equipment:read', 'equipment:write', 'equipment:queue', 'notifications:read'],
-  // US20.1: registers for Confirmed events, and holds nothing else.
-  Attendee: ['registrations:create'],
+  // US20.1: registers for Confirmed events. US4.6: told when one is cancelled.
+  Attendee: ['registrations:create', 'notifications:read'],
 }
 
 const HOME: Record<Role, string> = {

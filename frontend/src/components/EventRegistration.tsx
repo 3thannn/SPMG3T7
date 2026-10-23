@@ -161,14 +161,17 @@ function WhoRegistered({ event, session }: Props) {
               </thead>
               <tbody>
                 {list.registrations.map((person) => (
-                  <tr key={person.id} className={person.status === 'Withdrawn' ? 'is-withdrawn' : undefined}>
+                  <tr
+                    key={person.id}
+                    className={person.status === 'Registered' ? undefined : 'is-withdrawn'}
+                  >
                     <td>{person.name}</td>
                     <td>{person.email}</td>
                     <td>{formatRecordedAt(person.registeredAt)}</td>
                     <td>
                       {person.status === 'Withdrawn'
                         ? `Withdrawn ${formatRecordedAt(person.withdrawnAt)}`
-                        : 'Registered'}
+                        : person.status}
                     </td>
                   </tr>
                 ))}

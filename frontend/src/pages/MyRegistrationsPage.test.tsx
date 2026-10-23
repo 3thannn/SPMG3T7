@@ -234,3 +234,27 @@ it('says why there is no way back when registration has closed', async () => {
   ).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Register again/ })).not.toBeInTheDocument()
 })
+
+/* ---------- US4.6: the event was cancelled ---------- */
+
+it('shows a registration the event’s cancellation ended, with nothing to do', async () => {
+  listMock.mockResolvedValue([
+    registration({
+      status: 'Event Cancelled',
+      canWithdraw: false,
+      canRegisterAgain: false,
+      placesLeft: null,
+    }),
+  ])
+  render(<MyRegistrationsPage session={attendee} />)
+
+  await screen.findByRole('heading', { name: 'Open House' })
+  const item = within(card())
+  expect(item.getByText('Event Cancelled')).toHaveClass('mine-status', 'is-cancelled')
+  expect(
+    item.getByText(
+      'This event has been cancelled, so your registration is cancelled too. There is nothing you need to do.',
+    ),
+  ).toBeInTheDocument()
+  expect(item.queryByRole('button')).not.toBeInTheDocument()
+})

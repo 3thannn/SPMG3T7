@@ -288,8 +288,12 @@ describe('registering for events (US20.1)', () => {
 
   it('keeps Attendees out of every internal page', () => {
     const attendee = buildSession({ role: 'Attendee' })
-    for (const route of ['/events', '/events/950', '/events/new', '/venues', '/notifications', '/equipment']) {
+    for (const route of ['/events', '/events/950', '/events/new', '/venues', '/equipment']) {
       expect(canOpen(attendee, route)).toBe(false)
     }
+  })
+
+  it('lets Attendees read their notifications, to hear about a cancelled event (US4.6)', () => {
+    expect(canOpen(buildSession({ role: 'Attendee' }), '/notifications')).toBe(true)
   })
 })
