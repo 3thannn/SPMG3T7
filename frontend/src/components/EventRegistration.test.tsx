@@ -81,6 +81,7 @@ function people(overrides: Partial<EventRegistrations> = {}): EventRegistrations
 beforeEach(() => {
   getMock.mockResolvedValue(settings())
   listMock.mockResolvedValue(people())
+  saveMock.mockResolvedValue(settings())
 })
 
 afterEach(() => {
