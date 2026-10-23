@@ -12,11 +12,13 @@ import {
   EVENT_FULL_MESSAGE,
   describePlacesLeft,
   getRegistrationSettings,
+  listMyRegistrations,
   listOpenEvents,
   parseCapacity,
   registerForEvent,
   saveRegistrationSettings,
   validateRegistration,
+  withdrawRegistration,
 } from './registrationStore'
 import { EventRuleError } from './eventsStore'
 import { ApiError } from './api'
@@ -168,6 +170,53 @@ describe('the Attendee’s events', () => {
     await expect(
       registerForEvent('950', { name: 'Casey', email: 'casey@example.com' }, attendee),
     ).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('the Attendee’s own registrations (US20.2)', () => {
+  const MINE = {
+    id: '5',
+    eventId: '950',
+    title: 'Open House',
+    startsAt: '2099-11-02T09:00',
+    endsAt: '2099-11-02T17:00',
+    venues: ['Great Hall'],
+    status: 'Registered',
+    name: 'Casey Tan',
+    email: 'casey@example.com',
+    registeredAt: '2026-10-23T06:00:00',
+    withdrawnAt: '',
+    canWithdraw: true,
+    canRegisterAgain: false,
+    placesLeft: 11,
+  }
+
+  it('lists them with the session’s token', async () => {
+    const spy = stubFetch(ok([MINE]))
+
+    expect(await listMyRegistrations(attendee)).toEqual([MINE])
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/attendee/registrations')
+    expect(spy.mock.calls[0][1].headers.Authorization).toBe('Bearer attendee-token')
+  })
+
+  it('withdraws one by its id', async () => {
+    const spy = stubFetch(ok({ ...MINE, status: 'Withdrawn', canWithdraw: false }))
+
+    const withdrawn = await withdrawRegistration('5', attendee)
+
+    expect(withdrawn.status).toBe('Withdrawn')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/attendee/registrations/5/withdraw')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+  })
+
+  it.each([
+    [409, 'rule_refused', 'This event has already started, so you can no longer withdraw.'],
+    [409, 'rule_refused', 'You have already withdrawn from this event.'],
+    [404, 'registration_not_found', 'That registration no longer exists.'],
+  ])('reads a %i refusal to withdraw as a rule the page can show', async (status, code, message) => {
+    stubFetch(failure(status, code, message))
+
+    await expect(withdrawRegistration('5', attendee)).rejects.toThrow(new EventRuleError(message))
   })
 })
 

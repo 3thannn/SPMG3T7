@@ -1,11 +1,12 @@
 /**
- * Registration — US20.1.
+ * Registration — US20.1 and US20.2.
  *
  * Two halves for two roles. The assigned Coordinator turns registration on for
  * an event and sets its capacity; an Attendee sees the Confirmed events taking
- * registrations and registers for one with a name and an email. The server
- * enforces every rule, the capacity under two people at once included; the
- * checks here only save a round trip.
+ * registrations and registers for one with a name and an email (US20.1), then
+ * sees their registrations and withdraws before the event starts (US20.2). The
+ * server enforces every rule, the capacity under two people at once included;
+ * the checks here only save a round trip.
  */
 
 import { ApiError, authorizedFetch, type Session } from './api'
@@ -45,6 +46,28 @@ export type RegistrationRecord = {
 }
 
 export type RegistrationForm = { name: string; email: string }
+
+/** US20.2: one event the Attendee registered for, with its details as they are now. */
+export type MyRegistration = {
+  id: string
+  eventId: string
+  title: string
+  startsAt: string
+  endsAt: string
+  venues: string[]
+  status: 'Registered' | 'Withdrawn'
+  name: string
+  email: string
+  /** Recorded times: naive UTC, shown in Singapore time. */
+  registeredAt: string
+  /** Empty unless Withdrawn. */
+  withdrawnAt: string
+  canWithdraw: boolean
+  /** Withdrawn, and the event still takes registrations and has a place. */
+  canRegisterAgain: boolean
+  /** Null when the event is not taking registrations. */
+  placesLeft: number | null
+}
 
 /** `events.registration_capacity` is INTEGER. */
 export const REGISTRATION_CAPACITY_MAX = 2_147_483_647
@@ -114,6 +137,29 @@ export async function registerForEvent(
       },
     )
     return (await response.json()) as RegistrationRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/** US20.2 AC1: the Attendee's registrations, one per event, soonest event first. */
+export async function listMyRegistrations(session: Session): Promise<MyRegistration[]> {
+  const response = await authorizedFetch('/attendee/registrations', session.token)
+  return (await response.json()) as MyRegistration[]
+}
+
+/** US20.2 AC2: give the place back. Too late, already withdrawn and closed are rule errors. */
+export async function withdrawRegistration(
+  registrationId: string,
+  session: Session,
+): Promise<MyRegistration> {
+  try {
+    const response = await authorizedFetch(
+      `/attendee/registrations/${registrationId}/withdraw`,
+      session.token,
+      { method: 'POST' },
+    )
+    return (await response.json()) as MyRegistration
   } catch (error) {
     return asRuleError(error)
   }

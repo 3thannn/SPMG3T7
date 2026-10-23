@@ -1,7 +1,8 @@
-"""US20.1 against the real database: the functions, the trigger, and two at once.
+"""US20.1 and US20.2 against the real database: the functions, the trigger, and two at once.
 
 CI has no database, so this file is opt-in. Apply
-SUPABASE_US20_1_REGISTRATION.sql first, then run it from backend/:
+SUPABASE_US20_1_REGISTRATION.sql and SUPABASE_US20_2_WITHDRAW.sql first, then
+run it from backend/:
 
     SPMG3T7_DB_TESTS=1 python -m pytest tests/test_registration_db.py          # bash
     $env:SPMG3T7_DB_TESTS=1; python -m pytest tests/test_registration_db.py    # PowerShell
@@ -86,18 +87,28 @@ class World:
             role,
         )
 
-    def add_event(self, status, *, capacity=2, is_open=True):
+    def add_event(self, status, *, capacity=2, is_open=True, starts="2099-11-02 09:00"):
         return one(
             self.cursor,
             "INSERT INTO public.events (name, description, organiser_id, coordinator_id, "
-            "status, expected_attendance, registration_open, registration_capacity) "
-            "VALUES (%s, 'Test', %s, %s, %s::public.event_status, 30, %s, %s) RETURNING id",
+            "status, expected_attendance, registration_open, registration_capacity, "
+            "proposed_date) "
+            "VALUES (%s, 'Test', %s, %s, %s::public.event_status, 30, %s, %s, %s) RETURNING id",
             f"US20.1 event {self.tag}",
             self.organiser,
             self.coordinator,
             status,
             is_open,
             capacity,
+            starts,
+        )
+
+    def withdraw(self, registration, attendee=None):
+        return one(
+            self.cursor,
+            "SELECT public.withdraw_registration(%s, %s)",
+            registration,
+            attendee or self.attendee,
         )
 
     def register(self, attendee=None, *, event=None, name="Casey", email="casey@example.com"):
@@ -273,6 +284,100 @@ class TestTheFunctions:
             "VALUES (%s, %s, 'event-full', NULL, 'x is full')",
             (world.organiser, world.event),
         )
+
+
+class TestWithdrawingInTheDatabase:
+    """US20.2: `withdraw_registration`, and registering again afterwards."""
+
+    def test_withdrawing_gives_the_place_back_and_keeps_the_row(self, db):
+        world = World(db, capacity=1)
+        taken = world.register()
+
+        answer = world.withdraw(taken["id"])
+
+        assert answer["outcome"] == "withdrawn" and answer["withdrawnAt"]
+        assert world.taken() == 0
+        row = one(
+            db,
+            "SELECT row(status::text, withdrawn_at IS NOT NULL)::text "
+            "FROM public.registrations WHERE id = %s",
+            taken["id"],
+        )
+        assert row == "(Withdrawn,t)"
+
+    def test_the_freed_place_goes_to_someone_else(self, db):
+        world = World(db, capacity=1)
+        taken = world.register()
+        assert world.register(world.second) == {"outcome": "full"}
+
+        world.withdraw(taken["id"])
+
+        assert world.register(world.second)["outcome"] == "registered"
+
+    def test_a_withdrawn_attendee_registers_again_as_a_new_row(self, db):
+        world = World(db, capacity=5)
+        taken = world.register()
+        world.withdraw(taken["id"])
+
+        again = world.register()
+
+        assert again["outcome"] == "registered" and again["id"] != taken["id"]
+        assert world.taken() == 1
+
+    def test_withdrawing_twice_is_answered(self, db):
+        world = World(db)
+        taken = world.register()
+        world.withdraw(taken["id"])
+
+        assert world.withdraw(taken["id"]) == {"outcome": "already-withdrawn"}
+
+    def test_someone_elses_or_a_missing_registration_is_not_found(self, db):
+        world = World(db)
+        taken = world.register()
+
+        assert world.withdraw(taken["id"], world.second) == {"outcome": "not-found"}
+        assert world.withdraw(-1) == {"outcome": "not-found"}
+
+    def test_once_the_event_has_started_it_is_too_late(self, db):
+        world = World(db)
+        started = world.add_event("Confirmed", starts="2000-01-01 09:00")
+        taken = world.register(event=started)
+
+        assert world.withdraw(taken["id"]) == {"outcome": "started"}
+        assert world.taken(started) == 1
+
+    def test_an_event_no_longer_confirmed_is_closed(self, db):
+        world = World(db)
+        taken = world.register()
+        db.execute(
+            "UPDATE public.events SET status = 'Completed' WHERE id = %s", (world.event,)
+        )
+
+        assert world.withdraw(taken["id"]) == {"outcome": "closed"}
+
+    def test_a_withdrawn_row_must_say_when(self, db):
+        world = World(db)
+        taken = world.register()
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            db.execute(
+                "UPDATE public.registrations SET status = 'Withdrawn' WHERE id = %s",
+                (taken["id"],),
+            )
+
+    def test_bringing_a_withdrawn_row_back_still_counts_the_places(self, db):
+        """The capacity trigger also guards an UPDATE back to Registered."""
+        world = World(db, capacity=1)
+        taken = world.register()
+        world.withdraw(taken["id"])
+        world.register(world.second)
+
+        with pytest.raises(psycopg.errors.CheckViolation, match="Event is full"):
+            db.execute(
+                "UPDATE public.registrations SET status = 'Registered', withdrawn_at = NULL "
+                "WHERE id = %s",
+                (taken["id"],),
+            )
 
 
 class TestTwoAtOnce:

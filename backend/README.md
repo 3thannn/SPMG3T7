@@ -623,6 +623,35 @@ first. [`TEST_US20_1_REGISTRATION.sql`](TEST_US20_1_REGISTRATION.sql) checks it 
 the SQL Editor and saves nothing, and `tests/test_registration_db.py` (opt-in,
 `SPMG3T7_DB_TESTS=1`) also tries two registrations at the same moment.
 
+### Seeing and withdrawing registrations (US20.2)
+
+```bash
+# The Attendee's registrations, one per event, with each event as it is now.
+curl http://localhost:8000/attendee/registrations -H "Authorization: Bearer <attendee token>"
+
+# Withdraw one, before the event starts.
+curl -X POST http://localhost:8000/attendee/registrations/5/withdraw \
+  -H "Authorization: Bearer <attendee token>"
+```
+
+- **The list** gives, per event, the newest registration: its status
+  (Registered or Withdrawn), the name and email it was made with, when it was
+  made or withdrawn, and the event's current title, date, time and venues. It
+  also says whether the Attendee can withdraw (`canWithdraw`) or register again
+  (`canRegisterAgain`), and the places left while the event takes registrations.
+- **Withdrawing** is allowed while the event is Confirmed and before its start
+  (Singapore time). `404` for a registration that is not the caller's; `409`
+  `already-withdrawn`, `event-started` or `event-closed`. The database function
+  `withdraw_registration` locks the event before the row, as registering does,
+  and the row is kept as Withdrawn with `withdrawn_at`. The place counts as free
+  at once.
+- **Registering again** is US20.1's route: a withdrawn registration no longer
+  counts, so a new one is taken while places are left.
+
+Run [`SUPABASE_US20_2_WITHDRAW.sql`](SUPABASE_US20_2_WITHDRAW.sql) after the US20.1
+script; [`TEST_US20_2_WITHDRAW.sql`](TEST_US20_2_WITHDRAW.sql) checks it in the SQL
+Editor and saves nothing.
+
 ## Venues
 
 Four stories over one table, and they do not share a role. A Coordinator reads

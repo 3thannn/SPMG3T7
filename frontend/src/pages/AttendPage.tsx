@@ -11,6 +11,7 @@ import {
   type OpenEvent,
   type RegistrationForm,
 } from '../registrationStore'
+import { navigate } from '../router'
 import { formatTimestamp } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 
@@ -166,7 +167,21 @@ export default function AttendPage({ session }: Props) {
 
   function renderAction(event: OpenEvent) {
     if (event.registered) {
-      return <p className="attend-registered">You are registered for this event.</p>
+      return (
+        <p className="attend-registered">
+          You are registered for this event. To withdraw, go to{' '}
+          <a
+            href="#/my-registrations"
+            onClick={(clickEvent) => {
+              clickEvent.preventDefault()
+              navigate('/my-registrations')
+            }}
+          >
+            My Registrations
+          </a>
+          .
+        </p>
+      )
     }
     if (registeringId === event.id) return renderForm(event)
     if (event.placesLeft <= 0) {

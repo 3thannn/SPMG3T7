@@ -104,6 +104,12 @@ const GUARDED: Record<string, GuardedRoute> = {
     what: 'the events open for registration',
     who: 'Attendees',
   },
+  // US20.2: an Attendee's own registrations.
+  '/my-registrations': {
+    anyOf: ['registrations:create'],
+    what: 'your registrations',
+    who: 'Attendees',
+  },
 }
 
 /**

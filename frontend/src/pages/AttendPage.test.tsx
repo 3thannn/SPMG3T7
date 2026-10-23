@@ -131,7 +131,7 @@ it('registers, says so, and reads the list again', async () => {
     attendee,
   )
   expect(await screen.findByText('You are registered for Open House.')).toBeInTheDocument()
-  expect(await screen.findByText('You are registered for this event.')).toBeInTheDocument()
+  expect(await screen.findByText(/^You are registered for this event\./)).toBeInTheDocument()
   expect(screen.getByText('11 places left')).toBeInTheDocument()
   expect(listMock).toHaveBeenCalledTimes(2)
 })
@@ -192,8 +192,13 @@ it('offers no second place once registered', async () => {
   listMock.mockResolvedValue([openEvent({ registered: true })])
   render(<AttendPage session={attendee} />)
 
-  expect(await screen.findByText('You are registered for this event.')).toBeInTheDocument()
+  expect(await screen.findByText(/^You are registered for this event\./)).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Register for/ })).not.toBeInTheDocument()
+  // US20.2: withdrawing is done from My Registrations.
+  expect(screen.getByRole('link', { name: 'My Registrations' })).toHaveAttribute(
+    'href',
+    '#/my-registrations',
+  )
 })
 
 it('offers no Register button on a full event', async () => {

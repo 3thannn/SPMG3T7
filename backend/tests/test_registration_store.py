@@ -12,19 +12,24 @@ from dataclasses import dataclass, field
 import pytest
 
 from app import supabase_client
+from app.event_status import EventStatus
 from app.registration_store import (
     EVENTS_TABLE,
     OPEN_EVENT_COLUMNS,
     SETTINGS_COLUMNS,
     TABLE,
+    WITH_EVENT_COLUMNS,
     BelowRegistered,
     OpenEvent,
+    RegisteredEvent,
     RegisterOutcome,
     Registration,
     RegistrationSettings,
     RegistrationStatus,
     StaleRegistrationSettings,
     SupabaseRegistrations,
+    WithdrawOutcome,
+    to_registration,
 )
 
 OPEN_ROW = {
@@ -314,3 +319,110 @@ class TestRegistering:
             SupabaseRegistrations().register(
                 950, attendee_id=20, name="Casey", email="casey@example.com"
             )
+
+
+REGISTRATION_ROW = {
+    "id": 5,
+    "event_id": 950,
+    "attendee_id": 20,
+    "name": "Casey Tan",
+    "email": "casey@example.com",
+    "status": "Withdrawn",
+    "created_at": "2026-10-23T06:00:00",
+    "withdrawn_at": "2026-10-24T01:30:00",
+    "events": {
+        "name": "Open House",
+        "proposed_date": "2099-11-02T09:00:00",
+        "end_date": "2099-11-02T17:00:00",
+        "status": "Confirmed",
+    },
+}
+
+
+class TestAnAttendeesRegistrations:
+    """US20.2: their own list, with each event's current details embedded."""
+
+    def test_it_reads_their_rows_newest_first_with_the_event(self, fake):
+        fake.rows = {TABLE: [REGISTRATION_ROW]}
+
+        listed = SupabaseRegistrations().list_for_attendee(20)
+
+        assert listed == [
+            Registration(
+                id=5,
+                event_id=950,
+                attendee_id=20,
+                name="Casey Tan",
+                email="casey@example.com",
+                status=RegistrationStatus.WITHDRAWN,
+                created_at="2026-10-23T06:00:00",
+                withdrawn_at="2026-10-24T01:30:00",
+                event=RegisteredEvent(
+                    title="Open House",
+                    starts_at="2099-11-02T09:00:00",
+                    ends_at="2099-11-02T17:00:00",
+                    status=EventStatus.CONFIRMED,
+                ),
+            )
+        ]
+        (query,) = fake.on(TABLE)
+        assert query.calls[0] == ("select", WITH_EVENT_COLUMNS)
+        assert ("eq", "attendee_id", 20) in query.calls
+        assert ("order", "id", True) in query.calls
+
+    def test_the_embedded_event_is_read_whether_object_or_list(self):
+        as_list = to_registration({**REGISTRATION_ROW, "events": [REGISTRATION_ROW["events"]]})
+        missing = to_registration({**REGISTRATION_ROW, "events": None, "withdrawn_at": None})
+
+        assert as_list.event is not None and as_list.event.title == "Open House"
+        assert (missing.event, missing.withdrawn_at) == (None, "")
+
+    def test_one_registration_by_id(self, fake):
+        fake.rows = {TABLE: [REGISTRATION_ROW]}
+
+        found = SupabaseRegistrations().get_registration(5)
+
+        assert found is not None and found.id == 5
+        (query,) = fake.on(TABLE)
+        assert ("eq", "id", 5) in query.calls
+
+    def test_no_such_registration_is_none(self, fake):
+        assert SupabaseRegistrations().get_registration(5) is None
+
+
+class TestWithdrawing:
+    def test_it_calls_the_function_and_reads_the_registration_back(self, fake):
+        fake.rpc_answer = {"outcome": "withdrawn", "withdrawnAt": "2026-10-24T01:30:00"}
+        fake.rows = {TABLE: [REGISTRATION_ROW]}
+
+        result = SupabaseRegistrations().withdraw(5, attendee_id=20)
+
+        assert fake.rpcs == [
+            ("withdraw_registration", {"p_registration_id": 5, "p_attendee_id": 20})
+        ]
+        assert result.outcome is WithdrawOutcome.WITHDRAWN
+        assert result.registration is not None
+        assert result.registration.status is RegistrationStatus.WITHDRAWN
+
+    @pytest.mark.parametrize(
+        ("answer", "outcome"),
+        [
+            ("not-found", WithdrawOutcome.NOT_FOUND),
+            ("already-withdrawn", WithdrawOutcome.ALREADY_WITHDRAWN),
+            ("closed", WithdrawOutcome.CLOSED),
+            ("started", WithdrawOutcome.STARTED),
+        ],
+    )
+    def test_each_refusal_is_an_outcome_not_an_error(self, fake, answer, outcome):
+        fake.rpc_answer = {"outcome": answer}
+
+        result = SupabaseRegistrations().withdraw(5, attendee_id=20)
+
+        assert (result.outcome, result.registration) == (outcome, None)
+
+    @pytest.mark.parametrize("answer", [{"outcome": "nonsense"}, None])
+    def test_an_answer_it_does_not_know_is_a_bug(self, fake, answer):
+        fake.rpc_answer = answer
+
+        with pytest.raises(RuntimeError):
+            SupabaseRegistrations().withdraw(5, attendee_id=20)

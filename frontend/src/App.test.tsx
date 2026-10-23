@@ -57,8 +57,8 @@ function stubApi({ me = 'ok', role = 'Event Organiser' }: { me?: MeOutcome; role
       return { ok: true, status: 200, json: async () => [] }
     }
 
-    // US20.1: the Attendee's events open for registration
-    if (url.endsWith('/attendee/events')) {
+    // US20.1: the Attendee's events open for registration; US20.2: their registrations
+    if (url.endsWith('/attendee/events') || url.endsWith('/attendee/registrations')) {
       return { ok: true, status: 200, json: async () => [] }
     }
 
@@ -414,6 +414,19 @@ it('routes an Attendee to the events open for registration on sign-in', async ()
   expect(await screen.findByRole('heading', { name: 'Upcoming Events' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Upcoming Events' })).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'Events' })).not.toBeInTheDocument()
+})
+
+it('opens My Registrations from the header (US20.2)', async () => {
+  const user = userEvent.setup()
+  signedInAs('Attendee')
+  stubApi({ me: 'ok', role: 'Attendee' })
+  window.location.hash = '/attend'
+
+  render(<App />)
+
+  await user.click(await screen.findByRole('link', { name: 'My Registrations' }))
+
+  expect(await screen.findByRole('heading', { name: 'My Registrations' })).toBeInTheDocument()
 })
 
 it('keeps an Attendee out of the internal events list', async () => {

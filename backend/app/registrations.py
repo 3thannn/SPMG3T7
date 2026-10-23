@@ -18,6 +18,12 @@ sentences.
 
 When a registration takes the last place, the Coordinator and the Organiser are
 told (US10.2). Best effort: the registration has already happened.
+
+US20.2 adds the Attendee's own list (`/attendee/registrations`): each event they
+registered for, with its current date, time and venues, the registration's
+status, and whether they can still withdraw or register again. Withdrawing is
+allowed until the event starts and gives the place back; registering again is
+US20.1's route, because a withdrawn registration no longer takes a place.
 """
 
 import logging
@@ -30,7 +36,7 @@ from pydantic import BaseModel, Field
 
 from app import booking_store, event_store, registration_store
 from app.auth import require_any_permission, require_permission
-from app.booking_store import BookingStatus
+from app.booking_store import BookingStatus, local_now
 from app.event_status import EventStatus
 from app.event_store import Event
 from app.events import (
@@ -50,7 +56,10 @@ from app.registration_store import (
     RegisterOutcome,
     Registration,
     RegistrationSettings,
+    RegistrationStatus,
     StaleRegistrationSettings,
+    WithdrawOutcome,
+    withdrawal_refusal,
 )
 from app.users import User
 
@@ -404,3 +413,130 @@ def register(event_id: str, payload: RegistrationIn, user: Attendee) -> Registra
     if result.became_full:
         _tell_full(numeric_id)
     return _registration_out(result.registration)
+
+
+# -- US20.2: the Attendee's own registrations, and withdrawing ------------------
+
+REGISTRATION_NOT_FOUND_MESSAGE = "That registration no longer exists."
+
+WITHDRAW_REFUSALS: dict[WithdrawOutcome, tuple[str, str]] = {
+    WithdrawOutcome.ALREADY_WITHDRAWN: (
+        "already-withdrawn",
+        "You have already withdrawn from this event.",
+    ),
+    WithdrawOutcome.STARTED: (
+        "event-started",
+        "This event has already started, so you can no longer withdraw.",
+    ),
+    WithdrawOutcome.CLOSED: (
+        "event-closed",
+        "This event is over or no longer going ahead, so there is nothing to withdraw from.",
+    ),
+}
+
+
+class MyRegistrationOut(BaseModel):
+    """One event the Attendee registered for, as it stands now (US20.2 AC1)."""
+
+    id: str
+    event_id: str = Field(serialization_alias="eventId")
+    #: The event's current details, read now rather than when they registered.
+    title: str
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+    venues: list[str]
+    #: Registered or Withdrawn.
+    status: str
+    name: str
+    email: str
+    registered_at: str = Field(serialization_alias="registeredAt")
+    #: Empty unless Withdrawn.
+    withdrawn_at: str = Field(serialization_alias="withdrawnAt")
+    can_withdraw: bool = Field(serialization_alias="canWithdraw")
+    #: Withdrawn, and the event still takes registrations and has a place.
+    can_register_again: bool = Field(serialization_alias="canRegisterAgain")
+    #: Null when the event is not taking registrations.
+    places_left: int | None = Field(serialization_alias="placesLeft")
+
+
+def _my_out(registration: Registration, open_event: OpenEvent | None) -> MyRegistrationOut:
+    event = registration.event
+    places_left = open_event.places_left if open_event is not None else None
+    return MyRegistrationOut(
+        id=str(registration.id),
+        event_id=str(registration.event_id),
+        title=event.title if event else "",
+        starts_at=event.starts_at if event else "",
+        ends_at=event.ends_at if event else "",
+        venues=_venues(registration.event_id),
+        status=str(registration.status),
+        name=registration.name,
+        email=registration.email,
+        registered_at=registration.created_at,
+        withdrawn_at=registration.withdrawn_at,
+        can_withdraw=withdrawal_refusal(registration, event, local_now()) is None,
+        can_register_again=(
+            registration.status is RegistrationStatus.WITHDRAWN and bool(places_left)
+        ),
+        places_left=places_left,
+    )
+
+
+def _latest_per_event(registrations: list[Registration]) -> list[Registration]:
+    """One entry per event: the newest registration for it.
+
+    Someone who withdrew and registered again has two rows for the event; the
+    newer one is where they stand now. The older stays in the table as history.
+    """
+    newest = sorted(registrations, key=lambda item: item.id, reverse=True)
+    latest: dict[int, Registration] = {}
+    for item in newest:
+        latest.setdefault(item.event_id, item)
+    return list(latest.values())
+
+
+@router.get("/attendee/registrations", response_model=list[MyRegistrationOut])
+def list_my_registrations(user: Attendee) -> list[MyRegistrationOut]:
+    """US20.2 AC1: the Attendee's registrations, soonest event first."""
+    store = registration_store.repository()
+    latest = _latest_per_event(store.list_for_attendee(user.id))
+    open_events = {item.event_id: item for item in store.list_open()}
+    ordered = sorted(
+        latest,
+        key=lambda item: ((item.event.starts_at if item.event else "") or "9999", item.id),
+    )
+    return [_my_out(item, open_events.get(item.event_id)) for item in ordered]
+
+
+def _registration_not_found() -> HTTPException:
+    """The same answer for a missing registration and someone else's."""
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={"code": "registration_not_found", "message": REGISTRATION_NOT_FOUND_MESSAGE},
+    )
+
+
+@router.post(
+    "/attendee/registrations/{registration_id}/withdraw", response_model=MyRegistrationOut
+)
+def withdraw(registration_id: str, user: Attendee) -> MyRegistrationOut:
+    """US20.2 AC2: give the place back, before the event starts.
+
+    404 for a registration that is not the caller's, then 409 when it is
+    already withdrawn, the event has started, or it is no longer Confirmed. The
+    database decides under the event's lock, so a registration for the freed
+    place waits for the withdrawal and then finds the place.
+    """
+    try:
+        numeric_id = int(registration_id)
+    except ValueError:
+        raise _registration_not_found() from None
+    store = registration_store.repository()
+    result = store.withdraw(numeric_id, attendee_id=user.id)
+    if result.outcome is WithdrawOutcome.NOT_FOUND:
+        raise _registration_not_found()
+    if result.outcome in WITHDRAW_REFUSALS:
+        reason, message = WITHDRAW_REFUSALS[result.outcome]
+        raise _refused(reason, message)
+    assert result.registration is not None  # noqa: S101 - WITHDRAWN carries it
+    return _my_out(result.registration, store.get_open(result.registration.event_id))

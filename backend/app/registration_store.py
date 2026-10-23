@@ -10,9 +10,9 @@ Four choices worth knowing:
 * The settings are two columns on `events` (`registration_open`,
   `registration_capacity`), read here rather than through `app.event_store`, so
   an event read elsewhere never depends on them.
-* "Active" is status Registered, the only status this story produces. US20.2
-  adds withdrawing and US4.6 "Event Cancelled"; a registration in either stays
-  as history and no longer takes a place.
+* "Active" is status Registered. A Withdrawn registration (US20.2) stays as
+  history and no longer takes a place, so registering again is a new row; US4.6
+  will add "Event Cancelled" the same way.
 * The capacity is enforced in the database. `register_for_event` locks the
   event before it counts, so two Attendees after the last place queue on that
   lock and the second finds the event full; a trigger re-checks any other
@@ -25,17 +25,21 @@ Four choices worth knowing:
 
 import threading
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 
 from app import event_store, supabase_client
+from app.booking_store import local_now
 from app.event_status import EventStatus
 from app.event_store import _now
 
 EVENTS_TABLE = "events"
 TABLE = "registrations"
-COLUMNS = "id, event_id, attendee_id, name, email, status, created_at"
+COLUMNS = "id, event_id, attendee_id, name, email, status, created_at, withdrawn_at"
+#: US20.2: an Attendee's own list carries each event's current details with it.
+WITH_EVENT_COLUMNS = f"{COLUMNS}, events(name, proposed_date, end_date, status)"
 SETTINGS_COLUMNS = "id, registration_open, registration_capacity"
 OPEN_EVENT_COLUMNS = "id, name, proposed_date, end_date, registration_capacity"
 
@@ -44,9 +48,11 @@ class RegistrationStatus(StrEnum):
     """Matches the `registration_status` enum in Postgres."""
 
     REGISTERED = "Registered"
+    #: US20.2: given back before the event started. Final for this row.
+    WITHDRAWN = "Withdrawn"
 
 
-#: Statuses that take a place. Only one today; see the module docstring.
+#: Statuses that take a place.
 ACTIVE: frozenset[RegistrationStatus] = frozenset({RegistrationStatus.REGISTERED})
 
 
@@ -89,6 +95,16 @@ class OpenEvent:
 
 
 @dataclass(frozen=True)
+class RegisteredEvent:
+    """US20.2: the event a registration is for, as it stands now."""
+
+    title: str
+    starts_at: str
+    ends_at: str
+    status: EventStatus
+
+
+@dataclass(frozen=True)
 class Registration:
     id: int
     event_id: int
@@ -98,6 +114,73 @@ class Registration:
     status: RegistrationStatus
     #: Naive UTC, as the other recorded times are.
     created_at: str
+    #: US20.2: naive UTC. Empty unless Withdrawn.
+    withdrawn_at: str = ""
+    #: US20.2: filled in by the reads that list or fetch registrations.
+    event: RegisteredEvent | None = None
+
+
+def to_registration(row: dict) -> Registration:
+    embedded = row.get("events")
+    if isinstance(embedded, list):
+        embedded = embedded[0] if embedded else None
+    event = None
+    if isinstance(embedded, dict):
+        event = RegisteredEvent(
+            title=embedded.get("name") or "",
+            starts_at=str(embedded["proposed_date"]) if embedded.get("proposed_date") else "",
+            ends_at=str(embedded["end_date"]) if embedded.get("end_date") else "",
+            status=EventStatus(embedded["status"]),
+        )
+    return Registration(
+        id=row["id"],
+        event_id=row["event_id"],
+        attendee_id=row["attendee_id"],
+        name=row["name"],
+        email=row["email"],
+        status=RegistrationStatus(row["status"]),
+        created_at=str(row["created_at"]),
+        withdrawn_at=str(row["withdrawn_at"]) if row.get("withdrawn_at") else "",
+        event=event,
+    )
+
+
+class WithdrawOutcome(StrEnum):
+    """What `withdraw` answered. The values are the database function's."""
+
+    WITHDRAWN = "withdrawn"
+    #: No such registration, or not this Attendee's.
+    NOT_FOUND = "not-found"
+    ALREADY_WITHDRAWN = "already-withdrawn"
+    #: The event is no longer Confirmed.
+    CLOSED = "closed"
+    #: The event has started: too late to give the place back.
+    STARTED = "started"
+
+
+@dataclass(frozen=True)
+class WithdrawResult:
+    outcome: WithdrawOutcome
+    #: Set only when `outcome` is WITHDRAWN.
+    registration: Registration | None = None
+
+
+def withdrawal_refusal(
+    registration: Registration, event: RegisteredEvent | None, now: datetime
+) -> WithdrawOutcome | None:
+    """US20.2: may this registration be withdrawn now? None when it may.
+
+    Before the event starts, while it is Confirmed. `now` and the start are
+    naive Singapore local times, as every event time is. The database function
+    asks the same three questions in the same order.
+    """
+    if registration.status not in ACTIVE:
+        return WithdrawOutcome.ALREADY_WITHDRAWN
+    if event is None or event.status is not EventStatus.CONFIRMED:
+        return WithdrawOutcome.CLOSED
+    if event.starts_at and datetime.fromisoformat(event.starts_at) <= now:
+        return WithdrawOutcome.STARTED
+    return None
 
 
 class RegisterOutcome(StrEnum):
@@ -148,6 +231,12 @@ class Repository(Protocol):
     def register(
         self, event_id: int, *, attendee_id: int, name: str, email: str
     ) -> RegisterResult: ...
+
+    def list_for_attendee(self, attendee_id: int) -> list[Registration]: ...
+
+    def get_registration(self, registration_id: int) -> Registration | None: ...
+
+    def withdraw(self, registration_id: int, *, attendee_id: int) -> WithdrawResult: ...
 
 
 def _open_event(row: dict, registered: int) -> OpenEvent:
@@ -293,6 +382,44 @@ class SupabaseRegistrations:
             became_full=bool(answer.get("becameFull")),
         )
 
+    def list_for_attendee(self, attendee_id: int) -> list[Registration]:
+        """US20.2: every registration the Attendee has made, newest first."""
+        response = (
+            supabase_client.admin()
+            .table(TABLE)
+            .select(WITH_EVENT_COLUMNS)
+            .eq("attendee_id", attendee_id)
+            .order("id", desc=True)
+            .execute()
+        )
+        return [to_registration(row) for row in response.data or []]
+
+    def get_registration(self, registration_id: int) -> Registration | None:
+        response = (
+            supabase_client.admin()
+            .table(TABLE)
+            .select(WITH_EVENT_COLUMNS)
+            .eq("id", registration_id)
+            .limit(1)
+            .execute()
+        )
+        rows = response.data or []
+        return to_registration(rows[0]) if rows else None
+
+    def withdraw(self, registration_id: int, *, attendee_id: int) -> WithdrawResult:
+        result = supabase_client.admin().rpc(
+            "withdraw_registration",
+            {"p_registration_id": registration_id, "p_attendee_id": attendee_id},
+        ).execute()
+        answer = result.data if isinstance(result.data, dict) else {}
+        try:
+            outcome = WithdrawOutcome(answer.get("outcome"))
+        except ValueError:
+            raise RuntimeError(f"withdraw_registration answered {answer!r}") from None
+        if outcome is not WithdrawOutcome.WITHDRAWN:
+            return WithdrawResult(outcome=outcome)
+        return WithdrawResult(outcome=outcome, registration=self.get_registration(registration_id))
+
 
 #: The statuses `set_event_registration` takes settings at.
 SETTABLE: frozenset[EventStatus] = frozenset(
@@ -408,6 +535,47 @@ class InMemoryRegistrations:
                 registration=registration,
                 became_full=event.registered + 1 >= event.capacity,
             )
+
+    def _with_event(self, registration: Registration) -> Registration:
+        """Stands in for the embedded `events(...)` the real store reads."""
+        event = event_store.repository().get_event(registration.event_id)
+        if event is None:
+            return replace(registration, event=None)
+        return replace(
+            registration,
+            event=RegisteredEvent(
+                title=event.title,
+                starts_at=event.starts_at,
+                ends_at=event.ends_at,
+                status=event.status,
+            ),
+        )
+
+    def list_for_attendee(self, attendee_id: int) -> list[Registration]:
+        mine = (item for item in self.registrations if item.attendee_id == attendee_id)
+        return [self._with_event(item) for item in sorted(mine, key=lambda item: -item.id)]
+
+    def get_registration(self, registration_id: int) -> Registration | None:
+        found = next((item for item in self.registrations if item.id == registration_id), None)
+        return self._with_event(found) if found is not None else None
+
+    def withdraw(self, registration_id: int, *, attendee_id: int) -> WithdrawResult:
+        with self.lock:
+            found = self.get_registration(registration_id)
+            if found is None or found.attendee_id != attendee_id:
+                return WithdrawResult(outcome=WithdrawOutcome.NOT_FOUND)
+            refusal = withdrawal_refusal(found, found.event, local_now())
+            if refusal is not None:
+                return WithdrawResult(outcome=refusal)
+            withdrawn = replace(
+                found, status=RegistrationStatus.WITHDRAWN, withdrawn_at=_now(), event=None
+            )
+            self.registrations = [
+                withdrawn if item.id == registration_id else item for item in self.registrations
+            ]
+        return WithdrawResult(
+            outcome=WithdrawOutcome.WITHDRAWN, registration=self.get_registration(registration_id)
+        )
 
 
 _repository: Repository = SupabaseRegistrations()

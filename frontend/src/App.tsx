@@ -8,6 +8,7 @@ import AttendPage from './pages/AttendPage'
 import EventDetailPage from './pages/EventDetailPage'
 import EventsPage from './pages/EventsPage'
 import LandingPage from './pages/LandingPage'
+import MyRegistrationsPage from './pages/MyRegistrationsPage'
 import NewEventPage from './pages/NewEventPage'
 import NotificationsPage from './pages/NotificationsPage'
 import { EquipmentPage, EquipmentDetailPage, EquipmentFormPage } from './pages/EquipmentPage'
@@ -241,6 +242,10 @@ export default function App() {
 
     if (route === '/attend') {
       return <AttendPage session={session} />
+    }
+
+    if (route === '/my-registrations') {
+      return <MyRegistrationsPage session={session} />
     }
 
     const eventId = matchEventDetail(route)
