@@ -228,7 +228,7 @@ describe('describeDates', () => {
 })
 
 describe('validateUnavailability', () => {
-  const valid = { startDate: '2026-11-02', endDate: '2026-11-06', reason: '' }
+  const valid = { startDate: '2026-11-02', endDate: '2026-11-06', reasonType: 'maintenance', otherReason: '' }
 
   it('accepts a complete range', () => {
     expect(validateUnavailability(valid)).toBe('')
@@ -267,15 +267,15 @@ describe('validateUnavailability', () => {
   })
 
   it('takes a reason at the limit and refuses one over it', () => {
-    expect(validateUnavailability({ ...valid, reason: 'x'.repeat(REASON_MAX) })).toBe('')
-    expect(validateUnavailability({ ...valid, reason: 'x'.repeat(REASON_MAX + 1) })).toBe(
-      `Keep the reason to ${REASON_MAX} characters or fewer.`,
+    expect(validateUnavailability({ ...valid, reasonType: 'other', otherReason: 'x'.repeat(REASON_MAX) })).toBe('')
+    expect(validateUnavailability({ ...valid, reasonType: 'other', otherReason: 'x'.repeat(REASON_MAX + 1) })).toBe(
+      `Keep the custom reason to ${REASON_MAX} characters or fewer.`,
     )
   })
 
   it('counts the reason after trimming, as the server does', () => {
     expect(
-      validateUnavailability({ ...valid, reason: `  ${'x'.repeat(REASON_MAX)}  ` }),
+      validateUnavailability({ ...valid, reasonType: 'other', otherReason: `  ${'x'.repeat(REASON_MAX)}  ` }),
     ).toBe('')
   })
 })
@@ -362,7 +362,8 @@ describe('the unavailability requests', () => {
     venueId: '1',
     startDate: '2026-11-02',
     endDate: '2026-11-06',
-    reason: '',
+    reasonType: 'maintenance',
+    otherReason: '',
     createdAt: '2026-10-01T09:00:00',
   }
 
@@ -391,7 +392,7 @@ describe('the unavailability requests', () => {
 
   it('posts a range as JSON and hands back what was stored', async () => {
     const fetchMock = respond(201, record)
-    const input = { startDate: '2026-11-02', endDate: '2026-11-06', reason: '' }
+    const input = { startDate: '2026-11-02', endDate: '2026-11-06', reasonType: 'maintenance', otherReason: '' }
 
     await expect(markUnavailable('1', input, session)).resolves.toEqual(record)
     const [url, init] = fetchMock.mock.calls[0]

@@ -667,7 +667,8 @@ def _validated_range(
     try:
         reason_type = venue_unavailability_store.UnavailabilityReasonType(reason_type_raw)
     except ValueError:
-        valid_types = ", ".join(t.value for t in venue_unavailability_store.UnavailabilityReasonType)
+        enum_type = venue_unavailability_store.UnavailabilityReasonType
+        valid_types = ", ".join(t.value for t in enum_type)
         raise _invalid_range(
             f'Reason type must be one of: {valid_types}.'
         ) from None

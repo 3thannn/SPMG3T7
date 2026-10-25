@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { signIn, signOut, waitForBackend } from './helpers'
+import { signIn, waitForBackend } from './helpers'
 
 /**
  * E2E tests for Venue Unavailability (US12.2)
