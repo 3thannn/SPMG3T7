@@ -406,9 +406,16 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     const venueName = booking.venueName || 'Unnamed venue'
     const cancelOpen = cancelling?.bookingId === booking.id
     const isRejected = booking.status === 'Rejected'
+    const needsReplacement = booking.status === 'Needs replacement'
     const cancellable = booking.status === 'Requested' || (isHeld && !holdExpired)
     const rowClass =
-      isCancelled || isRejected ? ' is-cancelled' : holdExpired ? ' is-expired' : ''
+      isCancelled || isRejected
+        ? ' is-cancelled'
+        : holdExpired
+          ? ' is-expired'
+          : needsReplacement
+            ? ' is-needs-replacement'
+            : ''
     return (
       <li key={booking.id} className={`booking-row${rowClass}`}>
         <div className="booking-summary">
@@ -463,6 +470,13 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
             Flagged {formatTimestamp(booking.conflict.flaggedAt)}: {booking.conflict.reason}{' '}
             Nothing has been cancelled. Sort out the clash with Venue Staff, or cancel this
             booking.
+          </p>
+        )}
+        {booking.status === 'Needs replacement' && booking.replacementReason && (
+          <p className="booking-replacement" role="note">
+            <span className="booking-replacement-tag">Needs replacement</span>
+            This booking has been flagged because the venue is unavailable: {booking.replacementReason}.
+            Contact Venue Staff to find an alternative, or cancel this booking.
           </p>
         )}
         {booking.decision && booking.status === 'Confirmed' && (
