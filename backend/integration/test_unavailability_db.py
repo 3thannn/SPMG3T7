@@ -72,7 +72,7 @@ def book(db, *, status="Requested", event_id=101, venue_id=101,
             decided_at, decided_by_id, rejection_reason,
             cancelled_at, cancellation_reason, cancelled_by_id, hold_expires_at
         ) VALUES (
-            %(event)s, %(venue)s, %(start)s, %(end)s, %(status)s, 101,
+            %(event)s, %(venue)s, %(start)s, %(end)s, %(status)s::booking_status, 101,
             CASE WHEN %(status)s IN ('Confirmed', 'Rejected') THEN now() END,
             CASE WHEN %(status)s IN ('Confirmed', 'Rejected') THEN 102 END,
             CASE WHEN %(status)s = 'Rejected' THEN 'Unsuitable' END,
