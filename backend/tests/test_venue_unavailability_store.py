@@ -267,7 +267,12 @@ class TestReadingARow:
 class TestInMemoryStore:
     def create(self, store: InMemoryUnavailability, start: date, end: date, venue_id: int = 1):
         return store.create(
-            venue_id=venue_id, start_date=start, end_date=end, reason_type="maintenance", other_reason="", created_by_id=3
+            venue_id=venue_id,
+            start_date=start,
+            end_date=end,
+            reason_type="maintenance",
+            other_reason="",
+            created_by_id=3,
         )
 
     def test_ids_are_assigned_in_sequence_from_next_id(self):

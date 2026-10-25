@@ -75,7 +75,8 @@ class TestRecordingARange:
     def test_the_response_uses_the_wire_names_and_nothing_else(self, client, staff):
         body = mark(client, staff).json()
 
-        assert set(body) == {"id", "venueId", "startDate", "endDate", "reasonType", "otherReason", "createdAt"}
+        expected = {"id", "venueId", "startDate", "endDate", "reasonType", "otherReason", "createdAt"}
+        assert set(body) == expected
         assert isinstance(body["id"], str)
 
     def test_the_range_is_stored_against_the_venue(self, client, staff, unavailability_repository):
@@ -160,13 +161,15 @@ class TestTheReason:
         assert response.status_code == 201, response.text
 
     def test_custom_reason_one_over_the_limit_is_refused(self, client, staff):
-        detail = refusal(mark(client, staff, reasonType="other", otherReason="x" * (REASON_MAX + 1)))
+        response = mark(client, staff, reasonType="other", otherReason="x" * (REASON_MAX + 1))
+        detail = refusal(response)
 
         assert str(REASON_MAX) in detail["message"]
 
     def test_the_limit_is_counted_after_trimming(self, client, staff):
         """Padding a custom reason that fits does not push it over."""
-        response = mark(client, staff, reasonType="other", otherReason="  " + "x" * REASON_MAX + "  ")
+        text = "  " + "x" * REASON_MAX + "  "
+        response = mark(client, staff, reasonType="other", otherReason=text)
 
         assert response.status_code == 201, response.text
 
