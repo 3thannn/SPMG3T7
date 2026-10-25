@@ -138,7 +138,7 @@ class TestTheReason:
     def test_other_reason_type_requires_custom_text(self, client, staff):
         detail = refusal(mark(client, staff, reasonType="other", otherReason=""))
 
-        assert "other reason" in detail["message"].lower()
+        assert "custom reason" in detail["message"].lower()
 
     def test_other_reason_type_with_custom_text_is_accepted(self, client, staff):
         response = mark(client, staff, reasonType="other", otherReason="Unexpected flooding")
@@ -155,7 +155,7 @@ class TestTheReason:
     def test_a_blank_custom_reason_for_other_is_refused(self, client, staff):
         detail = refusal(mark(client, staff, reasonType="other", otherReason="   "))
 
-        assert "other reason" in detail["message"].lower()
+        assert "custom reason" in detail["message"].lower()
 
     def test_custom_reason_at_the_limit_is_accepted(self, client, staff):
         response = mark(client, staff, reasonType="other", otherReason="x" * REASON_MAX)
