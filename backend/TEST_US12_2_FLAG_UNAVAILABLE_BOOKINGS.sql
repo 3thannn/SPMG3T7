@@ -14,10 +14,10 @@ DELETE FROM public.venues WHERE name LIKE 'US12.2 Test%';
 DELETE FROM public.users WHERE name LIKE 'US12.2 Test%';
 
 -- Create test users
-INSERT INTO public.users (id, name, email, role, password_hash)
+INSERT INTO public.users (id, name, email, role)
 VALUES
-    (9001, 'US12.2 Test Coordinator', 'coord12.2@test.com', 'Event Coordinator', 'hash'),
-    (9002, 'US12.2 Test Venue Staff', 'venue12.2@test.com', 'Venue Staff', 'hash')
+    (9001, 'US12.2 Test Coordinator', 'coord12.2@test.com', 'Event Coordinator'),
+    (9002, 'US12.2 Test Venue Staff', 'venue12.2@test.com', 'Venue Staff')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 -- Create test venue
@@ -26,30 +26,30 @@ VALUES (9001, 'US12.2 Test Hall', 'Test Building', 100, 30, 30)
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 -- Create test events
-INSERT INTO public.events (id, name, purpose, description, proposed_date, end_date, expected_attendance, status, organiser_id, coordinator_id)
+INSERT INTO public.events (id, name, purpose, description, proposed_date, end_date, expected_attendance, status, organiser_id)
 VALUES
-    (9001, 'US12.2 Test Event 1 - Confirmed booking', 'Test', 'Event with confirmed booking on 11 Nov', '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 50, 'Approved', 9001, 9001),
-    (9002, 'US12.2 Test Event 2 - Cancelled booking', 'Test', 'Event with cancelled booking on 11 Nov', '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 50, 'Approved', 9001, 9001),
-    (9003, 'US12.2 Test Event 3 - Outside range', 'Test', 'Event with booking on 20 Nov (outside unavailability)', '2027-11-20 14:00:00+08', '2027-11-20 16:00:00+08', 50, 'Approved', 9001, 9001),
-    (9004, 'US12.2 Test Event 4 - Two bookings', 'Test', 'Event with two bookings at same venue', '2027-11-11 10:00:00+08', '2027-11-11 12:00:00+08', 50, 'Approved', 9001, 9001)
+    (9001, 'US12.2 Test Event 1 - Confirmed booking', 'Test', 'Event with confirmed booking on 11 Nov', '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 50, 'Approved', 9001),
+    (9002, 'US12.2 Test Event 2 - Cancelled booking', 'Test', 'Event with cancelled booking on 11 Nov', '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 50, 'Approved', 9001),
+    (9003, 'US12.2 Test Event 3 - Outside range', 'Test', 'Event with booking on 20 Nov (outside unavailability)', '2027-11-20 14:00:00+08', '2027-11-20 16:00:00+08', 50, 'Approved', 9001),
+    (9004, 'US12.2 Test Event 4 - Two bookings', 'Test', 'Event with two bookings at same venue', '2027-11-11 10:00:00+08', '2027-11-11 12:00:00+08', 50, 'Approved', 9001)
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 -- Create test bookings
-INSERT INTO public.venue_bookings (id, event_id, venue_id, start_at, end_at, status, requested_by_id, created_at, headcount)
+INSERT INTO public.venue_bookings (id, event_id, venue_id, start_at, end_at, status, requested_by_id, created_at, headcount, decided_at, decided_by_id, cancelled_at, cancellation_reason, cancelled_by_id)
 VALUES
     -- Event 1: Confirmed booking on 11 Nov (should be flagged)
-    (9001, 9001, 9001, '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 'Confirmed', 9001, NOW(), 50),
+    (9001, 9001, 9001, '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 'Confirmed', 9001, NOW(), 50, NOW(), 9002, NULL, NULL, NULL),
 
     -- Event 2: Cancelled booking on 11 Nov (should NOT be flagged)
-    (9002, 9002, 9001, '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 'Cancelled', 9001, NOW(), 50),
+    (9002, 9002, 9001, '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 'Cancelled', 9001, NOW(), 50, NULL, NULL, NOW(), 'Test cancellation', 9001),
 
     -- Event 3: Confirmed booking on 20 Nov (should NOT be flagged - outside range)
-    (9003, 9003, 9001, '2027-11-20 14:00:00+08', '2027-11-20 16:00:00+08', 'Confirmed', 9001, NOW(), 50),
+    (9003, 9003, 9001, '2027-11-20 14:00:00+08', '2027-11-20 16:00:00+08', 'Confirmed', 9001, NOW(), 50, NOW(), 9002, NULL, NULL, NULL),
 
     -- Event 4: Two confirmed bookings on 11 Nov (both should be flagged, but only ONE notification)
-    (9004, 9004, 9001, '2027-11-11 10:00:00+08', '2027-11-11 12:00:00+08', 'Confirmed', 9001, NOW(), 25),
-    (9005, 9004, 9001, '2027-11-11 15:00:00+08', '2027-11-11 17:00:00+08', 'Confirmed', 9001, NOW(), 25)
-ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status;
+    (9004, 9004, 9001, '2027-11-11 10:00:00+08', '2027-11-11 12:00:00+08', 'Confirmed', 9001, NOW(), 25, NOW(), 9002, NULL, NULL, NULL),
+    (9005, 9004, 9001, '2027-11-11 15:00:00+08', '2027-11-11 17:00:00+08', 'Confirmed', 9001, NOW(), 25, NOW(), 9002, NULL, NULL, NULL)
+ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, decided_at = EXCLUDED.decided_at, decided_by_id = EXCLUDED.decided_by_id, cancelled_at = EXCLUDED.cancelled_at, cancellation_reason = EXCLUDED.cancellation_reason, cancelled_by_id = EXCLUDED.cancelled_by_id;
 
 -- TEST CASE 1: Mark venue unavailable 10-12 Nov with maintenance reason
 -- Expected: Bookings 9001, 9004, 9005 flagged; Booking 9002 (Cancelled) and 9003 (outside range) NOT flagged
@@ -190,9 +190,9 @@ SELECT '=== TEST CASE 3: Effective window overlap (setup + turnaround) ===' AS t
 -- With 30min setup, effective start is 00:00 on Nov 13
 -- Unavailability ends on Nov 12 (which means midnight on Nov 13)
 -- So they should just barely NOT overlap
-INSERT INTO public.venue_bookings (id, event_id, venue_id, start_at, end_at, status, requested_by_id, created_at, headcount)
-VALUES (9010, 9001, 9001, '2027-11-13 00:30:00+08', '2027-11-13 02:00:00+08', 'Confirmed', 9001, NOW(), 50)
-ON CONFLICT (id) DO UPDATE SET start_at = EXCLUDED.start_at;
+INSERT INTO public.venue_bookings (id, event_id, venue_id, start_at, end_at, status, requested_by_id, created_at, headcount, decided_at, decided_by_id)
+VALUES (9010, 9001, 9001, '2027-11-13 00:30:00+08', '2027-11-13 02:00:00+08', 'Confirmed', 9001, NOW(), 50, NOW(), 9002)
+ON CONFLICT (id) DO UPDATE SET start_at = EXCLUDED.start_at, decided_at = EXCLUDED.decided_at, decided_by_id = EXCLUDED.decided_by_id;
 
 -- Mark unavailable ending on Nov 12 (midnight on Nov 13)
 INSERT INTO public.venue_unavailability (venue_id, start_date, end_date, reason_type, created_by_id)
