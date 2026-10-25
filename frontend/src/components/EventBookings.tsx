@@ -424,7 +424,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
             {formatBookingTimes(booking.startsAt, booking.endsAt)}
           </span>
           <span
-            className={`booking-status is-${holdExpired ? 'held' : booking.status.toLowerCase()}${
+            className={`booking-status is-${holdExpired ? 'held' : booking.status.toLowerCase().replaceAll(' ', '-')}${
               holdExpired ? ' is-expired' : ''
             }`}
           >
@@ -476,7 +476,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
           <p className="booking-replacement" role="note">
             <span className="booking-replacement-tag">Needs replacement</span>
             This booking has been flagged because the venue is unavailable: {booking.replacementReason}.
-            Contact Venue Staff to find an alternative, or cancel this booking.
+            Contact Venue Staff to find an alternative.
           </p>
         )}
         {booking.decision && booking.status === 'Confirmed' && (

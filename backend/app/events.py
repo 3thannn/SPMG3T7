@@ -1430,6 +1430,10 @@ class CancellationOut(BaseModel):
 
 
 class BookingOut(BaseModel):
+    replacement_reason: str = Field(default="", serialization_alias="replacementReason")
+    flagged_by_unavailability_id: int | None = Field(
+        default=None, serialization_alias="flaggedByUnavailabilityId"
+    )
     id: str
     event_id: str = Field(serialization_alias="eventId")
     venue_id: str = Field(serialization_alias="venueId")
@@ -1491,6 +1495,8 @@ BookingOut.model_rebuild()
 def _booking_out(booking: Booking) -> BookingOut:
     cancellation = booking.cancellation
     return BookingOut(
+        replacement_reason=booking.replacement_reason,
+        flagged_by_unavailability_id=booking.flagged_by_unavailability_id,
         id=str(booking.id),
         event_id=str(booking.event_id),
         venue_id=str(booking.venue_id),

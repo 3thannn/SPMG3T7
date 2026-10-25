@@ -153,6 +153,23 @@ async function formReady() {
   await screen.findByRole('option', { name: 'Great Hall — holds 500' })
 }
 
+it('shows the replacement reason and actionable guidance for a flagged booking', async () => {
+  listBookingsMock.mockResolvedValue([
+    booking({
+      status: 'Needs replacement',
+      replacementReason: 'Unexpected flooding',
+      flaggedByUnavailabilityId: 42,
+    }),
+  ])
+  render(<EventBookings event={event()} session={coordinator} />)
+
+  const notice = await screen.findByRole('note')
+  expect(notice).toHaveTextContent('Needs replacement')
+  expect(notice).toHaveTextContent('Unexpected flooding')
+  expect(notice).toHaveTextContent('Contact Venue Staff to find an alternative.')
+  expect(screen.queryByRole('button', { name: /cancel booking/i })).not.toBeInTheDocument()
+})
+
 // -- AC4: every booking for the event, together -------------------------------
 
 it('lists every booking for the event with its venue, times and status', async () => {
@@ -1177,4 +1194,3 @@ it('TC-FF02 shows no flag on a booking that has none', async () => {
   expect(row).not.toHaveTextContent('Conflict – review needed')
   expect(within(row).queryByRole('note')).not.toBeInTheDocument()
 })
-

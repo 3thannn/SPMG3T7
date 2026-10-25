@@ -253,6 +253,11 @@ it('offers Venue Staff a start, an end and a reason type', async () => {
   expect(await screen.findByLabelText('Start date')).toHaveAttribute('type', 'date')
   expect(screen.getByLabelText('End date')).toHaveAttribute('type', 'date')
   expect(screen.getByLabelText('Reason')).toBeInTheDocument()
+  expect(within(screen.getByLabelText('Reason')).getAllByRole('option').map(
+    (option) => option.textContent,
+  )).toEqual(expect.arrayContaining([
+    'Maintenance', 'Equipment failure', 'Renovation', 'Safety concern', 'Other',
+  ]))
 })
 
 it('records the range and adds it to the list', async () => {
@@ -271,7 +276,7 @@ it('records the range and adds it to the list', async () => {
 })
 
 it('says the range was saved and clears the form for the next one', async () => {
-  markMock.mockResolvedValue(range())
+  markMock.mockResolvedValue(range({ flaggedBookingsCount: 2 }))
   renderForStaff()
   await screen.findByLabelText('Start date')
 
@@ -282,6 +287,9 @@ it('says the range was saved and clears the form for the next one', async () => 
   )
   expect(screen.getByLabelText('Start date')).toHaveValue('')
   expect(screen.getByLabelText('End date')).toHaveValue('')
+  expect(screen.getByText(/^Marked unavailable:/)).toHaveTextContent(
+    '2 bookings flagged as needing replacement.',
+  )
 })
 
 it('drops the saved message as soon as the next range is started', async () => {

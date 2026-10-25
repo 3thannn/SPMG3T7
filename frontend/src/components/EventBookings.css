@@ -364,6 +364,12 @@
   border-color: var(--danger-border);
 }
 
+.booking-status.is-needs-replacement {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+
 .booking-replacement {
   margin-top: 0.45rem;
   padding: 0.55rem 0.75rem;

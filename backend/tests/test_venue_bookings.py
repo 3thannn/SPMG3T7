@@ -10,6 +10,7 @@ Fixture venues are 1 (Great Hall), 2 (Bertha Room) and 3 (Seminar Room 4); see
 conftest. No bookings exist until a test requests one.
 """
 
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -102,6 +103,25 @@ def event(event_repository):
 class TestRequestingABooking:
     """AC1 and AC5: a booking is its own record, and it starts Requested."""
 
+    def test_flagged_booking_exposes_replacement_details(
+        self, client, coordinator, event, booking_repository
+    ):
+        response = request(client, coordinator)
+        assert response.status_code == 201
+        booking_repository.bookings[0] = replace(
+            booking_repository.bookings[0],
+            status=BookingStatus.NEEDS_REPLACEMENT,
+            replacement_reason="Unexpected flooding",
+            flagged_by_unavailability_id=42,
+        )
+
+        listed = client.get(path(), headers=coordinator)
+
+        assert listed.status_code == 200
+        assert listed.json()[0]["status"] == "Needs replacement"
+        assert listed.json()[0]["replacementReason"] == "Unexpected flooding"
+        assert listed.json()[0]["flaggedByUnavailabilityId"] == 42
+
     def test_the_assigned_coordinator_requests_a_venue(self, client, coordinator, event):
         response = request(client, coordinator)
 
@@ -123,6 +143,8 @@ class TestRequestingABooking:
         body = request(client, coordinator).json()
 
         assert set(body) == {
+            "replacementReason",
+            "flaggedByUnavailabilityId",
             "id",
             "eventId",
             "venueId",
