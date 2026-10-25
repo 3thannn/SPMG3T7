@@ -75,7 +75,9 @@ class TestRecordingARange:
     def test_the_response_uses_the_wire_names_and_nothing_else(self, client, staff):
         body = mark(client, staff).json()
 
-        expected = {"id", "venueId", "startDate", "endDate", "reasonType", "otherReason", "createdAt"}
+        expected = {
+            "id", "venueId", "startDate", "endDate", "reasonType", "otherReason", "createdAt"
+        }
         assert set(body) == expected
         assert isinstance(body["id"], str)
 

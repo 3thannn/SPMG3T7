@@ -12,7 +12,6 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import VenueUnavailability from './VenueUnavailability'
 import {
-  REASON_MAX,
   VenueRuleError,
   formatDate,
   formatDateRange,
