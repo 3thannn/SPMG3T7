@@ -6,9 +6,9 @@
  */
 
 -- Setup: Clear existing test data
-DELETE FROM public.notifications WHERE event_id IN (SELECT id FROM public.events WHERE title LIKE 'US12.2 Test%');
-DELETE FROM public.bookings WHERE event_id IN (SELECT id FROM public.events WHERE title LIKE 'US12.2 Test%');
-DELETE FROM public.events WHERE title LIKE 'US12.2 Test%';
+DELETE FROM public.notifications WHERE event_id IN (SELECT id FROM public.events WHERE name LIKE 'US12.2 Test%');
+DELETE FROM public.venue_bookings WHERE event_id IN (SELECT id FROM public.events WHERE name LIKE 'US12.2 Test%');
+DELETE FROM public.events WHERE name LIKE 'US12.2 Test%';
 DELETE FROM public.venue_unavailability WHERE venue_id IN (SELECT id FROM public.venues WHERE name LIKE 'US12.2 Test%');
 DELETE FROM public.venues WHERE name LIKE 'US12.2 Test%';
 DELETE FROM public.users WHERE name LIKE 'US12.2 Test%';
@@ -26,16 +26,16 @@ VALUES (9001, 'US12.2 Test Hall', 'Test Building', 100, 30, 30)
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 -- Create test events
-INSERT INTO public.events (id, title, purpose, description, starts_at, ends_at, expected_attendance, status, organiser_id, coordinator_id)
+INSERT INTO public.events (id, name, purpose, description, proposed_date, end_date, expected_attendance, status, organiser_id, coordinator_id)
 VALUES
     (9001, 'US12.2 Test Event 1 - Confirmed booking', 'Test', 'Event with confirmed booking on 11 Nov', '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 50, 'Approved', 9001, 9001),
     (9002, 'US12.2 Test Event 2 - Cancelled booking', 'Test', 'Event with cancelled booking on 11 Nov', '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 50, 'Approved', 9001, 9001),
     (9003, 'US12.2 Test Event 3 - Outside range', 'Test', 'Event with booking on 20 Nov (outside unavailability)', '2027-11-20 14:00:00+08', '2027-11-20 16:00:00+08', 50, 'Approved', 9001, 9001),
     (9004, 'US12.2 Test Event 4 - Two bookings', 'Test', 'Event with two bookings at same venue', '2027-11-11 10:00:00+08', '2027-11-11 12:00:00+08', 50, 'Approved', 9001, 9001)
-ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title;
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 -- Create test bookings
-INSERT INTO public.bookings (id, event_id, venue_id, starts_at, ends_at, status, requested_by_id, requested_at, headcount)
+INSERT INTO public.venue_bookings (id, event_id, venue_id, start_at, end_at, status, requested_by_id, created_at, headcount)
 VALUES
     -- Event 1: Confirmed booking on 11 Nov (should be flagged)
     (9001, 9001, 9001, '2027-11-11 14:00:00+08', '2027-11-11 16:00:00+08', 'Confirmed', 9001, NOW(), 50),
@@ -59,11 +59,11 @@ SELECT '=== TEST CASE 1: Before marking venue unavailable ===' AS test_step;
 
 SELECT
     b.id AS booking_id,
-    e.title AS event_title,
+    e.name AS event_name,
     b.status,
     b.replacement_reason,
     b.flagged_by_unavailability_id
-FROM public.bookings b
+FROM public.venue_bookings b
 JOIN public.events e ON b.event_id = e.id
 WHERE b.id IN (9001, 9002, 9003, 9004, 9005)
 ORDER BY b.id;
@@ -83,11 +83,11 @@ SELECT '=== TEST CASE 1: After marking venue unavailable ===' AS test_step;
 -- Check bookings after flagging
 SELECT
     b.id AS booking_id,
-    e.title AS event_title,
+    e.name AS event_name,
     b.status,
     b.replacement_reason,
     b.flagged_by_unavailability_id
-FROM public.bookings b
+FROM public.venue_bookings b
 JOIN public.events e ON b.event_id = e.id
 WHERE b.id IN (9001, 9002, 9003, 9004, 9005)
 ORDER BY b.id;
@@ -96,7 +96,7 @@ ORDER BY b.id;
 SELECT
     n.id,
     n.user_id,
-    e.title AS event_title,
+    e.name AS event_name,
     n.kind,
     n.message,
     n.is_read
@@ -118,7 +118,7 @@ SELECT '=== TEST CASE 1: Verification ===' AS test_step;
 
 -- Count flagged bookings
 SELECT COUNT(*) AS flagged_bookings_count
-FROM public.bookings
+FROM public.venue_bookings
 WHERE id IN (9001, 9002, 9003, 9004, 9005)
   AND status = 'Needs replacement';
 -- Expected: 3
@@ -136,7 +136,7 @@ WHERE user_id = 9001
 DELETE FROM public.venue_unavailability WHERE venue_id = 9001;
 
 -- Reset booking statuses
-UPDATE public.bookings
+UPDATE public.venue_bookings
 SET status = 'Confirmed', replacement_reason = NULL, flagged_by_unavailability_id = NULL
 WHERE id IN (9001, 9004, 9005);
 
@@ -155,7 +155,7 @@ SELECT
     b.id AS booking_id,
     b.status,
     b.replacement_reason
-FROM public.bookings b
+FROM public.venue_bookings b
 WHERE b.id IN (9001, 9004, 9005)
 ORDER BY b.id;
 
@@ -175,10 +175,10 @@ LIMIT 1;
 
 -- TEST CASE 3: Test edge case - booking effective window with setup/turnaround
 DELETE FROM public.venue_unavailability WHERE venue_id = 9001;
-DELETE FROM public.bookings WHERE id = 9010;
+DELETE FROM public.venue_bookings WHERE id = 9010;
 
 -- Reset
-UPDATE public.bookings
+UPDATE public.venue_bookings
 SET status = 'Confirmed', replacement_reason = NULL, flagged_by_unavailability_id = NULL
 WHERE id = 9001;
 
@@ -190,9 +190,9 @@ SELECT '=== TEST CASE 3: Effective window overlap (setup + turnaround) ===' AS t
 -- With 30min setup, effective start is 00:00 on Nov 13
 -- Unavailability ends on Nov 12 (which means midnight on Nov 13)
 -- So they should just barely NOT overlap
-INSERT INTO public.bookings (id, event_id, venue_id, starts_at, ends_at, status, requested_by_id, requested_at, headcount)
+INSERT INTO public.venue_bookings (id, event_id, venue_id, start_at, end_at, status, requested_by_id, created_at, headcount)
 VALUES (9010, 9001, 9001, '2027-11-13 00:30:00+08', '2027-11-13 02:00:00+08', 'Confirmed', 9001, NOW(), 50)
-ON CONFLICT (id) DO UPDATE SET starts_at = EXCLUDED.starts_at;
+ON CONFLICT (id) DO UPDATE SET start_at = EXCLUDED.start_at;
 
 -- Mark unavailable ending on Nov 12 (midnight on Nov 13)
 INSERT INTO public.venue_unavailability (venue_id, start_date, end_date, reason_type, created_by_id)
@@ -201,11 +201,11 @@ VALUES (9001, '2027-11-10', '2027-11-12', 'renovation', 9002);
 -- Check if booking 9010 was flagged
 SELECT
     b.id AS booking_id,
-    b.starts_at,
-    b.ends_at,
+    b.start_at,
+    b.end_at,
     b.status,
     b.replacement_reason
-FROM public.bookings b
+FROM public.venue_bookings b
 WHERE b.id = 9010;
 
 -- EXPECTED: Booking 9010 should be flagged because:
@@ -221,7 +221,7 @@ WHERE b.id = 9010;
 SELECT '=== Cleaning up test data ===' AS test_step;
 
 DELETE FROM public.notifications WHERE event_id IN (9001, 9002, 9003, 9004);
-DELETE FROM public.bookings WHERE id IN (9001, 9002, 9003, 9004, 9005, 9010);
+DELETE FROM public.venue_bookings WHERE id IN (9001, 9002, 9003, 9004, 9005, 9010);
 DELETE FROM public.events WHERE id IN (9001, 9002, 9003, 9004);
 DELETE FROM public.venue_unavailability WHERE venue_id = 9001;
 DELETE FROM public.venues WHERE id = 9001;
