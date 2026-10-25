@@ -129,7 +129,15 @@ def seed(
     return booking
 
 
-def blackout(unavailability_repository, start: str, end: str, *, venue_id=GREAT_HALL, reason_type="maintenance", other_reason=""):
+def blackout(
+    unavailability_repository,
+    start: str,
+    end: str,
+    *,
+    venue_id=GREAT_HALL,
+    reason_type="maintenance",
+    other_reason="",
+):
     return unavailability_repository.create(
         venue_id=venue_id,
         start_date=date.fromisoformat(start),
