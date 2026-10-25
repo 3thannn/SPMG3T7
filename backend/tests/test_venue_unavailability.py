@@ -19,10 +19,12 @@ SEMINAR_ROOM = "3"
 
 #: A valid range. Tests override one field at a time, so a failure names the
 #: field that broke rather than the whole request.
+# US12.2: Updated to use structured reason types
 RANGE = {
     "startDate": "2026-11-02",
     "endDate": "2026-11-06",
-    "reason": "Annual maintenance",
+    "reasonType": "maintenance",
+    "otherReason": "",
 }
 
 
@@ -66,13 +68,14 @@ class TestRecordingARange:
         assert body["venueId"] == GREAT_HALL
         assert body["startDate"] == "2026-11-02"
         assert body["endDate"] == "2026-11-06"
-        assert body["reason"] == "Annual maintenance"
+        assert body["reasonType"] == "maintenance"
+        assert body["otherReason"] == ""
         assert body["createdAt"]
 
     def test_the_response_uses_the_wire_names_and_nothing_else(self, client, staff):
         body = mark(client, staff).json()
 
-        assert set(body) == {"id", "venueId", "startDate", "endDate", "reason", "createdAt"}
+        assert set(body) == {"id", "venueId", "startDate", "endDate", "reasonType", "otherReason", "createdAt"}
         assert isinstance(body["id"], str)
 
     def test_the_range_is_stored_against_the_venue(self, client, staff, unavailability_repository):
@@ -120,41 +123,62 @@ class TestRecordingARange:
 
 
 class TestTheReason:
-    """Optional free text — the "(maintenance, closure)" in the story."""
+    """US12.2: Structured reason types with optional custom text for "other"."""
 
-    def test_the_reason_is_optional(self, client, staff):
-        response = mark(client, staff, reason=None)
-
-        assert response.status_code == 201, response.text
-        assert response.json()["reason"] == ""
-
-    def test_a_null_reason_is_no_reason(self, client, staff):
-        response = client.post(path(), json={**RANGE, "reason": None}, headers=staff)
+    def test_a_valid_reason_type_is_accepted(self, client, staff):
+        response = mark(client, staff, reasonType="maintenance", otherReason="")
 
         assert response.status_code == 201, response.text
-        assert response.json()["reason"] == ""
+        assert response.json()["reasonType"] == "maintenance"
+        assert response.json()["otherReason"] == ""
 
-    def test_a_blank_reason_is_no_reason(self, client, staff):
-        assert mark(client, staff, reason="   ").json()["reason"] == ""
+    def test_other_reason_type_requires_custom_text(self, client, staff):
+        detail = refusal(mark(client, staff, reasonType="other", otherReason=""))
 
-    def test_the_reason_is_trimmed_at_the_ends_only(self, client, staff):
-        assert mark(client, staff, reason="  Roof  repair ").json()["reason"] == "Roof  repair"
+        assert "other reason" in detail["message"].lower()
 
-    def test_a_reason_at_the_limit_is_accepted(self, client, staff):
-        response = mark(client, staff, reason="x" * REASON_MAX)
+    def test_other_reason_type_with_custom_text_is_accepted(self, client, staff):
+        response = mark(client, staff, reasonType="other", otherReason="Unexpected flooding")
+
+        assert response.status_code == 201, response.text
+        assert response.json()["reasonType"] == "other"
+        assert response.json()["otherReason"] == "Unexpected flooding"
+
+    def test_custom_text_is_trimmed(self, client, staff):
+        response = mark(client, staff, reasonType="other", otherReason="  Roof  repair ")
+
+        assert response.json()["otherReason"] == "Roof  repair"
+
+    def test_a_blank_custom_reason_for_other_is_refused(self, client, staff):
+        detail = refusal(mark(client, staff, reasonType="other", otherReason="   "))
+
+        assert "other reason" in detail["message"].lower()
+
+    def test_custom_reason_at_the_limit_is_accepted(self, client, staff):
+        response = mark(client, staff, reasonType="other", otherReason="x" * REASON_MAX)
 
         assert response.status_code == 201, response.text
 
-    def test_a_reason_one_over_the_limit_is_refused(self, client, staff):
-        detail = refusal(mark(client, staff, reason="x" * (REASON_MAX + 1)))
+    def test_custom_reason_one_over_the_limit_is_refused(self, client, staff):
+        detail = refusal(mark(client, staff, reasonType="other", otherReason="x" * (REASON_MAX + 1)))
 
         assert str(REASON_MAX) in detail["message"]
 
     def test_the_limit_is_counted_after_trimming(self, client, staff):
-        """Padding a reason that fits does not push it over."""
-        response = mark(client, staff, reason="  " + "x" * REASON_MAX + "  ")
+        """Padding a custom reason that fits does not push it over."""
+        response = mark(client, staff, reasonType="other", otherReason="  " + "x" * REASON_MAX + "  ")
 
         assert response.status_code == 201, response.text
+
+    def test_missing_reason_type_is_refused(self, client, staff):
+        detail = refusal(mark(client, staff, reasonType=None))
+
+        assert "reason type" in detail["message"].lower()
+
+    def test_invalid_reason_type_is_refused(self, client, staff):
+        detail = refusal(mark(client, staff, reasonType="invalid_type"))
+
+        assert "maintenance" in detail["message"] or "valid" in detail["message"].lower()
 
 
 class TestEndNotBeforeStart:
@@ -382,20 +406,20 @@ class TestViewingRanges:
     def test_identical_ranges_keep_the_order_they_were_recorded_in(
         self, client, staff, coordinator
     ):
-        first = mark(client, staff, reason="first").json()
-        second = mark(client, staff, reason="second").json()
+        first = mark(client, staff, reasonType="other", otherReason="first").json()
+        second = mark(client, staff, reasonType="other", otherReason="second").json()
 
         listed = client.get(path(), headers=coordinator).json()
 
         assert [r["id"] for r in listed] == [first["id"], second["id"]]
 
     def test_only_the_venues_own_ranges_are_shown(self, client, staff, coordinator):
-        mark(client, staff, venue_id=GREAT_HALL, reason="Hall closed")
-        mark(client, staff, venue_id=SEMINAR_ROOM, reason="Room closed")
+        mark(client, staff, venue_id=GREAT_HALL, reasonType="other", otherReason="Hall closed")
+        mark(client, staff, venue_id=SEMINAR_ROOM, reasonType="other", otherReason="Room closed")
 
         listed = client.get(path(SEMINAR_ROOM), headers=coordinator).json()
 
-        assert [r["reason"] for r in listed] == ["Room closed"]
+        assert [r["otherReason"] for r in listed] == ["Room closed"]
         assert all(r["venueId"] == SEMINAR_ROOM for r in listed)
 
     def test_past_ranges_are_still_shown(self, client, staff, coordinator):
