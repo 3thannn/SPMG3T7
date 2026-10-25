@@ -218,7 +218,11 @@ def describe_blackout(entry: Unavailability) -> str:
         if entry.start_date == entry.end_date
         else f"{entry.start_date.isoformat()} to {entry.end_date.isoformat()}"
     )
-    because = f" ({entry.reason})" if entry.reason else ""
+    # US12.2: Format structured reason. Use other_reason when type is "other", otherwise empty.
+    if entry.reason_type == "other":
+        because = f" ({entry.other_reason})" if entry.other_reason else ""
+    else:
+        because = ""
     return f"the venue's unavailable period {span}{because}"
 
 

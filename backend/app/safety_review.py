@@ -118,7 +118,11 @@ def _venue_review(
         setup_minutes=venue.setup_minutes if venue else 0,
         turnaround_minutes=venue.turnaround_minutes if venue else 0,
         closures=tuple(
-            Closure(start_date=item.start_date, end_date=item.end_date, reason=item.reason)
+            Closure(
+                start_date=item.start_date,
+                end_date=item.end_date,
+                reason=item.other_reason if item.reason_type == "other" else "",
+            )
             for item in sorted(closures, key=lambda item: (item.start_date, item.id))
             if item.end_date >= today
         ),
