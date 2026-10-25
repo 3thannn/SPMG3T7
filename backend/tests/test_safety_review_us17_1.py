@@ -56,10 +56,10 @@ def venue(venue_id=50, **overrides):
     return Venue(**fields)
 
 
-def closure(closure_id, start, end, *, venue_id=50, reason="Maintenance"):
+def closure(closure_id, start, end, *, venue_id=50, reason_type="maintenance", other_reason=""):
     return Unavailability(
         id=closure_id, venue_id=venue_id, start_date=start, end_date=end,
-        reason=reason, created_by_id=4, created_at="2099-01-01T09:00",
+        reason_type=reason_type, other_reason=other_reason, created_by_id=4, created_at="2099-01-01T09:00",
     )
 
 
@@ -178,10 +178,10 @@ class TestDetailView:
         self, client, auth_headers, pending, unavailability_repository
     ):
         unavailability_repository.entries.extend([
-            closure(3, TODAY + timedelta(days=30), TODAY + timedelta(days=32), reason="Renovation"),
+            closure(3, TODAY + timedelta(days=30), TODAY + timedelta(days=32), reason_type="other", other_reason="Renovation"),
             closure(1, TODAY - timedelta(days=20), TODAY - timedelta(days=10)),
             closure(2, TODAY + timedelta(days=5), TODAY + timedelta(days=6),
-                    reason="Fire alarm testing"),
+                    reason_type="other", other_reason="Fire alarm testing"),
             closure(4, TODAY + timedelta(days=5), TODAY + timedelta(days=5), venue_id=1),
         ])
         body = client.get(
@@ -288,7 +288,7 @@ class TestBuildReview:
             venues=[venue()],
             closures=[
                 closure(1, date(2099, 6, 1), date(2099, 6, 9)),
-                closure(2, date(2099, 6, 8), date(2099, 6, 10), reason=""),
+                closure(2, date(2099, 6, 8), date(2099, 6, 10), other_reason=""),
             ],
         )
         assert review.venues[0].closures == (

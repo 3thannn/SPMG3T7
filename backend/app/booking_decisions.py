@@ -156,7 +156,7 @@ class _Context:
             id=str(entry.id),
             start_date=entry.start_date.isoformat(),
             end_date=entry.end_date.isoformat(),
-            reason=entry.reason,
+            reason=entry.other_reason if entry.reason_type == "other" else "",
         )
 
     def clash_out(self, clash: OccupiedBooking) -> ClashOut:

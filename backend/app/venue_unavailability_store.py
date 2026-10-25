@@ -167,7 +167,7 @@ class SupabaseUnavailability:
             "venue_id": venue_id,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
-            "reason_type": reason_type.value,
+            "reason_type": reason_type.value if isinstance(reason_type, UnavailabilityReasonType) else reason_type,
             "other_reason": other_reason or None,
             "created_by_id": created_by_id,
             "created_at": _now(),
