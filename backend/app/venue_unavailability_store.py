@@ -1,4 +1,4 @@
-"""Venue blackout periods, backed by the Supabase `venue_unavailability` table — US12.1.
+"""Venue blackout periods, backed by the Supabase `venue_unavailability` table — US12.1, US12.2.
 
 Venue Staff mark the date ranges a venue cannot be used (maintenance, closure),
 and Coordinators read them while planning. This module is only the access; who
@@ -16,17 +16,35 @@ Three choices worth knowing:
 * The table has its own `CHECK (end_date >= start_date)`. The route validates
   first and says why in a sentence; the constraint is there so a row that slips
   past the API cannot exist either.
+
+US12.2 additions:
+* `reason_type` is a structured enum (maintenance, equipment_failure, renovation,
+  safety_concern, or other) that replaces the free-text `reason` field.
+* When `reason_type` is "other", `other_reason` must be provided with custom text.
+* A database trigger automatically flags affected bookings as "Needs replacement"
+  and notifies the assigned Coordinator when an unavailability period is created.
 """
 
 from dataclasses import dataclass, field
 from datetime import date
+from enum import StrEnum
 from typing import Protocol
 
 from app import supabase_client
 from app.venue_store import _now
 
 TABLE = "venue_unavailability"
-COLUMNS = "id, venue_id, start_date, end_date, reason, created_by_id, created_at"
+COLUMNS = "id, venue_id, start_date, end_date, reason_type, other_reason, created_by_id, created_at"
+
+
+class UnavailabilityReasonType(StrEnum):
+    """US12.2: Structured reasons for venue unavailability."""
+
+    MAINTENANCE = "maintenance"
+    EQUIPMENT_FAILURE = "equipment_failure"
+    RENOVATION = "renovation"
+    SAFETY_CONCERN = "safety_concern"
+    OTHER = "other"
 
 
 @dataclass(frozen=True)
@@ -35,8 +53,10 @@ class Unavailability:
     venue_id: int
     start_date: date
     end_date: date
-    #: Nullable in the database; empty string when nothing was given.
-    reason: str
+    #: US12.2: Structured reason type (maintenance, equipment_failure, etc.)
+    reason_type: UnavailabilityReasonType
+    #: US12.2: Custom reason text when reason_type = "other", otherwise empty string
+    other_reason: str
     #: Who marked it. Nullable so removing a user does not remove the record
     #: of a closure they entered.
     created_by_id: int | None
@@ -54,7 +74,8 @@ def to_unavailability(row: dict) -> Unavailability:
         venue_id=row["venue_id"],
         start_date=_as_date(row["start_date"]),
         end_date=_as_date(row["end_date"]),
-        reason=row.get("reason") or "",
+        reason_type=UnavailabilityReasonType(row.get("reason_type", "other")),
+        other_reason=row.get("other_reason") or "",
         created_by_id=row.get("created_by_id"),
         created_at=str(row["created_at"]) if row.get("created_at") else "",
     )
@@ -73,7 +94,8 @@ class Repository(Protocol):
         venue_id: int,
         start_date: date,
         end_date: date,
-        reason: str,
+        reason_type: UnavailabilityReasonType,
+        other_reason: str,
         created_by_id: int,
     ) -> Unavailability: ...
 
@@ -128,20 +150,25 @@ class SupabaseUnavailability:
         venue_id: int,
         start_date: date,
         end_date: date,
-        reason: str,
+        reason_type: UnavailabilityReasonType,
+        other_reason: str,
         created_by_id: int,
     ) -> Unavailability:
-        """US12.1: record one blackout period against one venue.
+        """US12.1/US12.2: record one blackout period against one venue.
 
         The insert's own response is the stored row, defaults applied, so there
-        is no second read. An empty reason is stored as NULL, the same way
-        `venue_store` keeps "nothing recorded" as one state rather than two.
+        is no second read. An empty other_reason is stored as NULL when
+        reason_type is not "other".
+
+        US12.2: A database trigger automatically flags affected bookings and
+        notifies Coordinators when the unavailability is created.
         """
         row = {
             "venue_id": venue_id,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
-            "reason": reason or None,
+            "reason_type": reason_type.value,
+            "other_reason": other_reason or None,
             "created_by_id": created_by_id,
             "created_at": _now(),
         }
@@ -176,7 +203,8 @@ class InMemoryUnavailability:
         venue_id: int,
         start_date: date,
         end_date: date,
-        reason: str,
+        reason_type: UnavailabilityReasonType,
+        other_reason: str,
         created_by_id: int,
     ) -> Unavailability:
         self.next_id += 1
@@ -185,7 +213,8 @@ class InMemoryUnavailability:
             venue_id=venue_id,
             start_date=start_date,
             end_date=end_date,
-            reason=reason,
+            reason_type=reason_type,
+            other_reason=other_reason,
             created_by_id=created_by_id,
             created_at=_now(),
         )
