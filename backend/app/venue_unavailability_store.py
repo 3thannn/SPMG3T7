@@ -214,6 +214,9 @@ class InMemoryUnavailability:
         created_by_id: int,
     ) -> Unavailability:
         self.next_id += 1
+        # Handle both enum and string values for backwards compatibility
+        if isinstance(reason_type, str):
+            reason_type = UnavailabilityReasonType(reason_type)
         entry = Unavailability(
             id=self.next_id,
             venue_id=venue_id,
