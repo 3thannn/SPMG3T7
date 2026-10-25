@@ -129,12 +129,21 @@ def seed(
     return booking
 
 
-def blackout(unavailability_repository, start: str, end: str, *, venue_id=GREAT_HALL, reason=""):
+def blackout(
+    unavailability_repository,
+    start: str,
+    end: str,
+    *,
+    venue_id=GREAT_HALL,
+    reason_type="maintenance",
+    other_reason="",
+):
     return unavailability_repository.create(
         venue_id=venue_id,
         start_date=date.fromisoformat(start),
         end_date=date.fromisoformat(end),
-        reason=reason,
+        reason_type=reason_type,
+        other_reason=other_reason,
         created_by_id=VENUE_STAFF_ID,
     )
 
@@ -333,7 +342,9 @@ class TestBlockedByUnavailability:
     def test_tc_c12_a_period_on_the_booking_s_day(
         self, client, coordinator, events, unavailability_repository, buffered_hall
     ):
-        blackout(unavailability_repository, DAY, DAY, reason="Maintenance")
+        blackout(
+            unavailability_repository, DAY, DAY, reason_type="other", other_reason="Maintenance"
+        )
 
         detail = not_available(request(client, coordinator))
 
@@ -356,7 +367,13 @@ class TestBlockedByUnavailability:
     def test_tc_c15_a_multi_day_period_is_named_by_both_dates(
         self, client, coordinator, events, unavailability_repository, buffered_hall
     ):
-        blackout(unavailability_repository, "2027-11-01", "2027-11-03", reason="Closure")
+        blackout(
+            unavailability_repository,
+            "2027-11-01",
+            "2027-11-03",
+            reason_type="other",
+            other_reason="Closure",
+        )
         detail = not_available(request(client, coordinator))
         assert detail["clashes"] == [
             "the venue's unavailable period 2027-11-01 to 2027-11-03 (Closure)"
@@ -519,7 +536,7 @@ class TestHoldsAndApproval:
     ):
         seed(booking_repository, 10, "10:00", "12:00", event_id=EVENT_ID,
              status=BookingStatus.REQUESTED)
-        blackout(unavailability_repository, DAY, DAY, reason="Flooded")
+        blackout(unavailability_repository, DAY, DAY, reason_type="other", other_reason="Flooded")
 
         [queued] = client.get("/booking-requests", headers=staff).json()
         response = client.post("/booking-requests/10/approve", headers=staff)
@@ -668,7 +685,13 @@ class TestFlaggingOnChange:
         self, client, staff, events, booking_repository, unavailability_repository
     ):
         seed(booking_repository, 10, "00:30", "02:00", event_id=EVENT_ID)
-        blackout(unavailability_repository, "2027-11-01", "2027-11-01", reason="Exams")
+        blackout(
+            unavailability_repository,
+            "2027-11-01",
+            "2027-11-01",
+            reason_type="other",
+            other_reason="Exams",
+        )
 
         recheck = put_hall(client, staff, setupMinutes=60).json()["recheck"]
 
@@ -975,10 +998,16 @@ class TestTheFlagClears:
 
 
 class TestThePhrasing:
-    def entry(self, start, end, reason=""):
+    def entry(self, start, end, reason_type="maintenance", other_reason=""):
         return Unavailability(
-            id=1, venue_id=GREAT_HALL, start_date=date.fromisoformat(start),
-            end_date=date.fromisoformat(end), reason=reason, created_by_id=None, created_at="",
+            id=1,
+            venue_id=GREAT_HALL,
+            start_date=date.fromisoformat(start),
+            end_date=date.fromisoformat(end),
+            reason_type=reason_type,
+            other_reason=other_reason,
+            created_by_id=None,
+            created_at="",
         )
 
     def test_tc_f28_one_minute_is_singular(self, venue_repository):

@@ -421,8 +421,9 @@ export type BookingRecord = {
    * it expires. A hold is never Confirmed. US16.1: Venue Staff approve a
    * request (Confirmed) or reject it with a reason (Rejected). US14.4: the
    * scheduled sweep marks a hold past its expiry Expired, which is final.
+   * US12.2: A booking flagged by venue unavailability becomes 'Needs replacement'.
    */
-  status: 'Requested' | 'Cancelled' | 'Held' | 'Confirmed' | 'Rejected' | 'Expired'
+  status: 'Requested' | 'Cancelled' | 'Held' | 'Confirmed' | 'Rejected' | 'Expired' | 'Needs replacement'
   requestedAt: string
   /**
    * US18.1: how many people this booking is for. null only on a booking made
@@ -452,6 +453,16 @@ export type BookingRecord = {
    * is unchanged; nothing was cancelled. null once the clash is resolved.
    */
   conflict?: BookingConflictFlag | null
+  /**
+   * US12.2: why this booking was flagged as "Needs replacement" (from venue
+   * unavailability or conflict). Empty unless status is 'Needs replacement'.
+   */
+  replacementReason?: string
+  /**
+   * US12.2: the venue_unavailability ID that flagged this booking. null unless
+   * flagged by unavailability. Optional for backward compatibility.
+   */
+  flaggedByUnavailabilityId?: number | null
 }
 
 /** US15.2: why a booking clashes since its venue's setup or turnaround changed. */

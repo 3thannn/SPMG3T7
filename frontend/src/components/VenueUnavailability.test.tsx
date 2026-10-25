@@ -12,7 +12,6 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import VenueUnavailability from './VenueUnavailability'
 import {
-  REASON_MAX,
   VenueRuleError,
   formatDate,
   formatDateRange,
@@ -52,7 +51,8 @@ function range(overrides: Partial<UnavailabilityRecord> = {}): UnavailabilityRec
     venueId: '1',
     startDate: '2026-11-02',
     endDate: '2026-11-06',
-    reason: 'Annual maintenance',
+    reasonType: 'other',
+    otherReason: 'Annual maintenance',
     createdAt: '2026-10-01T09:00:00',
     ...overrides,
   }
@@ -68,11 +68,15 @@ function renderForStaff() {
   return renderFor(venueStaff, true)
 }
 
-async function fill(start: string, end: string, reason = '') {
+async function fill(start: string, end: string, reasonType = 'maintenance', otherReason = '') {
   const user = userEvent.setup()
   if (start) await user.type(screen.getByLabelText('Start date'), start)
   if (end) await user.type(screen.getByLabelText('End date'), end)
-  if (reason) await user.type(screen.getByLabelText('Reason (optional)'), reason)
+  // Only select reason if a value is provided (allows testing validation when reasonType is empty)
+  if (reasonType) await user.selectOptions(screen.getByLabelText('Reason'), reasonType)
+  if (reasonType === 'other' && otherReason) {
+    await user.type(screen.getByLabelText('Custom reason'), otherReason)
+  }
   await user.click(screen.getByRole('button', { name: 'Mark unavailable' }))
 }
 
@@ -115,7 +119,7 @@ it('lists each range with its dates and reason', async () => {
 })
 
 it('says a range has no reason rather than leaving a gap', async () => {
-  listMock.mockResolvedValue([range({ reason: '' })])
+  listMock.mockResolvedValue([range({ reasonType: 'other', otherReason: '' })])
 
   renderFor()
 
@@ -189,8 +193,8 @@ it('folds a range that ended yesterday away under Past', async () => {
 
 it('keeps current and upcoming ranges apart from past ones', async () => {
   listMock.mockResolvedValue([
-    range({ id: '1', startDate: '2026-01-01', endDate: '2026-01-02', reason: 'Old' }),
-    range({ id: '2', startDate: '2026-12-24', endDate: '2026-12-26', reason: 'Christmas' }),
+    range({ id: '1', startDate: '2026-01-01', endDate: '2026-01-02', reasonType: 'other', otherReason: 'Old' }),
+    range({ id: '2', startDate: '2026-12-24', endDate: '2026-12-26', reasonType: 'other', otherReason: 'Christmas' }),
   ])
 
   renderFor()
@@ -243,34 +247,36 @@ it('does not warn about a closure that is over', async () => {
 
 // --- AC1-3: Venue Staff record a range -----------------------------------------
 
-it('offers Venue Staff a start, an end and a reason', async () => {
+it('offers Venue Staff a start, an end and a reason type', async () => {
   renderForStaff()
 
   expect(await screen.findByLabelText('Start date')).toHaveAttribute('type', 'date')
   expect(screen.getByLabelText('End date')).toHaveAttribute('type', 'date')
-  expect(screen.getByLabelText('Reason (optional)')).toHaveAttribute(
-    'maxLength',
-    String(REASON_MAX),
-  )
+  expect(screen.getByLabelText('Reason')).toBeInTheDocument()
+  expect(within(screen.getByLabelText('Reason')).getAllByRole('option').map(
+    (option) => option.textContent,
+  )).toEqual(expect.arrayContaining([
+    'Maintenance', 'Equipment failure', 'Renovation', 'Safety concern', 'Other',
+  ]))
 })
 
 it('records the range and adds it to the list', async () => {
-  markMock.mockResolvedValue(range({ id: '200', reason: 'Roof repair' }))
+  markMock.mockResolvedValue(range({ id: '200', reasonType: 'other', otherReason: 'Roof repair' }))
   renderForStaff()
   await screen.findByLabelText('Start date')
 
-  await fill('2026-11-02', '2026-11-06', 'Roof repair')
+  await fill('2026-11-02', '2026-11-06', 'other', 'Roof repair')
 
   expect(markMock).toHaveBeenCalledWith(
     '1',
-    { startDate: '2026-11-02', endDate: '2026-11-06', reason: 'Roof repair' },
+    { startDate: '2026-11-02', endDate: '2026-11-06', reasonType: 'other', otherReason: 'Roof repair' },
     venueStaff,
   )
   expect(await within(upcomingList()).findByText('Roof repair')).toBeInTheDocument()
 })
 
 it('says the range was saved and clears the form for the next one', async () => {
-  markMock.mockResolvedValue(range())
+  markMock.mockResolvedValue(range({ flaggedBookingsCount: 2 }))
   renderForStaff()
   await screen.findByLabelText('Start date')
 
@@ -281,6 +287,9 @@ it('says the range was saved and clears the form for the next one', async () => 
   )
   expect(screen.getByLabelText('Start date')).toHaveValue('')
   expect(screen.getByLabelText('End date')).toHaveValue('')
+  expect(screen.getByText(/^Marked unavailable:/)).toHaveTextContent(
+    '2 bookings flagged as needing replacement.',
+  )
 })
 
 it('drops the saved message as soon as the next range is started', async () => {
@@ -297,15 +306,15 @@ it('drops the saved message as soon as the next range is started', async () => {
 
 it('puts a new range in date order, not at the end', async () => {
   listMock.mockResolvedValue([
-    range({ id: '1', startDate: '2026-12-24', endDate: '2026-12-26', reason: 'Christmas' }),
+    range({ id: '1', startDate: '2026-12-24', endDate: '2026-12-26', reasonType: 'other', otherReason: 'Christmas' }),
   ])
   markMock.mockResolvedValue(
-    range({ id: '2', startDate: '2026-11-10', endDate: '2026-11-11', reason: 'Inspection' }),
+    range({ id: '2', startDate: '2026-11-10', endDate: '2026-11-11', reasonType: 'other', otherReason: 'Inspection' }),
   )
   renderForStaff()
   await screen.findByText('Christmas')
 
-  await fill('2026-11-10', '2026-11-11', 'Inspection')
+  await fill('2026-11-10', '2026-11-11', 'other', 'Inspection')
 
   await within(upcomingList()).findByText('Inspection')
   const reasons = within(upcomingList())
@@ -316,15 +325,15 @@ it('puts a new range in date order, not at the end', async () => {
 
 it('orders ranges starting the same day by their end', async () => {
   listMock.mockResolvedValue([
-    range({ id: '1', startDate: '2026-11-10', endDate: '2026-11-20', reason: 'Long' }),
+    range({ id: '1', startDate: '2026-11-10', endDate: '2026-11-20', reasonType: 'other', otherReason: 'Long' }),
   ])
   markMock.mockResolvedValue(
-    range({ id: '2', startDate: '2026-11-10', endDate: '2026-11-11', reason: 'Short' }),
+    range({ id: '2', startDate: '2026-11-10', endDate: '2026-11-11', reasonType: 'other', otherReason: 'Short' }),
   )
   renderForStaff()
   await screen.findByText('Long')
 
-  await fill('2026-11-10', '2026-11-11', 'Short')
+  await fill('2026-11-10', '2026-11-11', 'other', 'Short')
 
   await within(upcomingList()).findByText('Short')
   const reasons = within(upcomingList())
@@ -357,16 +366,16 @@ it('accepts a one-day range, the same date twice', async () => {
   )
 })
 
-it('trims the reason before sending it', async () => {
+it('trims the custom reason before sending it', async () => {
   markMock.mockResolvedValue(range())
   renderForStaff()
   await screen.findByLabelText('Start date')
 
-  await fill('2026-11-02', '2026-11-06', '  Roof repair  ')
+  await fill('2026-11-02', '2026-11-06', 'other', '  Roof repair  ')
 
   expect(markMock).toHaveBeenCalledWith(
     '1',
-    expect.objectContaining({ reason: 'Roof repair' }),
+    expect.objectContaining({ reasonType: 'other', otherReason: 'Roof repair' }),
     venueStaff,
   )
 })
@@ -391,15 +400,16 @@ it('will not let the end date be picked before the start', async () => {
 // --- AC2 and the other refusals, before and after the server -------------------
 
 it.each([
-  ['no dates', '', '', 'Give the start date.'],
-  ['no start', '', '2026-11-06', 'Give the start date.'],
-  ['no end', '2026-11-02', '', 'Give the end date.'],
-  ['an end the day before the start', '2026-11-02', '2026-11-01', 'The end date cannot be earlier than the start date.'],
-])('refuses %s without asking the server', async (_, start, end, message) => {
+  ['no reason type', '2026-11-02', '2026-11-06', '', 'Select a reason for the unavailability.'],
+  ['no dates', '', '', '', 'Give the start date.'],
+  ['no start', '', '2026-11-06', '', 'Give the start date.'],
+  ['no end', '2026-11-02', '', '', 'Give the end date.'],
+  ['an end the day before the start', '2026-11-02', '2026-11-01', 'maintenance', 'The end date cannot be earlier than the start date.'],
+])('refuses %s without asking the server', async (_, start, end, reasonType, message) => {
   renderForStaff()
   await screen.findByLabelText('Start date')
 
-  await fill(start, end)
+  await fill(start, end, reasonType)
 
   expect(screen.getByRole('alert')).toHaveTextContent(message)
   expect(markMock).not.toHaveBeenCalled()
@@ -445,11 +455,22 @@ it('clears an earlier refusal once a range is accepted', async () => {
   markMock.mockResolvedValue(range())
   renderForStaff()
   await screen.findByLabelText('Start date')
-  await fill('2026-11-02', '')
+
+  // First attempt: fill start date but not end date - should fail validation
+  const user = userEvent.setup()
+  await user.type(screen.getByLabelText('Start date'), '2026-11-02')
+  await user.selectOptions(screen.getByLabelText('Reason'), 'maintenance')
+  await user.click(screen.getByRole('button', { name: 'Mark unavailable' }))
   expect(screen.getByRole('alert')).toHaveTextContent('Give the end date.')
 
-  await fill('', '2026-11-06')
+  // Second attempt: now fill the end date too - should succeed
+  await user.type(screen.getByLabelText('End date'), '2026-11-06')
+  await user.click(screen.getByRole('button', { name: 'Mark unavailable' }))
 
+  // Wait for the API call to resolve and success message to appear
+  await waitFor(() => {
+    expect(markMock).toHaveBeenCalled()
+  })
   await screen.findByText(/^Marked unavailable:/)
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })

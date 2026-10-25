@@ -356,3 +356,40 @@
   background: var(--bg);
   white-space: nowrap;
 }
+
+/* US12.2: a booking flagged for replacement due to venue unavailability. Similar
+   to conflict styling but indicates the venue itself is unavailable. */
+.booking-row.is-needs-replacement {
+  background: var(--bg);
+  border-color: var(--danger-border);
+}
+
+.booking-status.is-needs-replacement {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+
+.booking-replacement {
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.86rem;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
+.booking-replacement-tag {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--danger-border);
+  background: var(--bg);
+  white-space: nowrap;
+}

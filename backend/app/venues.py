@@ -529,18 +529,29 @@ class UnavailabilityOut(BaseModel):
     #: "YYYY-MM-DD", inclusive at both ends.
     start_date: str = Field(serialization_alias="startDate")
     end_date: str = Field(serialization_alias="endDate")
-    reason: str
+    #: US12.2: Structured reason type (maintenance, equipment_failure, etc.)
+    reason_type: str = Field(serialization_alias="reasonType")
+    #: US12.2: Custom reason text when reason_type = "other", otherwise empty
+    other_reason: str = Field(serialization_alias="otherReason")
     created_at: str = Field(serialization_alias="createdAt")
+    #: US12.2: How many bookings were flagged as needing replacement
+    flagged_bookings_count: int | None = Field(
+        default=None, serialization_alias="flaggedBookingsCount"
+    )
 
 
-def _unavailability_out(entry: Unavailability) -> UnavailabilityOut:
+def _unavailability_out(
+    entry: Unavailability, flagged_count: int | None = None
+) -> UnavailabilityOut:
     return UnavailabilityOut(
         id=str(entry.id),
         venue_id=str(entry.venue_id),
         start_date=entry.start_date.isoformat(),
         end_date=entry.end_date.isoformat(),
-        reason=entry.reason,
+        reason_type=entry.reason_type.value,
+        other_reason=entry.other_reason,
         created_at=entry.created_at,
+        flagged_bookings_count=flagged_count,
     )
 
 
@@ -550,14 +561,19 @@ class UnavailabilityInput(BaseModel):
     The dates are text rather than `date` so that a missing, malformed or
     impossible date is a sentence from `_validated_range` with this module's
     400, not Pydantic's 422 — the same reason `VenueInput.capacity` is optional.
+
+    US12.2: reason is now structured with reason_type (enum) and other_reason
+    (custom text when type = "other").
     """
 
     model_config = ConfigDict(populate_by_name=True)
 
     start_date: str | None = Field(default=None, alias="startDate")
     end_date: str | None = Field(default=None, alias="endDate")
-    #: Optional: "maintenance", "closure", or whatever Venue Staff want to say.
-    reason: str | None = None
+    #: US12.2: Required structured reason type
+    reason_type: str | None = Field(default=None, alias="reasonType")
+    #: US12.2: Required when reason_type = "other", otherwise should be empty
+    other_reason: str | None = Field(default=None, alias="otherReason")
 
 
 #: The column is TEXT. The cap is about a note staying a note, not a width.
@@ -625,20 +641,49 @@ def _availability_window(raw_from: str, raw_to: str) -> tuple[date, date] | None
     return start, end
 
 
-def _validated_range(payload: UnavailabilityInput) -> tuple[date, date, str]:
-    """US12.1: a start, an end no earlier than it, and an optional reason.
+def _validated_range(
+    payload: UnavailabilityInput,
+) -> tuple[date, date, venue_unavailability_store.UnavailabilityReasonType, str]:
+    """US12.1/US12.2: validate dates and structured reason.
 
     Equal dates are a one-day closure and are accepted. One problem is named at
     a time, start first, which is the order the form shows the fields in.
+
+    US12.2: reason_type is required and must be a valid enum value. When
+    reason_type = "other", other_reason must be provided.
     """
     start = _parse_date(payload.start_date, which="start")
     end = _parse_date(payload.end_date, which="end")
     if end < start:
         raise _invalid_range("The end date cannot be earlier than the start date.")
-    reason = (payload.reason or "").strip()
-    if len(reason) > REASON_MAX:
-        raise _invalid_range(f"Keep the reason to {REASON_MAX} characters or fewer.")
-    return start, end, reason
+
+    # US12.2: Validate structured reason
+    reason_type_raw = (payload.reason_type or "").strip()
+    if not reason_type_raw:
+        raise _invalid_range("Give a reason type for the unavailability.")
+
+    # Validate reason_type is a valid enum value
+    try:
+        reason_type = venue_unavailability_store.UnavailabilityReasonType(reason_type_raw)
+    except ValueError:
+        enum_type = venue_unavailability_store.UnavailabilityReasonType
+        valid_types = ", ".join(t.value for t in enum_type)
+        raise _invalid_range(
+            f'Reason type must be one of: {valid_types}.'
+        ) from None
+
+    # Validate other_reason when reason_type = "other"
+    other_reason = (payload.other_reason or "").strip()
+    if reason_type is venue_unavailability_store.UnavailabilityReasonType.OTHER:
+        if not other_reason:
+            raise _invalid_range('Give a custom reason when selecting "other".')
+        if len(other_reason) > REASON_MAX:
+            raise _invalid_range(f"Keep the custom reason to {REASON_MAX} characters or fewer.")
+    elif other_reason:
+        # If not "other", other_reason should be empty
+        raise _invalid_range('Only provide a custom reason when reason type is "other".')
+
+    return start, end, reason_type, other_reason
 
 
 def _existing_venue(venue_id: str) -> Venue:
@@ -674,18 +719,27 @@ def mark_unavailable(
     payload: UnavailabilityInput,
     user: Annotated[User, Depends(require_permission(Permission.VENUES_EDIT))],
 ) -> UnavailabilityOut:
-    """US12.1: Venue Staff record a date range the venue cannot be used.
+    """US12.1/US12.2: Venue Staff record a date range the venue cannot be used.
 
     404 before 400, as `save_venue` does: a range for a venue that is not there
     is wrong however well-formed its dates are.
+
+    US12.2: A database trigger automatically flags any active bookings (Requested,
+    Held, or Confirmed) whose effective window overlaps the unavailability period.
+    The response includes the count of bookings flagged, and affected Coordinators
+    are notified once per event.
     """
     venue = _existing_venue(venue_id)
-    start, end, reason = _validated_range(payload)
+    start, end, reason_type, other_reason = _validated_range(payload)
     created = venue_unavailability_store.repository().create(
         venue_id=venue.id,
         start_date=start,
         end_date=end,
-        reason=reason,
+        reason_type=reason_type,
+        other_reason=other_reason,
         created_by_id=user.id,
     )
-    return _unavailability_out(created)
+
+    flagged_count = booking_store.repository().count_flagged_by_unavailability(created.id)
+
+    return _unavailability_out(created, flagged_count=flagged_count)

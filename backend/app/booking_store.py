@@ -67,7 +67,8 @@ COLUMNS = (
     "hold_expires_at, held_by_id, held_by:users!venue_bookings_held_by_id_fkey(name), "
     "decided_at, decided_by_id, rejection_reason, suggested_alternative, "
     "decided_by:users!venue_bookings_decided_by_id_fkey(name), "
-    "conflict_flagged_at, conflict_reason"
+    "conflict_flagged_at, conflict_reason, "
+    "replacement_reason, flagged_by_unavailability_id"
 )
 
 #: What `request_venue_and_plan` returns when the slot is taken (US15.1). Ids
@@ -100,6 +101,9 @@ class BookingStatus(StrEnum):
     #: US14.4: a hold the scheduled sweep found past its expiry. Final: it is
     #: kept as history, never holds its venue and cannot be requested.
     EXPIRED = "Expired"
+    #: US12.2: a booking flagged because the venue became unavailable. The
+    #: Coordinator must request a replacement venue (US14.5) or cancel (US14.2).
+    NEEDS_REPLACEMENT = "Needs replacement"
 
 
 #: The statuses that can hold a venue for their slot. A cancelled booking does
@@ -177,6 +181,11 @@ class Booking:
     decision: Decision | None = None
     #: US15.2: set while the booking is flagged "Conflict - review needed".
     conflict: ConflictFlag | None = None
+    #: US12.2: Why this booking needs replacement (from venue unavailability).
+    #: Empty unless status is NEEDS_REPLACEMENT.
+    replacement_reason: str = ""
+    #: US12.2: The unavailability_id that triggered the flagging. Nullable.
+    flagged_by_unavailability_id: int | None = None
 
     def hold_expired_at(self, now: datetime) -> bool:
         """Whether this is a hold whose expiry has passed. Expiry itself counts.
@@ -282,6 +291,8 @@ def to_booking(row: dict) -> Booking:
         held_by_name=_embedded_name(row, "held_by"),
         decision=_decision(row),
         conflict=_conflict(row),
+        replacement_reason=row.get("replacement_reason") or "",
+        flagged_by_unavailability_id=row.get("flagged_by_unavailability_id"),
     )
 
 
@@ -343,9 +354,21 @@ class Repository(Protocol):
 
     def list_flagged(self) -> list[Booking]: ...
 
+    def count_flagged_by_unavailability(self, unavailability_id: int) -> int: ...
+
 
 class SupabaseBookings:
     """The real store. Goes through the service role client, like the others."""
+
+    def count_flagged_by_unavailability(self, unavailability_id: int) -> int:
+        result = (
+            supabase_client.admin()
+            .table(TABLE)
+            .select("id", count="exact")
+            .eq("flagged_by_unavailability_id", unavailability_id)
+            .execute()
+        )
+        return result.count or 0
 
     def get_booking(self, booking_id: int) -> Booking | None:
         rows = (
@@ -693,6 +716,12 @@ class InMemoryBookings:
     bookings: list[Booking] = field(default_factory=list)
     #: Well clear of anything a fixture might use, so a created row is obvious.
     next_id: int = 100
+
+    def count_flagged_by_unavailability(self, unavailability_id: int) -> int:
+        return sum(
+            booking.flagged_by_unavailability_id == unavailability_id
+            for booking in self.bookings
+        )
 
     def list_for_event(self, event_id: int) -> list[Booking]:
         return sorted((b for b in self.bookings if b.event_id == event_id), key=_sort_key)

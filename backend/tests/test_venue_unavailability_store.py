@@ -27,7 +27,8 @@ ROW = {
     "venue_id": 1,
     "start_date": "2026-11-02",
     "end_date": "2026-11-06",
-    "reason": "Annual maintenance",
+    "reason_type": "maintenance",
+    "other_reason": "",
     "created_by_id": 3,
     "created_at": "2026-10-01T09:00:00",
 }
@@ -125,7 +126,8 @@ class TestSupabaseListing:
             venue_id=1,
             start_date=date(2026, 11, 2),
             end_date=date(2026, 11, 6),
-            reason="Annual maintenance",
+            reason_type="maintenance",
+            other_reason="",
             created_by_id=3,
             created_at="2026-10-01T09:00:00",
         )
@@ -148,7 +150,8 @@ class TestSupabaseCreating:
             "venue_id": 1,
             "start_date": date(2026, 11, 2),
             "end_date": date(2026, 11, 6),
-            "reason": "Annual maintenance",
+            "reason_type": "maintenance",
+            "other_reason": "",
             "created_by_id": 3,
             **overrides,
         }
@@ -167,7 +170,8 @@ class TestSupabaseCreating:
         assert row["venue_id"] == 1
         assert row["start_date"] == "2026-11-02"
         assert row["end_date"] == "2026-11-06"
-        assert row["reason"] == "Annual maintenance"
+        assert row["reason_type"] == "maintenance"
+        assert row["other_reason"] is None
         assert row["created_by_id"] == 3
 
     def test_the_row_is_timestamped(self, query):
@@ -183,11 +187,11 @@ class TestSupabaseCreating:
         [(_, row)] = query.named("insert")
         assert "id" not in row
 
-    def test_an_empty_reason_is_stored_as_null(self, query):
-        self.create(reason="")
+    def test_an_empty_other_reason_is_stored_as_null(self, query):
+        self.create(other_reason="")
 
         [(_, row)] = query.named("insert")
-        assert row["reason"] is None
+        assert row["other_reason"] is None
 
     def test_the_stored_row_is_what_comes_back(self, query):
         query.rows = [{**ROW, "id": 42}]
@@ -235,13 +239,13 @@ class TestSupabaseOverlap:
 
 
 class TestReadingARow:
-    def test_a_null_reason_reads_as_empty(self):
-        assert to_unavailability({**ROW, "reason": None}).reason == ""
+    def test_a_null_other_reason_reads_as_empty(self):
+        assert to_unavailability({**ROW, "other_reason": None}).other_reason == ""
 
-    def test_a_missing_reason_reads_as_empty(self):
-        row = {key: value for key, value in ROW.items() if key != "reason"}
+    def test_a_missing_other_reason_reads_as_empty(self):
+        row = {key: value for key, value in ROW.items() if key != "other_reason"}
 
-        assert to_unavailability(row).reason == ""
+        assert to_unavailability(row).other_reason == ""
 
     def test_a_null_author_stays_null(self):
         """`created_by_id` is SET NULL when the user goes; the range is still shown."""
@@ -263,7 +267,12 @@ class TestReadingARow:
 class TestInMemoryStore:
     def create(self, store: InMemoryUnavailability, start: date, end: date, venue_id: int = 1):
         return store.create(
-            venue_id=venue_id, start_date=start, end_date=end, reason="", created_by_id=3
+            venue_id=venue_id,
+            start_date=start,
+            end_date=end,
+            reason_type="maintenance",
+            other_reason="",
+            created_by_id=3,
         )
 
     def test_ids_are_assigned_in_sequence_from_next_id(self):

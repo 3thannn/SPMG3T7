@@ -396,16 +396,35 @@ export function validateVenue(input: VenueInput): string {
 // --- US12.1: blackout periods -------------------------------------------------
 
 /**
+ * US12.2: Structured reason types for venue unavailability.
+ */
+export const UNAVAILABILITY_REASON_TYPES = {
+  maintenance: 'Maintenance',
+  equipment_failure: 'Equipment failure',
+  renovation: 'Renovation',
+  safety_concern: 'Safety concern',
+  other: 'Other',
+} as const
+
+export type UnavailabilityReasonType = keyof typeof UNAVAILABILITY_REASON_TYPES
+
+/**
  * A date range a venue cannot be used — maintenance, a closure. Both dates are
  * YYYY-MM-DD and inclusive, so a one-day closure has the same start and end.
+ *
+ * US12.2: Now includes structured reason type and optional other_reason.
  */
 export type UnavailabilityRecord = {
   id: string
   venueId: string
   startDate: string
   endDate: string
-  /** Empty when Venue Staff gave none. */
-  reason: string
+  /** US12.2: Structured reason type. */
+  reasonType: UnavailabilityReasonType
+  /** US12.2: Custom reason when reasonType is 'other', otherwise empty. */
+  otherReason: string
+  /** US12.2: Number of bookings flagged by this unavailability. Optional for backward compatibility. */
+  flaggedBookingsCount?: number
   createdAt: string
 }
 
@@ -413,13 +432,17 @@ export type UnavailabilityRecord = {
 export type UnavailabilityInput = {
   startDate: string
   endDate: string
-  reason: string
+  /** US12.2: Structured reason type. */
+  reasonType: UnavailabilityReasonType | ''
+  /** US12.2: Custom reason when reasonType is 'other'. */
+  otherReason: string
 }
 
 export const EMPTY_UNAVAILABILITY: UnavailabilityInput = {
   startDate: '',
   endDate: '',
-  reason: '',
+  reasonType: '',
+  otherReason: '',
 }
 
 /** The server's cap on a reason. Mirrored so the form can say so before sending. */
@@ -453,7 +476,10 @@ export async function markUnavailable(
 }
 
 /**
- * US12.1: both dates are required and the end may not be before the start.
+ * US12.1/US12.2: validate unavailability input.
+ *
+ * Both dates are required, the end may not be before the start, a reason type
+ * is required, and when "other" is selected, a custom reason must be provided.
  *
  * Returns the first problem as a sentence, or '' when the range is complete.
  * The server checks again; this is so the form can say what is wrong without a
@@ -464,9 +490,22 @@ export function validateUnavailability(input: UnavailabilityInput): string {
   if (!input.startDate.trim()) return 'Give the start date.'
   if (!input.endDate.trim()) return 'Give the end date.'
   if (input.endDate < input.startDate) return 'The end date cannot be earlier than the start date.'
-  if (input.reason.trim().length > REASON_MAX) {
-    return `Keep the reason to ${REASON_MAX} characters or fewer.`
+
+  // US12.2: Validate reason type
+  if (!input.reasonType) return 'Select a reason for the unavailability.'
+  if (!Object.keys(UNAVAILABILITY_REASON_TYPES).includes(input.reasonType)) {
+    return 'Select a valid reason type.'
   }
+
+  // US12.2: Validate other_reason when type is "other"
+  if (input.reasonType === 'other') {
+    const otherReason = input.otherReason.trim()
+    if (!otherReason) return 'Give a custom reason when selecting "Other".'
+    if (otherReason.length > REASON_MAX) {
+      return `Keep the custom reason to ${REASON_MAX} characters or fewer.`
+    }
+  }
+
   return ''
 }
 
@@ -514,6 +553,18 @@ export function formatDateRange(startDate: string, endDate: string): string {
   if (!endDate || startDate === endDate) return formatDate(startDate)
   if (!startDate) return formatDate(endDate)
   return `${formatDate(startDate)} – ${formatDate(endDate)}`
+}
+
+/**
+ * US12.2: Format the reason for display.
+ *
+ * Shows the custom text when type is "other", otherwise the human-readable label.
+ */
+export function formatUnavailabilityReason(record: UnavailabilityRecord): string {
+  if (record.reasonType === 'other') {
+    return record.otherReason || 'No reason given'
+  }
+  return UNAVAILABILITY_REASON_TYPES[record.reasonType] || 'No reason given'
 }
 
 /**

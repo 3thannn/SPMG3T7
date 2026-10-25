@@ -3,9 +3,11 @@ import './VenueUnavailability.css'
 import {
   EMPTY_UNAVAILABILITY,
   REASON_MAX,
+  UNAVAILABILITY_REASON_TYPES,
   VenueRuleError,
   formatDate,
   formatDateRange,
+  formatUnavailabilityReason,
   listUnavailability,
   markUnavailable,
   rangeTiming,
@@ -13,6 +15,7 @@ import {
   validateUnavailability,
   type UnavailabilityInput,
   type UnavailabilityRecord,
+  type UnavailabilityReasonType,
 } from '../venuesStore'
 import { unexpectedFailureMessage, type Session } from '../api'
 
@@ -87,7 +90,10 @@ export default function VenueUnavailability({
 
   function submit(submitEvent: FormEvent) {
     submitEvent.preventDefault()
-    const input = { ...fields, reason: fields.reason.trim() }
+    const input = {
+      ...fields,
+      otherReason: fields.otherReason.trim(),
+    }
     const problem = validateUnavailability(input)
     if (problem) {
       setFormError(problem)
@@ -104,7 +110,13 @@ export default function VenueUnavailability({
             : current,
         )
         setFields(EMPTY_UNAVAILABILITY)
-        setSaved(`Marked unavailable: ${formatDateRange(created.startDate, created.endDate)}.`)
+        // US12.2: Include flagged bookings count in success message
+        const flaggedCount = created.flaggedBookingsCount ?? 0
+        let successMessage = `Marked unavailable: ${formatDateRange(created.startDate, created.endDate)}.`
+        if (flaggedCount > 0) {
+          successMessage += ` ${flaggedCount} booking${flaggedCount === 1 ? '' : 's'} flagged as needing replacement.`
+        }
+        setSaved(successMessage)
       })
       .catch((error: unknown) => {
         setFormError(
@@ -183,7 +195,7 @@ export default function VenueUnavailability({
           {formatDateRange(range.startDate, range.endDate)}
         </span>
         <span className={`unavailability-tag is-${timing}`}>{TIMING_LABEL[timing]}</span>
-        <span className="unavailability-reason">{range.reason || 'No reason given'}</span>
+        <span className="unavailability-reason">{formatUnavailabilityReason(range)}</span>
       </li>
     )
   }
@@ -231,16 +243,36 @@ export default function VenueUnavailability({
           </div>
 
           <div className="field unavailability-reason-field">
-            <label htmlFor="unavailable-reason">Reason (optional)</label>
-            <input
-              id="unavailable-reason"
-              type="text"
-              maxLength={REASON_MAX}
-              placeholder="Maintenance, closure…"
-              value={fields.reason}
-              onChange={(changeEvent) => set('reason', changeEvent.target.value)}
-            />
+            <label htmlFor="unavailable-reason-type">Reason</label>
+            <select
+              id="unavailable-reason-type"
+              value={fields.reasonType}
+              onChange={(changeEvent) =>
+                set('reasonType', changeEvent.target.value as UnavailabilityReasonType | '')
+              }
+            >
+              <option value="">Select a reason…</option>
+              {Object.entries(UNAVAILABILITY_REASON_TYPES).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
+
+          {fields.reasonType === 'other' && (
+            <div className="field unavailability-other-reason-field">
+              <label htmlFor="unavailable-other-reason">Custom reason</label>
+              <input
+                id="unavailable-other-reason"
+                type="text"
+                maxLength={REASON_MAX}
+                placeholder="Describe the reason…"
+                value={fields.otherReason}
+                onChange={(changeEvent) => set('otherReason', changeEvent.target.value)}
+              />
+            </div>
+          )}
         </fieldset>
 
         <button type="submit" className="btn btn-primary" disabled={busy}>
