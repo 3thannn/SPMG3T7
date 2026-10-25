@@ -171,7 +171,7 @@ class TestSupabaseCreating:
         assert row["start_date"] == "2026-11-02"
         assert row["end_date"] == "2026-11-06"
         assert row["reason_type"] == "maintenance"
-        assert row["other_reason"] == ""
+        assert row["other_reason"] is None
         assert row["created_by_id"] == 3
 
     def test_the_row_is_timestamped(self, query):

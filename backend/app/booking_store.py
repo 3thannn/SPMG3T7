@@ -354,9 +354,21 @@ class Repository(Protocol):
 
     def list_flagged(self) -> list[Booking]: ...
 
+    def count_flagged_by_unavailability(self, unavailability_id: int) -> int: ...
+
 
 class SupabaseBookings:
     """The real store. Goes through the service role client, like the others."""
+
+    def count_flagged_by_unavailability(self, unavailability_id: int) -> int:
+        result = (
+            supabase_client.admin()
+            .table(TABLE)
+            .select("id", count="exact")
+            .eq("flagged_by_unavailability_id", unavailability_id)
+            .execute()
+        )
+        return result.count or 0
 
     def get_booking(self, booking_id: int) -> Booking | None:
         rows = (
@@ -704,6 +716,12 @@ class InMemoryBookings:
     bookings: list[Booking] = field(default_factory=list)
     #: Well clear of anything a fixture might use, so a created row is obvious.
     next_id: int = 100
+
+    def count_flagged_by_unavailability(self, unavailability_id: int) -> int:
+        return sum(
+            booking.flagged_by_unavailability_id == unavailability_id
+            for booking in self.bookings
+        )
 
     def list_for_event(self, event_id: int) -> list[Booking]:
         return sorted((b for b in self.bookings if b.event_id == event_id), key=_sort_key)

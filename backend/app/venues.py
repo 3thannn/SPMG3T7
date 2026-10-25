@@ -29,7 +29,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from app import (
     booking_store,
     conflict_flags,
-    supabase_client,
     venue_store,
     venue_turnaround,
     venue_unavailability_store,
@@ -741,15 +740,6 @@ def mark_unavailable(
         created_by_id=user.id,
     )
 
-    # US12.2: Count how many bookings were flagged by this unavailability period.
-    # The database trigger has already flagged them; we just need to count.
-    flagged_bookings = (
-        supabase_client.admin()
-        .table("venue_bookings")
-        .select("id", count="exact")
-        .eq("flagged_by_unavailability_id", created.id)
-        .execute()
-    )
-    flagged_count = flagged_bookings.count or 0
+    flagged_count = booking_store.repository().count_flagged_by_unavailability(created.id)
 
     return _unavailability_out(created, flagged_count=flagged_count)

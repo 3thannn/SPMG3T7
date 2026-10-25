@@ -7,7 +7,8 @@ that a row is read back faithfully, and that the in-memory stand-in keeps the
 real one's order.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -55,6 +56,34 @@ BOOKING = Booking(
     required_facilities=("projector",),
     accessibility_needs=("hearing loop",),
 )
+
+
+@pytest.mark.parametrize("count", [None, 0, 3])
+def test_supabase_counts_bookings_for_the_given_blackout(monkeypatch, count):
+    client = MagicMock()
+    query = client.table.return_value
+    query.select.return_value = query
+    query.eq.return_value = query
+    query.execute.return_value.count = count
+    monkeypatch.setattr(supabase_client, "admin", lambda: client)
+
+    assert SupabaseBookings().count_flagged_by_unavailability(42) == (count or 0)
+    client.table.assert_called_once_with(TABLE)
+    query.select.assert_called_once_with("id", count="exact")
+    query.eq.assert_called_once_with("flagged_by_unavailability_id", 42)
+
+
+def test_in_memory_counts_only_bookings_flagged_by_the_given_blackout():
+    store = InMemoryBookings(bookings=[
+        BOOKING,
+        replace(BOOKING, id=8, flagged_by_unavailability_id=42),
+        replace(BOOKING, id=9, flagged_by_unavailability_id=42),
+        replace(BOOKING, id=10, flagged_by_unavailability_id=43),
+    ])
+
+    assert store.count_flagged_by_unavailability(42) == 2
+    assert store.count_flagged_by_unavailability(43) == 1
+    assert store.count_flagged_by_unavailability(99) == 0
 
 
 @dataclass

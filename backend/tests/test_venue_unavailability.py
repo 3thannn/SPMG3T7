@@ -76,9 +76,11 @@ class TestRecordingARange:
         body = mark(client, staff).json()
 
         expected = {
-            "id", "venueId", "startDate", "endDate", "reasonType", "otherReason", "createdAt"
+            "id", "venueId", "startDate", "endDate", "reasonType", "otherReason", "createdAt",
+            "flaggedBookingsCount",
         }
         assert set(body) == expected
+        assert body["flaggedBookingsCount"] == 0
         assert isinstance(body["id"], str)
 
     def test_the_range_is_stored_against_the_venue(self, client, staff, unavailability_repository):
@@ -99,7 +101,7 @@ class TestRecordingARange:
 
         listed = client.get(path(), headers=staff).json()
 
-        assert listed == [created]
+        assert listed == [{**created, "flaggedBookingsCount": None}]
 
     def test_each_range_gets_its_own_id(self, client, staff):
         first = mark(client, staff).json()
@@ -373,7 +375,7 @@ class TestViewingRanges:
         response = client.get(path(), headers=coordinator)
 
         assert response.status_code == 200, response.text
-        assert response.json() == [created]
+        assert response.json() == [{**created, "flaggedBookingsCount": None}]
 
     def test_venue_staff_see_them_too(self, client, staff):
         mark(client, staff)
