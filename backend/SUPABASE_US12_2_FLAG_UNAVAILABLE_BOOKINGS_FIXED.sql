@@ -213,9 +213,9 @@ CREATE INDEX IF NOT EXISTS ix_venue_bookings_flagged_by_unavailability
     ON public.venue_bookings (flagged_by_unavailability_id)
     WHERE flagged_by_unavailability_id IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS ix_venue_bookings_needs_replacement
-    ON public.venue_bookings (status)
-    WHERE status = 'Needs replacement';
+-- Note: Partial index on 'Needs replacement' status is deferred to a separate
+-- migration because PostgreSQL requires enum values to be committed before use.
+-- For now, queries can use the general status index or full table scan.
 
 COMMENT ON COLUMN public.venue_unavailability.reason_type IS 'US12.2: Structured reason for unavailability (maintenance, equipment failure, renovation, safety concern, or other)';
 COMMENT ON COLUMN public.venue_unavailability.other_reason IS 'US12.2: Custom reason text when reason_type = other';
