@@ -447,11 +447,22 @@ it('clears an earlier refusal once a range is accepted', async () => {
   markMock.mockResolvedValue(range())
   renderForStaff()
   await screen.findByLabelText('Start date')
-  await fill('2026-11-02', '', '')
+
+  // First attempt: fill start date but not end date - should fail validation
+  const user = userEvent.setup()
+  await user.type(screen.getByLabelText('Start date'), '2026-11-02')
+  await user.selectOptions(screen.getByLabelText('Reason'), 'maintenance')
+  await user.click(screen.getByRole('button', { name: 'Mark unavailable' }))
   expect(screen.getByRole('alert')).toHaveTextContent('Give the end date.')
 
-  await fill('2026-11-02', '2026-11-06')
+  // Second attempt: now fill the end date too - should succeed
+  await user.type(screen.getByLabelText('End date'), '2026-11-06')
+  await user.click(screen.getByRole('button', { name: 'Mark unavailable' }))
 
+  // Wait for the API call to resolve and success message to appear
+  await waitFor(() => {
+    expect(markMock).toHaveBeenCalled()
+  })
   await screen.findByText(/^Marked unavailable:/)
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
