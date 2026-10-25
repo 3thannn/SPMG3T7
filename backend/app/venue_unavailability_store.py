@@ -163,11 +163,17 @@ class SupabaseUnavailability:
         US12.2: A database trigger automatically flags affected bookings and
         notifies Coordinators when the unavailability is created.
         """
+        # Handle both enum and string values for backwards compatibility
+        reason_value = (
+            reason_type.value
+            if isinstance(reason_type, UnavailabilityReasonType)
+            else reason_type
+        )
         row = {
             "venue_id": venue_id,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
-            "reason_type": reason_type.value if isinstance(reason_type, UnavailabilityReasonType) else reason_type,
+            "reason_type": reason_value,
             "other_reason": other_reason or None,
             "created_by_id": created_by_id,
             "created_at": _now(),
