@@ -7,7 +7,7 @@
 
 | # | Criterion | Status |
 | --- | --- | --- |
-| AC1 | A scheduled job checks holds at least every 15 minutes (team-chosen) | Done — pg_cron, every 15 minutes. **Scheduled only once step 2 is run; see "Rolling it out"** |
+| AC1 | A scheduled job checks holds at least every 15 minutes (team-chosen) | Done — pg_cron, every 15 minutes. Scheduled on the live project 2026-10-26; see "Recorded results" |
 | AC2 | Holds past their expiry → Expired, and the slot is freed for other requests | Done |
 | AC3 | Coordinator is notified 24h before expiry (assumption, customer to confirm) and again when it expires (US10.2) | Done |
 | AC4 | Expired holds stay in history and can't be turned into a booking request | Done |
@@ -25,6 +25,9 @@ Two SQL scripts, run at different times, because the database is shared:
    first run the database holds `Expired` bookings, and code from before US14.4
    cannot read that status: every bookings, holds and venue page on an older
    checkout would answer 500.
+
+**Status:** both are applied to the live project, step 1 on 2026-10-21 and step 2
+on 2026-10-26.
 
 Until step 2 runs, holds still free their slot at the deadline (US14.3's rule);
 only the `Expired` status and the two notices wait for it.
@@ -161,7 +164,7 @@ $env:SPMG3T7_DB_TESTS=1; python -m pytest tests/test_hold_expiry_db.py    # Powe
 ## 5. Checks after scheduling (run manually in the Supabase SQL editor)
 
 1. `SELECT jobname, schedule, active FROM cron.job;` → `sweep-tentative-holds`, `*/15 * * * *`, `true`.
-2. After 15 minutes: `SELECT start_time, status, return_message FROM cron.job_run_details ORDER BY start_time DESC LIMIT 5;` → `succeeded`, returning `{"expired": [...], "warned": [...]}`.
+2. After 15 minutes: `SELECT start_time, status, return_message FROM cron.job_run_details ORDER BY start_time DESC LIMIT 5;` → `succeeded`. `return_message` is only pg_cron's short status for the statement, not the sweep's `{"expired": [...], "warned": [...]}`; check 3 shows what a run did.
 3. Place a hold expiring in ~20 minutes; within one sweep the Coordinator has a "Hold expiring" notice; after the expiry and one more sweep, a "Hold expired" notice and the hold shows Expired.
 
 Recorded results:
@@ -173,4 +176,7 @@ Recorded results:
 | Step 1 (`SUPABASE_US14_4_HOLD_EXPIRY.sql`) applied to the live project | 2026-10-21 | Applied |
 | `TEST_US14_4_HOLD_EXPIRY.sql` against the live Supabase project | 2026-10-21 | **US14.4 PASSED - all 19 checks**; rolled back |
 | `test_hold_expiry_db.py` (pytest, opt-in) | — | Not run: `SUPABASE_DB_URL` is not configured locally. It covers the same ground as the SQL Editor check |
-| Step 2 (pg_cron schedule) | — | **Not applied, on purpose**: waits until US14.4 is merged and pulled |
+| Step 2 (`SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql`) applied to the live project | 2026-10-26 | Applied, after US14.4 was merged (PR #34) and every pushed branch in progress included it |
+| Backend `pytest` on `main` after US12.2 (PR #42): `test_hold_expiry_us14_4.py`, `test_venue_holds.py`, `test_cancel_event_us4_6.py`, `test_venue_unavailability.py` | 2026-10-26 | 345 passed |
+| Checks 1 and 2 (`cron.job`, `cron.job_run_details`) | — | Not recorded yet. The job's runs also show in check 3: both notices were written within 0.11 s of :00 and :15 |
+| Check 3, through the API against the live project, with no sweep run by hand | 2026-10-26 | **Passed.** Hold 37 (Ethan's House for "Testing", expiring 02:05 SGT): the 02:00 sweep sent the Coordinator `hold-expiring` (02:00:00.075); the 02:15 sweep made it Expired and sent `hold-expired` (02:15:00.108). It stays on the event's bookings and the venue's holds list as Expired, and the Coordinator's request answered 409 `hold-expired` |
