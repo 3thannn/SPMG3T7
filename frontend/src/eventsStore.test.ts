@@ -20,7 +20,10 @@ import {
   getSafetyReadiness,
   getSafetyReview,
   listSafetyQueue,
-  returnSafetyCheck,
+  listSafetyDecisions,
+  rejectSafetyCheck,
+  requestSafetyChanges,
+  resolveSafetyFlag,
   sendForSafetyCheck,
   createEvent,
   getEvent,
@@ -377,29 +380,88 @@ describe('US4.4 safety check', () => {
     expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/safety-check')
   })
 
-  it('posts the sign-off and the send-back with its note', async () => {
-    const spy = stubFetch(ok({ ...EVENT, status: 'Confirmed' }))
-    expect((await approveSafetyCheck('101', session)).status).toBe('Confirmed')
-    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check/approve')
-    expect(spy.mock.calls[0][1].method).toBe('POST')
-
-    const back = stubFetch(ok({ ...EVENT, status: 'Planning' }))
-    expect((await returnSafetyCheck('101', 'Fix exits', session)).status).toBe('Planning')
-    expect(back.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check/return')
-    expect(back.mock.calls[0][1].method).toBe('POST')
-    expect(JSON.parse(back.mock.calls[0][1].body)).toEqual({ note: 'Fix exits' })
-  })
-
   it('turns refusals into rule errors and lets a lapsed session through', async () => {
     stubFetch(failure(409, 'rule_refused', 'Every active venue booking must be Confirmed.'))
     await expect(sendForSafetyCheck('101', session)).rejects.toBeInstanceOf(EventRuleError)
-    await expect(approveSafetyCheck('101', session)).rejects.toBeInstanceOf(EventRuleError)
-    await expect(returnSafetyCheck('101', 'x', session)).rejects.toBeInstanceOf(EventRuleError)
 
     stubFetch(failure(401, 'session_expired', 'Sign in again.'))
     await expect(sendForSafetyCheck('101', session)).rejects.toBeInstanceOf(ApiError)
-    await expect(approveSafetyCheck('101', session)).rejects.toBeInstanceOf(ApiError)
-    await expect(returnSafetyCheck('101', 'x', session)).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('US17.2 safety decisions', () => {
+  const STARTED = '2099-01-02T10:00:00'
+
+  it('posts the sign-off with the submission it was made on', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Confirmed' }))
+
+    expect((await approveSafetyCheck('101', STARTED, session)).status).toBe('Confirmed')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check/approve')
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({ checkStartedAt: STARTED })
+  })
+
+  it('posts a request for changes with its note and flags', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Planning' }))
+    const input = {
+      checkStartedAt: STARTED,
+      note: 'Add a fire exit.',
+      flaggedBookingIds: ['11'],
+      flaggedEquipmentIds: ['21'],
+    }
+
+    expect((await requestSafetyChanges('101', input, session)).status).toBe('Planning')
+    expect(spy.mock.calls[0][0]).toBe(
+      'http://localhost:8000/events/101/safety-check/request-changes',
+    )
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual(input)
+  })
+
+  it('posts a rejection with its reason', async () => {
+    const spy = stubFetch(ok({ ...EVENT, status: 'Planning' }))
+
+    expect((await rejectSafetyCheck('101', 'Unsafe.', STARTED, session)).status).toBe('Planning')
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-check/reject')
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({
+      note: 'Unsafe.',
+      checkStartedAt: STARTED,
+    })
+  })
+
+  it('reads the decisions on an event', async () => {
+    const decisions = [{ id: '3', outcome: 'rejected', flags: [] }]
+    const spy = stubFetch(ok(decisions))
+
+    expect(await listSafetyDecisions('101', session)).toEqual(decisions)
+    expect(spy.mock.calls[0][0]).toBe('http://localhost:8000/events/101/safety-decisions')
+  })
+
+  it('posts a flag as re-reviewed', async () => {
+    const flag = { id: '4', resolvedAt: '2099-01-03T09:00:00', resolvedByName: 'Priya' }
+    const spy = stubFetch(ok(flag))
+
+    expect(await resolveSafetyFlag('101', '4', session)).toEqual(flag)
+    expect(spy.mock.calls[0][0]).toBe(
+      'http://localhost:8000/events/101/safety-flags/4/resolve',
+    )
+    expect(spy.mock.calls[0][1].method).toBe('POST')
+  })
+
+  it('turns refusals into rule errors and lets a lapsed session through', async () => {
+    const input = { checkStartedAt: STARTED, note: 'x' }
+    stubFetch(failure(409, 'rule_refused', 'This safety check was already decided.'))
+    await expect(approveSafetyCheck('101', STARTED, session)).rejects.toBeInstanceOf(EventRuleError)
+    await expect(requestSafetyChanges('101', input, session)).rejects.toBeInstanceOf(EventRuleError)
+    await expect(rejectSafetyCheck('101', 'x', STARTED, session)).rejects.toBeInstanceOf(
+      EventRuleError,
+    )
+    await expect(resolveSafetyFlag('101', '4', session)).rejects.toBeInstanceOf(EventRuleError)
+
+    stubFetch(failure(401, 'session_expired', 'Sign in again.'))
+    await expect(approveSafetyCheck('101', STARTED, session)).rejects.toBeInstanceOf(ApiError)
+    await expect(requestSafetyChanges('101', input, session)).rejects.toBeInstanceOf(ApiError)
+    await expect(rejectSafetyCheck('101', 'x', STARTED, session)).rejects.toBeInstanceOf(ApiError)
+    await expect(resolveSafetyFlag('101', '4', session)).rejects.toBeInstanceOf(ApiError)
   })
 })
 

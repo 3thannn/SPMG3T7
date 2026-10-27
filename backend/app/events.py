@@ -34,6 +34,8 @@ from app import (
     event_needs,
     event_store,
     safety_check,
+    safety_decision_store,
+    safety_decisions,
     safety_review,
     suitability,
     venue_store,
@@ -64,8 +66,15 @@ from app.event_status import (
     transition_refusal_message,
 )
 from app.event_store import Event, StaleEventStatus
-from app.notifications import notify_assigned, notify_safety_changes, notify_status_change
+from app.notifications import (
+    notify_assigned,
+    notify_safety_changes,
+    notify_safety_rejected,
+    notify_status_change,
+)
 from app.permissions import Permission, Role, has_permission
+from app.safety_decision_store import ReviewFlag, SafetyDecision, StaleFlag
+from app.safety_decisions import SafetyOutcome
 from app.suitability import BookingNeeds, Verdict
 from app.users import User
 from app.venue_store import Venue
@@ -88,6 +97,7 @@ class EventError:
     REFUSED = "rule_refused"
     INVALID_BOOKING = "invalid_booking"
     BOOKING_NOT_FOUND = "booking_not_found"
+    SAFETY_FLAG_NOT_FOUND = "safety_flag_not_found"
 
 
 class StatusChangeOut(BaseModel):
@@ -1007,8 +1017,8 @@ def cancel_event(
 # Planning -> Pending Safety Check is the assigned Coordinator's to ask for, and
 # only once the event is ready (`app.safety_check`). The Safety Officer then
 # signs it off (-> Confirmed) or sends it back to Planning with a note. That is
-# the only way into Confirmed; US17.2 adds the separate reject and
-# request-changes outcomes and the re-review flags on top of these routes.
+# the only way into Confirmed; US17.2 (below) separates the request-changes and
+# reject outcomes and adds the re-review flags.
 
 
 class SafetyReadinessOut(BaseModel):
@@ -1026,6 +1036,12 @@ def _safety_refusal(event: Event) -> safety_check.SafetyCheckRefusal | None:
         change_requested=event.change_requested,
         bookings=booking_store.repository().list_for_event(event.id),
         equipment=equipment_store.repository().list_for_event(event.id),
+        # US17.2: a flag the Coordinator has not marked re-reviewed holds it back.
+        flags_open=any(
+            flag.is_open
+            for decision in safety_decision_store.repository().list_for_event(event.id)
+            for flag in decision.flags
+        ),
     )
 
 
@@ -1211,56 +1227,263 @@ def get_safety_review(event_id: str, user: SafetyOfficer) -> SafetyReviewOut:
     return _review_out(review)
 
 
-class SafetyReturn(BaseModel):
-    """What the Safety Officer needs changed before the event is safe."""
+# -- US17.2: the Safety Officer records a decision -----------------------------
+#
+# Approve, request changes, or reject (`app.safety_decisions`). Each decision is
+# a `safety_reviews` row written in the same transaction as the event's move and
+# its US4.2 audit entry. A request for changes can flag the venue bookings and
+# equipment lines it is about; the assigned Coordinator marks each re-reviewed
+# before the event can be sent for its check again.
 
+
+class SafetyDecisionIn(BaseModel):
+    """What the Safety Officer decides with. All of it is optional on approval."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    #: What must change, or the reason for rejecting. Required for both.
     note: str = ""
+    #: `waitingSince` from the review the decision was made on (US17.1), so a
+    #: decision is never applied to a later submission. Empty skips the
+    #: comparison, which only a client older than US17.2 does.
+    check_started_at: str = Field(default="", alias="checkStartedAt")
+    flagged_booking_ids: list[int] = Field(default_factory=list, alias="flaggedBookingIds")
+    flagged_equipment_ids: list[int] = Field(default_factory=list, alias="flaggedEquipmentIds")
 
 
-def _decide_safety(
-    event_id: str, user: User, to_status: EventStatus, *, note: str = ""
-) -> Event:
-    """Move a Pending Safety Check event on, for the Safety Officer.
+class SafetyFlagOut(BaseModel):
+    """One arrangement flagged for re-review, described well enough to find it."""
+
+    id: str
+    #: "booking" or "equipment".
+    target: str
+    target_id: str = Field(serialization_alias="targetId")
+    #: The venue's name, or the equipment type and quantity.
+    label: str
+    #: The arrangement's status now — it may have been cancelled since.
+    status: str
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+    #: Empty while open.
+    resolved_at: str = Field(serialization_alias="resolvedAt")
+    resolved_by_name: str = Field(serialization_alias="resolvedByName")
+
+
+class SafetyDecisionOut(BaseModel):
+    """US17.2: one decision, attributable and timestamped."""
+
+    id: str
+    outcome: SafetyOutcome
+    note: str
+    decided_by_name: str = Field(serialization_alias="decidedByName")
+    decided_at: str = Field(serialization_alias="decidedAt")
+    check_started_at: str = Field(serialization_alias="checkStartedAt")
+    flags: list[SafetyFlagOut]
+
+
+def _flag_out(flag: ReviewFlag, bookings: dict[int, Booking]) -> SafetyFlagOut:
+    """Describe a flag by what it points at. Either may have moved on since."""
+    resolved = {"resolved_at": flag.resolved_at, "resolved_by_name": flag.resolved_by_name}
+    if flag.booking_id is not None:
+        booking = bookings.get(flag.booking_id)
+        return SafetyFlagOut(
+            id=str(flag.id),
+            target="booking",
+            target_id=str(flag.booking_id),
+            label=booking.venue_name if booking else "A venue booking that no longer exists",
+            status=str(booking.status) if booking else "",
+            starts_at=booking.starts_at if booking else "",
+            ends_at=booking.ends_at if booking else "",
+            **resolved,
+        )
+    line = equipment_store.repository().get_request(flag.equipment_request_id or 0)
+    return SafetyFlagOut(
+        id=str(flag.id),
+        target="equipment",
+        target_id=str(flag.equipment_request_id),
+        label=(
+            f"{line.equipment_type} × {line.quantity}"
+            if line
+            else "An equipment request that no longer exists"
+        ),
+        status=line.status if line else "",
+        starts_at=line.starts_at if line else "",
+        ends_at=line.ends_at if line else "",
+        **resolved,
+    )
+
+
+def _bookings_by_id(event_id: int) -> dict[int, Booking]:
+    return {booking.id: booking for booking in booking_store.repository().list_for_event(event_id)}
+
+
+def _decision_out(decision: SafetyDecision, bookings: dict[int, Booking]) -> SafetyDecisionOut:
+    return SafetyDecisionOut(
+        id=str(decision.id),
+        outcome=decision.outcome,
+        note=decision.note,
+        decided_by_name=decision.decided_by_name,
+        decided_at=decision.decided_at,
+        check_started_at=decision.check_started_at,
+        flags=[_flag_out(flag, bookings) for flag in decision.flags],
+    )
+
+
+def _safety_refused(message: str, reason: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"code": EventError.REFUSED, "message": message, "reason": reason},
+    )
+
+
+def _record_safety_decision(
+    event_id: str, user: User, outcome: SafetyOutcome, payload: SafetyDecisionIn
+) -> tuple[Event, SafetyDecision]:
+    """Check and record one decision, and return the event as it now is.
 
     `_readable` only lets the Safety Officer reach an event that is Pending
-    Safety Check, and the store re-checks that status in the same write, so a
-    check decided twice is refused rather than overwritten.
+    Safety Check. The decision is pinned to the stay the server sees now, and
+    to the one the Safety Officer reviewed when their page says which; the
+    store re-checks the stay in the same write, so a check decided twice, or
+    sent back and resubmitted meanwhile, is refused rather than overwritten.
     """
     event = _readable(_as_id(event_id), user)
-    _require_transition(event.status, to_status)
+    _require_transition(event.status, safety_decisions.to_status(outcome))
+    note = payload.note.strip()
+    error = safety_decisions.note_error(outcome, note)
+    if error:
+        raise _invalid(error)
+    entered = safety_review.entered_safety_check(event)
+    started = payload.check_started_at.strip()
+    if started:
+        try:
+            current = safety_decisions.same_check(started, entered)
+        except ValueError:
+            raise _invalid("checkStartedAt must be a date and time.") from None
+        if not current:
+            raise _safety_refused(safety_decisions.CHECK_MOVED_ON, "check-moved-on")
+    error = safety_decisions.flag_error(
+        outcome,
+        booking_ids=payload.flagged_booking_ids,
+        equipment_ids=payload.flagged_equipment_ids,
+        flaggable_bookings=[
+            booking.id
+            for booking in booking_store.repository().list_for_event(event.id)
+            if booking.holds_venue
+        ],
+        flaggable_equipment=[
+            line.id for line in equipment_store.repository().list_reserved_for_event(event.id)
+        ],
+    )
+    if error:
+        raise _invalid(error)
     try:
-        return event_store.repository().decide_safety_check(
-            event.id, actor_id=user.id, to_status=to_status, note=note
+        decision = safety_decision_store.repository().record(
+            event.id,
+            officer_id=user.id,
+            outcome=outcome,
+            note=note,
+            check_started_at=entered,
+            booking_ids=tuple(payload.flagged_booking_ids),
+            equipment_ids=tuple(payload.flagged_equipment_ids),
         )
     except StaleEventStatus:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": EventError.REFUSED,
-                "message": "This safety check was already decided. Refresh it and try again.",
-                "reason": "invalid-transition",
-            },
+        raise _safety_refused(
+            "This safety check was already decided. Refresh it and try again.",
+            "invalid-transition",
         ) from None
+    decided = event_store.repository().get_event(event.id)
+    assert decided is not None  # noqa: S101 - the row was just updated
+    return decided, decision
 
 
 @router.post("/{event_id}/safety-check/approve", response_model=EventOut)
-def approve_safety_check(event_id: str, user: SafetyOfficer) -> EventOut:
-    """US4.4: the Safety Officer signs the event off. Pending Safety Check -> Confirmed."""
-    return _to_out(_decide_safety(event_id, user, EventStatus.CONFIRMED))
+def approve_safety_check(
+    event_id: str, user: SafetyOfficer, payload: SafetyDecisionIn | None = None
+) -> EventOut:
+    """US4.4/US17.2: the Safety Officer signs the event off. -> Confirmed."""
+    decided, _ = _record_safety_decision(
+        event_id, user, SafetyOutcome.APPROVED, payload or SafetyDecisionIn()
+    )
+    return _to_out(decided)
 
 
+# `/return` is US4.4's name for the same move, kept so an older client works.
 @router.post("/{event_id}/safety-check/return", response_model=EventOut)
-def return_safety_check(event_id: str, payload: SafetyReturn, user: SafetyOfficer) -> EventOut:
-    """US4.4: back to Planning, with a note the Coordinator reads and is told about."""
-    note = payload.note.strip()
-    if not note:
-        raise _invalid("Tell the Coordinator what needs to change before this event is safe.")
-    if len(note) > safety_check.SAFETY_NOTE_MAX:
-        raise _invalid(f"Keep the note to {safety_check.SAFETY_NOTE_MAX} characters or fewer.")
-    returned = _decide_safety(event_id, user, EventStatus.PLANNING, note=note)
-    # US10.2: best effort, like every notice; the move has already happened.
-    notify_safety_changes(returned, note)
-    return _to_out(returned)
+@router.post("/{event_id}/safety-check/request-changes", response_model=EventOut)
+def request_safety_changes(
+    event_id: str, payload: SafetyDecisionIn, user: SafetyOfficer
+) -> EventOut:
+    """US17.2: back to Planning with what must change, and the affected
+    arrangements flagged for re-review. The Coordinator is told (US10.2)."""
+    decided, decision = _record_safety_decision(
+        event_id, user, SafetyOutcome.CHANGES_REQUESTED, payload
+    )
+    # Best effort, like every notice; the decision has already been recorded.
+    notify_safety_changes(decided, decision.note, flagged=len(decision.flags))
+    return _to_out(decided)
+
+
+@router.post("/{event_id}/safety-check/reject", response_model=EventOut)
+def reject_safety_check(event_id: str, payload: SafetyDecisionIn, user: SafetyOfficer) -> EventOut:
+    """US17.2: rejected, with the reason. Back to Planning, per the story's assumption."""
+    decided, decision = _record_safety_decision(event_id, user, SafetyOutcome.REJECTED, payload)
+    notify_safety_rejected(decided, decision.note)
+    return _to_out(decided)
+
+
+SafetyReader = Annotated[
+    User, Depends(require_any_permission(Permission.SAFETY_SUBMIT, Permission.SAFETY_REVIEW))
+]
+
+
+@router.get("/{event_id}/safety-decisions", response_model=list[SafetyDecisionOut])
+def list_safety_decisions(event_id: str, user: SafetyReader) -> list[SafetyDecisionOut]:
+    """US17.2: every safety decision on the event, newest first, with its flags.
+
+    The assigned Coordinator reads it to see what to re-review; the Safety
+    Officer, while the event waits for them, to see what they asked last time.
+    `_readable` decides who reaches which event, as everywhere else.
+    """
+    event = _readable(_as_id(event_id), user)
+    bookings = _bookings_by_id(event.id)
+    return [
+        _decision_out(decision, bookings)
+        for decision in safety_decision_store.repository().list_for_event(event.id)
+    ]
+
+
+@router.post("/{event_id}/safety-flags/{flag_id}/resolve", response_model=SafetyFlagOut)
+def resolve_safety_flag(event_id: str, flag_id: str, user: SafetySender) -> SafetyFlagOut:
+    """US17.2: the assigned Coordinator marks one flagged arrangement re-reviewed.
+
+    Only while the event is back in Planning, which is when there is anything
+    to re-review. Once only, so the record keeps who did it first.
+    """
+    event = _readable(_as_id(event_id), user)
+    if event.status is not EventStatus.PLANNING:
+        raise _safety_refused(
+            "Flagged arrangements are re-reviewed while the event is in Planning.",
+            "not-planning",
+        )
+    store = safety_decision_store.repository()
+    flag = store.get_flag(int(flag_id)) if flag_id.isdigit() else None
+    if flag is None or flag.event_id != event.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": EventError.SAFETY_FLAG_NOT_FOUND,
+                "message": "That flag is not on this event.",
+            },
+        )
+    try:
+        resolved = store.resolve_flag(flag.id, event_id=event.id, actor_id=user.id)
+    except StaleFlag:
+        raise _safety_refused(
+            "This arrangement was already marked re-reviewed.", "flag-resolved"
+        ) from None
+    return _flag_out(resolved, _bookings_by_id(event.id))
+
 
 class ChangeRequestIn(EventDraft):
     """US11.1: the edit form's values, proposed rather than saved, plus a note.

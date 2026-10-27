@@ -261,7 +261,7 @@ Confirmed.
   Safety Check. Approve moves it to Confirmed; sending it back moves it to
   Planning and needs a note (at most 2,000 characters), which lands in the
   audit trail and is sent to the assigned Coordinator (US10.2). US17.2 splits
-  that into separate reject and request-changes outcomes.
+  that into separate reject and request-changes outcomes (below).
 - **Audit.** Every move is a `status_changes` row with who and when (US4.2).
 
 Run [`SUPABASE_ADD_SAFETY_CHECK_STATUS.sql`](SUPABASE_ADD_SAFETY_CHECK_STATUS.sql)
@@ -272,6 +272,38 @@ and Pending Safety Check only from Planning.
 
 Until US19.3 adds reserving equipment, an event with any equipment request
 cannot be sent; remove the lines it does not need, or wait for US19.3.
+
+### The Safety Officer's decision (US17.2)
+
+The Safety Officer approves, requests changes to, or rejects an event that is
+Pending Safety Check (`app/safety_decisions.py`, routes in `app/events.py`):
+
+| Outcome | Route | Event moves to | Needs | Coordinator told |
+| --- | --- | --- | --- | --- |
+| Approve | `POST /events/{id}/safety-check/approve` | Confirmed | nothing | no |
+| Request changes | `POST /events/{id}/safety-check/request-changes` (US4.4's `/return` is an alias) | Planning | a note; optionally the bookings and equipment lines to flag | yes, `safety-changes` |
+| Reject | `POST /events/{id}/safety-check/reject` | Planning (the story's assumption) | a reason | yes, `safety-rejected` |
+
+- **Record.** Every decision is a `safety_reviews` row (outcome, note, who,
+  when) written with the event's move and its `status_changes` row in one RPC,
+  `record_safety_decision`. `GET /events/{id}/safety-decisions` lists them,
+  newest first, for the assigned Coordinator and, while the event waits, the
+  Safety Officer.
+- **Flags.** A request for changes can flag the venue bookings and reserved
+  equipment shown in the US17.1 review. Each is a `safety_review_flags` row,
+  open until the assigned Coordinator marks it re-reviewed
+  (`POST /events/{id}/safety-flags/{flagId}/resolve`). An open flag stops the
+  event being sent for its check again.
+- **A fresh decision each time.** Each decision is pinned to the stay in
+  Pending Safety Check it ends. The page sends the review's `waitingSince` as
+  `checkStartedAt`; if the event was sent back and resubmitted since, the
+  decision is refused with 409 `check-moved-on` instead of landing on a
+  submission the Safety Officer has not reviewed.
+
+Run [`SUPABASE_US17_2_SAFETY_DECISIONS.sql`](SUPABASE_US17_2_SAFETY_DECISIONS.sql)
+after the US4.4 and US20.1 scripts. It redefines `send_event_to_safety_check`
+with the open-flag check; US4.4's `decide_safety_check` is left in place but no
+longer called.
 
 ### Cancelling an event (US4.6)
 

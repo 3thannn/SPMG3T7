@@ -23,6 +23,7 @@ from app import (
     event_store,
     notification_store,
     registration_store,
+    safety_decision_store,
     venue_store,
     venue_unavailability_store,
 )
@@ -33,6 +34,7 @@ from app.main import app
 from app.notification_store import InMemoryNotifications
 from app.permissions import Role
 from app.registration_store import InMemoryRegistrations
+from app.safety_decision_store import InMemorySafetyDecisions
 from app.users import InMemoryUsers, User, use_repository
 from app.venue_store import InMemoryVenues, Venue
 from app.venue_unavailability_store import InMemoryUnavailability
@@ -172,6 +174,15 @@ def event_repository():
     previous = event_store.use_repository(store)
     yield store
     event_store.use_repository(previous)
+
+
+@pytest.fixture(autouse=True)
+def safety_decision_repository(event_repository):
+    """US17.2: no safety decisions until the Safety Officer records one."""
+    store = InMemorySafetyDecisions(names=event_repository.names)
+    previous = safety_decision_store.use_repository(store)
+    yield store
+    safety_decision_store.use_repository(previous)
 
 
 #: Three venues, chosen so the US9.3 filters can actually discriminate: two
