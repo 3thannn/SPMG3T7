@@ -4,7 +4,6 @@ import { afterEach, expect, it, vi } from 'vitest'
 import SafetyReviewPage from './SafetyReviewPage'
 import { listSafetyQueue, type EventRecord } from '../eventsStore'
 import { ApiError } from '../api'
-import { formatTimestamp } from '../status'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
@@ -62,16 +61,17 @@ it('lists the events waiting for sign-off, in the order the server sends them', 
 
   // Waiting since the most recent time it was sent.
   expect(within(items[0]).getByRole('link', { name: 'Event 2' })).toHaveAttribute('href', '#/events/2')
-  expect(items[0]).toHaveTextContent(formatTimestamp('2099-01-03T09:00:00'))
+  expect(items[0]).toHaveTextContent('Waiting since: 03 Jan 2099, 17:00')
   expect(within(items[0]).getByText('2', { selector: '.safety-date-day' })).toBeInTheDocument()
+  expect(within(items[0]).getByText('Nov', { selector: '.safety-date-month' })).toBeInTheDocument()
   expect(
-    within(items[0]).getByText('Nov', { selector: '.safety-date-month' }),
+    within(items[0]).getByText('09:00 AM', { selector: '.safety-date-time' }),
   ).toBeInTheDocument()
   expect(items[0]).toHaveTextContent('Expected attendance: 30 people')
   expect(within(items[0]).getByText('Pending Safety Check')).toBeInTheDocument()
 
   // No entry for the move: falls back to when the event last changed.
-  expect(items[1]).toHaveTextContent(formatTimestamp('2099-01-01T09:00:00'))
+  expect(items[1]).toHaveTextContent('Waiting since: 01 Jan 2099, 17:00')
   expect(within(items[1]).getByText('TBD')).toBeInTheDocument()
   expect(items[1]).toHaveTextContent('Expected attendance: Not estimated')
   expect(queueMock).toHaveBeenCalledWith(officer)

@@ -3,7 +3,7 @@ import './SafetyReviewPage.css'
 import StatusBadge from '../components/StatusBadge'
 import { listSafetyQueue, type EventRecord } from '../eventsStore'
 import { displayEventTitle } from '../draftRules'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt } from '../status'
 import { navigate } from '../router'
 import { unexpectedFailureMessage, type Session } from '../api'
 
@@ -130,7 +130,7 @@ export default function SafetyReviewPage({ session }: Props) {
                     ? 'Not estimated'
                     : `${event.expectedAttendance} people`}
                   <span aria-hidden="true"> · </span>
-                  Waiting since: {formatTimestamp(waitingSince(event))}
+                  Waiting since: {formatRecordedAt(waitingSince(event))}
                 </p>
               </div>
 
