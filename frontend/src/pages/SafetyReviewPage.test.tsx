@@ -62,14 +62,18 @@ it('lists the events waiting for sign-off, in the order the server sends them', 
 
   // Waiting since the most recent time it was sent.
   expect(within(items[0]).getByRole('link', { name: 'Event 2' })).toHaveAttribute('href', '#/events/2')
-  expect(within(items[0]).getByText(formatTimestamp('2099-01-03T09:00:00'))).toBeInTheDocument()
-  expect(within(items[0]).getByText('30 people')).toBeInTheDocument()
+  expect(items[0]).toHaveTextContent(formatTimestamp('2099-01-03T09:00:00'))
+  expect(within(items[0]).getByText('2', { selector: '.safety-date-day' })).toBeInTheDocument()
+  expect(
+    within(items[0]).getByText('Nov', { selector: '.safety-date-month' }),
+  ).toBeInTheDocument()
+  expect(items[0]).toHaveTextContent('Expected attendance: 30 people')
   expect(within(items[0]).getByText('Pending Safety Check')).toBeInTheDocument()
 
   // No entry for the move: falls back to when the event last changed.
-  expect(within(items[1]).getByText(formatTimestamp('2099-01-01T09:00:00'))).toBeInTheDocument()
-  expect(within(items[1]).getByText('Not set')).toBeInTheDocument()
-  expect(within(items[1]).getByText('Not estimated')).toBeInTheDocument()
+  expect(items[1]).toHaveTextContent(formatTimestamp('2099-01-01T09:00:00'))
+  expect(within(items[1]).getByText('TBD')).toBeInTheDocument()
+  expect(items[1]).toHaveTextContent('Expected attendance: Not estimated')
   expect(queueMock).toHaveBeenCalledWith(officer)
 })
 

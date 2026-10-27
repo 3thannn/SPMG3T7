@@ -87,38 +87,68 @@ export default function SafetyReviewPage({ session }: Props) {
     return (
       <ul className="safety-queue" aria-label="Events pending safety check">
         {queue.events.map((event) => (
-          <li key={event.id} className="card safety-queue-item">
-            <div className="safety-queue-head">
-              <a
-                className="safety-queue-title"
-                href={`#/events/${event.id}`}
-                onClick={(clickEvent) => {
-                  clickEvent.preventDefault()
-                  navigate(`/events/${event.id}`)
-                }}
-              >
-                {displayEventTitle(event.title)}
-              </a>
-              <StatusBadge status={event.status} />
-            </div>
-            <dl className="safety-queue-facts">
-              <div>
-                <dt>Starts</dt>
-                <dd>{event.startsAt ? formatTimestamp(event.startsAt) : 'Not set'}</dd>
+          <li key={event.id}>
+            <a
+              className="safety-event-card"
+              href={`#/events/${event.id}`}
+              aria-label={displayEventTitle(event.title)}
+              onClick={(clickEvent) => {
+                clickEvent.preventDefault()
+                navigate(`/events/${event.id}`)
+              }}
+            >
+              <div className="safety-event-date-badge">
+                {event.startsAt ? (
+                  <>
+                    <span className="safety-date-day">{new Date(event.startsAt).getDate()}</span>
+                    <span className="safety-date-month">
+                      {new Date(event.startsAt).toLocaleDateString('en-US', { month: 'short' })}
+                    </span>
+                    <span className="safety-date-time">
+                      {new Date(event.startsAt).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="safety-date-day">—</span>
+                    <span className="safety-date-month">TBD</span>
+                  </>
+                )}
               </div>
-              <div>
-                <dt>Expected attendance</dt>
-                <dd>
+
+              <div className="safety-event-content">
+                <div className="safety-event-header">
+                  <h2 className="safety-event-title">{displayEventTitle(event.title)}</h2>
+                  <StatusBadge status={event.status} />
+                </div>
+                <p className="safety-event-meta">
+                  Expected attendance:{' '}
                   {event.expectedAttendance === null
                     ? 'Not estimated'
                     : `${event.expectedAttendance} people`}
-                </dd>
+                  <span aria-hidden="true"> · </span>
+                  Waiting since: {formatTimestamp(waitingSince(event))}
+                </p>
               </div>
-              <div>
-                <dt>Waiting since</dt>
-                <dd>{formatTimestamp(waitingSince(event))}</dd>
+
+              <div className="safety-event-arrow" aria-hidden="true">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
               </div>
-            </dl>
+            </a>
           </li>
         ))}
       </ul>

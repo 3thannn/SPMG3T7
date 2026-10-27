@@ -1,46 +1,164 @@
-/* US4.4: the Safety Officer's queue, one card per event waiting for sign-off. */
+/* US4.4: the Safety Officer's queue, using the event-card layout. */
 .safety-queue {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 0.9rem;
-}
-
-.safety-queue-item {
-  padding: 1.1rem 1.25rem;
-}
-
-.safety-queue-head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.35rem 1rem;
-  margin-bottom: 0.75rem;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.safety-queue-title {
-  font-size: 1.05rem;
+.safety-event-card {
+  display: flex;
+  align-items: stretch;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s;
+}
+
+.safety-event-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.safety-event-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+}
+
+.safety-event-date-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  padding: 1.5rem;
+  width: 140px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.safety-date-day {
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.safety-date-month {
+  font-size: 0.875rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.95;
+  margin-bottom: 0.5rem;
+}
+
+.safety-date-time {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  opacity: 0.9;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.safety-event-content {
+  flex: 1;
+  padding: 1.5rem 2rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.safety-event-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.safety-event-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
-.safety-queue-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: 0.6rem 1rem;
+.safety-event-meta {
+  font-size: 0.9375rem;
+  color: #6b7280;
   margin: 0;
+  line-height: 1.5;
 }
 
-.safety-queue-facts dt {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.safety-event-arrow {
+  display: flex;
+  align-items: center;
+  padding: 1.5rem 1.5rem 1.5rem 0;
+  color: #9ca3af;
+  transition:
+    color 0.2s,
+    transform 0.2s;
 }
 
-.safety-queue-facts dd {
-  margin: 0.15rem 0 0;
+.safety-event-card:hover .safety-event-arrow {
+  color: #6366f1;
+  transform: translateX(4px);
+}
+
+@media (max-width: 640px) {
+  .safety-event-card {
+    flex-direction: column;
+  }
+
+  .safety-event-date-badge {
+    flex-direction: row;
+    padding: 1.25rem 1.5rem;
+    width: auto;
+    gap: 1rem;
+  }
+
+  .safety-date-day {
+    font-size: 2rem;
+  }
+
+  .safety-date-time {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    padding-left: 1rem;
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .safety-event-content {
+    padding: 1.25rem 1.5rem;
+  }
+
+  .safety-event-header {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .safety-event-arrow {
+    padding: 0 1.5rem 1.25rem;
+    justify-content: center;
+  }
+
+  .safety-event-card:hover .safety-event-arrow {
+    transform: translateY(4px);
+  }
 }
