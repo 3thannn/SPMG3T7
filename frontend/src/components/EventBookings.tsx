@@ -18,6 +18,7 @@ import {
   type Suitability,
 } from '../eventsStore'
 import { listVenues, listedItems, type VenueRecord } from '../venuesStore'
+import { listedNeeds, NOT_REQUIRED } from '../eventNeeds'
 import { bookingRefusalMessage, checkBooking, formatRecordedAt, formatTimestamp } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 import { can } from '../permissions'
@@ -46,6 +47,13 @@ function bySchedule(a: BookingRecord, b: BookingRecord): number {
 /** A datetime-local value from a stored time, which may carry seconds. */
 function asInputValue(iso: string | undefined): string {
   return (iso ?? '').slice(0, 16)
+}
+
+/** Use the event's stated need in a booking, but do not treat "not required" as a need. */
+function bookingNeedField(value: string | undefined): string {
+  return listedNeeds(value ?? '')
+    .filter((need) => need !== NOT_REQUIRED)
+    .join(', ')
 }
 
 /** US18.1: the verdict for one exact set of form values. */
@@ -140,9 +148,9 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     startsAt: asInputValue(event.startsAt),
     endsAt: asInputValue(event.endsAt),
     headcount: attendanceField(event.expectedAttendance),
-    layout: '',
-    facilities: '',
-    accessibilityNeeds: '',
+    layout: bookingNeedField(event.preferredLayout),
+    facilities: bookingNeedField(event.venueRequirements),
+    accessibilityNeeds: bookingNeedField(event.accessibilityNeeds),
   })
   const [formError, setFormError] = useState('')
   const [saved, setSaved] = useState('')

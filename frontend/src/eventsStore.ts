@@ -354,11 +354,60 @@ export async function getSafetyReview(id: string, session: Session): Promise<Saf
   return (await response.json()) as SafetyReview
 }
 
-/** US4.4: the Safety Officer signs the event off. Pending Safety Check -> Confirmed. */
-export async function approveSafetyCheck(id: string, session: Session): Promise<EventRecord> {
+/** US17.2: what the Safety Officer decided. */
+export type SafetyOutcome = 'approved' | 'changes-requested' | 'rejected'
+
+/** US17.2: one arrangement a request for changes flagged for re-review. */
+export type SafetyFlag = {
+  id: string
+  target: 'booking' | 'equipment'
+  targetId: string
+  /** The venue's name, or the equipment type and quantity. */
+  label: string
+  /** The arrangement's status now; it may have been cancelled since. */
+  status: string
+  startsAt: string
+  endsAt: string
+  /** Empty while the flag is open. */
+  resolvedAt: string
+  resolvedByName: string
+}
+
+/** US17.2: one decision, timestamped and attributable. */
+export type SafetyDecision = {
+  id: string
+  outcome: SafetyOutcome
+  note: string
+  decidedByName: string
+  decidedAt: string
+  /** When the event entered the Pending Safety Check this decision ended. */
+  checkStartedAt: string
+  flags: SafetyFlag[]
+}
+
+/**
+ * US17.2: what a decision is made with. `checkStartedAt` is the review's
+ * `waitingSince`, so a decision never lands on a submission made after the
+ * Safety Officer opened the page.
+ */
+export type SafetyDecisionInput = {
+  checkStartedAt: string
+  note?: string
+  flaggedBookingIds?: string[]
+  flaggedEquipmentIds?: string[]
+}
+
+async function decideSafetyCheck(
+  id: string,
+  action: 'approve' | 'request-changes' | 'reject',
+  input: SafetyDecisionInput,
+  session: Session,
+): Promise<EventRecord> {
   try {
-    const response = await authorizedFetch(`/events/${id}/safety-check/approve`, session.token, {
+    const response = await authorizedFetch(`/events/${id}/safety-check/${action}`, session.token, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
     })
     return (await response.json()) as EventRecord
   } catch (error) {
@@ -366,19 +415,59 @@ export async function approveSafetyCheck(id: string, session: Session): Promise<
   }
 }
 
-/** US4.4: back to Planning, with a note the Coordinator reads. */
-export async function returnSafetyCheck(
+/** US4.4/US17.2: the Safety Officer signs the event off. Pending Safety Check -> Confirmed. */
+export function approveSafetyCheck(
   id: string,
-  note: string,
+  checkStartedAt: string,
   session: Session,
 ): Promise<EventRecord> {
+  return decideSafetyCheck(id, 'approve', { checkStartedAt }, session)
+}
+
+/**
+ * US17.2: back to Planning with what must change, and the affected venue
+ * bookings and equipment lines flagged for re-review.
+ */
+export function requestSafetyChanges(
+  id: string,
+  input: SafetyDecisionInput,
+  session: Session,
+): Promise<EventRecord> {
+  return decideSafetyCheck(id, 'request-changes', input, session)
+}
+
+/** US17.2: rejected, with the reason. The event goes back to Planning. */
+export function rejectSafetyCheck(
+  id: string,
+  reason: string,
+  checkStartedAt: string,
+  session: Session,
+): Promise<EventRecord> {
+  return decideSafetyCheck(id, 'reject', { note: reason, checkStartedAt }, session)
+}
+
+/** US17.2: every safety decision on the event, newest first. */
+export async function listSafetyDecisions(
+  id: string,
+  session: Session,
+): Promise<SafetyDecision[]> {
+  const response = await authorizedFetch(`/events/${id}/safety-decisions`, session.token)
+  return (await response.json()) as SafetyDecision[]
+}
+
+/** US17.2: the assigned Coordinator marks one flagged arrangement re-reviewed. */
+export async function resolveSafetyFlag(
+  eventId: string,
+  flagId: string,
+  session: Session,
+): Promise<SafetyFlag> {
   try {
-    const response = await authorizedFetch(`/events/${id}/safety-check/return`, session.token, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ note }),
-    })
-    return (await response.json()) as EventRecord
+    const response = await authorizedFetch(
+      `/events/${eventId}/safety-flags/${flagId}/resolve`,
+      session.token,
+      { method: 'POST' },
+    )
+    return (await response.json()) as SafetyFlag
   } catch (error) {
     return asRuleError(error)
   }

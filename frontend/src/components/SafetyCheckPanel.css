@@ -1,0 +1,76 @@
+/* US17.2: the Safety Officer's decision, and the Coordinator's view of it. */
+.safety-choice {
+  border: 0;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.safety-choice-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.safety-choice-option input {
+  margin-top: 0.2rem;
+}
+
+.safety-feedback,
+.safety-earlier-item {
+  margin: 0.75rem 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+
+.safety-feedback {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.safety-decision-head,
+.safety-decision-note {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.safety-decision-note {
+  white-space: pre-wrap;
+}
+
+.safety-flags {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.safety-flag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.safety-flag.is-open .safety-flag-label {
+  font-weight: 600;
+}
+
+.safety-earlier {
+  margin-top: 1.25rem;
+}
+
+.safety-earlier-title {
+  font-size: 0.85rem;
+  margin: 0 0 0.25rem;
+  color: var(--ink);
+}

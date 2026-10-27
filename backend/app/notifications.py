@@ -15,9 +15,9 @@ best-effort rule after an equipment request is stored.
 US10.2 tells the Coordinator an event is assigned to about the things that
 need their attention: being assigned or unassigned, a tentative hold running
 out, a booking hit by venue unavailability or a setup change, and the Safety
-Officer asking for changes. Only assignment (US8.3) exists yet; the other
-`notify_*` functions are ready for US8.4, US12.2/US15.2 and US17.2 to call
-once the change they describe has been stored. Same best-effort rule. US14.4's
+Officer asking for changes (US17.2, which also tells them about a rejection).
+Each `notify_*` function is called once the change it describes has been
+stored. Same best-effort rule. US14.4's
 two hold notices are written by the database's scheduled sweep instead, in the
 words `notify_hold_expiring` and `notify_hold_expired` set out.
 
@@ -221,6 +221,9 @@ class CoordinatorNotice(StrEnum):
     HOLD_EXPIRED = "hold-expired"
     BOOKING_CONFLICT = "booking-conflict"
     SAFETY_CHANGES = "safety-changes"
+    #: US17.2: the Safety Officer rejected the safety check. Not one of US10.2's
+    #: four, but the event lands back on the Coordinator's desk either way.
+    SAFETY_REJECTED = "safety-rejected"
     #: US16.1: Venue Staff decided one of the event's booking requests.
     BOOKING_CONFIRMED = "booking-confirmed"
     BOOKING_REJECTED = "booking-rejected"
@@ -326,16 +329,28 @@ def notify_booking_conflict(event: Event, venue_name: str, reason: str) -> None:
     )
 
 
-def notify_safety_changes(event: Event, notes: str = "") -> None:
-    """US17.2: the Safety Officer asked for changes. Their words travel with it."""
+def notify_safety_changes(event: Event, notes: str = "", flagged: int = 0) -> None:
+    """US17.2: the Safety Officer asked for changes. Their words travel with it,
+    and so does how many arrangements they flagged for re-review."""
     title = _event_title(event)
+    message = (
+        f'The Safety Officer requested changes to "{title}": {notes}'
+        if notes
+        else f'The Safety Officer requested changes to "{title}".'
+    )
+    if flagged:
+        noun = "arrangement" if flagged == 1 else "arrangements"
+        message += f" {flagged} {noun} flagged for re-review."
+    _notify_coordinator(event.coordinator_id, event, CoordinatorNotice.SAFETY_CHANGES, message)
+
+
+def notify_safety_rejected(event: Event, reason: str) -> None:
+    """US17.2: the Safety Officer rejected the safety check, and why."""
     _notify_coordinator(
         event.coordinator_id,
         event,
-        CoordinatorNotice.SAFETY_CHANGES,
-        f'The Safety Officer requested changes to "{title}": {notes}'
-        if notes
-        else f'The Safety Officer requested changes to "{title}".',
+        CoordinatorNotice.SAFETY_REJECTED,
+        f'The Safety Officer rejected the safety check for "{_event_title(event)}": {reason}',
     )
 
 

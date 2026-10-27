@@ -17,6 +17,8 @@ export type CoordinatorNoticeKind =
   | 'hold-expired'
   | 'booking-conflict'
   | 'safety-changes'
+  /** US17.2: the Safety Officer rejected the safety check. */
+  | 'safety-rejected'
   | 'booking-confirmed'
   | 'booking-rejected'
   /** US20.1: registrations reached capacity. The Organiser is told too. */
@@ -33,6 +35,7 @@ export const KIND_LABELS: Record<Exclude<NotificationKind, 'event-status'>, stri
   'hold-expired': 'Hold expired',
   'booking-conflict': 'Booking problem',
   'safety-changes': 'Safety changes',
+  'safety-rejected': 'Safety check rejected',
   'booking-confirmed': 'Booking confirmed',
   'booking-rejected': 'Booking rejected',
   'event-full': 'Event full',

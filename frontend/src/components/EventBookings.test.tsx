@@ -650,6 +650,59 @@ it('leaves the headcount for the Coordinator when the event has no attendance', 
   expect(screen.getByLabelText('Headcount')).toHaveValue(null)
 })
 
+it('starts the booking needs from the event and checks them against the chosen venue', async () => {
+  const user = userEvent.setup()
+  render(
+    <EventBookings
+      event={event({
+        preferredLayout: 'Classroom',
+        venueRequirements: 'Whiteboard, Projector',
+        accessibilityNeeds: 'Wheelchair access, Accessible toilets',
+      })}
+      session={coordinator}
+    />,
+  )
+  await formReady()
+
+  expect(screen.getByLabelText('Layout (optional)')).toHaveValue('Classroom')
+  expect(screen.getByLabelText('Facilities needed (optional)')).toHaveValue(
+    'Whiteboard, Projector',
+  )
+  expect(screen.getByLabelText('Accessibility needs (optional)')).toHaveValue(
+    'Wheelchair access, Accessible toilets',
+  )
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+  expect(await screen.findByText('Suitable')).toBeInTheDocument()
+  expect(checkSuitabilityMock).toHaveBeenLastCalledWith(
+    '900',
+    expect.objectContaining({
+      layout: 'Classroom',
+      facilities: 'Whiteboard, Projector',
+      accessibilityNeeds: 'Wheelchair access, Accessible toilets',
+    }),
+    coordinator,
+  )
+})
+
+it('does not turn the event answer "None / Not required" into a booking need', async () => {
+  render(
+    <EventBookings
+      event={event({
+        preferredLayout: 'None / Not required',
+        venueRequirements: 'None / Not required',
+        accessibilityNeeds: 'None / Not required',
+      })}
+      session={coordinator}
+    />,
+  )
+  await formReady()
+
+  expect(screen.getByLabelText('Layout (optional)')).toHaveValue('')
+  expect(screen.getByLabelText('Facilities needed (optional)')).toHaveValue('')
+  expect(screen.getByLabelText('Accessibility needs (optional)')).toHaveValue('')
+})
+
 it('checks a venue as soon as it is picked, and says Suitable', async () => {
   const user = userEvent.setup()
   render(<EventBookings event={event()} session={coordinator} />)

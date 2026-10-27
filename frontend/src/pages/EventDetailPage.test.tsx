@@ -36,6 +36,8 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   approveSafetyCheck: vi.fn(),
   // US17.1: the Safety Officer's review loads its own data; left pending here.
   getSafetyReview: vi.fn(() => new Promise(() => {})),
+  // US17.2: the panel reads the earlier decisions. None, unless a test says so.
+  listSafetyDecisions: vi.fn(async () => []),
 }))
 
 // US14.1: the venue bookings card loads its own data. These tests are not about
@@ -508,14 +510,34 @@ it('takes the Safety Officer back to their queue', async () => {
   expect(window.location.hash).toBe('#/safety-review')
 })
 
+/** US17.2: a decision waits for the review it is made on, so these tests load one. */
+const WAITING_SINCE = '2026-10-20T09:00:00'
+const loadedReview = () =>
+  vi.mocked(getSafetyReview).mockResolvedValue({
+    eventId: '101', title: submittedEvent.title, status: 'Pending Safety Check',
+    startsAt: '', endsAt: '', expectedAttendance: null, accessibilityNeeds: '',
+    preferredLayout: '', venueRequirements: '', waitingSince: WAITING_SINCE,
+    venues: [], equipment: [],
+  })
+
+/** The approve button, once the review has loaded and enabled it. */
+async function approveButton() {
+  const button = await screen.findByRole('button', { name: 'Approve safety check' })
+  await waitFor(() => expect(button).toBeEnabled())
+  return button
+}
+
 it('shows the Safety Officer the outcome of their approval', async () => {
   const user = userEvent.setup()
   const pending = { ...submittedEvent, status: 'Pending Safety Check' as const }
   getEventMock.mockResolvedValue(pending)
+  loadedReview()
   vi.mocked(approveSafetyCheck).mockResolvedValue({ ...pending, status: 'Confirmed' })
 
   render(<EventDetailPage eventId="101" session={officer} />)
-  await user.click(await screen.findByRole('button', { name: 'Approve safety check' }))
+  await user.click(await approveButton())
+
+  expect(vi.mocked(approveSafetyCheck)).toHaveBeenCalledWith('101', WAITING_SINCE, officer)
 
   expect(await screen.findByRole('status')).toHaveTextContent(
     'Approved. The event is now Confirmed.',
@@ -526,12 +548,13 @@ it('shows the Safety Officer the outcome of their approval', async () => {
 it('shows the Safety Officer why a decision was refused', async () => {
   const user = userEvent.setup()
   getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })
+  loadedReview()
   vi.mocked(approveSafetyCheck).mockRejectedValue(
     new EventRuleError('This safety check was already decided. Refresh it and try again.'),
   )
 
   render(<EventDetailPage eventId="101" session={officer} />)
-  await user.click(await screen.findByRole('button', { name: 'Approve safety check' }))
+  await user.click(await approveButton())
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'This safety check was already decided. Refresh it and try again.',
