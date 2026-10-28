@@ -1,10 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import EventEquipment from './EventEquipment'
 import {
   createEquipmentRequest, listEquipment, listEventEquipmentRequests,
-  updateEquipmentRequest, type EquipmentRequest,
+  updateEquipmentRequest, removeEquipmentRequest, type EquipmentRequest,
 } from '../equipmentStore'
 import type { EventRecord } from '../eventsStore'
 import { formatBookingTimes } from '../eventsStore'
@@ -38,6 +38,41 @@ const line: EquipmentRequest = {
 }
 
 afterEach(() => { vi.resetAllMocks() })
+
+it('lets the Coordinator revise and resubmit an Unavailable line', async () => {
+  list.mockResolvedValueOnce([{ ...line, status: 'Unavailable', unavailableReason: 'Only 2 available', version: 2 }])
+    .mockResolvedValueOnce([{ ...line, quantity: 2, version: 3 }])
+  catalogue.mockResolvedValue([])
+  update.mockResolvedValue({ ...line, quantity: 2, version: 3 })
+  render(<EventEquipment event={event} session={coordinator} />)
+  expect(await screen.findByText('Unavailable reason: Only 2 available')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Revise and resubmit' }))
+  const form = screen.getByRole('heading', { name: 'Revise and resubmit equipment request' }).closest('form')!
+  await userEvent.clear(within(form).getByLabelText('Quantity'))
+  await userEvent.type(within(form).getByLabelText('Quantity'), '2')
+  await userEvent.click(within(form).getByRole('button', { name: 'Resubmit request' }))
+  await waitFor(() => expect(update).toHaveBeenCalledWith('1', expect.objectContaining({ version: 2, quantity: 2 }), coordinator))
+  expect(await screen.findByRole('status')).toHaveTextContent('Resubmitted Microphone request.')
+  expect(screen.queryByText('Unavailable reason: Only 2 available')).not.toBeInTheDocument()
+})
+
+it('lets the Coordinator remove an Unavailable line', async () => {
+  list.mockResolvedValueOnce([{ ...line, status: 'Unavailable', version: 2 }]).mockResolvedValueOnce([])
+  catalogue.mockResolvedValue([])
+  vi.mocked(removeEquipmentRequest).mockResolvedValue(undefined)
+  render(<EventEquipment event={event} session={coordinator} />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+  expect(removeEquipmentRequest).toHaveBeenCalledWith('1', 2, coordinator)
+  expect(await screen.findByRole('status')).toHaveTextContent('Removed Microphone request.')
+})
+
+it.each(['Reserved', 'Removed'] as const)('does not offer recovery for %s lines', async (status) => {
+  list.mockResolvedValue([{ ...line, status }]); catalogue.mockResolvedValue([])
+  render(<EventEquipment event={event} session={coordinator} />)
+  await screen.findByText('Quantity: 1')
+  expect(screen.queryByRole('button', { name: 'Revise and resubmit' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument()
+})
 
 it('offers catalogue types and event-time defaults to the assigned Coordinator', async () => {
   catalogue.mockResolvedValue([{ id: '1', name: 'Mic', type: 'Microphone', description: '', location: 'Store', totalQuantity: 1, outOfServiceQuantity: 1, outOfServiceReason: 'Damaged', usableQuantity: 0 }])

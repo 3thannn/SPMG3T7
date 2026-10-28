@@ -1,4 +1,11 @@
 import { ApiError, authorizedFetch, unexpectedFailureMessage, type Session } from './api'
+import { formatBookingTimes } from './eventsStore'
+
+/** Equipment windows are naive SGT, independent of the viewer's timezone. */
+export function formatEquipmentTimes(start: string, end: string): string {
+  const planned = (value: string) => value && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? `${value}+08:00` : value
+  return formatBookingTimes(planned(start), planned(end))
+}
 
 export function equipmentErrorMessage(error: unknown, action: string): string {
   return error instanceof ApiError ? error.message : unexpectedFailureMessage(error, action)
@@ -28,12 +35,39 @@ export type EquipmentRequest = {
   supportNotes: string
   startsAt: string
   endsAt: string
-  status: 'Requested' | 'Removed'
+  status: 'Requested' | 'Reserved' | 'Unavailable' | 'Removed'
+  equipmentId?: string | null
+  unavailableReason?: string
   createdAt: string
   version: number
 }
 
 export type EquipmentRequestDetail = EquipmentRequest & { removedByName: string }
+
+export type EquipmentAvailability = {
+  equipmentId: string
+  name: string
+  location: string
+  totalQuantity: number
+  outOfServiceQuantity: number
+  reservedQuantity: number
+  availableQuantity: number
+  shortfall: number
+}
+
+export async function getEquipmentAvailability(id: string, session: Session): Promise<EquipmentAvailability[]> {
+  return (await (await authorizedFetch(`/equipment-requests/${id}/availability`, session.token)).json()) as EquipmentAvailability[]
+}
+
+export async function decideEquipmentRequest(
+  id: string, version: number, decision: { equipmentId: number } | { reason: string }, session: Session,
+): Promise<EquipmentRequest> {
+  const action = 'equipmentId' in decision ? 'reserve' : 'unavailable'
+  return (await (await authorizedFetch(`/equipment-requests/${id}/${action}`, session.token, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version, ...decision }),
+  })).json()) as EquipmentRequest
+}
 
 export type RequestSnapshot = {
   equipment_type: string

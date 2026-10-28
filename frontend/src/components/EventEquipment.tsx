@@ -7,11 +7,11 @@ import {
   type EquipmentRequest, type RequestChanges, type RequestFormValues,
 } from '../equipmentStore'
 import type { EventRecord } from '../eventsStore'
-import { formatBookingTimes } from '../eventsStore'
+import { formatEquipmentTimes } from '../equipmentStore'
 
 function localTime(value: string): string { return value.slice(0, 16) }
 
-export function RequestEditor({ initial, types, support, onSave, onCancel, embedded = false, idPrefix = 'request' }: {
+export function RequestEditor({ initial, types, support, onSave, onCancel, embedded = false, idPrefix = 'request', resubmitting = false }: {
   initial: RequestFormValues
   types: string[]
   support: boolean
@@ -19,6 +19,7 @@ export function RequestEditor({ initial, types, support, onSave, onCancel, embed
   onCancel?: () => void
   embedded?: boolean
   idPrefix?: string
+  resubmitting?: boolean
 }) {
   const fieldId = (field: string) => `${idPrefix}-equipment-${field}`
   const [value, setValue] = useState<RequestFormValues>(initial)
@@ -54,7 +55,7 @@ export function RequestEditor({ initial, types, support, onSave, onCancel, embed
     finally { setBusy(false) }
   }
   return <form className={`equipment-form${embedded ? ' equipment-request-form' : ' card card-pad'}`} onSubmit={(event) => void submit(event)} noValidate>
-    {embedded && <><h3 className="equipment-request-form-title">{onCancel ? 'Edit equipment request' : 'Request equipment'}</h3>
+    {embedded && <><h3 className="equipment-request-form-title">{resubmitting ? 'Revise and resubmit equipment request' : onCancel ? 'Edit equipment request' : 'Request equipment'}</h3>
       <p className="equipment-request-form-hint">{support
         ? 'Record arrangement notes and confirm the requested quantity and times.'
         : 'Request each equipment type separately. Technical Support will review the details.'}</p></>}
@@ -71,7 +72,7 @@ export function RequestEditor({ initial, types, support, onSave, onCancel, embed
         <div className="field equipment-requirements"><label htmlFor={fieldId('requirements')}>Technical requirements (optional)</label><textarea id={fieldId('requirements')} value={value.technicalRequirements} onChange={(event) => setValue({ ...value, technicalRequirements: event.target.value })} /></div>}
       {support && <div className="field"><label htmlFor={fieldId('notes')}>Arrangement notes</label><textarea id={fieldId('notes')} value={value.supportNotes} onChange={(event) => setValue({ ...value, supportNotes: event.target.value })} /></div>}
     </fieldset>
-    <div className="equipment-action-row"><button className="btn btn-primary" type="submit" disabled={busy || (!support && types.length === 0)}>{busy ? 'Saving…' : onCancel ? 'Save request' : 'Request equipment'}</button>
+    <div className="equipment-action-row"><button className="btn btn-primary" type="submit" disabled={busy || (!support && types.length === 0)}>{busy ? 'Saving…' : resubmitting ? 'Resubmit request' : onCancel ? 'Save request' : 'Request equipment'}</button>
       {onCancel && <button className="btn btn-secondary" type="button" disabled={busy} onClick={onCancel}>Cancel</button>}</div>
   </form>
 }
@@ -140,15 +141,18 @@ export default function EventEquipment({ event, session }: {
     {lines && lines.length > 0 && <ul className="equipment-request-list" aria-label="Equipment requests for this event">
       {lines.map((line) => <li key={line.id} className="equipment-request-row">
         <div className="equipment-request-summary"><span className="equipment-request-name">{line.equipmentType}</span>
-          <span className="equipment-request-times">{formatBookingTimes(line.startsAt, line.endsAt)}</span>
+          <span className="equipment-request-times">{formatEquipmentTimes(line.startsAt, line.endsAt)}</span>
           <span className="equipment-request-status">{line.status}</span>
-          {mayRequest && planning && !loadError && <span className="equipment-request-actions"><button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(line.id)}>Edit</button>
+          {mayRequest && planning && (line.status === 'Requested' || line.status === 'Unavailable') && !loadError && <span className="equipment-request-actions"><button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(line.id)}>{line.status === 'Unavailable' ? 'Revise and resubmit' : 'Edit'}</button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => void remove(line)}>Remove</button></span>}</div>
         <p className="equipment-request-note">Quantity: {line.quantity}</p>
+        {line.equipmentId && <p className="equipment-request-note">Reserved catalogue item: #{line.equipmentId}</p>}
+        {line.unavailableReason && <p className="equipment-request-note">Unavailable reason: {line.unavailableReason}</p>}
+        {mayRequest && planning && line.status === 'Unavailable' && <p className="equipment-request-note">Revise and resubmit for Technical Support to review again, or remove this line if it is no longer needed.</p>}
         {line.technicalRequirements && <p className="equipment-request-note">Technical requirements: {line.technicalRequirements}</p>}
         {line.supportNotes && <p className="equipment-request-note">Technical Support: {line.supportNotes}</p>}
-        {mayRequest && planning && !loadError && editing === line.id && <RequestEditor key={line.version} initial={valuesFor(line)} types={[...new Set([line.equipmentType, ...(types || [])])]} support={false} embedded idPrefix={line.id}
-          onSave={async (changes) => { await updateEquipmentRequest(line.id, { ...changes, version: line.version }, session); await reload(); setSaved(`Updated ${line.equipmentType} request.`) }}
+        {mayRequest && planning && !loadError && editing === line.id && <RequestEditor key={line.version} initial={valuesFor(line)} types={[...new Set([line.equipmentType, ...(types || [])])]} support={false} embedded idPrefix={line.id} resubmitting={line.status === 'Unavailable'}
+          onSave={async (changes) => { await updateEquipmentRequest(line.id, { ...changes, version: line.version }, session); await reload(); setSaved(`${line.status === 'Unavailable' ? 'Resubmitted' : 'Updated'} ${line.equipmentType} request.`) }}
           onCancel={() => setEditing(null)} />}
       </li>)}
     </ul>}

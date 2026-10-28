@@ -67,6 +67,12 @@ export type Session = {
 
 /** Why a request was turned away, as sent by the API. */
 export type ErrorCode =
+  | 'insufficient_stock'
+  | 'stale_request'
+  | 'invalid_equipment'
+  | 'invalid_reason'
+  | 'request_not_found'
+  | 'rule_refused'
   | 'invalid_credentials'
   | 'not_authenticated'
   | 'session_expired'

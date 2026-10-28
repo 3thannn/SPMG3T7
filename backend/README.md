@@ -1036,3 +1036,27 @@ tests/
   test_suitability.py         the US18.1 rule on its own
   test_booking_store.py       the Supabase booking queries, against a fake client
 ```
+
+## US19.3 equipment reservations
+
+Apply `SUPABASE_US19_3_EQUIPMENT_RESERVATIONS.sql` after the existing equipment,
+cancellation, registration and safety migrations, before deploying this API.
+Availability uses the equipment request's saved needed-from/until times (SGT).
+Tech Support selects a matching catalogue item and reserves the entire quantity,
+or marks the request Unavailable with a reason. Decisions, history and Coordinator
+notifications are written in one database transaction.
+
+While Planning, the assigned Coordinator can revise and resubmit an Unavailable
+line through the existing PATCH endpoint, returning it to Requested, or remove
+it through DELETE. Resubmission notifies Tech Support and preserves the previous
+decision in history. Reserved lines remain read-only. An Unavailable line must
+be resolved or removed before safety review; creating another line alone does
+not resolve it.
+
+New endpoints: `GET /equipment-requests/{id}/availability`,
+`POST /equipment-requests/{id}/reserve` (`version`, integer `equipmentId`), and
+`POST /equipment-requests/{id}/unavailable` (`version`, `reason`). Reservation
+conflicts return 409 with current `availableQuantity` and `shortfall`.
+See [US19.3 test cases and rollout](tests/test_cases_us19_3.md), including the
+opt-in disposable-database concurrency tests. This migration must be applied
+before the new request response columns can be read.

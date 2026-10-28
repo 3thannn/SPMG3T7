@@ -134,7 +134,14 @@ def update_equipment(item_id: str, payload: EquipmentInput, _user: CatalogueWrit
     changed = _validated_item(payload, numeric_id)
     if current.equipment_type.casefold() != changed.equipment_type.casefold():
         _guard_last_type(current)
-    return _equipment_out(equipment_store.repository().save_item(changed))
+    try:
+        return _equipment_out(equipment_store.repository().save_item(changed))
+    except APIError as error:
+        if error.code == "P0001" and "Equipment has active reservations" in error.message:
+            raise _error(
+                "equipment_in_use", "This change would affect active reservations.", 409
+            ) from error
+        raise
 
 
 @router.delete("/equipment/{item_id}", status_code=204)
@@ -144,7 +151,16 @@ def delete_equipment(item_id: str, _user: CatalogueWriter) -> Response:
     if current is None:
         raise _error("equipment_not_found", "That equipment item does not exist.", 404)
     _guard_last_type(current)
-    equipment_store.repository().delete_item(numeric_id)
+    try:
+        equipment_store.repository().delete_item(numeric_id)
+    except APIError as error:
+        if error.code == "23503":
+            raise _error(
+                "equipment_in_use", "This item is linked to equipment reservation history.", 409
+            ) from error
+        if error.code == "P0001" and "Equipment has active reservations" in error.message:
+            raise _error("equipment_in_use", "This item has active reservations.", 409) from error
+        raise
     return Response(status_code=204)
 
 
@@ -181,6 +197,8 @@ class RequestOut(BaseModel):
     status: str
     created_at: str = Field(serialization_alias="createdAt")
     version: int
+    equipment_id: str | None = Field(default=None, serialization_alias="equipmentId")
+    unavailable_reason: str = Field(default="", serialization_alias="unavailableReason")
 
 
 class RequestDetailOut(RequestOut):
@@ -223,6 +241,8 @@ def _request_out(request: EquipmentRequest) -> RequestOut:
         status=request.status,
         created_at=request.created_at,
         version=request.version,
+        equipment_id=str(request.equipment_id) if request.equipment_id is not None else None,
+        unavailable_reason=request.unavailable_reason,
     )
 
 
@@ -284,20 +304,25 @@ def list_event_requests(
     event_id: str,
     user: Annotated[
         User,
-        Depends(require_any_permission(
-            Permission.EVENTS_READ_OWN,
-            Permission.EVENTS_READ_SUBMITTED,
-            Permission.EVENTS_READ_ALL,
-        )),
+        Depends(
+            require_any_permission(
+                Permission.EVENTS_READ_OWN,
+                Permission.EVENTS_READ_SUBMITTED,
+                Permission.EVENTS_READ_ALL,
+            )
+        ),
     ],
 ) -> list[RequestOut]:
     event = event_store.repository().get_event(_id(event_id))
     if event is None or not (
         (user.role is Role.ORGANISER and event.organiser_id == user.id)
-        or (event.status is not EventStatus.DRAFT and (
-            (user.role is Role.COORDINATOR and event.coordinator_id == user.id)
-            or user.role is Role.COORDINATOR_LEAD
-        ))
+        or (
+            event.status is not EventStatus.DRAFT
+            and (
+                (user.role is Role.COORDINATOR and event.coordinator_id == user.id)
+                or user.role is Role.COORDINATOR_LEAD
+            )
+        )
     ):
         raise _error("event_not_found", "That event does not exist.", 404)
     return [_request_out(r) for r in equipment_store.repository().list_for_event(event.id)]
@@ -314,8 +339,11 @@ def list_event_equipment_history(
     event = event_store.repository().get_event(_id(event_id))
     if event is None or not (
         (user.role is Role.ORGANISER and event.organiser_id == user.id)
-        or (user.role is Role.COORDINATOR and event.coordinator_id == user.id
-            and event.status is not EventStatus.DRAFT)
+        or (
+            user.role is Role.COORDINATOR
+            and event.coordinator_id == user.id
+            and event.status is not EventStatus.DRAFT
+        )
     ):
         raise _error("event_not_found", "That event does not exist.", 404)
     entries = equipment_store.repository().list_history(event.id)
@@ -330,9 +358,7 @@ def create_request(event_id: str, payload: RequestInput, user: Coordinator) -> R
     end_raw = payload.ends_at or event.ends_at
     if not end_raw or not end_raw.strip():
         raise _error("invalid_time", "Enter a needed end time for this equipment request.")
-    starts_at, ends_at = _times(
-        payload.starts_at or event.starts_at, end_raw
-    )
+    starts_at, ends_at = _times(payload.starts_at or event.starts_at, end_raw)
     request = EquipmentRequest(
         0,
         event.id,
@@ -376,6 +402,69 @@ def get_request_detail(request_id: str, _user: Support) -> RequestDetailOut:
     )
 
 
+class ReserveInput(BaseModel):
+    version: StrictInt = Field(ge=1)
+    equipment_id: StrictInt = Field(alias="equipmentId", ge=1)
+
+
+class UnavailableInput(BaseModel):
+    version: StrictInt = Field(ge=1)
+    reason: str
+
+
+@router.get("/equipment-requests/{request_id}/availability")
+def request_availability(request_id: str, _user: Support) -> list[dict]:
+    numeric_id = _id(request_id)
+    if equipment_store.repository().get_request(numeric_id) is None:
+        raise _error("request_not_found", "That equipment request does not exist.", 404)
+    return equipment_store.repository().availability(numeric_id)
+
+
+def _decide(
+    request_id: str, version: int, user: User, item_id: int | None = None, reason: str = ""
+) -> RequestOut:
+    repo = equipment_store.repository()
+    result = repo.decide(_id(request_id), version, user.id, item_id, reason)
+    code = result["code"]
+    if code != "ok":
+        messages = {
+            "request_not_found": "That equipment request does not exist.",
+            "stale_request": "This request changed. Reload it before deciding.",
+            "rule_refused": "Equipment decisions are only allowed while the event is Planning.",
+            "invalid_equipment": "Choose a catalogue item matching the requested type.",
+            "invalid_reason": "Give a reason for marking this request Unavailable.",
+            "forbidden": "Only Technical Support can decide equipment requests.",
+        }
+        message = messages.get(code, "The equipment decision could not be saved.")
+        if code == "insufficient_stock":
+            message = (
+                f"Only {result['availableQuantity']} available. Shortfall: {result['shortfall']}."
+            )
+        raise HTTPException(
+            status_code=404
+            if code == "request_not_found"
+            else 403
+            if code == "forbidden"
+            else 400
+            if code in ("invalid_equipment", "invalid_reason")
+            else 409,
+            detail={**result, "message": message},
+        )
+    updated = repo.get_request(_id(request_id))
+    assert updated is not None
+    return _request_out(updated)
+
+
+@router.post("/equipment-requests/{request_id}/reserve", response_model=RequestOut)
+def reserve_request(request_id: str, payload: ReserveInput, user: Support) -> RequestOut:
+    return _decide(request_id, payload.version, user, payload.equipment_id)
+
+
+@router.post("/equipment-requests/{request_id}/unavailable", response_model=RequestOut)
+def unavailable_request(request_id: str, payload: UnavailableInput, user: Support) -> RequestOut:
+    return _decide(request_id, payload.version, user, reason=payload.reason)
+
+
 def _editable(request_id: str, user: User) -> EquipmentRequest:
     request = equipment_store.repository().get_request(_id(request_id))
     if request is None:
@@ -386,7 +475,8 @@ def _editable(request_id: str, user: User) -> EquipmentRequest:
     if event is None:
         raise _error("request_not_found", "That equipment request does not exist.", 404)
     _planning(event)
-    if request.status != "Requested":
+    recoverable = user.role is Role.COORDINATOR and request.status == "Unavailable"
+    if request.status != "Requested" and not recoverable:
         raise _error("rule_refused", "Only Requested lines can be changed.", 409)
     return request
 
@@ -425,7 +515,7 @@ def update_request(request_id: str, payload: RequestUpdate, user: Editor) -> Req
         else payload.support_notes.strip(),
         starts_at,
         ends_at,
-        current.status,
+        "Requested",
         current.requested_by_id,
         current.created_at,
         current.version,
@@ -441,10 +531,17 @@ def update_request(request_id: str, payload: RequestUpdate, user: Editor) -> Req
     if user.role is Role.COORDINATOR and any(
         getattr(current, field) != getattr(updated, field)
         for field in (
-            "equipment_type", "quantity", "technical_requirements", "starts_at", "ends_at"
+            "equipment_type",
+            "quantity",
+            "technical_requirements",
+            "starts_at",
+            "ends_at",
+            "status",
         )
     ):
-        notify_equipment_change(updated, user.name, "updated")
+        notify_equipment_change(
+            updated, user.name, "resubmitted" if current.status == "Unavailable" else "updated"
+        )
     return _request_out(updated)
 
 

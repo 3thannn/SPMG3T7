@@ -1,6 +1,8 @@
 """Equipment catalogue and Requested lines, with Supabase and test repositories."""
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime
+from threading import RLock
 from typing import Protocol
 
 from app import supabase_client
@@ -38,6 +40,8 @@ class EquipmentRequest:
     version: int
     event_title: str = ""
     updated_by_id: int | None = None
+    equipment_id: int | None = None
+    unavailable_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,9 @@ def _snapshot(request: EquipmentRequest) -> dict:
         "support_notes": request.support_notes,
         "start_at": request.starts_at,
         "end_at": request.ends_at,
+        "status": request.status,
+        "equipment_id": request.equipment_id,
+        "unavailable_reason": request.unavailable_reason,
     }
 
 
@@ -93,6 +100,8 @@ def _request(row: dict) -> EquipmentRequest:
         version=row["version"],
         event_title=event.get("name", "") if isinstance(event, dict) else "",
         updated_by_id=row.get("updated_by_id"),
+        equipment_id=row.get("equipment_id"),
+        unavailable_reason=row.get("unavailable_reason") or "",
     )
 
 
@@ -111,6 +120,10 @@ class Repository(Protocol):
     ) -> EquipmentRequest | None: ...
     def delete_request(self, request_id: int, expected_version: int, actor_id: int) -> bool: ...
     def list_history(self, event_id: int) -> list[RequestHistory]: ...
+    def availability(self, request_id: int) -> list[dict]: ...
+    def decide(
+        self, request_id: int, version: int, actor_id: int, item_id: int | None, reason: str
+    ) -> dict: ...
 
 
 class SupabaseEquipment:
@@ -121,7 +134,7 @@ class SupabaseEquipment:
     request_columns = (
         "id, event_id, equipment_type, quantity, technical_requirements, "
         "support_notes, start_at, end_at, status, requested_by_id, "
-        "created_at, version, updated_by_id, events(name)"
+        "created_at, version, updated_by_id, equipment_id, unavailable_reason, events(name)"
     )
 
     def list_items(self) -> list[Equipment]:
@@ -180,7 +193,7 @@ class SupabaseEquipment:
             .table("equipment_requests")
             .select(self.request_columns)
             .eq("event_id", event_id)
-            .eq("status", "Requested")
+            .in_("status", ["Requested", "Reserved", "Unavailable"])
             .order("created_at")
             .order("id")
             .execute()
@@ -276,11 +289,14 @@ class SupabaseEquipment:
                     "version": expected_version + 1,
                     "updated_at": _now(),
                     "updated_by_id": request.updated_by_id,
+                    "status": "Requested",
+                    "equipment_id": None,
+                    "unavailable_reason": "",
                 }
             )
             .eq("id", request.id)
             .eq("version", expected_version)
-            .eq("status", "Requested")
+            .in_("status", ["Requested", "Unavailable"])
             .execute()
             .data
             or []
@@ -301,7 +317,7 @@ class SupabaseEquipment:
             )
             .eq("id", request_id)
             .eq("version", expected_version)
-            .eq("status", "Requested")
+            .in_("status", ["Requested", "Unavailable"])
             .execute()
             .data
             or []
@@ -336,6 +352,34 @@ class SupabaseEquipment:
             for row in rows
         ]
 
+    def availability(self, request_id: int) -> list[dict]:
+        return (
+            supabase_client.admin()
+            .rpc("equipment_availability", {"p_request_id": request_id})
+            .execute()
+            .data
+            or []
+        )
+
+    def decide(
+        self, request_id: int, version: int, actor_id: int, item_id: int | None, reason: str
+    ) -> dict:
+        return (
+            supabase_client.admin()
+            .rpc(
+                "decide_equipment_request",
+                {
+                    "p_request_id": request_id,
+                    "p_version": version,
+                    "p_actor_id": actor_id,
+                    "p_equipment_id": item_id,
+                    "p_reason": reason,
+                },
+            )
+            .execute()
+            .data
+        )
+
 
 @dataclass
 class InMemoryEquipment:
@@ -344,6 +388,7 @@ class InMemoryEquipment:
     history: list[RequestHistory] = field(default_factory=list)
     next_item_id: int = 1
     next_request_id: int = 1
+    lock: RLock = field(default_factory=RLock, repr=False)
 
     def _record(
         self, request: EquipmentRequest, action: str, before: EquipmentRequest | None = None
@@ -368,6 +413,7 @@ class InMemoryEquipment:
         return next((item for item in self.items if item.id == item_id), None)
 
     def save_item(self, item: Equipment) -> Equipment:
+        self._guard_stock(item.id, item)
         if not item.id:
             item = replace(item, id=self.next_item_id)
             self.next_item_id += 1
@@ -375,11 +421,39 @@ class InMemoryEquipment:
         return item
 
     def delete_item(self, item_id: int) -> None:
+        self._guard_stock(item_id)
+        if any(r.equipment_id == item_id for r in self.requests):
+            from postgrest.exceptions import APIError
+
+            raise APIError({"code": "23503", "message": "Item is linked to reservation history"})
         self.items = [item for item in self.items if item.id != item_id]
+
+    def _guard_stock(self, item_id: int, changed: Equipment | None = None) -> None:
+        from postgrest.exceptions import APIError
+
+        reserved = [r for r in self.requests if r.equipment_id == item_id and r.status == RESERVED]
+        current = self.get_item(item_id)
+        if not reserved or current is None:
+            return
+        points: dict[datetime, int] = {}
+        for r in reserved:
+            for at, delta in ((r.starts_at, r.quantity), (r.ends_at, -r.quantity)):
+                key = datetime.fromisoformat(at)
+                points[key] = points.get(key, 0) + delta
+        demand = peak = 0
+        for at in sorted(points):
+            demand += points[at]
+            peak = max(peak, demand)
+        if (
+            changed is None
+            or changed.equipment_type != current.equipment_type
+            or (changed.total_quantity - changed.out_of_service_quantity < peak)
+        ):
+            raise APIError({"code": "P0001", "message": "Equipment has active reservations"})
 
     def list_for_event(self, event_id: int) -> list[EquipmentRequest]:
         return sorted(
-            (r for r in self.requests if r.event_id == event_id and r.status == "Requested"),
+            (r for r in self.requests if r.event_id == event_id and r.status != "Removed"),
             key=lambda r: (r.created_at, r.id),
         )
 
@@ -409,16 +483,30 @@ class InMemoryEquipment:
         self, request: EquipmentRequest, expected_version: int
     ) -> EquipmentRequest | None:
         current = self.get_request(request.id)
-        if current is None or current.version != expected_version or current.status != "Requested":
+        if (
+            current is None
+            or current.version != expected_version
+            or current.status not in ("Requested", "Unavailable")
+        ):
             return None
-        updated = replace(request, version=expected_version + 1)
+        updated = replace(
+            request,
+            version=expected_version + 1,
+            status="Requested",
+            equipment_id=None,
+            unavailable_reason="",
+        )
         self.requests = [updated if r.id == request.id else r for r in self.requests]
         self._record(updated, "Updated", current)
         return updated
 
     def delete_request(self, request_id: int, expected_version: int, actor_id: int) -> bool:
         current = self.get_request(request_id)
-        if current is None or current.version != expected_version or current.status != "Requested":
+        if (
+            current is None
+            or current.version != expected_version
+            or current.status not in ("Requested", "Unavailable")
+        ):
             return False
         removed = replace(
             current, status="Removed", version=expected_version + 1, updated_by_id=actor_id
@@ -451,6 +539,93 @@ class InMemoryEquipment:
             key=lambda h: (h.at, h.id),
             reverse=True,
         )
+
+    def availability(self, request_id: int) -> list[dict]:
+        request = self.get_request(request_id)
+        if request is None:
+            return []
+        result = []
+        for item in self.list_items():
+            if item.equipment_type.casefold() != request.equipment_type.casefold():
+                continue
+            reserved = sum(
+                r.quantity
+                for r in self.requests
+                if r.status == RESERVED
+                and r.equipment_id == item.id
+                and datetime.fromisoformat(r.starts_at) < datetime.fromisoformat(request.ends_at)
+                and datetime.fromisoformat(r.ends_at) > datetime.fromisoformat(request.starts_at)
+            )
+            available = item.total_quantity - item.out_of_service_quantity - reserved
+            result.append(
+                {
+                    "equipmentId": str(item.id),
+                    "name": item.name,
+                    "location": item.location,
+                    "totalQuantity": item.total_quantity,
+                    "outOfServiceQuantity": item.out_of_service_quantity,
+                    "reservedQuantity": reserved,
+                    "availableQuantity": available,
+                    "shortfall": max(0, request.quantity - available),
+                }
+            )
+        return result
+
+    def decide(
+        self, request_id: int, version: int, actor_id: int, item_id: int | None, reason: str
+    ) -> dict:
+        from app import event_store, notification_store, users
+        from app.event_status import EventStatus
+        from app.permissions import Role
+
+        with self.lock:
+            current = self.get_request(request_id)
+            actor = users.get_by_id(actor_id)
+            if actor is None or actor.role is not Role.TECH_SUPPORT:
+                return {"code": "forbidden"}
+            if current is None:
+                return {"code": "request_not_found"}
+            if current.version != version or current.status != "Requested":
+                return {"code": "stale_request"}
+            event = event_store.repository().get_event(current.event_id)
+            if event is None or event.status is not EventStatus.PLANNING:
+                return {"code": "rule_refused"}
+            if item_id is not None:
+                stock = next(
+                    (
+                        row
+                        for row in self.availability(request_id)
+                        if row["equipmentId"] == str(item_id)
+                    ),
+                    None,
+                )
+                if stock is None:
+                    return {"code": "invalid_equipment"}
+                if stock["shortfall"]:
+                    return {"code": "insufficient_stock", **stock}
+            elif not reason.strip():
+                return {"code": "invalid_reason"}
+            state = RESERVED if item_id is not None else "Unavailable"
+            updated = replace(
+                current,
+                status=state,
+                equipment_id=item_id,
+                unavailable_reason=reason.strip() if item_id is None else "",
+                version=version + 1,
+                updated_by_id=actor_id,
+            )
+            if event.coordinator_id is not None:
+                notification_store.repository().create_notice(
+                    user_id=event.coordinator_id,
+                    event_id=event.id,
+                    kind=f"equipment-{state.lower()}",
+                    message=f"{current.quantity} × {current.equipment_type} for "
+                    f'"{event.title}": {state}.'
+                    + (f" Reason: {reason.strip()}" if item_id is None else ""),
+                )
+            self.requests = [updated if r.id == request_id else r for r in self.requests]
+            self._record(updated, "Updated", current)
+            return {"code": "ok"}
 
 
 _repository: Repository = SupabaseEquipment()
