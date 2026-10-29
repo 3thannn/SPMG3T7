@@ -31,7 +31,7 @@ const event = {
   startsAt: '2027-11-02T09:00:00', endsAt: '2027-11-02T17:00:00',
 } as EventRecord
 const line: EquipmentRequest = {
-  id: '1', eventId: '101', eventTitle: 'Open Day', equipmentType: 'Microphone',
+  id: '1', eventId: '101', eventTitle: 'Open Day', equipmentType: 'Microphone', requestedEquipmentId: '1', equipmentName: 'Mic',
   quantity: 1, technicalRequirements: 'Two channels', supportNotes: '',
   startsAt: '2027-11-02T09:00:00', endsAt: '2027-11-02T17:00:00',
   status: 'Requested', createdAt: '2026-10-13T09:00:00', version: 1,
@@ -39,10 +39,27 @@ const line: EquipmentRequest = {
 
 afterEach(() => { vi.resetAllMocks() })
 
+it('distinguishes catalogue items with the same type and submits the chosen ID', async () => {
+  catalogue.mockResolvedValue([
+    { id: '1', name: 'Handheld mic', type: 'Microphone', description: 'For speeches', location: 'Main Store', totalQuantity: 5, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 5 },
+    { id: '2', name: 'Lapel mic', type: 'Microphone', description: 'Hands-free', location: 'East Store', totalQuantity: 3, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 3 },
+  ])
+  list.mockResolvedValue([])
+  create.mockResolvedValue({ ...line, requestedEquipmentId: '2', equipmentName: 'Lapel mic' })
+  render(<EventEquipment event={event} session={coordinator} />)
+  await userEvent.selectOptions(await screen.findByLabelText('Catalogue item'), '2')
+  expect(screen.getByText('Hands-free')).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'Handheld mic' })).toBeInTheDocument()
+  expect(screen.getByRole('group', { name: 'Microphone' })).toBeInTheDocument()
+  expect(screen.getByText('Location: East Store')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Request equipment' }))
+  expect(create).toHaveBeenCalledWith('101', expect.objectContaining({ equipmentId: 2 }), coordinator)
+})
+
 it('lets the Coordinator revise and resubmit an Unavailable line', async () => {
   list.mockResolvedValueOnce([{ ...line, status: 'Unavailable', unavailableReason: 'Only 2 available', version: 2 }])
     .mockResolvedValueOnce([{ ...line, quantity: 2, version: 3 }])
-  catalogue.mockResolvedValue([])
+  catalogue.mockResolvedValue([{ id: '1', name: 'Mic', type: 'Microphone', description: 'Wireless', location: 'Store', totalQuantity: 3, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 3 }])
   update.mockResolvedValue({ ...line, quantity: 2, version: 3 })
   render(<EventEquipment event={event} session={coordinator} />)
   expect(await screen.findByText('Unavailable reason: Only 2 available')).toBeInTheDocument()
@@ -58,7 +75,7 @@ it('lets the Coordinator revise and resubmit an Unavailable line', async () => {
 
 it('lets the Coordinator remove an Unavailable line', async () => {
   list.mockResolvedValueOnce([{ ...line, status: 'Unavailable', version: 2 }]).mockResolvedValueOnce([])
-  catalogue.mockResolvedValue([])
+  catalogue.mockResolvedValue([{ id: '1', name: 'Mic', type: 'Microphone', description: 'Wireless', location: 'Store', totalQuantity: 3, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 3 }])
   vi.mocked(removeEquipmentRequest).mockResolvedValue(undefined)
   render(<EventEquipment event={event} session={coordinator} />)
   await userEvent.click(await screen.findByRole('button', { name: 'Remove' }))
@@ -67,7 +84,7 @@ it('lets the Coordinator remove an Unavailable line', async () => {
 })
 
 it.each(['Reserved', 'Removed'] as const)('does not offer recovery for %s lines', async (status) => {
-  list.mockResolvedValue([{ ...line, status }]); catalogue.mockResolvedValue([])
+  list.mockResolvedValue([{ ...line, status }]); catalogue.mockResolvedValue([{ id: '1', name: 'Mic', type: 'Microphone', description: 'Wireless', location: 'Store', totalQuantity: 3, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 3 }])
   render(<EventEquipment event={event} session={coordinator} />)
   await screen.findByText('Quantity: 1')
   expect(screen.queryByRole('button', { name: 'Revise and resubmit' })).not.toBeInTheDocument()
@@ -82,11 +99,11 @@ it('offers catalogue types and event-time defaults to the assigned Coordinator',
   expect(await screen.findByRole('heading', { name: 'Request equipment' })).toBeInTheDocument()
   expect(screen.getByLabelText('Needed from')).toHaveValue('2027-11-02T09:00')
   expect(screen.getByLabelText('Needed until')).toHaveValue('2027-11-02T17:00')
-  await userEvent.selectOptions(screen.getByLabelText('Equipment type'), 'Microphone')
+  await userEvent.selectOptions(screen.getByLabelText('Catalogue item'), '1')
   await userEvent.type(screen.getByLabelText('Technical requirements (optional)'), 'Two channels')
   await userEvent.click(screen.getByRole('button', { name: 'Request equipment' }))
   await waitFor(() => expect(create).toHaveBeenCalledWith('101', {
-    equipmentType: 'Microphone', technicalRequirements: 'Two channels',
+    equipmentId: 1, technicalRequirements: 'Two channels',
     quantity: 1, startsAt: '2027-11-02T09:00', endsAt: '2027-11-02T17:00',
   }, coordinator))
   expect(await screen.findByText('Quantity: 1')).toBeInTheDocument()
@@ -131,7 +148,7 @@ it('requires an equipment end time when the event has none', async () => {
   catalogue.mockResolvedValue([{ id: '1', name: 'Mic', type: 'Microphone', description: '', location: 'Store', totalQuantity: 1, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 1 }])
   create.mockResolvedValue(line)
   render(<EventEquipment event={{ ...event, endsAt: '' }} session={coordinator} />)
-  await userEvent.selectOptions(await screen.findByLabelText('Equipment type'), 'Microphone')
+  await userEvent.selectOptions(await screen.findByLabelText('Catalogue item'), '1')
   expect(screen.getByLabelText('Needed until')).toHaveValue('')
   await userEvent.click(screen.getByRole('button', { name: 'Request equipment' }))
   expect(screen.getByRole('alert')).toHaveTextContent('Enter a needed end time')
@@ -144,7 +161,7 @@ it('requires an equipment end time when the event has none', async () => {
 it.each(['0', '2147483648'])('refuses an out-of-range quantity of %s', async (quantity) => {
   catalogue.mockResolvedValue([{ id: '1', name: 'Mic', type: 'Microphone', description: '', location: 'Store', totalQuantity: 1, outOfServiceQuantity: 0, outOfServiceReason: '', usableQuantity: 1 }])
   render(<EventEquipment event={event} session={coordinator} />)
-  await userEvent.selectOptions(await screen.findByLabelText('Equipment type'), 'Microphone')
+  await userEvent.selectOptions(await screen.findByLabelText('Catalogue item'), '1')
   await userEvent.clear(screen.getByLabelText('Quantity'))
   await userEvent.type(screen.getByLabelText('Quantity'), quantity)
   await userEvent.click(screen.getByRole('button', { name: 'Request equipment' }))

@@ -1039,6 +1039,32 @@ tests/
 
 ## US19.3 equipment reservations
 
+The event equipment list accepts `includeRemoved=true` to include removed lines
+as read-only history. The event UI uses this option for the same muted,
+struck-through treatment as cancelled venue bookings. The default repository
+and API lists still exclude removed lines so safety checks and cancellation
+processing continue to operate on active requests only.
+
+If saving a decision fails with `notifications_kind_valid`, run the entire
+`SUPABASE_US19_REPAIR_EQUIPMENT_NOTICES.sql` in Supabase SQL Editor after other
+notification migrations. It restores `equipment-reserved` and
+`equipment-unavailable` while preserving all currently accepted notice kinds.
+The decision RPC remains atomic: notification failure rolls back reservation.
+This repair has not been applied automatically to the shared database.
+
+### Exact catalogue item requests
+
+After the US19.3 reservation migration, apply
+`SUPABASE_US19_EXACT_ITEM_REQUESTS.sql` before deploying the exact-item UI/API.
+New requests require integer `equipmentId` identifying the catalogue entry.
+The server derives the type. Responses expose `requestedEquipmentId` and
+`equipmentName`; `equipmentId` in responses still identifies reserved stock.
+Selection does not reserve stock. Technical Support can reserve only the selected
+item. A Coordinator may change the item while Requested or revise/resubmit an
+Unavailable line. Old type-only requests remain readable but require Coordinator
+item selection before reservation. The migration backfills known item links from
+existing reservations and does not guess for old type-only requests.
+
 Apply `SUPABASE_US19_3_EQUIPMENT_RESERVATIONS.sql` after the existing equipment,
 cancellation, registration and safety migrations, before deploying this API.
 Availability uses the equipment request's saved needed-from/until times (SGT).

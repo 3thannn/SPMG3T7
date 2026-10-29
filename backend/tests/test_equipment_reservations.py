@@ -14,6 +14,73 @@ planning_event = fixtures.planning_event
 approved_event = fixtures.approved_event
 
 
+def test_removed_history_is_opt_in_and_not_active(client, actors, line, equipment_repository):
+    path = f"/equipment-requests/{line['id']}"
+    assert client.delete(path + "?version=1", headers=actors["coord"]).status_code == 204
+    listing = f"/events/{line['eventId']}/equipment-requests"
+    assert client.get(listing, headers=actors["coord"]).json() == []
+    history = client.get(listing + "?includeRemoved=true", headers=actors["coord"])
+    assert history.status_code == 200
+    assert [(r["id"], r["status"]) for r in history.json()] == [(line["id"], "Removed")]
+    assert equipment_repository.list_for_event(int(line["eventId"])) == []
+    assert client.get(listing + "?includeRemoved=true", headers=actors["tech"]).status_code == 403
+
+
+def test_exact_item_selection_and_no_substitution(client, actors, line, item, equipment_repository):
+    repo = equipment_repository
+    other = repo.save_item(replace(repo.items[0], id=0, name="Lapel microphone"))
+    assert line["requestedEquipmentId"] == item["id"]
+    assert line["equipmentName"] == item["name"]
+    assert reserve(client, actors, line, item, equipmentId=other.id).status_code == 400
+    assert (
+        client.patch(
+            f"/equipment-requests/{line['id']}",
+            json={"version": 1, "equipmentId": other.id},
+            headers=actors["tech"],
+        ).status_code
+        == 403
+    )
+    response = client.patch(
+        f"/equipment-requests/{line['id']}",
+        json={"version": 1, "equipmentId": other.id},
+        headers=actors["coord"],
+    )
+    assert response.status_code == 200
+    assert response.json()["requestedEquipmentId"] == str(other.id)
+    assert response.json()["equipmentName"] == "Lapel microphone"
+    assert reserve(client, actors, response.json(), item).status_code == 400
+    assert reserve(client, actors, response.json(), item, equipmentId=other.id).status_code == 200
+
+
+def test_legacy_request_requires_coordinator_selection(
+    client, actors, line, item, equipment_repository
+):
+    repo = equipment_repository
+    repo.requests = [replace(repo.requests[0], requested_equipment_id=None, equipment_name="")]
+    path = f"/equipment-requests/{line['id']}"
+    assert client.get(path, headers=actors["tech"]).status_code == 200
+    assert repo.availability(int(line["id"])) == []
+    assert reserve(client, actors, line, item).status_code == 400
+    assert client.patch(path, json={"version": 1}, headers=actors["coord"]).status_code == 400
+    assert (
+        client.patch(
+            path, json={"version": 1, "equipmentId": int(item["id"])}, headers=actors["coord"]
+        ).status_code
+        == 200
+    )
+
+
+@pytest.mark.parametrize("selected", [None, True, 0, 999])
+def test_new_request_requires_valid_catalogue_item(client, actors, planning_event, item, selected):
+    payload = {"quantity": 1}
+    if selected is not None:
+        payload["equipmentId"] = selected
+    response = client.post(
+        f"/events/{planning_event}/equipment-requests", json=payload, headers=actors["coord"]
+    )
+    assert response.status_code in (400, 422)
+
+
 @pytest.fixture
 def line(client, actors, item, planning_event):
     response = client.post(
@@ -29,6 +96,27 @@ def reserve(client, actors, line, item, **changes):
         json={"version": line["version"], "equipmentId": int(item["id"]), **changes},
         headers=actors["tech"],
     )
+
+
+def test_missing_notification_kind_returns_clear_error(
+    client, actors, line, item, equipment_repository, monkeypatch
+):
+    from postgrest.exceptions import APIError
+
+    def fail(*args, **kwargs):
+        raise APIError(
+            {
+                "code": "23514",
+                "message": 'new row violates check constraint "notifications_kind_valid"',
+            }
+        )
+
+    monkeypatch.setattr(equipment_repository, "decide", fail)
+    response = reserve(client, actors, line, item)
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "equipment_configuration_error"
+    assert "notifications are not configured" in response.json()["detail"]["message"]
+    assert equipment_repository.get_request(int(line["id"])).status == "Requested"
 
 
 def test_reserve_persists_and_notifies_once(client, actors, line, item, planning_event):
@@ -206,7 +294,7 @@ def test_multiple_overlaps_and_independent_items(client, actors, line, item, equ
     )
     stock = {row["equipmentId"]: row for row in repo.availability(current.id)}
     assert stock[item["id"]]["availableQuantity"] == 1
-    assert stock[str(other.id)]["availableQuantity"] == 0
+    assert str(other.id) not in stock  # Only the requested item is offered.
 
 
 @pytest.mark.parametrize("recovery", ["resubmit", "remove"])

@@ -37,6 +37,8 @@ export type EquipmentRequest = {
   endsAt: string
   status: 'Requested' | 'Reserved' | 'Unavailable' | 'Removed'
   equipmentId?: string | null
+  requestedEquipmentId?: string | null
+  equipmentName?: string
   unavailableReason?: string
   createdAt: string
   version: number
@@ -89,6 +91,7 @@ export type EquipmentHistoryEntry = {
 }
 
 export type RequestFormValues = {
+  equipmentId?: string
   equipmentType: string
   quantity: string
   technicalRequirements: string
@@ -99,6 +102,7 @@ export type RequestFormValues = {
 
 export function valuesFor(request: EquipmentRequest): RequestFormValues {
   return {
+    equipmentId: request.requestedEquipmentId || '',
     equipmentType: request.equipmentType,
     quantity: String(request.quantity),
     technicalRequirements: request.technicalRequirements,
@@ -137,7 +141,7 @@ export async function listEventEquipmentRequests(
   eventId: string,
   session: Session,
 ): Promise<EquipmentRequest[]> {
-  const response = await authorizedFetch(`/events/${eventId}/equipment-requests`, session.token)
+  const response = await authorizedFetch(`/events/${eventId}/equipment-requests?includeRemoved=true`, session.token)
   return (await response.json()) as EquipmentRequest[]
 }
 
@@ -159,6 +163,7 @@ export async function getEquipmentRequest(id: string, session: Session): Promise
 }
 
 export type RequestChanges = {
+  equipmentId?: number
   version?: number
   equipmentType?: string
   quantity?: number

@@ -104,6 +104,8 @@ class BookingStatus(StrEnum):
     #: US12.2: a booking flagged because the venue became unavailable. The
     #: Coordinator must request a replacement venue (US14.5) or cancel (US14.2).
     NEEDS_REPLACEMENT = "Needs replacement"
+    #: A replacement venue was requested; the original booking remains history.
+    REPLACED = "Replaced"
 
 
 #: The statuses that can hold a venue for their slot. A cancelled booking does

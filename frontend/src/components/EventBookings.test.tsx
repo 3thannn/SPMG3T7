@@ -75,6 +75,18 @@ function venue(id: string, name: string, capacity: number): VenueRecord {
 
 const VENUES = [venue('1', 'Great Hall', 500), venue('3', 'Seminar Room 4', 60)]
 
+it('shows a replaced booking as read-only history alongside the replacement', async () => {
+  listBookingsMock.mockResolvedValue([
+    booking({ status: 'Replaced', venueName: 'Old hall' }),
+    booking({ id: '102', status: 'Requested', venueName: 'New hall' }),
+  ])
+  render(<EventBookings event={event()} session={coordinator} />)
+  const oldRow = (await screen.findByText('Old hall')).closest('li')!
+  expect(within(oldRow).getByText('Replaced')).toBeInTheDocument()
+  expect(within(oldRow).queryByRole('button')).not.toBeInTheDocument()
+  expect(await screen.findByText('New hall')).toBeInTheDocument()
+})
+
 function booking(overrides: Partial<BookingRecord> = {}): BookingRecord {
   return {
     id: '101',

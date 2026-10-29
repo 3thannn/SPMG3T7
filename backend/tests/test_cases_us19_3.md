@@ -9,16 +9,26 @@ windows are half-open: 09:00–10:00 and 10:00–11:00 do not overlap. Availabil
 subtracts every Reserved line overlapping the checked window, including lines
 for the same event. Other statuses do not consume stock.
 
+The Coordinator selects the exact catalogue entry (name, type, description and
+location), not just its type. Selection itself does not reserve any stock. Tech
+Support cannot substitute another catalogue item, even of the same type. The
+Coordinator can change the selection when revising a Requested/Unavailable line.
+Existing type-only requests remain readable but must have an item selected by
+the Coordinator before they can be reserved. Known historical reservation links
+are backfilled by the migration.
+
 ## Automated acceptance coverage
 
 | Category | Scenario and expected result |
 |---|---|
 | Happy path | Requested → Reserved; item/event linkage persists, version increments, one unread Coordinator notice is written, line remains visible on event. |
+| Exact item / negative | New requests require a valid catalogue ID; missing, zero, boolean and unknown IDs are refused. Names/types come from the selected catalogue row. Tech Support cannot change the selection or reserve another same-type item. |
+| Legacy / recovery | Legacy type-only requests load without an item; availability is empty and reservation blocked until the Coordinator chooses one. Switching between same-type items changes the saved ID, displayed name and availability target. |
 | Happy path | Requested → Unavailable with trimmed reason; reason persists and Coordinator receives it in an unread notice. |
 | Recovery / workflow | While Planning, the assigned Coordinator can revise and resubmit Unavailable → Requested or remove the line. Resubmission clears the current Unavailable reason, increments version and notifies Tech Support even with unchanged fields. Prior decisions remain in history. |
 | Recovery / safety | Unavailable blocks safety review until resolved. Resubmit → reserve, or remove the Unavailable line, then enter Pending Safety Check successfully when all other arrangements are ready. |
 | Recovery / negative | Stale edit/removal, unauthorized roles and non-Planning events are refused. Tech Support cannot reopen an Unavailable line; resubmission does not bypass availability checks. Reserved lines remain protected. |
-| Notification detail | Tech Support can add the selected item's current available quantity and shortfall to the Unavailable reason; that summary accompanies the Coordinator notice. Availability is checked again at reservation time. |
+| Notification detail | Tech Support enters the Unavailable reason manually; that reason accompanies the Coordinator notice. Availability is checked again at reservation time. |
 | Required example / boundary | 10 total − 2 out of service − 6 overlapping reserved = 2 available. Reserving 2 succeeds; 3 fails with shortfall 1 and remains Requested, without a Reserved notice. |
 | Boundaries | Equal windows, containment and one-minute overlap consume stock; exact end/start adjacency in either direction does not. |
 | Boundaries | Zero usable stock blocks reservation. Overnight request windows work even when outside the event window. |
@@ -70,6 +80,32 @@ requests, US4.6 cancellation, US20.1 registration and US17.2 safety migrations,
 before deploying the backend/frontend changes. The migration extends existing
 notification kinds and leaves teammates’ event/cancellation triggers in place.
 It is rerunnable and does not reinterpret existing planned timestamps.
+
+Then apply `SUPABASE_US19_EXACT_ITEM_REQUESTS.sql` before deploying the exact-item
+UI/API. Run both scripts in order on a fresh database. The extra migration has
+not been applied to the shared database by this implementation.
+
+The historical backfill temporarily disables only the equipment-request Planning
+guard and audit trigger, then restores both before continuing. It runs inside
+the migration transaction and table lock. It copies known reservation item IDs
+even for events beyond Planning and Removed lines on Cancelled events, without
+changing status, quantity, dates, actor, version, or creating artificial audit
+entries. Unselected legacy requests remain unselected; repeat runs preserve
+existing selections. A failure rolls back the data and trigger-state changes.
+
+`test_equipment_item_migration_db.py` executes the actual migration and production
+trigger definitions in an isolated schema, rolled back after each test. With
+`US19_DB_TEST_URL` set to a disposable PostgreSQL database whose user can create
+schemas, run:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_equipment_item_migration_db.py -q
+```
+
+It checks Planning/Pending Safety Check/Confirmed/Completed/Cancelled history,
+repeat runs, preserved reservation data, restored Planning and audit guards,
+foreign keys, and rollback after an injected failure. It is skipped without the
+explicit test database URL; application unit tests cannot verify these DDL effects.
 
 Verify the migration on a disposable database and run the concurrency tests
 before shared deployment. It has not been applied to the shared database by

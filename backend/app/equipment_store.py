@@ -42,6 +42,8 @@ class EquipmentRequest:
     updated_by_id: int | None = None
     equipment_id: int | None = None
     unavailable_reason: str = ""
+    requested_equipment_id: int | None = None
+    equipment_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,8 @@ def _snapshot(request: EquipmentRequest) -> dict:
         "status": request.status,
         "equipment_id": request.equipment_id,
         "unavailable_reason": request.unavailable_reason,
+        "requested_equipment_id": request.requested_equipment_id,
+        "equipment_name": request.equipment_name,
     }
 
 
@@ -102,6 +106,8 @@ def _request(row: dict) -> EquipmentRequest:
         updated_by_id=row.get("updated_by_id"),
         equipment_id=row.get("equipment_id"),
         unavailable_reason=row.get("unavailable_reason") or "",
+        requested_equipment_id=row.get("requested_equipment_id"),
+        equipment_name=(row.get("requested_equipment") or {}).get("name", ""),
     )
 
 
@@ -110,7 +116,9 @@ class Repository(Protocol):
     def get_item(self, item_id: int) -> Equipment | None: ...
     def save_item(self, item: Equipment) -> Equipment: ...
     def delete_item(self, item_id: int) -> None: ...
-    def list_for_event(self, event_id: int) -> list[EquipmentRequest]: ...
+    def list_for_event(
+        self, event_id: int, *, include_removed: bool = False
+    ) -> list[EquipmentRequest]: ...
     def list_reserved_for_event(self, event_id: int) -> list[EquipmentRequest]: ...
     def list_requested(self) -> list[EquipmentRequest]: ...
     def get_request(self, request_id: int) -> EquipmentRequest | None: ...
@@ -134,7 +142,9 @@ class SupabaseEquipment:
     request_columns = (
         "id, event_id, equipment_type, quantity, technical_requirements, "
         "support_notes, start_at, end_at, status, requested_by_id, "
-        "created_at, version, updated_by_id, equipment_id, unavailable_reason, events(name)"
+        "created_at, version, updated_by_id, equipment_id, unavailable_reason, "
+        "requested_equipment_id, requested_equipment:equipment!requested_equipment_id(name), "
+        "events(name)"
     )
 
     def list_items(self) -> list[Equipment]:
@@ -187,13 +197,18 @@ class SupabaseEquipment:
     def delete_item(self, item_id: int) -> None:
         supabase_client.admin().table("equipment").delete().eq("id", item_id).execute()
 
-    def list_for_event(self, event_id: int) -> list[EquipmentRequest]:
+    def list_for_event(
+        self, event_id: int, *, include_removed: bool = False
+    ) -> list[EquipmentRequest]:
         rows = (
             supabase_client.admin()
             .table("equipment_requests")
             .select(self.request_columns)
             .eq("event_id", event_id)
-            .in_("status", ["Requested", "Reserved", "Unavailable"])
+            .in_(
+                "status",
+                ["Requested", "Reserved", "Unavailable"] + (["Removed"] if include_removed else []),
+            )
             .order("created_at")
             .order("id")
             .execute()
@@ -260,6 +275,7 @@ class SupabaseEquipment:
                     "end_at": request.ends_at,
                     "requested_by_id": request.requested_by_id,
                     "updated_by_id": request.requested_by_id,
+                    "requested_equipment_id": request.requested_equipment_id,
                 }
             )
             .execute()
@@ -292,6 +308,7 @@ class SupabaseEquipment:
                     "status": "Requested",
                     "equipment_id": None,
                     "unavailable_reason": "",
+                    "requested_equipment_id": request.requested_equipment_id,
                 }
             )
             .eq("id", request.id)
@@ -422,7 +439,9 @@ class InMemoryEquipment:
 
     def delete_item(self, item_id: int) -> None:
         self._guard_stock(item_id)
-        if any(r.equipment_id == item_id for r in self.requests):
+        if any(
+            r.equipment_id == item_id or r.requested_equipment_id == item_id for r in self.requests
+        ):
             from postgrest.exceptions import APIError
 
             raise APIError({"code": "23503", "message": "Item is linked to reservation history"})
@@ -433,6 +452,16 @@ class InMemoryEquipment:
 
         reserved = [r for r in self.requests if r.equipment_id == item_id and r.status == RESERVED]
         current = self.get_item(item_id)
+        if (
+            changed
+            and current
+            and changed.equipment_type != current.equipment_type
+            and any(
+                r.requested_equipment_id == item_id and r.status in ("Requested", "Unavailable")
+                for r in self.requests
+            )
+        ):
+            raise APIError({"code": "P0001", "message": "Equipment has active reservations"})
         if not reserved or current is None:
             return
         points: dict[datetime, int] = {}
@@ -451,9 +480,15 @@ class InMemoryEquipment:
         ):
             raise APIError({"code": "P0001", "message": "Equipment has active reservations"})
 
-    def list_for_event(self, event_id: int) -> list[EquipmentRequest]:
+    def list_for_event(
+        self, event_id: int, *, include_removed: bool = False
+    ) -> list[EquipmentRequest]:
         return sorted(
-            (r for r in self.requests if r.event_id == event_id and r.status != "Removed"),
+            (
+                r
+                for r in self.requests
+                if r.event_id == event_id and (include_removed or r.status != "Removed")
+            ),
             key=lambda r: (r.created_at, r.id),
         )
 
@@ -546,7 +581,7 @@ class InMemoryEquipment:
             return []
         result = []
         for item in self.list_items():
-            if item.equipment_type.casefold() != request.equipment_type.casefold():
+            if item.id != request.requested_equipment_id:
                 continue
             reserved = sum(
                 r.quantity

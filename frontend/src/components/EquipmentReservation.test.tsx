@@ -14,7 +14,7 @@ const session = buildSession({ role: 'Technical Support' })
 const request: EquipmentRequest = {
   id: '1', eventId: '2', eventTitle: 'Open Day', equipmentType: 'Projector', quantity: 2,
   technicalRequirements: '', supportNotes: '', startsAt: '2027-11-02T09:00',
-  endsAt: '2027-11-02T17:00', status: 'Requested', createdAt: '', version: 1,
+  endsAt: '2027-11-02T17:00', status: 'Requested', createdAt: '', version: 1, requestedEquipmentId: '3',
 }
 const item = { equipmentId: '3', name: 'Projector A', location: 'Store', totalQuantity: 10,
   outOfServiceQuantity: 2, reservedQuantity: 6, availableQuantity: 2, shortfall: 0 }
@@ -29,8 +29,7 @@ function show() {
   render(<EquipmentReservation request={request} session={session} onDecided={onDecided} onRefresh={onRefresh} />)
 }
 async function select() {
-  await screen.findByRole('option', { name: /Projector A/ })
-  await userEvent.selectOptions(screen.getByLabelText('Catalogue item'), '3')
+  await screen.findByText('Total stock')
 }
 it('reserves exact available quantity and submits the version and selected item', async () => {
   vi.mocked(decideEquipmentRequest).mockResolvedValue({ ...request, status: 'Reserved', equipmentId: '3' })
@@ -40,6 +39,27 @@ it('reserves exact available quantity and submits the version and selected item'
   await userEvent.click(screen.getByRole('button', { name: 'Reserve' }))
   expect(decideEquipmentRequest).toHaveBeenCalledWith('1', 1, { equipmentId: 3 }, session)
   expect(onDecided).toHaveBeenCalledWith(expect.objectContaining({ status: 'Reserved' }))
+})
+
+it('uses the Coordinator-selected item automatically and prevents changing it', async () => {
+  vi.mocked(decideEquipmentRequest).mockResolvedValue({ ...request, status: 'Reserved', equipmentId: '3' })
+  render(<EquipmentReservation request={{ ...request, requestedEquipmentId: '3' }} session={session}
+    onDecided={onDecided} onRefresh={onRefresh} />)
+  await screen.findByText('Total stock')
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  expect(screen.queryByText('Projector A')).not.toBeInTheDocument()
+  expect(screen.getByText('Store')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Reserve' }))
+  expect(decideEquipmentRequest).toHaveBeenCalledWith('1', 1, { equipmentId: 3 }, session)
+})
+
+it('does not infer an item or offer a selector for an unlinked legacy request', async () => {
+  vi.mocked(getEquipmentAvailability).mockResolvedValue([])
+  render(<EquipmentReservation request={{ ...request, requestedEquipmentId: null }} session={session}
+    onDecided={onDecided} onRefresh={onRefresh} />)
+  expect(await screen.findByText(/No item has been selected/)).toBeInTheDocument()
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Reserve' })).toBeDisabled()
 })
 it('shows a shortfall and blocks Reserve while allowing Unavailable with a reason', async () => {
   vi.mocked(getEquipmentAvailability).mockResolvedValue([{ ...item, availableQuantity: 1, shortfall: 1 }])
@@ -71,15 +91,6 @@ it('handles unavailable catalogue data', async () => {
   expect(screen.getByRole('button', { name: 'Reserve' })).toBeDisabled()
 })
 
-it('includes the availability summary in the Unavailable reason sent to the Coordinator', async () => {
-  vi.mocked(decideEquipmentRequest).mockResolvedValue({ ...request, status: 'Unavailable' })
-  show(); await select()
-  await userEvent.click(screen.getByRole('button', { name: 'Add availability to reason' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Mark Unavailable' }))
-  expect(decideEquipmentRequest).toHaveBeenCalledWith('1', 1, {
-    reason: 'Projector A: 2 requested, 2 available, shortfall 0 (at time of review).',
-  }, session)
-})
 it.each(['UTC', 'Asia/Singapore', 'America/New_York'])('keeps planned SGT windows correct in %s, including midnight', (timezone) => {
   vi.stubEnv('TZ', timezone)
   expect(formatEquipmentTimes('2027-11-02T23:00', '2027-11-03T01:00'))

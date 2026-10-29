@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from postgrest.exceptions import APIError
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
@@ -114,7 +114,8 @@ def _guard_last_type(item: Equipment) -> None:
         for other in repo.list_items()
     )
     if not has_another and any(
-        request.equipment_type.casefold() == item.equipment_type.casefold()
+        request.requested_equipment_id is None
+        and request.equipment_type.casefold() == item.equipment_type.casefold()
         for request in repo.list_requested()
     ):
         raise _error(
@@ -166,7 +167,8 @@ def delete_equipment(item_id: str, _user: CatalogueWriter) -> Response:
 
 class RequestInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
-    equipment_type: str = Field(alias="equipmentType")
+    equipment_id: StrictInt = Field(alias="equipmentId", ge=1)
+    equipment_type: str | None = Field(default=None, alias="equipmentType")
     quantity: StrictInt
     technical_requirements: str = Field(default="", alias="technicalRequirements")
     starts_at: str | None = Field(default=None, alias="startsAt")
@@ -176,6 +178,7 @@ class RequestInput(BaseModel):
 class RequestUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     version: StrictInt
+    equipment_id: StrictInt | None = Field(default=None, alias="equipmentId", ge=1)
     equipment_type: str | None = Field(default=None, alias="equipmentType")
     quantity: StrictInt | None = None
     technical_requirements: str | None = Field(default=None, alias="technicalRequirements")
@@ -199,6 +202,10 @@ class RequestOut(BaseModel):
     version: int
     equipment_id: str | None = Field(default=None, serialization_alias="equipmentId")
     unavailable_reason: str = Field(default="", serialization_alias="unavailableReason")
+    requested_equipment_id: str | None = Field(
+        default=None, serialization_alias="requestedEquipmentId"
+    )
+    equipment_name: str = Field(default="", serialization_alias="equipmentName")
 
 
 class RequestDetailOut(RequestOut):
@@ -243,6 +250,10 @@ def _request_out(request: EquipmentRequest) -> RequestOut:
         version=request.version,
         equipment_id=str(request.equipment_id) if request.equipment_id is not None else None,
         unavailable_reason=request.unavailable_reason,
+        requested_equipment_id=str(request.requested_equipment_id)
+        if request.requested_equipment_id is not None
+        else None,
+        equipment_name=request.equipment_name,
     )
 
 
@@ -274,6 +285,20 @@ def _type(raw: str) -> str:
         if item.equipment_type.casefold() == requested.casefold():
             return item.equipment_type
     raise _error("invalid_equipment_type", "Choose a type from the equipment catalogue.")
+
+
+def _requested_item(item_id: int, supplied_type: str | None = None) -> Equipment:
+    item = equipment_store.repository().get_item(item_id)
+    if item is None:
+        raise _error("invalid_equipment", "Choose an item from the equipment catalogue.")
+    if (
+        supplied_type is not None
+        and supplied_type.strip().casefold() != item.equipment_type.casefold()
+    ):
+        raise _error(
+            "invalid_equipment_type", "The selected item does not match that equipment type."
+        )
+    return item
 
 
 def _times(start_raw: str, end_raw: str) -> tuple[str, str]:
@@ -312,6 +337,7 @@ def list_event_requests(
             )
         ),
     ],
+    include_removed: bool = Query(default=False, alias="includeRemoved"),
 ) -> list[RequestOut]:
     event = event_store.repository().get_event(_id(event_id))
     if event is None or not (
@@ -325,7 +351,12 @@ def list_event_requests(
         )
     ):
         raise _error("event_not_found", "That event does not exist.", 404)
-    return [_request_out(r) for r in equipment_store.repository().list_for_event(event.id)]
+    return [
+        _request_out(r)
+        for r in equipment_store.repository().list_for_event(
+            event.id, include_removed=include_removed
+        )
+    ]
 
 
 @router.get("/events/{event_id}/equipment-history", response_model=list[RequestHistoryOut])
@@ -355,6 +386,7 @@ def list_event_equipment_history(
 def create_request(event_id: str, payload: RequestInput, user: Coordinator) -> RequestOut:
     event = _assigned_event(_id(event_id), user)
     _planning(event)
+    item = _requested_item(payload.equipment_id, payload.equipment_type)
     end_raw = payload.ends_at or event.ends_at
     if not end_raw or not end_raw.strip():
         raise _error("invalid_time", "Enter a needed end time for this equipment request.")
@@ -362,7 +394,7 @@ def create_request(event_id: str, payload: RequestInput, user: Coordinator) -> R
     request = EquipmentRequest(
         0,
         event.id,
-        _type(payload.equipment_type),
+        item.equipment_type,
         _quantity(payload.quantity),
         payload.technical_requirements.strip(),
         "",
@@ -373,6 +405,8 @@ def create_request(event_id: str, payload: RequestInput, user: Coordinator) -> R
         _now(),
         1,
         event.title,
+        requested_equipment_id=item.id,
+        equipment_name=item.name,
     )
     try:
         created = equipment_store.repository().create_request(request)
@@ -424,14 +458,27 @@ def _decide(
     request_id: str, version: int, user: User, item_id: int | None = None, reason: str = ""
 ) -> RequestOut:
     repo = equipment_store.repository()
-    result = repo.decide(_id(request_id), version, user.id, item_id, reason)
+    try:
+        result = repo.decide(_id(request_id), version, user.id, item_id, reason)
+    except APIError as error:
+        if error.code == "23514" and "notifications_kind_valid" in error.message:
+            raise _error(
+                "equipment_configuration_error",
+                "Equipment notifications are not configured correctly. "
+                "Please contact your administrator and try again.",
+                503,
+            ) from error
+        raise
     code = result["code"]
     if code != "ok":
         messages = {
             "request_not_found": "That equipment request does not exist.",
             "stale_request": "This request changed. Reload it before deciding.",
             "rule_refused": "Equipment decisions are only allowed while the event is Planning.",
-            "invalid_equipment": "Choose a catalogue item matching the requested type.",
+            "invalid_equipment": (
+                "Reserve the item selected by the Coordinator. "
+                "If no item was selected, ask the Coordinator to revise the request."
+            ),
             "invalid_reason": "Give a reason for marking this request Unavailable.",
             "forbidden": "Only Technical Support can decide equipment requests.",
         }
@@ -488,7 +535,9 @@ def update_request(request_id: str, payload: RequestUpdate, user: Editor) -> Req
         raise _error("stale_request", "This request changed. Reload it before editing.", 409)
     is_support = user.role is Role.TECH_SUPPORT
     if is_support and (
-        payload.equipment_type is not None or payload.technical_requirements is not None
+        payload.equipment_type is not None
+        or payload.technical_requirements is not None
+        or payload.equipment_id is not None
     ):
         raise _error(
             "forbidden_fields",
@@ -497,15 +546,21 @@ def update_request(request_id: str, payload: RequestUpdate, user: Editor) -> Req
         )
     if not is_support and payload.support_notes is not None:
         raise _error("forbidden_fields", "Only Tech Support can change arrangement notes.", 403)
+    item = None
+    if not is_support:
+        selected_id = payload.equipment_id or current.requested_equipment_id
+        if selected_id is None:
+            raise _error(
+                "invalid_equipment", "Choose a catalogue item before resubmitting this request."
+            )
+        item = _requested_item(selected_id, payload.equipment_type)
     starts_at, ends_at = _times(
         payload.starts_at or current.starts_at, payload.ends_at or current.ends_at
     )
     changed = EquipmentRequest(
         current.id,
         current.event_id,
-        current.equipment_type
-        if is_support or payload.equipment_type is None
-        else _type(payload.equipment_type),
+        item.equipment_type if item else current.equipment_type,
         _quantity(current.quantity if payload.quantity is None else payload.quantity),
         current.technical_requirements
         if is_support or payload.technical_requirements is None
@@ -521,6 +576,8 @@ def update_request(request_id: str, payload: RequestUpdate, user: Editor) -> Req
         current.version,
         current.event_title,
         user.id,
+        requested_equipment_id=item.id if item else current.requested_equipment_id,
+        equipment_name=item.name if item else current.equipment_name,
     )
     try:
         updated = equipment_store.repository().update_request(changed, payload.version)
@@ -537,6 +594,7 @@ def update_request(request_id: str, payload: RequestUpdate, user: Editor) -> Req
             "starts_at",
             "ends_at",
             "status",
+            "requested_equipment_id",
         )
     ):
         notify_equipment_change(

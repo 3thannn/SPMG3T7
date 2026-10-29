@@ -52,9 +52,9 @@ def world():
                 requests.append(
                     one(
                         "INSERT INTO equipment_requests(event_id,equipment_type,quantity,"
-                        "start_at,end_at,requested_by_id) VALUES (%s,%s,6,"
-                        "'2030-01-01 09:00','2030-01-01 17:00',%s) RETURNING id",
-                        (events[-1], tag, users[1]),
+                        "start_at,end_at,requested_by_id,requested_equipment_id) VALUES (%s,%s,6,"
+                        "'2030-01-01 09:00','2030-01-01 17:00',%s,%s) RETURNING id",
+                        (events[-1], tag, users[1], equipment),
                     )
                 )
             yield db, equipment, users, events, requests

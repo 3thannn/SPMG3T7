@@ -36,9 +36,9 @@ export default function EquipmentRequestDetailPage({ session, id }: { session: S
     {!request && !missing && !error && <p>Loading request…</p>}
     {request && <>
       <header className="equipment-request-detail-head">
-        <div><h1 className="page-title">{request.equipmentType} request</h1>
+        <div><h1 className="page-title">{request.equipmentName || request.equipmentType} request</h1>
           <p className="page-subtitle">{request.eventTitle || `Event ${request.eventId}`} · Requested {formatRecordedAt(request.createdAt)}</p></div>
-        <span className={`equipment-request-status${request.status === 'Removed' ? ' is-removed' : ''}`}>{request.status}</span>
+        <span className={`equipment-request-status is-${request.status.toLowerCase()}`}>{request.status}</span>
       </header>
       {request.status === 'Removed' && <p className="equipment-removed-notice" role="status">
         {request.removedByName || 'The Coordinator'} removed this request.
@@ -48,6 +48,7 @@ export default function EquipmentRequestDetailPage({ session, id }: { session: S
         <section className="card card-pad" aria-labelledby="equipment-request-details-title">
           <h2 className="detail-section-title" id="equipment-request-details-title">Request details</h2>
           <dl className="equipment-request-facts">
+            <div><dt>Catalogue item</dt><dd>{request.equipmentName || `Legacy request - ${request.equipmentType} (specific item not recorded)`}</dd></div>
             <div><dt>Equipment type</dt><dd>{request.equipmentType}</dd></div>
             <div><dt>Quantity</dt><dd>{request.quantity}</dd></div>
             <div><dt>Needed</dt><dd>{formatEquipmentTimes(request.startsAt, request.endsAt)}</dd></div>
@@ -63,7 +64,7 @@ export default function EquipmentRequestDetailPage({ session, id }: { session: S
             <p className="muted">{request.status === 'Unavailable'
               ? 'The Coordinator can revise and resubmit this request or remove it while the event is Planning.'
               : 'This request can no longer be updated.'}</p> : editing ?
-              <RequestEditor key={request.version} initial={valuesFor(request)} types={[]} support embedded
+              <RequestEditor key={request.version} initial={valuesFor(request)} items={[]} support embedded
                 onSave={async (changes) => {
                   await updateEquipmentRequest(request.id, { ...changes, version: request.version }, session)
                   setEditing(false)

@@ -512,7 +512,7 @@ export type BookingRecord = {
    * scheduled sweep marks a hold past its expiry Expired, which is final.
    * US12.2: A booking flagged by venue unavailability becomes 'Needs replacement'.
    */
-  status: 'Requested' | 'Cancelled' | 'Held' | 'Confirmed' | 'Rejected' | 'Expired' | 'Needs replacement'
+  status: 'Requested' | 'Cancelled' | 'Held' | 'Confirmed' | 'Rejected' | 'Expired' | 'Needs replacement' | 'Replaced'
   requestedAt: string
   /**
    * US18.1: how many people this booking is for. null only on a booking made
