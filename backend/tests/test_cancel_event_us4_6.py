@@ -499,7 +499,7 @@ class TestReadOnly:
     def test_no_equipment_can_be_requested(self, client, auth_headers, cancelled):
         response = client.post(
             f"/events/{EVENT_ID}/equipment-requests",
-            json={"equipmentType": "Projector", "quantity": 1},
+            json={"equipmentId": 1, "quantity": 1},
             headers=auth_headers("Event Coordinator"),
         )
         assert response.status_code == 409

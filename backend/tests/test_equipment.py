@@ -19,7 +19,12 @@ ITEM = {
     "outOfServiceQuantity": 2,
     "outOfServiceReason": "Battery damage",
 }
-LINE = {"equipmentType": "Microphone", "quantity": 1, "technicalRequirements": "Two channels"}
+LINE = {
+    "equipmentId": 1,
+    "equipmentType": "Microphone",
+    "quantity": 1,
+    "technicalRequirements": "Two channels",
+}
 
 
 @pytest.fixture
@@ -113,12 +118,17 @@ def test_last_type_with_active_request_cannot_be_deleted_or_renamed(
     another = client.post(
         "/equipment", json={**ITEM, "name": "Spare microphone"}, headers=actors["tech"]
     ).json()
-    assert client.delete(path, headers=actors["tech"]).status_code == 204
-    assert client.delete(f"/equipment/{another['id']}", headers=actors["tech"]).status_code == 409
-    assert client.delete(
-        f"/equipment-requests/{created['id']}?version=1", headers=actors["coord"]
-    ).status_code == 204
+    assert client.delete(path, headers=actors["tech"]).status_code == 409
     assert client.delete(f"/equipment/{another['id']}", headers=actors["tech"]).status_code == 204
+    assert (
+        client.delete(
+            f"/equipment-requests/{created['id']}?version=1", headers=actors["coord"]
+        ).status_code
+        == 204
+    )
+    assert (
+        client.delete(path, headers=actors["tech"]).status_code == 409
+    )  # Retain historical linkage.
 
 
 @pytest.mark.parametrize(
@@ -173,24 +183,22 @@ def test_request_accepts_maximum_integer_quantity(client, actors, planning_event
     assert response.json()["quantity"] == 2_147_483_647
 
 
-def test_first_venue_booking_opens_equipment_request_flow(
-    client, actors, approved_event, item
-):
+def test_first_venue_booking_opens_equipment_request_flow(client, actors, approved_event, item):
     event_path = f"/events/{approved_event}"
     assert client.get(event_path, headers=actors["coord"]).json()["status"] == "Approved"
     booking = client.post(
         f"{event_path}/bookings",
         json={
-            "venueId": "1", "startsAt": "2027-11-02T09:00", "endsAt": "2027-11-02T17:00",
+            "venueId": "1",
+            "startsAt": "2027-11-02T09:00",
+            "endsAt": "2027-11-02T17:00",
             "headcount": 40,
         },
         headers=actors["coord"],
     )
     assert booking.status_code == 201, booking.text
     assert client.get(event_path, headers=actors["coord"]).json()["status"] == "Planning"
-    requested = client.post(
-        f"{event_path}/equipment-requests", json=LINE, headers=actors["coord"]
-    )
+    requested = client.post(f"{event_path}/equipment-requests", json=LINE, headers=actors["coord"])
     assert requested.status_code == 201, requested.text
 
 
@@ -208,15 +216,20 @@ def test_request_happy_path_and_notifications(
     assert line["endsAt"] == "2027-11-02T17:00"
     assert line["quantity"] == 1
     assert event_repository.get_event(int(event_id)).status is EventStatus.PLANNING
-    assert client.get(
-        f"/events/{event_id}/equipment-requests", headers=actors["organiser"]
-    ).json()[0]["id"] == line["id"]
-    assert client.get(
-        f"/events/{event_id}/equipment-requests", headers=actors["lead"]
-    ).json()[0]["id"] == line["id"]
-    assert client.get(
-        f"/events/{event_id}/equipment-requests", headers=actors["tech"]
-    ).status_code == 403
+    assert (
+        client.get(f"/events/{event_id}/equipment-requests", headers=actors["organiser"]).json()[0][
+            "id"
+        ]
+        == line["id"]
+    )
+    assert (
+        client.get(f"/events/{event_id}/equipment-requests", headers=actors["lead"]).json()[0]["id"]
+        == line["id"]
+    )
+    assert (
+        client.get(f"/events/{event_id}/equipment-requests", headers=actors["tech"]).status_code
+        == 403
+    )
     assert (
         len(client.get(f"/events/{event_id}/equipment-requests", headers=actors["coord"]).json())
         == 1
@@ -255,9 +268,9 @@ def test_other_organiser_cannot_read_event_equipment(
         "/auth/login", json={"email": "other@example.edu", "password": "Sprint1!demo"}
     )
     other = {"Authorization": f"Bearer {login.json()['token']}"}
-    assert client.get(
-        f"/events/{planning_event}/equipment-requests", headers=other
-    ).status_code == 404
+    assert (
+        client.get(f"/events/{planning_event}/equipment-requests", headers=other).status_code == 404
+    )
 
 
 def test_request_requires_end_time_when_event_has_none(
@@ -397,7 +410,12 @@ def test_coordinator_and_support_edit_only_their_fields(client, actors, planning
     )
     changed = client.patch(
         path,
-        json={"version": 1, "equipmentType": "Speaker", "technicalRequirements": "Stereo"},
+        json={
+            "version": 1,
+            "equipmentId": int(second_item.json()["id"]),
+            "equipmentType": "Speaker",
+            "technicalRequirements": "Stereo",
+        },
         headers=actors["coord"],
     )
     assert changed.status_code == 200
@@ -417,9 +435,12 @@ def test_read_request_notification_is_followed_by_edit_and_removal_notifications
     ).json()
     path = f"/equipment-requests/{created['id']}"
     original = client.get("/notifications", headers=actors["tech"]).json()[0]
-    assert client.patch(
-        f"/notifications/{original['id']}", json={"read": True}, headers=actors["tech"]
-    ).status_code == 200
+    assert (
+        client.patch(
+            f"/notifications/{original['id']}", json={"read": True}, headers=actors["tech"]
+        ).status_code
+        == 200
+    )
 
     changed = client.patch(path, json={"version": 1, "quantity": 3}, headers=actors["coord"])
     assert changed.status_code == 200, changed.text

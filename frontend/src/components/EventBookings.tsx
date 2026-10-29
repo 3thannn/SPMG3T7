@@ -414,10 +414,11 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     const venueName = booking.venueName || 'Unnamed venue'
     const cancelOpen = cancelling?.bookingId === booking.id
     const isRejected = booking.status === 'Rejected'
+    const isReplaced = booking.status === 'Replaced'
     const needsReplacement = booking.status === 'Needs replacement'
     const cancellable = booking.status === 'Requested' || (isHeld && !holdExpired)
     const rowClass =
-      isCancelled || isRejected
+      isCancelled || isRejected || isReplaced
         ? ' is-cancelled'
         : holdExpired
           ? ' is-expired'

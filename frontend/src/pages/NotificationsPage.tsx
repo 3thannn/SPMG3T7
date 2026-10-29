@@ -10,7 +10,7 @@ import {
 import { displayEventTitle } from '../draftRules'
 import { navigate } from '../router'
 import { canOpen } from '../permissions'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 
 type NotificationsPageProps = {
@@ -173,7 +173,7 @@ export default function NotificationsPage({ session }: NotificationsPageProps) {
                     {item.kind && item.kind !== 'event-status' && (
                       <span>{KIND_LABELS[item.kind]}</span>
                     )}
-                    <span>{formatTimestamp(item.createdAt)}</span>
+                    <span>{formatRecordedAt(item.createdAt)}</span>
                   </div>
                   <p className="notification-message">{item.message}</p>
                   {link && (

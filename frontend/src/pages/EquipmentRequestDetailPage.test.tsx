@@ -1,9 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import EquipmentRequestDetailPage from './EquipmentRequestDetailPage'
 import {
-  getEquipmentRequest, updateEquipmentRequest, type EquipmentRequestDetail,
+  getEquipmentRequest, updateEquipmentRequest, getEquipmentAvailability, type EquipmentRequestDetail,
 } from '../equipmentStore'
 import { buildSession } from '../test/sessions'
 import { ApiError } from '../api'
@@ -11,6 +11,7 @@ import { ApiError } from '../api'
 vi.mock('../equipmentStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../equipmentStore')>()),
   getEquipmentRequest: vi.fn(), updateEquipmentRequest: vi.fn(),
+  getEquipmentAvailability: vi.fn(),
 }))
 
 const get = vi.mocked(getEquipmentRequest)
@@ -25,6 +26,7 @@ const request: EquipmentRequestDetail = {
 }
 
 afterEach(() => vi.resetAllMocks())
+beforeEach(() => vi.mocked(getEquipmentAvailability).mockResolvedValue([]))
 
 it('shows request details and updates Technical Support notes', async () => {
   get.mockResolvedValueOnce(request).mockResolvedValueOnce({ ...request, supportNotes: 'Ready', version: 4 })

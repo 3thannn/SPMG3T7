@@ -11,6 +11,8 @@ import type { EventStatus } from './status'
 
 /** US10.2: what a Coordinator is told about, one kind per acceptance criterion. */
 export type CoordinatorNoticeKind =
+  | 'equipment-reserved'
+  | 'equipment-unavailable'
   | 'assigned'
   | 'unassigned'
   | 'hold-expiring'
@@ -28,6 +30,8 @@ export type NotificationKind = 'event-status' | 'equipment-request' | Coordinato
 
 /** The label each non-status notice shows in place of a status badge. */
 export const KIND_LABELS: Record<Exclude<NotificationKind, 'event-status'>, string> = {
+  'equipment-reserved': 'Equipment reserved',
+  'equipment-unavailable': 'Equipment unavailable',
   'equipment-request': 'Equipment request',
   assigned: 'Assigned to you',
   unassigned: 'Reassigned',
