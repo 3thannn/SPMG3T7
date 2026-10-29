@@ -7,7 +7,6 @@ import {
   updateEquipmentRequest, removeEquipmentRequest, type EquipmentRequest,
 } from '../equipmentStore'
 import type { EventRecord } from '../eventsStore'
-import { formatBookingTimes } from '../eventsStore'
 import { ApiError } from '../api'
 import { buildSession } from '../test/sessions'
 
@@ -37,7 +36,7 @@ const line: EquipmentRequest = {
   status: 'Requested', createdAt: '2026-10-13T09:00:00', version: 1,
 }
 
-afterEach(() => { vi.resetAllMocks() })
+afterEach(() => { vi.resetAllMocks(); vi.unstubAllEnvs() })
 
 it('distinguishes catalogue items with the same type and submits the chosen ID', async () => {
   catalogue.mockResolvedValue([
@@ -91,7 +90,8 @@ it.each(['Reserved', 'Removed'] as const)('does not offer recovery for %s lines'
   expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument()
 })
 
-it('offers catalogue types and event-time defaults to the assigned Coordinator', async () => {
+it.each(['UTC', 'Asia/Singapore'])('offers catalogue items and SGT event-time defaults in %s', async (timezone) => {
+  vi.stubEnv('TZ', timezone)
   catalogue.mockResolvedValue([{ id: '1', name: 'Mic', type: 'Microphone', description: '', location: 'Store', totalQuantity: 1, outOfServiceQuantity: 1, outOfServiceReason: 'Damaged', usableQuantity: 0 }])
   list.mockResolvedValueOnce([]).mockResolvedValueOnce([line])
   create.mockResolvedValue(line)
@@ -107,7 +107,7 @@ it('offers catalogue types and event-time defaults to the assigned Coordinator',
     quantity: 1, startsAt: '2027-11-02T09:00', endsAt: '2027-11-02T17:00',
   }, coordinator))
   expect(await screen.findByText('Quantity: 1')).toBeInTheDocument()
-  expect(screen.getByText(formatBookingTimes(line.startsAt, line.endsAt))).toBeInTheDocument()
+  expect(screen.getByText('02 Nov 2027, 09:00 – 17:00')).toBeInTheDocument()
 })
 
 it('shows read-only equipment for the Organiser and before Planning', async () => {
