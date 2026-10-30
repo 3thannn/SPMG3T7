@@ -202,8 +202,8 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
             {confirming ? (
               <>
                 <p className="venue-confirm-text">
-                  Delete <strong>{venue.name}</strong> from the catalogue? This cannot be
-                  undone.
+                  Delete <strong>{venue.name}</strong> from the catalogue? Its past and
+                  cancelled bookings are deleted with it. This cannot be undone.
                 </p>
                 <div className="venue-action-row">
                   <button

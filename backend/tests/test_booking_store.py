@@ -296,23 +296,6 @@ class TestSupabaseCreateNeeds:
             assert column in COLUMNS
 
 
-class TestSupabaseVenueHasBookings:
-    def test_it_asks_about_one_venue_and_one_row(self, query):
-        SupabaseBookings().venue_has_bookings(1)
-
-        assert query.calls[0] == ("table", TABLE)
-        assert query.named("eq") == [("eq", "venue_id", 1)]
-        assert query.named("limit") == [("limit", 1)]
-
-    def test_a_row_means_booked(self, query):
-        assert SupabaseBookings().venue_has_bookings(1) is True
-
-    def test_no_rows_means_free_to_delete(self, query):
-        query.rows = []
-
-        assert SupabaseBookings().venue_has_bookings(1) is False
-
-
 class TestToBooking:
     def test_an_embedded_list_is_read_as_its_first_item(self):
         """PostgREST returns a to-one embed as an object, but older versions sent a list."""

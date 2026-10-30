@@ -48,24 +48,42 @@ class DuplicateVenueName(Exception):
         self.name = name
 
 
+class VenueHasFutureBookings(Exception):
+    """US9.5: the database refused to delete a venue with a booking still to come.
+
+    The route checks first, so this is the rare case of a booking landing
+    between that check and the delete; the trigger in
+    SUPABASE_US9_5_DELETE_VENUE_HISTORY.sql is what catches it.
+    """
+
+
 #: Postgres unique-violation SQLSTATE, as PostgREST reports it.
 _UNIQUE_VIOLATION = "23505"
+#: US9.5: raised by the `venues_refuse_delete_while_booked` trigger.
+_VENUE_HAS_FUTURE_BOOKINGS = "VB905"
 
 
-def _as_duplicate(error: Exception, name: str) -> Exception:
-    """Turn a unique-violation into `DuplicateVenueName`; leave everything else.
+def _sqlstate(error: Exception) -> str | None:
+    """The SQLSTATE PostgREST reported, from the error or the body it carries.
 
-    PostgREST reports the SQLSTATE in the error body, so this reads the code
-    rather than matching message text, which is localised and version
-    dependent. Any other error is returned untouched to be re-raised: a write
-    that failed because the database was unreachable is not a name clash.
+    Read rather than matching message text, which is localised and version
+    dependent.
     """
     code = getattr(error, "code", None)
     if code is None:
         args = getattr(error, "args", None)
         if args and isinstance(args[0], dict):
             code = args[0].get("code")
-    if str(code) == _UNIQUE_VIOLATION:
+    return None if code is None else str(code)
+
+
+def _as_duplicate(error: Exception, name: str) -> Exception:
+    """Turn a unique-violation into `DuplicateVenueName`; leave everything else.
+
+    Any other error is returned untouched to be re-raised: a write that failed
+    because the database was unreachable is not a name clash.
+    """
+    if _sqlstate(error) == _UNIQUE_VIOLATION:
         return DuplicateVenueName(name)
     return error
 
@@ -375,11 +393,16 @@ class SupabaseVenues:
     def delete_venue(self, venue_id: int) -> None:
         """US9.1c: a hard delete.
 
-        The route refuses a venue that has bookings (US14.1) before it gets
-        here, and `venue_bookings.venue_id` has no cascade, so no booking can be
-        orphaned by this.
+        US9.5: the venue's bookings go with it (`ON DELETE CASCADE`). The route
+        refuses a venue with a booking still to come before it gets here, and
+        the database refuses it again in case one arrived since.
         """
-        supabase_client.admin().table(TABLE).delete().eq("id", venue_id).execute()
+        try:
+            supabase_client.admin().table(TABLE).delete().eq("id", venue_id).execute()
+        except Exception as error:
+            if _sqlstate(error) == _VENUE_HAS_FUTURE_BOOKINGS:
+                raise VenueHasFutureBookings from error
+            raise
 
 
 def _matches(venue: Venue, filters: VenueFilters) -> bool:

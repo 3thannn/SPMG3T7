@@ -36,7 +36,7 @@ from app import (
 from app.auth import require_permission
 from app.permissions import Permission
 from app.users import User
-from app.venue_store import DuplicateVenueName, Venue, VenueFilters
+from app.venue_store import DuplicateVenueName, Venue, VenueFilters, VenueHasFutureBookings
 from app.venue_turnaround import BookingConflict, InvalidMinutes, OccupiedBooking, Recheck
 from app.venue_unavailability_store import Unavailability
 
@@ -49,7 +49,7 @@ class VenueError:
     INVALID = "invalid_venue"
     NAME_TAKEN = "venue_name_taken"
     INVALID_UNAVAILABILITY = "invalid_unavailability"
-    IN_USE = "venue_in_use"
+    HAS_FUTURE_BOOKINGS = "venue_has_future_bookings"
 
 
 class VenueOut(BaseModel):
@@ -488,26 +488,61 @@ def delete_venue(
     something that was already gone is usually a sign the caller is working
     from a stale list, and saying so is more use than pretending it worked.
 
-    409 for a venue an event has booked (US14.1). A venue with bookings is in
-    use, and deleting it would either take an event's booking with it or, as
-    `venue_bookings.venue_id` has no cascade, fail in the database.
+    US9.5: 409 while the venue has a booking still to come, because deleting
+    the venue deletes its bookings with it. A future active booking points
+    Venue Staff at marking the venue unavailable instead (US12.2), which flags
+    each booking so its Coordinator can find a replacement rather than the
+    event quietly losing its venue. A booking already flagged and still to
+    come waits for that replacement (US14.5). Past and closed bookings do not
+    block: the team chose to delete them with the venue.
     """
     existing = venue_store.repository().get_venue(_as_id(venue_id))
     if existing is None:
         raise _not_found()
-    if booking_store.repository().venue_has_bookings(existing.id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": VenueError.IN_USE,
-                "message": (
-                    f"{existing.name} has venue bookings, so it cannot be removed "
-                    "from the catalogue."
-                ),
-            },
+    now = booking_store.local_now()
+    bookings = booking_store.repository().list_for_venue(existing.id)
+    upcoming = sum(booking.upcoming_at(now) for booking in bookings)
+    if upcoming:
+        raise _has_future_bookings(
+            f"{existing.name} has {upcoming} future {_bookings(upcoming)}, so it cannot "
+            f"be deleted. {_MARK_UNAVAILABLE}",
+            count=upcoming,
         )
-    venue_store.repository().delete_venue(existing.id)
+    awaiting = sum(booking.awaiting_replacement_at(now) for booking in bookings)
+    if awaiting:
+        raise _has_future_bookings(
+            f"{existing.name} has {awaiting} {_bookings(awaiting)} waiting for a "
+            "replacement venue, so it cannot be deleted until their Coordinators "
+            "have moved them.",
+            count=awaiting,
+        )
+    try:
+        venue_store.repository().delete_venue(existing.id)
+    except VenueHasFutureBookings:
+        # A booking arrived after the check above; the database caught it.
+        raise _has_future_bookings(
+            f"{existing.name} has future bookings, so it cannot be deleted. "
+            f"{_MARK_UNAVAILABLE}"
+        ) from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+_MARK_UNAVAILABLE = (
+    "Mark it unavailable instead, so the affected bookings are flagged for a "
+    "replacement venue."
+)
+
+
+def _bookings(count: int) -> str:
+    return "booking" if count == 1 else "bookings"
+
+
+def _has_future_bookings(message: str, count: int | None = None) -> HTTPException:
+    """US9.5's refusal. `futureBookings` is left out when the count is unknown."""
+    detail: dict = {"code": VenueError.HAS_FUTURE_BOOKINGS, "message": message}
+    if count is not None:
+        detail["futureBookings"] = count
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
 # -- US12.1: blackout periods --------------------------------------------------

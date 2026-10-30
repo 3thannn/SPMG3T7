@@ -1,0 +1,86 @@
+import { test, expect, type Page } from '@playwright/test'
+
+/**
+ * US9.5: block deleting a venue that has future bookings.
+ *
+ * Runs against `backend/e2e_server.py`, never the shared database; see
+ * playwright.isolated.config.ts. Its seed has one venue per case:
+ *
+ *   1 Great Hall      two bookings still to come
+ *   2 Bertha Room     one booking that has ended, one cancelled
+ *   3 Seminar Room 4  never booked
+ *   4 Flagged Room    flagged Needs replacement, still to come
+ */
+const API = 'http://127.0.0.1:8001'
+
+test.beforeEach(async ({ page, request }) => {
+  expect((await request.post(`${API}/__test__/reset`)).ok()).toBeTruthy()
+  await page.goto('/#/signin')
+  await page.getByLabel('Email').fill('venuestaff@spmg3t7.edu')
+  await page.getByLabel('Password').fill('Sprint1!demo')
+  await page.locator('form').getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.locator('.topnav-name')).toHaveText('Sam')
+})
+
+async function tryToDelete(page: Page, venueId: string, name: string) {
+  await page.goto(`/#/venues/${venueId}`)
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
+  await page.getByRole('button', { name: 'Delete venue' }).click()
+  await page.getByRole('button', { name: 'Yes, delete it' }).click()
+}
+
+async function expectInCatalogue(page: Page, name: string, present: boolean) {
+  await page.goto('/#/venues')
+  await expect(page.getByRole('heading', { level: 1, name: 'Venues' })).toBeVisible()
+  // No spec deletes the Great Hall, so once it shows, the catalogue has loaded.
+  await expect(page.getByText('Great Hall', { exact: true })).toBeVisible()
+  await expect(page.getByText(name, { exact: true })).toHaveCount(present ? 1 : 0)
+}
+
+test.describe('AC1: a venue with future bookings cannot be deleted', () => {
+  test('staff are told to mark it unavailable instead, and the venue stays', async ({ page }) => {
+    await tryToDelete(page, '1', 'Great Hall')
+
+    await expect(page.getByRole('alert')).toHaveText(
+      'Great Hall has 2 future bookings, so it cannot be deleted. Mark it unavailable ' +
+        'instead, so the affected bookings are flagged for a replacement venue.',
+    )
+    await expect(page.getByRole('heading', { level: 1, name: 'Great Hall' })).toBeVisible()
+    await expectInCatalogue(page, 'Great Hall', true)
+  })
+
+  test('a booking waiting for a replacement venue also blocks it', async ({ page }) => {
+    await tryToDelete(page, '4', 'Flagged Room')
+
+    await expect(page.getByRole('alert')).toHaveText(
+      'Flagged Room has 1 booking waiting for a replacement venue, so it cannot be ' +
+        'deleted until their Coordinators have moved them.',
+    )
+    await expectInCatalogue(page, 'Flagged Room', true)
+  })
+})
+
+test.describe('AC2: a venue with no future bookings can still be deleted', () => {
+  test('one that was never booked is deleted', async ({ page }) => {
+    await tryToDelete(page, '3', 'Seminar Room 4')
+
+    await expect(page.getByRole('heading', { level: 1, name: 'Venues' })).toBeVisible()
+    await expectInCatalogue(page, 'Seminar Room 4', false)
+  })
+
+  test('one with only past and cancelled bookings is deleted', async ({ page }) => {
+    await tryToDelete(page, '2', 'Bertha Room')
+
+    await expect(page.getByRole('heading', { level: 1, name: 'Venues' })).toBeVisible()
+    await expectInCatalogue(page, 'Bertha Room', false)
+  })
+})
+
+test('the confirmation says past bookings go with the venue', async ({ page }) => {
+  await page.goto('/#/venues/2')
+  await page.getByRole('button', { name: 'Delete venue' }).click()
+
+  await expect(page.getByText(/past and\s+cancelled bookings are deleted with it/)).toBeVisible()
+  await page.getByRole('button', { name: 'Keep it' }).click()
+  await expectInCatalogue(page, 'Bertha Room', true)
+})

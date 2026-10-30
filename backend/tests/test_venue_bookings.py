@@ -582,7 +582,8 @@ class TestBookedVenuesStayInTheCatalogue:
 
         assert response.status_code == 409
         detail = response.json()["detail"]
-        assert detail["code"] == "venue_in_use"
+        # US9.5: the booking is still to come, so the refusal says what to do.
+        assert detail["code"] == "venue_has_future_bookings"
         assert "Great Hall" in detail["message"]
         assert venue_repository.get_venue(1) is not None
 
