@@ -7,7 +7,7 @@ import {
   type ReviewedVenue,
   type SafetyReview,
 } from '../eventsStore'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 
 type Props = {
@@ -108,7 +108,7 @@ function ReviewBody({ review }: { review: SafetyReview }) {
         </div>
         <div>
           <dt>Waiting since</dt>
-          <dd>{formatTimestamp(review.waitingSince)}</dd>
+          <dd>{formatRecordedAt(review.waitingSince)}</dd>
         </div>
       </dl>
 

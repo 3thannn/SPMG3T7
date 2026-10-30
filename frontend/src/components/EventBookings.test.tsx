@@ -26,7 +26,7 @@ import {
   type EventRecord,
   type Suitability,
 } from '../eventsStore'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt, formatTimestamp } from '../status'
 import { listVenues, type VenueRecord } from '../venuesStore'
 import { ApiError } from '../api'
 import { buildSession } from '../test/sessions'
@@ -1049,7 +1049,7 @@ it('TC-DF21 shows a confirmed booking with who confirmed it, and no Cancel', asy
 
   const row = within(await screen.findByRole('list')).getByRole('listitem')
   expect(row).toHaveTextContent('Confirmed')
-  expect(row).toHaveTextContent(`Confirmed by Sam, ${formatTimestamp('2027-10-01T01:00:00')}.`)
+  expect(row).toHaveTextContent(`Confirmed by Sam, ${formatRecordedAt('2027-10-01T01:00:00')}.`)
   expect(within(row).queryByRole('button')).not.toBeInTheDocument()
 })
 
@@ -1247,7 +1247,7 @@ it('TC-FF01 shows the flag with its reason, keeping the status', async () => {
   const note = within(row).getByRole('note')
   expect(note).toHaveTextContent('Conflict – review needed')
   expect(note).toHaveTextContent(
-    `Flagged ${formatTimestamp('2027-10-01T01:00:00')}: ${reason} Nothing has been cancelled.`,
+    `Flagged ${formatRecordedAt('2027-10-01T01:00:00')}: ${reason} Nothing has been cancelled.`,
   )
 })
 

@@ -162,9 +162,19 @@ class TestEventNeeds:
 
     def test_an_event_exposes_its_needs(self):
         event = Event(
-            id=1, title="", purpose="", description="", starts_at="", ends_at="",
-            expected_attendance=None, status=EventStatus.DRAFT, organiser_id=1,
-            organiser_name="", created_at="", updated_at="", **SUBMITTABLE_NEED_ATTRS,
+            id=1,
+            title="",
+            purpose="",
+            description="",
+            starts_at="",
+            ends_at="",
+            expected_attendance=None,
+            status=EventStatus.DRAFT,
+            organiser_id=1,
+            organiser_name="",
+            created_at="",
+            updated_at="",
+            **SUBMITTABLE_NEED_ATTRS,
         )
         assert event.needs == EventNeeds(**SUBMITTABLE_NEED_ATTRS)
 
@@ -218,8 +228,7 @@ class TestFormatError:
         [
             (
                 EventNeeds(venue_requirements="Stage, Helipad"),
-                "Choose the venue requirements from the list. "
-                "Helipad is not one of the options.",
+                "Choose the venue requirements from the list. Helipad is not one of the options.",
             ),
             (
                 EventNeeds(venue_requirements=f"Stage, {NOT_REQUIRED}"),
@@ -270,9 +279,7 @@ class TestMissingError:
         assert missing_error(needs) == MISSING_MESSAGES[name]
 
     def test_the_first_unanswered_field_in_form_order_is_reported(self):
-        assert missing_error(NO_NEEDS) == (
-            f"Choose the venue requirements, or {NOT_REQUIRED}."
-        )
+        assert missing_error(NO_NEEDS) == (f"Choose the venue requirements, or {NOT_REQUIRED}.")
 
     @pytest.mark.parametrize(
         ("name", "message"),
@@ -367,9 +374,7 @@ class TestDrafts:
 
 
 class TestSubmitting:
-    def test_a_complete_request_is_submitted_and_kept(
-        self, client, auth_headers, event_repository
-    ):
+    def test_a_complete_request_is_submitted_and_kept(self, client, auth_headers, event_repository):
         organiser = auth_headers(ORGANISER)
         event = create(client, organiser, **REQUEST)
 
@@ -405,12 +410,11 @@ class TestSubmitting:
             ({"endsAt": "  "}, "Give the event an end date."),
             ({"expectedAttendance": None}, "Give the expected attendance."),
             ({"expectedAttendance": 0}, "Expected attendance must be at least 1."),
-            ({"startsAt": "2000-01-01T10:00", "endsAt": "2000-01-01T12:00"},
-             "The start date cannot be in the past."),
-            *[
-                ({key: ""}, MISSING_MESSAGES[name])
-                for name, key in NEED_KEYS.items()
-            ],
+            (
+                {"startsAt": "2000-01-01T10:00", "endsAt": "2000-01-01T12:00"},
+                "The start date cannot be in the past.",
+            ),
+            *[({key: ""}, MISSING_MESSAGES[name]) for name, key in NEED_KEYS.items()],
         ],
     )
     def test_a_missing_field_blocks_submit_with_a_clear_error(
@@ -591,7 +595,8 @@ class TestSupabaseStore:
 
     def test_create_writes_the_needs(self, recorder):
         SupabaseEvents().create_event(
-            **DETAIL_KWARGS, organiser_id=ORGANISER_ID,
+            **DETAIL_KWARGS,
+            organiser_id=ORGANISER_ID,
             needs=EventNeeds(preferred_layout="Theatre"),
         )
 
@@ -606,15 +611,13 @@ class TestSupabaseStore:
         assert all(written[name] is None for name in NEED_FIELDS)
 
     def test_save_writes_the_needs(self, recorder):
-        SupabaseEvents().save_event(
-            42, **DETAIL_KWARGS, needs=EventNeeds(**SUBMITTABLE_NEED_ATTRS)
-        )
+        SupabaseEvents().save_event(42, **DETAIL_KWARGS, needs=EventNeeds(**SUBMITTABLE_NEED_ATTRS))
 
         _, written = recorder.updates[0]
         for name, value in SUBMITTABLE_NEED_ATTRS.items():
             assert written[name] == value
 
-    def test_a_tracked_save_logs_each_changed_need(self, recorder):
+    def test_a_tracked_save_logs_each_changed_need(self, recorder, monkeypatch):
         previous = to_event(recorder.stored_row)
         needs = EventNeeds(
             **{
@@ -624,19 +627,28 @@ class TestSupabaseStore:
             }
         )
 
+        calls = []
+
+        def rpc(name, payload):
+            calls.append((name, payload))
+            return type("Rpc", (), {"execute": lambda self: type("Result", (), {"data": True})()})()
+
+        monkeypatch.setattr(recorder, "rpc", rpc, raising=False)
+
         SupabaseEvents().save_event_with_tracking(
-            42, **{**DETAIL_KWARGS, "starts_at": previous.starts_at, "ends_at": previous.ends_at},
-            editor_id=COORDINATOR_ID, previous_event=previous, needs=needs,
+            42,
+            **{**DETAIL_KWARGS, "starts_at": previous.starts_at, "ends_at": previous.ends_at},
+            editor_id=COORDINATOR_ID,
+            previous_event=previous,
+            needs=needs,
         )
 
-        (_, written), = recorder.updates
-        assert written["preferred_layout"] == "Banquet"
-        assert written["equipment_needs"] == NOT_REQUIRED
-        (_, logged), = [item for item in recorder.inserts if item[0] == "event_changes"]
+        name, payload = calls[0]
+        assert name == "us11_edit"
         assert [
             (row["changed_field"], row["old_value"], row["new_value"], row["change_type"])
-            for row in logged
+            for row in payload["p_changes"]
         ] == [
-            ("preferred_layout", "Theatre", "Banquet", "routine"),
+            ("preferred_layout", "Theatre", "Banquet", "important"),
             ("equipment_needs", "Two wireless microphones", NOT_REQUIRED, "important"),
         ]

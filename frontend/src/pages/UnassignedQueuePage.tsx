@@ -7,7 +7,7 @@ import {
   type Coordinator,
   type UnassignedEvent,
 } from '../unassignedQueueStore'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt } from '../status'
 import './UnassignedQueuePage.css'
 
 interface Props {
@@ -253,7 +253,7 @@ export default function UnassignedQueuePage({ session }: Props) {
                           </span>
                         )}
                         <span className="detail-item">
-                          <strong>Submitted:</strong> {formatTimestamp(event.submittedAt)}
+                          <strong>Submitted:</strong> {formatRecordedAt(event.submittedAt)}
                         </span>
                       </div>
                     </div>

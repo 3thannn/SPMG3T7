@@ -44,6 +44,8 @@ class EquipmentRequest:
     unavailable_reason: str = ""
     requested_equipment_id: int | None = None
     equipment_name: str = ""
+    event_conflict_reason: str = ""
+    event_conflict_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -108,6 +110,8 @@ def _request(row: dict) -> EquipmentRequest:
         unavailable_reason=row.get("unavailable_reason") or "",
         requested_equipment_id=row.get("requested_equipment_id"),
         equipment_name=(row.get("requested_equipment") or {}).get("name", ""),
+        event_conflict_reason=row.get("event_conflict_reason") or "",
+        event_conflict_at=str(row["event_conflict_at"]) if row.get("event_conflict_at") else "",
     )
 
 
@@ -129,6 +133,7 @@ class Repository(Protocol):
     def delete_request(self, request_id: int, expected_version: int, actor_id: int) -> bool: ...
     def list_history(self, event_id: int) -> list[RequestHistory]: ...
     def availability(self, request_id: int) -> list[dict]: ...
+    def reservation_availability(self, request_id: int) -> list[dict]: ...
     def decide(
         self, request_id: int, version: int, actor_id: int, item_id: int | None, reason: str
     ) -> dict: ...
@@ -143,6 +148,7 @@ class SupabaseEquipment:
         "id, event_id, equipment_type, quantity, technical_requirements, "
         "support_notes, start_at, end_at, status, requested_by_id, "
         "created_at, version, updated_by_id, equipment_id, unavailable_reason, "
+        "event_conflict_reason, event_conflict_at, "
         "requested_equipment_id, requested_equipment:equipment!requested_equipment_id(name), "
         "events(name)"
     )
@@ -369,6 +375,15 @@ class SupabaseEquipment:
             for row in rows
         ]
 
+    def reservation_availability(self, request_id: int) -> list[dict]:
+        return (
+            supabase_client.admin()
+            .rpc("equipment_reservation_availability", {"p_request_id": request_id})
+            .execute()
+            .data
+            or []
+        )
+
     def availability(self, request_id: int) -> list[dict]:
         return (
             supabase_client.admin()
@@ -406,6 +421,14 @@ class InMemoryEquipment:
     next_item_id: int = 1
     next_request_id: int = 1
     lock: RLock = field(default_factory=RLock, repr=False)
+
+    def _set_event_conflict(self, request_id: int, reason: str) -> None:
+        self.requests = [
+            replace(row, event_conflict_reason=reason, event_conflict_at=_now() if reason else "")
+            if row.id == request_id
+            else row
+            for row in self.requests
+        ]
 
     def _record(
         self, request: EquipmentRequest, action: str, before: EquipmentRequest | None = None
@@ -575,6 +598,44 @@ class InMemoryEquipment:
             reverse=True,
         )
 
+    def reservation_availability(self, request_id: int) -> list[dict]:
+        request = self.get_request(request_id)
+        if request is None or request.status != RESERVED:
+            return []
+        item = self.get_item(request.equipment_id)
+        if item is None:
+            return []
+        start, end = (
+            datetime.fromisoformat(request.starts_at),
+            datetime.fromisoformat(request.ends_at),
+        )
+        changes: dict[datetime, int] = {}
+        for other in self.requests:
+            if other.id == request.id or other.status != RESERVED or other.equipment_id != item.id:
+                continue
+            left = max(start, datetime.fromisoformat(other.starts_at))
+            right = min(end, datetime.fromisoformat(other.ends_at))
+            if left < right:
+                changes[left] = changes.get(left, 0) + other.quantity
+                changes[right] = changes.get(right, 0) - other.quantity
+        current = peak = 0
+        for at in sorted(changes):
+            current += changes[at]
+            peak = max(peak, current)
+        available = item.total_quantity - item.out_of_service_quantity - peak
+        return [
+            {
+                "equipmentId": str(item.id),
+                "name": item.name,
+                "location": item.location,
+                "totalQuantity": item.total_quantity,
+                "outOfServiceQuantity": item.out_of_service_quantity,
+                "reservedQuantity": peak,
+                "availableQuantity": available,
+                "shortfall": max(0, request.quantity - available),
+            }
+        ]
+
     def availability(self, request_id: int) -> list[dict]:
         request = self.get_request(request_id)
         if request is None:
@@ -587,6 +648,7 @@ class InMemoryEquipment:
                 r.quantity
                 for r in self.requests
                 if r.status == RESERVED
+                and r.id != request.id
                 and r.equipment_id == item.id
                 and datetime.fromisoformat(r.starts_at) < datetime.fromisoformat(request.ends_at)
                 and datetime.fromisoformat(r.ends_at) > datetime.fromisoformat(request.starts_at)

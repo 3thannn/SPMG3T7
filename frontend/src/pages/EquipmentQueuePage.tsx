@@ -3,7 +3,7 @@ import '../equipment.css'
 import type { Session } from '../api'
 import { equipmentErrorMessage, listEquipmentQueue, type EquipmentRequest } from '../equipmentStore'
 import { formatBookingTimes } from '../eventsStore'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt } from '../status'
 
 export default function EquipmentQueuePage({ session }: { session: Session }) {
   const [lines, setLines] = useState<EquipmentRequest[] | null>(null)
@@ -30,7 +30,7 @@ export default function EquipmentQueuePage({ session }: { session: Session }) {
         <span className="equipment-queue-count"><strong>{line.quantity}</strong><span>{line.quantity === 1 ? 'unit' : 'units'}</span></span>
         <span className="equipment-queue-content">
           <strong className="equipment-queue-name">{line.equipmentName || line.equipmentType}</strong>
-          <span>{line.eventTitle || `Event ${line.eventId}`} · Requested {formatTimestamp(line.createdAt)}</span>
+          <span>{line.eventTitle || `Event ${line.eventId}`} · Requested {formatRecordedAt(line.createdAt)}</span>
           <span>Needed {formatBookingTimes(line.startsAt, line.endsAt)}</span>
           {line.technicalRequirements && <span>Technical requirements: {line.technicalRequirements}</span>}
         </span>

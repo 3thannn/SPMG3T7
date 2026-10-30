@@ -148,9 +148,9 @@ export type ClarificationCheck =
  * This mirrors the server rule so the page can hide the form and say why. It is
  * not the enforcement point — the server re-checks, and that refusal is the rule.
  */
-export function checkClarification(event: { status: EventStatus }): ClarificationCheck {
+export function checkClarification(event: { status: EventStatus; changeRequested?: boolean }): ClarificationCheck {
   if (event.status === 'Draft') return { allowed: false, reason: 'not-yet-submitted' }
-  if (!CLARIFIABLE.includes(event.status)) {
+  if (!CLARIFIABLE.includes(event.status) && !(event.changeRequested && REQUESTABLE.includes(event.status))) {
     return { allowed: false, reason: 'already-decided' }
   }
   return { allowed: true }
@@ -277,7 +277,7 @@ export function statusNoteLabel(kind: StatusNoteKind): string {
  * edit directly; a decided event is no longer under review.
  */
 export const REQUESTABLE: readonly EventStatus[] = [
-  'Submitted', 'Under Review', 'Approved', 'Planning',
+  'Submitted', 'Approved', 'Planning', 'Pending Safety Check', 'Confirmed',
 ]
 
 /** Why a change request is not available, so the page can say rather than hide. */
@@ -298,13 +298,13 @@ export type ChangeRequestCheck =
  * explains the same refusal the server would give. The server re-checks.
  */
 export function checkChangeRequest(
-  event: { status: EventStatus; organiserId: string; changeRequested?: boolean },
+  event: { status: EventStatus; organiserId: string; changeRequested?: boolean; awaitingReply?: boolean },
   actorId: string,
 ): ChangeRequestCheck {
   if (event.organiserId !== actorId) return { allowed: false, reason: 'not-owner' }
   if (event.status === 'Draft') return { allowed: false, reason: 'not-submitted' }
-  if (!REQUESTABLE.includes(event.status)) return { allowed: false, reason: 'already-decided' }
-  if (event.changeRequested) return { allowed: false, reason: 'already-pending' }
+  if (event.changeRequested && !event.awaitingReply) return { allowed: false, reason: 'already-pending' }
+  if (!REQUESTABLE.includes(event.status) && !(event.status === 'Under Review' && event.awaitingReply)) return { allowed: false, reason: 'already-decided' }
   return { allowed: true }
 }
 
@@ -327,7 +327,8 @@ export function isClarificationRequest(change: StatusChange): boolean {
 }
 
 export function formatTimestamp(iso: string): string {
-  const date = new Date(iso)
+  const planned = iso && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? `${iso}+08:00` : iso
+  const date = new Date(planned)
   if (Number.isNaN(date.getTime())) return iso
   // Display in Singapore timezone (UTC+8)
   return date.toLocaleString('en-SG', {

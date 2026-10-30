@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app import (
+    arrangement_review,
     availability,
     booking_store,
     change_requests,
@@ -68,6 +69,9 @@ from app.event_status import (
 from app.event_store import Event, StaleEventStatus
 from app.notifications import (
     notify_assigned,
+    notify_change_decision,
+    notify_change_submitted,
+    notify_clarification,
     notify_safety_changes,
     notify_safety_rejected,
     notify_status_change,
@@ -171,6 +175,16 @@ class EventOut(BaseModel):
         default_factory=list, serialization_alias="pendingChanges"
     )
     change_request_note: str = Field(default="", serialization_alias="changeRequestNote")
+    review_revision: int = Field(default=0, serialization_alias="reviewRevision")
+    clarification_id: int | None = Field(default=None, serialization_alias="clarificationId")
+    awaiting_reply: bool = Field(default=False, serialization_alias="awaitingReply")
+    review_history: list[dict] = Field(default_factory=list, serialization_alias="reviewHistory")
+    arrangement_review_pending: bool = Field(
+        default=False, serialization_alias="arrangementReviewPending"
+    )
+    arrangement_review: list[dict] = Field(
+        default_factory=list, serialization_alias="arrangementReview"
+    )
     last_change_review: ChangeReviewOut | None = Field(
         default=None, serialization_alias="lastChangeReview"
     )
@@ -258,6 +272,12 @@ def _to_out(event: Event) -> EventOut:
             )
             for change in event.history
         ],
+        review_revision=event.review_state.get("revision", 0),
+        clarification_id=event.review_state.get("clarificationId"),
+        awaiting_reply=event.review_state.get("awaitingReply", False),
+        review_history=event.review_state.get("messages", []),
+        arrangement_review_pending=event.arrangement_review_pending,
+        arrangement_review=list(event.arrangement_review),
         change_requested=event.change_requested,
         change_request_note=event.change_request_note,
         pending_changes=[
@@ -299,9 +319,7 @@ def _require_transition(from_status: EventStatus, to_status: EventStatus) -> Non
         status_code=status.HTTP_409_CONFLICT,
         detail={
             "code": EventError.REFUSED,
-            "message": transition_refusal_message(
-                from_status=from_status, to_status=to_status
-            ),
+            "message": transition_refusal_message(from_status=from_status, to_status=to_status),
             "reason": "invalid-transition",
         },
     )
@@ -668,6 +686,8 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
     """
     event = _readable(_as_id(event_id), user)
     _refuse_if_cancelled(event)
+    if event.status in (EventStatus.COMPLETED, EventStatus.REJECTED):
+        raise _stale_request()
     is_owner = event.organiser_id == user.id
     is_coordinator = has_permission(user.role, Permission.EVENTS_EDIT)
 
@@ -706,22 +726,27 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             },
         )
 
+    if is_coordinator and event.change_requested:
+        raise _stale_request()
     clean = _validated(draft)
 
     # If coordinator is editing (not the owner), use change tracking
     if is_coordinator and not is_owner:
-        saved = event_store.repository().save_event_with_tracking(
-            event.id,
-            title=clean.title,
-            purpose=clean.purpose,
-            description=clean.description,
-            starts_at=clean.starts_at,
-            ends_at=clean.ends_at,
-            expected_attendance=clean.expected_attendance,
-            editor_id=user.id,
-            previous_event=event,
-            needs=clean.needs(),
-        )
+        try:
+            saved = event_store.repository().save_event_with_tracking(
+                event.id,
+                title=clean.title,
+                purpose=clean.purpose,
+                description=clean.description,
+                starts_at=clean.starts_at,
+                ends_at=clean.ends_at,
+                expected_attendance=clean.expected_attendance,
+                editor_id=user.id,
+                previous_event=event,
+                needs=clean.needs(),
+            )
+        except StaleEventStatus:
+            raise _stale_request() from None
     else:
         # Owner editing: no change tracking (original US4.2 behavior)
         saved = event_store.repository().save_event(
@@ -734,6 +759,8 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             expected_attendance=clean.expected_attendance,
             needs=clean.needs(),
         )
+    if saved.arrangement_review_pending:
+        saved = arrangement_review.recheck(saved)
     return _to_out(saved)
 
 
@@ -769,6 +796,7 @@ class ClarificationRequest(BaseModel):
     """The message a Coordinator attaches when asking for changes (US7.3)."""
 
     message: str = ""
+    reviewRevision: int | None = None
 
 
 #: `status_changes.notes` is unbounded TEXT, so this cap is about keeping a
@@ -782,14 +810,13 @@ def request_clarification(
     payload: ClarificationRequest,
     user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
 ) -> EventOut:
-    """US7.3: ask the Organiser for information or changes, and move to Under Review.
+    """US7.3/US11.2: request field amendments without changing event status.
 
     US8.1's readable-event check restricts this action to the assigned
     Coordinator; the status rule here remains independent of assignment.
 
-    The message lands in the event's history, which the owning Organiser already
-    reads, so "visible to the Organiser" needs no separate delivery. Their reply
-    is US11.1 and is deliberately not modelled here.
+    Questions are retained in review history and notify the Organiser. Each new
+    question opens one amendment response, including replacement of a pending proposal.
     """
     event = _readable(_as_id(event_id), user)
 
@@ -800,6 +827,8 @@ def request_clarification(
         raise _invalid(f"Keep the request to {CLARIFICATION_MAX} characters or fewer.")
 
     refusal = check_clarification(status=event.status)
+    if event.change_requested and event.status in change_requests.REQUESTABLE:
+        refusal = None
     if refusal is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -810,11 +839,13 @@ def request_clarification(
             },
         )
 
-    _require_transition(event.status, EventStatus.UNDER_REVIEW)
-
     try:
         reviewed = event_store.repository().request_clarification(
-            event.id, actor_id=user.id, from_status=event.status, message=message
+            event.id,
+            actor_id=user.id,
+            from_status=event.status,
+            message=message,
+            expected_revision=payload.reviewRevision,
         )
     except StaleEventStatus:
         raise HTTPException(
@@ -822,15 +853,14 @@ def request_clarification(
             detail={
                 "code": EventError.REFUSED,
                 "message": (
-                    "This event changed while you were reviewing it. "
-                    "Refresh it and try again."
+                    "This event changed while you were reviewing it. Refresh it and try again."
                 ),
                 "reason": "invalid-transition",
             },
         ) from None
     # US10.1: a follow-up question on an event already Under Review notifies
     # too — it carries a new request the Organiser has to answer.
-    notify_status_change(reviewed, EventStatus.UNDER_REVIEW, message)
+    notify_clarification(reviewed, message)
     return _to_out(reviewed)
 
 
@@ -838,6 +868,7 @@ class RejectionRequest(BaseModel):
     """Why an Event Coordinator rejected an event (US7.1)."""
 
     reason: str = ""
+    reviewRevision: int | None = None
 
 
 DECISION_REASON_MAX = 2000
@@ -1034,6 +1065,7 @@ def _safety_refusal(event: Event) -> safety_check.SafetyCheckRefusal | None:
     return safety_check.check_ready_for_safety_check(
         status=event.status,
         change_requested=event.change_requested,
+        arrangement_review_pending=event.arrangement_review_pending,
         bookings=booking_store.repository().list_for_event(event.id),
         equipment=equipment_store.repository().list_for_event(event.id),
         # US17.2: a flag the Coordinator has not marked re-reviewed holds it back.
@@ -1494,6 +1526,7 @@ class ChangeRequestIn(EventDraft):
     """
 
     note: str = ""
+    reviewRevision: int | None = None
 
 
 #: Same reasoning as `CLARIFICATION_MAX`: a cap for readability, not the column.
@@ -1519,8 +1552,8 @@ def request_change(
 ) -> EventOut:
     """US11.1: propose changes for the Coordinator to review.
 
-    The event's own values do not move. The pending flag is set, and an assigned
-    Submitted event moves to Under Review. Other requestable statuses stay put.
+    Neither the event values nor its status move. Only the pending flag is set.
+    Under Review allows amendments only after a Coordinator clarification.
     One pending `event_change_requests` row is written per field
     that differs, each marked important or routine by US5.2's rule. Nothing is
     written to `event_changes` until a Coordinator approves.
@@ -1536,6 +1569,7 @@ def request_change(
         organiser_id=event.organiser_id,
         actor_id=user.id,
         change_requested=event.change_requested,
+        awaiting_reply=event.review_state.get("awaitingReply", False),
     )
     if refusal is not None:
         raise HTTPException(
@@ -1565,11 +1599,11 @@ def request_change(
     _validate_submission(proposed)
 
     changes = change_requests.diff(event, proposed)
+    if event.change_requested and changes == event.pending_changes:
+        raise _invalid("Revise at least one proposed detail to answer the clarification.")
     if not changes:
         raise _invalid("Change at least one detail before requesting a change.")
 
-    if event.status is EventStatus.SUBMITTED and event.coordinator_id is not None:
-        _require_transition(event.status, EventStatus.UNDER_REVIEW)
     try:
         requested = event_store.repository().submit_change_request(
             event.id,
@@ -1577,13 +1611,17 @@ def request_change(
             from_status=event.status,
             changes=changes,
             note=note,
+            expected_revision=payload.reviewRevision,
         )
     except StaleEventStatus:
         raise _stale_request() from None
+    notify_change_submitted(requested)
     return _to_out(requested)
 
 
-def _resolve_change(event_id: str, user: User, *, approve: bool, note: str) -> EventOut:
+def _resolve_change(
+    event_id: str, user: User, *, approve: bool, note: str, revision: int | None = None
+) -> EventOut:
     event = _readable(_as_id(event_id), user)
     if not change_requests.has_pending_request(
         status=event.status, change_requested=event.change_requested
@@ -1598,10 +1636,13 @@ def _resolve_change(event_id: str, user: User, *, approve: bool, note: str) -> E
         )
     try:
         resolved = event_store.repository().resolve_change_request(
-            event.id, actor_id=user.id, approve=approve, note=note
+            event.id, actor_id=user.id, approve=approve, note=note, expected_revision=revision
         )
     except StaleEventStatus:
         raise _stale_request() from None
+    if resolved.arrangement_review_pending:
+        resolved = arrangement_review.recheck(resolved)
+    notify_change_decision(resolved, approved=approve, reason=note)
     return _to_out(resolved)
 
 
@@ -1609,9 +1650,10 @@ def _resolve_change(event_id: str, user: User, *, approve: bool, note: str) -> E
 def approve_change(
     event_id: str,
     user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
+    review_revision: int | None = None,
 ) -> EventOut:
-    """US11.1: apply the proposed changes. The event stays Under Review for US7.1."""
-    return _resolve_change(event_id, user, approve=True, note="")
+    """Apply the proposed changes while preserving the event's lifecycle status."""
+    return _resolve_change(event_id, user, approve=True, note="", revision=review_revision)
 
 
 @router.post("/{event_id}/change-request/reject", response_model=EventOut)
@@ -1626,7 +1668,9 @@ def reject_change(
         raise _invalid("Tell the Organiser why their requested changes were rejected.")
     if len(reason) > DECISION_REASON_MAX:
         raise _invalid(f"Keep the reason to {DECISION_REASON_MAX} characters or fewer.")
-    return _resolve_change(event_id, user, approve=False, note=reason)
+    return _resolve_change(
+        event_id, user, approve=False, note=reason, revision=payload.reviewRevision
+    )
 
 
 # -- US14.1: venue bookings ----------------------------------------------------
@@ -1757,8 +1801,20 @@ def _booking_out(booking: Booking) -> BookingOut:
             else None
         ),
         conflict=(
-            ConflictFlagOut(flagged_at=booking.conflict.flagged_at, reason=booking.conflict.reason)
-            if booking.conflict
+            ConflictFlagOut(
+                flagged_at=booking.event_conflict_at
+                or (booking.conflict.flagged_at if booking.conflict else ""),
+                reason="; ".join(
+                    filter(
+                        None,
+                        [
+                            booking.event_conflict_reason,
+                            booking.conflict.reason if booking.conflict else "",
+                        ],
+                    )
+                ),
+            )
+            if booking.conflict or booking.event_conflict_reason
             else None
         ),
     )
@@ -2230,9 +2286,7 @@ def cancel_booking(
     if not reason:
         raise _invalid_booking("Give a reason for cancelling this booking.")
     if len(reason) > CANCELLATION_REASON_MAX:
-        raise _invalid_booking(
-            f"Keep the reason to {CANCELLATION_REASON_MAX} characters or fewer."
-        )
+        raise _invalid_booking(f"Keep the reason to {CANCELLATION_REASON_MAX} characters or fewer.")
 
     try:
         cancelled = booking_store.repository().cancel(booking.id, actor_id=user.id, reason=reason)
@@ -2246,7 +2300,8 @@ def cancel_booking(
     # US15.2: a cancelled booking frees its slot, which may resolve a flagged
     # clash at this venue, its own included.
     conflict_flags.resolve_quietly(cancelled.venue_id)
-    if cancelled.conflict is not None:
+    arrangement_review.refresh_if_reviewed(cancelled.event_id)
+    if cancelled.conflict is not None or cancelled.event_conflict_reason:
         cancelled = booking_store.repository().get_booking(cancelled.id) or cancelled
     return _booking_out(cancelled)
 
@@ -2358,3 +2413,12 @@ def _hold_expired(booking: Booking) -> HTTPException:
             "reason": "hold-expired",
         },
     )
+
+
+@router.post("/{event_id}/arrangements/recheck", response_model=EventOut)
+def recheck_arrangements(
+    event_id: str, user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))]
+) -> EventOut:
+    event = _readable(_as_id(event_id), user)
+    _refuse_if_cancelled(event)
+    return _to_out(arrangement_review.recheck(event))

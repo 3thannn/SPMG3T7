@@ -830,6 +830,17 @@ describe('US17.2: the Safety Officer decides a Pending Safety Check event', () =
     expect(within(earlier).queryByRole('button')).not.toBeInTheDocument()
   })
 
+  it('shows recorded safety decisions and flag resolutions in SGT across midnight', async () => {
+    decisionsMock.mockResolvedValue([decisionOf({
+      decidedAt: '2026-12-31T16:30:00',
+      flags: [flagOf({ resolvedAt: '2026-12-31T16:45:00', resolvedByName: 'Priya' })],
+    })])
+    await renderForOfficer()
+    const earlier = await screen.findByRole('region', { name: 'Earlier safety decisions' })
+    expect(earlier).toHaveTextContent('01 Jan 2027, 00:30')
+    expect(earlier).toHaveTextContent('01 Jan 2027, 00:45')
+  })
+
   it('still decides when earlier decisions cannot be loaded', async () => {
     decisionsMock.mockRejectedValue(new ApiError('Boom', 'unknown', 500))
     await renderForOfficer()

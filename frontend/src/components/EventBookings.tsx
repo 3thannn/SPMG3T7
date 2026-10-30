@@ -575,7 +575,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
         {booking.conflict && (
           <p className="booking-conflict" role="note">
             <span className="booking-conflict-tag">{CONFLICT_LABEL}</span>
-            Flagged {formatTimestamp(booking.conflict.flaggedAt)}: {booking.conflict.reason}{' '}
+            Flagged {formatRecordedAt(booking.conflict.flaggedAt)}: {booking.conflict.reason}{' '}
             Nothing has been cancelled. Sort out the clash with Venue Staff, or cancel this
             booking.
           </p>
@@ -590,13 +590,13 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
         {booking.decision && booking.status === 'Confirmed' && (
           <p className="booking-decision">
             Confirmed by {booking.decision.byName || 'a former user'},{' '}
-            {formatTimestamp(booking.decision.at)}.
+            {formatRecordedAt(booking.decision.at)}.
           </p>
         )}
         {booking.decision && isRejected && (
           <p className="booking-decision is-rejected">
             Rejected by {booking.decision.byName || 'a former user'},{' '}
-            {formatTimestamp(booking.decision.at)}: {booking.decision.reason}
+            {formatRecordedAt(booking.decision.at)}: {booking.decision.reason}
             {booking.decision.suggestion && (
               <span className="booking-suggestion">
                 {' '}

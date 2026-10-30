@@ -1119,8 +1119,9 @@ class TestTheSupabaseStore:
     def test_tc_f36_the_flagged_list_reads_flagged_rows_soonest_first(self, monkeypatch):
         fake = FakeClient(rows=[ROW])
         [booking] = self.use(monkeypatch, fake).list_flagged()
-        assert ("not_",) in fake.calls
-        assert ("is_", "conflict_flagged_at", "null") in fake.calls
+        assert (
+            "or_", "conflict_flagged_at.not.is.null,event_conflict_at.not.is.null"
+        ) in fake.calls
         assert fake.calls.index(("order", "start_at")) < fake.calls.index(("order", "id"))
         assert booking.conflict is not None
 

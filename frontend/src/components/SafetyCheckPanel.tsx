@@ -18,7 +18,7 @@ import {
   type SafetyReadiness,
   type SafetyReview,
 } from '../eventsStore'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 import { can } from '../permissions'
 
@@ -465,7 +465,7 @@ function DecisionSummary({
     <div className={className}>
       <p className="safety-decision-head">
         <strong>{OUTCOME_LABELS[decision.outcome]}</strong> by{' '}
-        {decision.decidedByName || 'the Safety Officer'} · {formatTimestamp(decision.decidedAt)}
+        {decision.decidedByName || 'the Safety Officer'} · {formatRecordedAt(decision.decidedAt)}
       </p>
       <p className="safety-decision-note">{decision.note}</p>
       {decision.flags.length > 0 && (
@@ -480,7 +480,7 @@ function DecisionSummary({
               {flag.resolvedAt ? (
                 <span className="muted">
                   Re-reviewed by {flag.resolvedByName || 'the Coordinator'} ·{' '}
-                  {formatTimestamp(flag.resolvedAt)}
+                  {formatRecordedAt(flag.resolvedAt)}
                 </span>
               ) : onResolve ? (
                 <button

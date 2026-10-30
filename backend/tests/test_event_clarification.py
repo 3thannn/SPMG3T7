@@ -327,6 +327,7 @@ class TestWhenItIsRefused:
             actor_id: int,
             from_status: EventStatus,
             message: str,
+            expected_revision: int | None = None,
         ) -> Event:
             event_repository.decide_event(
                 event_id,

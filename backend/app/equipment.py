@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from postgrest.exceptions import APIError
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-from app import equipment_store, event_store, users
+from app import arrangement_review, equipment_store, event_store, users
 from app.auth import require_any_permission, require_permission
 from app.equipment_store import Equipment, EquipmentRequest, RequestHistory
 from app.event_status import EventStatus
@@ -202,6 +202,8 @@ class RequestOut(BaseModel):
     version: int
     equipment_id: str | None = Field(default=None, serialization_alias="equipmentId")
     unavailable_reason: str = Field(default="", serialization_alias="unavailableReason")
+    conflict_reason: str = Field(default="", serialization_alias="conflictReason")
+    conflict_at: str = Field(default="", serialization_alias="conflictAt")
     requested_equipment_id: str | None = Field(
         default=None, serialization_alias="requestedEquipmentId"
     )
@@ -250,6 +252,8 @@ def _request_out(request: EquipmentRequest) -> RequestOut:
         version=request.version,
         equipment_id=str(request.equipment_id) if request.equipment_id is not None else None,
         unavailable_reason=request.unavailable_reason,
+        conflict_reason=request.event_conflict_reason,
+        conflict_at=request.event_conflict_at,
         requested_equipment_id=str(request.requested_equipment_id)
         if request.requested_equipment_id is not None
         else None,
@@ -499,7 +503,8 @@ def _decide(
         )
     updated = repo.get_request(_id(request_id))
     assert updated is not None
-    return _request_out(updated)
+    arrangement_review.refresh_if_reviewed(updated.event_id)
+    return _request_out(equipment_store.repository().get_request(updated.id) or updated)
 
 
 @router.post("/equipment-requests/{request_id}/reserve", response_model=RequestOut)
@@ -600,7 +605,8 @@ def update_request(request_id: str, payload: RequestUpdate, user: Editor) -> Req
         notify_equipment_change(
             updated, user.name, "resubmitted" if current.status == "Unavailable" else "updated"
         )
-    return _request_out(updated)
+    arrangement_review.refresh_if_reviewed(updated.event_id)
+    return _request_out(equipment_store.repository().get_request(updated.id) or updated)
 
 
 @router.delete("/equipment-requests/{request_id}", status_code=204)
@@ -613,4 +619,5 @@ def delete_request(request_id: str, version: int, user: Coordinator) -> Response
     if not removed:
         raise _error("stale_request", "This request changed. Reload it before removing it.", 409)
     notify_equipment_change(current, user.name, "removed")
+    arrangement_review.refresh_if_reviewed(current.event_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -158,6 +158,7 @@ export default function EventEquipment({ event, session }: {
           <span className={`equipment-request-status is-${line.status.toLowerCase()}`}>{line.status}</span>
           {mayRequest && planning && (line.status === 'Requested' || line.status === 'Unavailable') && !loadError && <span className="equipment-request-actions"><button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(line.id)}>{line.status === 'Unavailable' ? 'Revise and resubmit' : 'Edit'}</button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => void remove(line)}>Remove</button></span>}</div>
+        {line.conflictReason && <p role="note" className="booking-conflict"><strong>Conflict &ndash; review needed</strong>: {line.conflictReason}</p>}
         <p className="equipment-request-note">Quantity: {line.quantity}</p>
         {line.equipmentId && <p className="equipment-request-note">Reserved catalogue item: #{line.equipmentId}</p>}
         {line.unavailableReason && <p className="equipment-request-note">Unavailable reason: {line.unavailableReason}</p>}

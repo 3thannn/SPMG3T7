@@ -30,7 +30,7 @@ import {
   type ProposedChange,
 } from '../eventsStore'
 import { ApiError } from '../api'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt, formatTimestamp } from '../status'
 import { ANSWERED_NEEDS } from '../test/eventNeeds'
 import { buildSession } from '../test/sessions'
 
@@ -228,7 +228,7 @@ describe('AC1 — opening the edit form on a submitted event', () => {
   })
 
   it('is offered on an event already Under Review, to answer a clarification', async () => {
-    await openAs(organiser, submitted({ status: 'Under Review' }))
+    await openAs(organiser, submitted({ status: 'Under Review', awaitingReply: true }))
 
     expect(screen.getByRole('button', { name: 'Request changes' })).toBeEnabled()
   })
@@ -288,7 +288,7 @@ describe('AC1 — opening the edit form on a submitted event', () => {
 
   it.each([
     ['Rejected', 'already been decided'],
-    ['Confirmed', 'already been decided'],
+    ['Under Review', 'already been decided'],
   ] as const)('is not offered on a %s event, and says why', async (status, why) => {
     await openAs(organiser, submitted({ status }))
 
@@ -343,6 +343,7 @@ describe('AC2 — submitting the proposed changes for review', () => {
       },
       'Moved to 19:00.',
       organiser,
+      undefined,
     )
   })
 
@@ -490,7 +491,7 @@ describe('AC3/AC4 — the Coordinator sees the proposal, important changes flagg
   })
 
   it('shows nothing to review when there is no request', async () => {
-    await openAs(coordinator, submitted({ status: 'Under Review' }))
+    await openAs(coordinator, submitted({ status: 'Under Review', awaitingReply: true }))
 
     expect(screen.queryByRole('heading', { name: 'Requested changes' })).not.toBeInTheDocument()
   })
@@ -518,9 +519,9 @@ describe('AC5 — the Coordinator reviews, then approves or rejects', () => {
 
     await user.click(screen.getByRole('button', { name: 'Approve changes' }))
 
-    expect(approveEventChangeMock).toHaveBeenCalledWith('101', coordinator)
+    expect(approveEventChangeMock).toHaveBeenCalledWith('101', coordinator, undefined)
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Changes approved and applied. You can now decide the event.',
+      'Changes approved and applied. The event keeps its current status.',
     )
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Welcome Night')
     expect(screen.queryByRole('heading', { name: 'Requested changes' })).not.toBeInTheDocument()
@@ -575,6 +576,7 @@ describe('AC5 — the Coordinator reviews, then approves or rejects', () => {
       '101',
       'Hall is booked at 19:00.',
       coordinator,
+      undefined,
     )
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Changes rejected. The Organiser can see your reason.',
@@ -623,7 +625,7 @@ describe('AC5 — the Coordinator’s answer is shown to both sides', () => {
 
     expect(screen.getByRole('heading', { name: 'Requested changes rejected' })).toBeInTheDocument()
     expect(screen.getByText(/kept the current details on/)).toBeInTheDocument()
-    expect(screen.getByText(formatTimestamp(ANSWERED_AT))).toHaveAttribute('dateTime', ANSWERED_AT)
+    expect(screen.getByText(formatRecordedAt(ANSWERED_AT))).toHaveAttribute('dateTime', ANSWERED_AT)
     expect(screen.getByText('Reason')).toBeInTheDocument()
     expect(screen.getByText('Hall is booked at 19:00.')).toBeInTheDocument()
     expect(screen.getByText('Organiser\'s note')).toBeInTheDocument()
@@ -666,5 +668,36 @@ describe('AC5 — the Coordinator’s answer is shown to both sides', () => {
     await openAs(organiser, submitted({ lastChangeReview: null }))
 
     expect(screen.queryByText(/Requested changes (approved|rejected)/)).not.toBeInTheDocument()
+  })
+})
+
+
+describe('US11.2 amendments and arrangement results', () => {
+  it('shows a recorded review across the SGT year boundary', async () => {
+    const at = '2026-12-31T16:30:00'
+    await openAs(organiser, submitted({ lastChangeReview: {
+      outcome: 'rejected', note: 'Keep the details', at,
+    } }))
+    expect(screen.getByText('01 Jan 2027, 00:30')).toHaveAttribute('dateTime', at)
+  })
+  it('opens the active proposal for amendment after a question and sends its revision', async () => {
+    const event = submitted({ status: 'Confirmed', awaitingReply: true, reviewRevision: 4,
+      changeRequested: true, pendingChanges: [TITLE_CHANGE] })
+    requestEventChangeMock.mockResolvedValue({ ...event, awaitingReply: false, reviewRevision: 5 })
+    await openAs(organiser, event)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Request changes' }))
+    expect(screen.getByLabelText('Title')).toHaveValue(TITLE_CHANGE.newValue)
+    await user.clear(screen.getByLabelText('Title'))
+    await user.type(screen.getByLabelText('Title'), 'Final title')
+    await user.click(screen.getByRole('button', { name: 'Submit change request' }))
+    expect(requestEventChangeMock).toHaveBeenCalledWith('101', expect.objectContaining({ title: 'Final title' }), '', organiser, 4)
+  })
+  it('shows incomplete checks, conflict reasons and preserved status', async () => {
+    await openAs(coordinator, submitted({ status: 'Confirmed', arrangementReviewPending: true,
+      arrangementReview: [{ kind: 'venue', id: '1', label: 'Hall', reason: 'Over capacity', error: false }] }))
+    expect(screen.getByRole('region', { name: 'Arrangement review' })).toHaveTextContent('Over capacity')
+    expect(screen.getByRole('button', { name: 'Recheck arrangements' })).toBeEnabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Some arrangement checks have not completed')
   })
 })

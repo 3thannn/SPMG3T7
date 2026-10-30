@@ -5,7 +5,7 @@ import { listBookingConflicts, type FlaggedBooking } from '../bookingConflictsSt
 import { describePeriod } from '../bookingRequestsStore'
 import { CONFLICT_LABEL, formatBookingTimes } from '../eventsStore'
 import { displayEventTitle } from '../draftRules'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt } from '../status'
 import { navigate } from '../router'
 import { unexpectedFailureMessage, type Session } from '../api'
 
@@ -151,7 +151,7 @@ export default function BookingConflictsPage({ session }: BookingConflictsPagePr
 
         {booking.conflict && (
           <p className="booking-request-flag" role="note">
-            Flagged {formatTimestamp(booking.conflict.flaggedAt)}: {booking.conflict.reason}
+            Flagged {formatRecordedAt(booking.conflict.flaggedAt)}: {booking.conflict.reason}
           </p>
         )}
 

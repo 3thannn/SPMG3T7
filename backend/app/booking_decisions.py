@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app import (
+    arrangement_review,
     availability,
     booking_store,
     conflict_flags,
@@ -336,6 +337,7 @@ def reject_booking_request(
     _notify(rejected, confirmed=False, reason=reason, suggestion=suggestion)
     # US15.2: a rejected booking frees its slot, which may resolve a flagged clash.
     conflict_flags.resolve_quietly(rejected.venue_id)
-    if rejected.conflict is not None:
+    arrangement_review.refresh_if_reviewed(rejected.event_id)
+    if rejected.conflict is not None or rejected.event_conflict_reason:
         rejected = booking_store.repository().get_booking(rejected.id) or rejected
     return _Context().request_out(rejected)
