@@ -303,8 +303,8 @@ export function checkChangeRequest(
 ): ChangeRequestCheck {
   if (event.organiserId !== actorId) return { allowed: false, reason: 'not-owner' }
   if (event.status === 'Draft') return { allowed: false, reason: 'not-submitted' }
-  if (!REQUESTABLE.includes(event.status) && !(event.status === 'Under Review' && event.awaitingReply)) return { allowed: false, reason: 'already-decided' }
   if (event.changeRequested && !event.awaitingReply) return { allowed: false, reason: 'already-pending' }
+  if (!REQUESTABLE.includes(event.status) && !(event.status === 'Under Review' && event.awaitingReply)) return { allowed: false, reason: 'already-decided' }
   return { allowed: true }
 }
 

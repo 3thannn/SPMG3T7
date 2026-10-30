@@ -103,7 +103,13 @@ def submitted_event(client, auth_headers) -> dict:
         headers=lead,
     )
     assert assigned.status_code == 200, assigned.text
-    return assigned.json()
+    asked = client.post(
+        f"/events/{assigned.json()['id']}/clarification",
+        json={"message": "Please amend the request."},
+        headers=auth_headers(COORDINATOR),
+    )
+    assert asked.status_code == 200, asked.text
+    return asked.json()
 
 
 def under_review_event(client, auth_headers) -> dict:
@@ -349,7 +355,7 @@ class TestRules:
 
         assert values == {"expected_attendance": None}
 
-    @pytest.mark.parametrize("status", [EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW])
+    @pytest.mark.parametrize("status", change_requests.REQUESTABLE)
     def test_the_owner_may_request_on_a_submitted_or_reviewed_event(self, status):
         assert (
             check_change_request(
@@ -388,7 +394,7 @@ class TestRules:
         "status",
         [
             EventStatus.REJECTED,
-            EventStatus.CONFIRMED,
+            EventStatus.UNDER_REVIEW,
             EventStatus.COMPLETED,
             EventStatus.CANCELLED,
         ],
@@ -407,7 +413,7 @@ class TestRules:
     def test_one_request_at_a_time(self):
         assert (
             check_change_request(
-                status=EventStatus.UNDER_REVIEW,
+                status=EventStatus.APPROVED,
                 organiser_id=ORGANISER_ID,
                 actor_id=ORGANISER_ID,
                 change_requested=True,
@@ -433,9 +439,7 @@ class TestRules:
     def test_a_change_request_entry_is_recognised_without_a_column(
         self, by_id, to_status, expected
     ):
-        assert (
-            history_kind(by_id=by_id, organiser_id=ORGANISER_ID, to_status=to_status) == expected
-        )
+        assert history_kind(by_id=by_id, organiser_id=ORGANISER_ID, to_status=to_status) == expected
 
     @pytest.mark.parametrize(
         ("status", "flagged", "expected"),
@@ -447,9 +451,7 @@ class TestRules:
             (EventStatus.SUBMITTED, False, False),
         ],
     )
-    def test_a_request_is_pending_at_each_requestable_status(
-        self, status, flagged, expected
-    ):
+    def test_a_request_is_pending_at_each_requestable_status(self, status, flagged, expected):
         assert has_pending_request(status=status, change_requested=flagged) is expected
 
 
@@ -519,10 +521,10 @@ class TestProposing:
         event = pending_event(client, auth_headers, title="Welcome Night")
 
         latest = event["history"][-1]
-        assert latest["from"] == "Submitted"
+        assert latest["from"] == "Under Review"
         assert latest["to"] == "Under Review"
-        assert latest["byId"] == "3"
-        assert latest["byName"] == "Jordan"
+        assert latest["byId"] == "2"
+        assert latest["byName"] == "Priya"
         assert latest["kind"] == ""
         assert latest["at"]
         assert event["changeRequested"] is True
@@ -574,12 +576,10 @@ class TestProposing:
         assert (latest["from"], latest["to"]) == ("Under Review", "Under Review")
         assert response.json()["changeRequested"] is True
 
-    def test_a_clarification_entry_is_not_labelled_as_a_change_request(
-        self, client, auth_headers
-    ):
+    def test_a_clarification_entry_is_not_labelled_as_a_change_request(self, client, auth_headers):
         event = under_review_event(client, auth_headers)
 
-        assert [entry["kind"] for entry in event["history"]] == ["", "", "", ""]
+        assert all(entry["kind"] == "" for entry in event["history"])
 
     def test_the_organiser_sees_their_own_pending_request(self, client, auth_headers):
         event = pending_event(client, auth_headers, title="Welcome Night")
@@ -673,7 +673,7 @@ class TestWhenAProposalIsRefused:
         assert response.status_code == 409
         assert response.json()["detail"]["reason"] == "not-submitted"
 
-    @pytest.mark.parametrize("status", [EventStatus.REJECTED, EventStatus.CONFIRMED])
+    @pytest.mark.parametrize("status", [EventStatus.REJECTED, EventStatus.UNDER_REVIEW])
     def test_a_decided_event_is_refused(self, client, auth_headers, event_repository, status):
         seeded = seed(event_repository, status=status)
 
@@ -689,8 +689,9 @@ class TestWhenAProposalIsRefused:
 
         assert response.status_code == 409
         assert response.json()["detail"]["reason"] == "already-pending"
-        assert response.json()["detail"]["message"] == (
-            CHANGE_REQUEST_REFUSAL_MESSAGES[ChangeRequestRefusal.ALREADY_PENDING]
+        assert (
+            response.json()["detail"]["message"]
+            == (CHANGE_REQUEST_REFUSAL_MESSAGES[ChangeRequestRefusal.ALREADY_PENDING])
         )
 
     def test_a_request_that_changes_nothing_is_refused(self, client, auth_headers):
@@ -980,9 +981,7 @@ class TestWhereRequestsAreStored:
 
         assert event_repository.change_log == []
 
-    def test_a_pending_request_is_kept_as_a_request(
-        self, client, auth_headers, event_repository
-    ):
+    def test_a_pending_request_is_kept_as_a_request(self, client, auth_headers, event_repository):
         event = pending_event(client, auth_headers, title="Renamed", expectedAttendance=150)
 
         assert [
@@ -1018,6 +1017,11 @@ class TestWhereRequestsAreStored:
     ):
         first = pending_event(client, auth_headers, title="Renamed")
         reject(client, auth_headers(COORDINATOR), first["id"])
+        client.post(
+            f"/events/{first['id']}/clarification",
+            json={"message": "Please amend again."},
+            headers=auth_headers(COORDINATOR),
+        )
         propose(client, auth_headers(ORGANISER), first["id"], purpose="Second ask.")
         other = pending_event(client, auth_headers, description="Another event.")
 
@@ -1100,6 +1104,11 @@ class TestApproving:
         event = pending_event(client, auth_headers, title="Welcome Night")
         reject(client, auth_headers(COORDINATOR), event["id"], "Keep the name.")
 
+        client.post(
+            f"/events/{event['id']}/clarification",
+            json={"message": "Please amend again."},
+            headers=auth_headers(COORDINATOR),
+        )
         again = propose(client, auth_headers(ORGANISER), event["id"], purpose="New").json()
 
         assert again["changeRequested"] is True
@@ -1125,6 +1134,11 @@ class TestApproving:
         event = pending_event(client, auth_headers, title="Welcome Night")
         approve(client, auth_headers(COORDINATOR), event["id"])
 
+        client.post(
+            f"/events/{event['id']}/clarification",
+            json={"message": "Please amend again."},
+            headers=auth_headers(COORDINATOR),
+        )
         response = propose(
             client, auth_headers(ORGANISER), event["id"], title="Welcome Night", purpose="New"
         )
@@ -1157,9 +1171,7 @@ class TestRejecting:
         assert fetched["lastChangeReview"]["outcome"] == "rejected"
         assert fetched["lastChangeReview"]["note"] == "Keep the original name."
 
-    def test_rejected_requests_are_kept_as_rejected(
-        self, client, auth_headers, event_repository
-    ):
+    def test_rejected_requests_are_kept_as_rejected(self, client, auth_headers, event_repository):
         event = pending_event(client, auth_headers, title="Welcome Night")
 
         reject(client, auth_headers(COORDINATOR), event["id"])
@@ -1292,9 +1304,7 @@ class TestInMemoryStore:
             store.resolve_change_request(1, actor_id=COORDINATOR_ID, approve=True, note="")
 
     def test_answering_after_the_event_moved_on_is_stale(self):
-        store = InMemoryEvents(
-            events=[_event(status=EventStatus.CONFIRMED, change_requested=True)]
-        )
+        store = InMemoryEvents(events=[_event(status=EventStatus.COMPLETED, change_requested=True)])
 
         with pytest.raises(StaleEventStatus):
             store.resolve_change_request(1, actor_id=COORDINATOR_ID, approve=False, note="No")
@@ -1444,26 +1454,29 @@ class TestSupabaseStore:
         assert result is returned
         assert admin.calls == [
             (
-                "submit_change_request",
+                "us11_review",
                 {
                     "p_event_id": 42,
-                    "p_expected_status": "Submitted",
-                    "p_changed_by_id": ORGANISER_ID,
-                    "p_changes": [
-                        {
-                            "changed_field": "name",
-                            "old_value": "Old",
-                            "new_value": "New",
-                            "change_type": "routine",
-                        },
-                        {
-                            "changed_field": "expected_attendance",
-                            "old_value": "120",
-                            "new_value": "150",
-                            "change_type": "important",
-                        },
-                    ],
-                    "p_notes": "Updated numbers.",
+                    "p_action": "submit",
+                    "p_revision": 0,
+                    "p_actor_id": ORGANISER_ID,
+                    "p_payload": {
+                        "changes": [
+                            {
+                                "changed_field": "name",
+                                "old_value": "Old",
+                                "new_value": "New",
+                                "change_type": "routine",
+                            },
+                            {
+                                "changed_field": "expected_attendance",
+                                "old_value": "120",
+                                "new_value": "150",
+                                "change_type": "important",
+                            },
+                        ],
+                        "note": "Updated numbers.",
+                    },
                 },
             )
         ]
@@ -1478,7 +1491,7 @@ class TestSupabaseStore:
             42, actor_id=ORGANISER_ID, from_status=EventStatus.SUBMITTED, changes=(), note=""
         )
 
-        assert admin.calls[0][1]["p_notes"] is None
+        assert admin.calls[0][1]["p_payload"]["note"] == ""
 
     def test_a_failed_compare_and_set_on_request_is_stale(self, monkeypatch):
         monkeypatch.setattr(supabase_client, "admin", lambda: FakeAdmin(False))
@@ -1503,12 +1516,13 @@ class TestSupabaseStore:
         assert result is returned
         assert admin.calls == [
             (
-                "resolve_change_request",
+                "us11_review",
                 {
                     "p_event_id": 42,
-                    "p_approve": approve_it,
-                    "p_changed_by_id": COORDINATOR_ID,
-                    "p_notes": note or None,
+                    "p_action": "approve" if approve_it else "reject",
+                    "p_revision": 0,
+                    "p_actor_id": COORDINATOR_ID,
+                    "p_payload": {"note": note},
                 },
             )
         ]
@@ -1565,9 +1579,7 @@ class TestSupabaseStore:
 
     def test_a_list_reads_requests_for_the_whole_page_in_one_query(self, monkeypatch):
         quiet = {**EVENT_ROW, "id": 43}
-        admin = FakeAdmin(
-            rows={"events": [EVENT_ROW, quiet], CHANGE_REQUESTS_TABLE: PROPOSAL_ROWS}
-        )
+        admin = FakeAdmin(rows={"events": [EVENT_ROW, quiet], CHANGE_REQUESTS_TABLE: PROPOSAL_ROWS})
         monkeypatch.setattr(supabase_client, "admin", lambda: admin)
 
         events = SupabaseEvents().list_events(organiser_id=None, include_drafts=False)

@@ -138,8 +138,13 @@ def resolve_venue(venue_id: int, *, now: datetime | None = None) -> Review:
 
 def resolve_flagged(*, now: datetime | None = None) -> None:
     """Clear every resolved flag, venue by venue. Run before listing the flags."""
-    for venue_id in sorted({b.venue_id for b in booking_store.repository().list_flagged()}):
+    from app import arrangement_review
+
+    flagged = booking_store.repository().list_flagged()
+    for venue_id in sorted({b.venue_id for b in flagged}):
         resolve_venue(venue_id, now=now)
+    for event_id in sorted({b.event_id for b in flagged if b.event_conflict_reason}):
+        arrangement_review.refresh_if_reviewed(event_id)
 
 
 def recheck_quietly(venue: Venue) -> Review | None:

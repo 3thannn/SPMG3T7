@@ -58,7 +58,7 @@ jobs:
       - name: Test blackout migration and trigger
         env:
           TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/postgres
-        run: pytest integration/test_unavailability_db.py
+        run: pytest integration/test_unavailability_db.py integration/test_change_review_db.py
 
   frontend:
     runs-on: ubuntu-latest

@@ -278,7 +278,15 @@ def to_event(
 
 
 class Repository(Protocol):
-    def set_arrangement_review(self, event_id: int, report: list[dict], pending: bool) -> Event: ...
+    def set_arrangement_review(
+        self,
+        event_id: int,
+        report: list[dict],
+        pending: bool,
+        expected_updated_at: str | None = None,
+        booking_flags: list[dict] | None = None,
+        equipment_flags: list[dict] | None = None,
+    ) -> Event: ...
 
     def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]: ...
 
@@ -808,13 +816,31 @@ class SupabaseEvents:
             expected_revision,
         )
 
-    def set_arrangement_review(self, event_id: int, report: list[dict], pending: bool) -> Event:
-        supabase_client.admin().table(EVENTS_TABLE).update(
+    def set_arrangement_review(
+        self,
+        event_id: int,
+        report: list[dict],
+        pending: bool,
+        expected_updated_at: str | None = None,
+        booking_flags: list[dict] | None = None,
+        equipment_flags: list[dict] | None = None,
+    ) -> Event:
+        # The RPC checks the event version before writing any flags or report.
+        if expected_updated_at is None:
+            current = self.get_event(event_id)
+            assert current is not None  # noqa: S101
+            expected_updated_at = current.updated_at
+        supabase_client.admin().rpc(
+            "us11_commit_arrangement_review",
             {
-                "arrangement_review": report,
-                "arrangement_review_pending": pending,
-            }
-        ).eq("id", event_id).execute()
+                "p_event_id": event_id,
+                "p_updated_at": expected_updated_at,
+                "p_report": report,
+                "p_pending": pending,
+                "p_booking_flags": booking_flags or [],
+                "p_equipment_flags": equipment_flags or [],
+            },
+        ).execute()
         event = self.get_event(event_id)
         assert event is not None  # noqa: S101
         return event
@@ -1171,7 +1197,17 @@ class InMemoryEvents:
     def _review_state(self, event: Event, actor_id: int, kind: str, **payload) -> dict:
         state = dict(event.review_state)
         revision = state.get("revision", 0) + 1
-        entry = {"revision": revision, "kind": kind, "byId": str(actor_id), "at": _now(), **payload}
+        entry = {
+            "revision": revision,
+            "kind": kind,
+            "byId": str(actor_id),
+            "clarificationId": revision
+            if kind == "clarification"
+            else state.get("clarificationId"),
+            "byName": self.names.get(actor_id, ""),
+            "at": _now(),
+            **payload,
+        }
         return {**state, "revision": revision, "messages": [*state.get("messages", []), entry]}
 
     def request_clarification(
@@ -1208,9 +1244,61 @@ class InMemoryEvents:
             replace(event, updated_at=at, review_state=state, history=(*event.history, entry))
         )
 
-    def set_arrangement_review(self, event_id: int, report: list[dict], pending: bool) -> Event:
+    def set_arrangement_review(
+        self,
+        event_id: int,
+        report: list[dict],
+        pending: bool,
+        expected_updated_at: str | None = None,
+        booking_flags: list[dict] | None = None,
+        equipment_flags: list[dict] | None = None,
+    ) -> Event:
         event = self.get_event(event_id)
         assert event is not None  # noqa: S101
+        if expected_updated_at is not None and event.updated_at != expected_updated_at:
+            return event
+        from app import booking_store, equipment_store
+
+        bookings = booking_store.repository()
+        equipment = equipment_store.repository()
+        assert isinstance(bookings, booking_store.InMemoryBookings)  # noqa: S101
+        assert isinstance(equipment, equipment_store.InMemoryEquipment)  # noqa: S101
+        # Validate the complete read set before writing any metadata.
+        for flag in booking_flags or []:
+            row = bookings.get_booking(flag["id"])
+            if (
+                row is None
+                or row.event_id != event_id
+                or (
+                    str(row.status),
+                    datetime.fromisoformat(row.starts_at),
+                    datetime.fromisoformat(row.ends_at),
+                    row.headcount,
+                )
+                != (
+                    flag["status"],
+                    datetime.fromisoformat(flag["startsAt"]),
+                    datetime.fromisoformat(flag["endsAt"]),
+                    flag["headcount"],
+                )
+            ):
+                return self._replace(replace(event, arrangement_review_pending=True))
+        for flag in equipment_flags or []:
+            row = equipment.get_request(flag["id"])
+            if (
+                row is None
+                or row.event_id != event_id
+                or (row.status, row.version) != (flag["status"], flag["version"])
+            ):
+                return self._replace(replace(event, arrangement_review_pending=True))
+        for flag in booking_flags or []:
+            row = bookings.get_booking(flag["id"])
+            if row.event_conflict_reason != flag["reason"]:
+                bookings._set_event_conflict(row.id, flag["reason"])
+        for flag in equipment_flags or []:
+            row = equipment.get_request(flag["id"])
+            if row.event_conflict_reason != flag["reason"]:
+                equipment._set_event_conflict(row.id, flag["reason"])
         return self._replace(
             replace(event, arrangement_review=tuple(report), arrangement_review_pending=pending)
         )

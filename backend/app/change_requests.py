@@ -175,8 +175,8 @@ def applied_values(changes: Iterable[FieldChange]) -> dict[str, Any]:
     return values
 
 
-#: Drafts are edited directly. Approved and Planning events can carry a pending
-#: request without moving back to Under Review; closed events cannot.
+#: Ordinary proposals preserve status. Under Review is a clarification-response
+#: exception, rather than an ordinary proposal status; closed events cannot change.
 REQUESTABLE: tuple[EventStatus, ...] = (
     EventStatus.SUBMITTED,
     EventStatus.APPROVED,
@@ -233,10 +233,10 @@ def check_change_request(
         return ChangeRequestRefusal.NOT_OWNER
     if status is EventStatus.DRAFT:
         return ChangeRequestRefusal.NOT_SUBMITTED
-    if status not in REQUESTABLE and not (status is EventStatus.UNDER_REVIEW and awaiting_reply):
-        return ChangeRequestRefusal.ALREADY_DECIDED
     if change_requested and not awaiting_reply:
         return ChangeRequestRefusal.ALREADY_PENDING
+    if status not in REQUESTABLE and not (status is EventStatus.UNDER_REVIEW and awaiting_reply):
+        return ChangeRequestRefusal.ALREADY_DECIDED
     return None
 
 
@@ -250,8 +250,8 @@ NOTHING_PENDING_MESSAGE = "There is no change request awaiting review on this ev
 def has_pending_request(*, status: EventStatus, change_requested: bool) -> bool:
     """Whether a Coordinator has a change request to approve or reject.
 
-    A request preserves its status except when an assigned Submitted event
-    moves to Under Review. An unassigned Submitted event awaits Lead assignment.
+    Proposals and their decisions preserve status. Under Review may contain a
+    clarification response even though it is not an ordinary proposal status.
     """
     return change_requested and status in (*REQUESTABLE, EventStatus.UNDER_REVIEW)
 

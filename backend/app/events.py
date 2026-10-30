@@ -71,6 +71,7 @@ from app.notifications import (
     notify_assigned,
     notify_change_decision,
     notify_change_submitted,
+    notify_clarification,
     notify_safety_changes,
     notify_safety_rejected,
     notify_status_change,
@@ -685,6 +686,8 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
     """
     event = _readable(_as_id(event_id), user)
     _refuse_if_cancelled(event)
+    if event.status in (EventStatus.COMPLETED, EventStatus.REJECTED):
+        raise _stale_request()
     is_owner = event.organiser_id == user.id
     is_coordinator = has_permission(user.role, Permission.EVENTS_EDIT)
 
@@ -807,14 +810,13 @@ def request_clarification(
     payload: ClarificationRequest,
     user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
 ) -> EventOut:
-    """US7.3: ask the Organiser for information or changes, and move to Under Review.
+    """US7.3/US11.2: request field amendments without changing event status.
 
     US8.1's readable-event check restricts this action to the assigned
     Coordinator; the status rule here remains independent of assignment.
 
-    The message lands in the event's history, which the owning Organiser already
-    reads, so "visible to the Organiser" needs no separate delivery. Their reply
-    is US11.1 and is deliberately not modelled here.
+    Questions are retained in review history and notify the Organiser. Each new
+    question opens one amendment response, including replacement of a pending proposal.
     """
     event = _readable(_as_id(event_id), user)
 
@@ -858,7 +860,7 @@ def request_clarification(
         ) from None
     # US10.1: a follow-up question on an event already Under Review notifies
     # too — it carries a new request the Organiser has to answer.
-    notify_status_change(reviewed, EventStatus.UNDER_REVIEW, message)
+    notify_clarification(reviewed, message)
     return _to_out(reviewed)
 
 
@@ -1063,6 +1065,7 @@ def _safety_refusal(event: Event) -> safety_check.SafetyCheckRefusal | None:
     return safety_check.check_ready_for_safety_check(
         status=event.status,
         change_requested=event.change_requested,
+        arrangement_review_pending=event.arrangement_review_pending,
         bookings=booking_store.repository().list_for_event(event.id),
         equipment=equipment_store.repository().list_for_event(event.id),
         # US17.2: a flag the Coordinator has not marked re-reviewed holds it back.
@@ -1549,8 +1552,8 @@ def request_change(
 ) -> EventOut:
     """US11.1: propose changes for the Coordinator to review.
 
-    The event's own values do not move. The pending flag is set, and an assigned
-    Submitted event moves to Under Review. Other requestable statuses stay put.
+    Neither the event values nor its status move. Only the pending flag is set.
+    Under Review allows amendments only after a Coordinator clarification.
     One pending `event_change_requests` row is written per field
     that differs, each marked important or routine by US5.2's rule. Nothing is
     written to `event_changes` until a Coordinator approves.
@@ -1596,6 +1599,8 @@ def request_change(
     _validate_submission(proposed)
 
     changes = change_requests.diff(event, proposed)
+    if event.change_requested and changes == event.pending_changes:
+        raise _invalid("Revise at least one proposed detail to answer the clarification.")
     if not changes:
         raise _invalid("Change at least one detail before requesting a change.")
 
@@ -1647,7 +1652,7 @@ def approve_change(
     user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
     review_revision: int | None = None,
 ) -> EventOut:
-    """US11.1: apply the proposed changes. The event stays Under Review for US7.1."""
+    """Apply the proposed changes while preserving the event's lifecycle status."""
     return _resolve_change(event_id, user, approve=True, note="", revision=review_revision)
 
 
@@ -2295,7 +2300,8 @@ def cancel_booking(
     # US15.2: a cancelled booking frees its slot, which may resolve a flagged
     # clash at this venue, its own included.
     conflict_flags.resolve_quietly(cancelled.venue_id)
-    if cancelled.conflict is not None:
+    arrangement_review.refresh_if_reviewed(cancelled.event_id)
+    if cancelled.conflict is not None or cancelled.event_conflict_reason:
         cancelled = booking_store.repository().get_booking(cancelled.id) or cancelled
     return _booking_out(cancelled)
 

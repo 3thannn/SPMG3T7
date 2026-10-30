@@ -88,10 +88,10 @@ def notify_change_decision(event: Event, *, approved: bool, reason: str = "") ->
     if reason:
         message += f" Reason: {reason}"
     try:
-        notification_store.repository().create(
+        notification_store.repository().create_notice(
             user_id=event.organiser_id,
             event_id=event.id,
-            status=event.status,
+            kind="change-accepted" if approved else "change-rejected",
             message=message,
         )
     except Exception:
@@ -494,3 +494,18 @@ def notify_arrangement_conflicts(event: Event, failures: list[str]) -> None:
             CoordinatorNotice.ARRANGEMENT_CONFLICT,
             f'Arrangements for "{event.title}" need review: ' + "; ".join(failures),
         )
+
+
+def notify_clarification(event: Event, message: str) -> None:
+    if event.status in (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW):
+        notify_status_change(event, EventStatus.UNDER_REVIEW, message)
+        return
+    try:
+        notification_store.repository().create_notice(
+            user_id=event.organiser_id,
+            event_id=event.id,
+            kind="clarification-requested",
+            message=f'A Coordinator asked for more information about "{event.title}": {message}',
+        )
+    except Exception:
+        logger.exception("Could not notify clarification for event %s", event.id)

@@ -699,3 +699,14 @@ it('gives an editing Coordinator no form on a cancelled event', async () => {
   expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
   expect(screen.queryByText(/Changes are tracked and logged/)).not.toBeInTheDocument()
 })
+
+
+it.each(['Completed', 'Rejected'] as const)('keeps %s events read-only for Coordinators with edit permission', async (status) => {
+  const editor = { ...coordinator, permissions: [...coordinator.permissions, 'events:edit' as const] }
+  getEventMock.mockResolvedValue({ ...submittedEvent, status, coordinatorId: editor.id })
+  render(<EventDetailPage eventId="101" session={editor} />)
+  await screen.findByRole('heading', { name: submittedEvent.title })
+  expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Request changes' })).not.toBeInTheDocument()
+})

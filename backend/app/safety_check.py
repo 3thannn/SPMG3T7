@@ -50,6 +50,8 @@ SAFETY_NOTE_MAX = 2000
 class SafetyCheckRefusal(StrEnum):
     """Why an event cannot be sent for its safety check yet."""
 
+    ARRANGEMENT_REVIEW_PENDING = "arrangement-review-pending"
+    EQUIPMENT_CONFLICT = "equipment-conflict"
     NOT_PLANNING = "not-planning"
     CHANGE_PENDING = "change-pending"
     FLAGS_OPEN = "safety-flags-open"
@@ -60,9 +62,13 @@ class SafetyCheckRefusal(StrEnum):
 
 
 SAFETY_CHECK_REFUSAL_MESSAGES: dict[SafetyCheckRefusal, str] = {
-    SafetyCheckRefusal.NOT_PLANNING: (
-        "Only an event in Planning can be sent for a safety check."
+    SafetyCheckRefusal.ARRANGEMENT_REVIEW_PENDING: (
+        "Complete the arrangement rechecks before the safety check."
     ),
+    SafetyCheckRefusal.EQUIPMENT_CONFLICT: (
+        "An equipment reservation is flagged for review. Resolve it before the safety check."
+    ),
+    SafetyCheckRefusal.NOT_PLANNING: ("Only an event in Planning can be sent for a safety check."),
     SafetyCheckRefusal.CHANGE_PENDING: (
         "Approve or reject the Organiser's change request before sending this event "
         "for a safety check."
@@ -97,6 +103,7 @@ def check_ready_for_safety_check(
     equipment: Iterable[EquipmentRequest],
     now: datetime | None = None,
     flags_open: bool = False,
+    arrangement_review_pending: bool = False,
 ) -> SafetyCheckRefusal | None:
     """US4.4: may this event move Planning -> Pending Safety Check now?
 
@@ -112,16 +119,21 @@ def check_ready_for_safety_check(
         return SafetyCheckRefusal.CHANGE_PENDING
     if flags_open:
         return SafetyCheckRefusal.FLAGS_OPEN
+    if arrangement_review_pending:
+        return SafetyCheckRefusal.ARRANGEMENT_REVIEW_PENDING
     current = now or local_now()
     active = [booking for booking in bookings if booking.holds_venue_at(current)]
     if not active:
         return SafetyCheckRefusal.NO_CONFIRMED_VENUE
     if any(booking.status is not BookingStatus.CONFIRMED for booking in active):
         return SafetyCheckRefusal.VENUE_NOT_CONFIRMED
-    if any(booking.conflict is not None for booking in active):
+    if any(booking.conflict is not None or booking.event_conflict_reason for booking in active):
         return SafetyCheckRefusal.VENUE_CONFLICT
-    if any(line.status != EQUIPMENT_RESERVED for line in equipment):
+    lines = list(equipment)
+    if any(line.status != EQUIPMENT_RESERVED for line in lines):
         return SafetyCheckRefusal.EQUIPMENT_NOT_RESERVED
+    if any(line.event_conflict_reason for line in lines):
+        return SafetyCheckRefusal.EQUIPMENT_CONFLICT
     return None
 
 

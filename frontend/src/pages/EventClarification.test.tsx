@@ -169,7 +169,7 @@ it('sends what was typed', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Send request' }))
 
   await waitFor(() => {
-    expect(requestClarificationMock).toHaveBeenCalledWith('101', MESSAGE, coordinator)
+    expect(requestClarificationMock).toHaveBeenCalledWith('101', MESSAGE, coordinator, undefined)
   })
 })
 
@@ -208,7 +208,7 @@ it('trims the message rather than sending the spaces', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Send request' }))
 
   await waitFor(() => {
-    expect(requestClarificationMock).toHaveBeenCalledWith('101', MESSAGE, coordinator)
+    expect(requestClarificationMock).toHaveBeenCalledWith('101', MESSAGE, coordinator, undefined)
   })
 })
 

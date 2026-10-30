@@ -306,8 +306,6 @@ def to_booking(row: dict) -> Booking:
 class Repository(Protocol):
     """What the routes need from a booking store."""
 
-    def set_event_conflict(self, booking_id: int, reason: str) -> None: ...
-
     def list_for_event(self, event_id: int) -> list[Booking]: ...
 
     def list_for_venue(self, venue_id: int) -> list[Booking]: ...
@@ -374,10 +372,14 @@ class SupabaseBookings:
     """The real store. Goes through the service role client, like the others."""
 
     def request_replacement(self, booking_id: int, *, venue_id: int, actor_id: int) -> Booking:
-        result = supabase_client.admin().rpc(
-            "request_replacement_venue",
-            {"p_booking_id": booking_id, "p_venue_id": venue_id, "p_actor_id": actor_id},
-        ).execute()
+        result = (
+            supabase_client.admin()
+            .rpc(
+                "request_replacement_venue",
+                {"p_booking_id": booking_id, "p_venue_id": venue_id, "p_actor_id": actor_id},
+            )
+            .execute()
+        )
         if result.data == RPC_CLASH:
             raise SlotTaken
         if not result.data:
@@ -386,14 +388,6 @@ class SupabaseBookings:
         if booking is None:
             raise StaleBookingStatus
         return booking
-
-    def set_event_conflict(self, booking_id: int, reason: str) -> None:
-        supabase_client.admin().table("venue_bookings").update(
-            {
-                "event_conflict_reason": reason,
-                "event_conflict_at": _now() if reason else None,
-            }
-        ).eq("id", booking_id).execute()
 
     def count_flagged_by_unavailability(self, unavailability_id: int) -> int:
         result = (
@@ -717,7 +711,7 @@ class SupabaseBookings:
             supabase_client.admin()
             .table(TABLE)
             .select(COLUMNS)
-            .not_.is_("conflict_flagged_at", "null")
+            .or_("conflict_flagged_at.not.is.null,event_conflict_at.not.is.null")
             .order("start_at")
             .order("end_at")
             .order("id")
@@ -789,18 +783,30 @@ class InMemoryBookings:
             event = event_store.repository().get_event(old.event_id) if old else None
             venue = venue_store.repository().get_venue(venue_id)
             if (
-                old is None or old.status is not BookingStatus.NEEDS_REPLACEMENT
-                or event is None or event.coordinator_id != actor_id or event.status in CLOSED
-                or venue is None or venue_id == old.venue_id
+                old is None
+                or old.status is not BookingStatus.NEEDS_REPLACEMENT
+                or event is None
+                or event.coordinator_id != actor_id
+                or event.status in CLOSED
+                or venue is None
+                or venue_id == old.venue_id
             ):
                 raise StaleBookingStatus
             self._refuse_taken_slot(venue_id, old.starts_at, old.ends_at)
             self.next_id += 1
             created = Booking(
-                id=self.next_id, event_id=old.event_id, venue_id=venue_id, venue_name=venue.name,
-                starts_at=old.starts_at, ends_at=old.ends_at, status=BookingStatus.REQUESTED,
-                requested_by_id=actor_id, requested_at=_now(), headcount=old.headcount,
-                required_layout=old.required_layout, required_facilities=old.required_facilities,
+                id=self.next_id,
+                event_id=old.event_id,
+                venue_id=venue_id,
+                venue_name=venue.name,
+                starts_at=old.starts_at,
+                ends_at=old.ends_at,
+                status=BookingStatus.REQUESTED,
+                requested_by_id=actor_id,
+                requested_at=_now(),
+                headcount=old.headcount,
+                required_layout=old.required_layout,
+                required_facilities=old.required_facilities,
                 accessibility_needs=old.accessibility_needs,
             )
             self.bookings = [
@@ -809,7 +815,7 @@ class InMemoryBookings:
             ] + [created]
             return created
 
-    def set_event_conflict(self, booking_id: int, reason: str) -> None:
+    def _set_event_conflict(self, booking_id: int, reason: str) -> None:
         self.bookings = [
             replace(row, event_conflict_reason=reason, event_conflict_at=_now() if reason else "")
             if row.id == booking_id
@@ -1010,7 +1016,10 @@ class InMemoryBookings:
         return self._set_conflict(booking_id, None)
 
     def list_flagged(self) -> list[Booking]:
-        return sorted((b for b in self.bookings if b.conflict is not None), key=_sort_key)
+        return sorted(
+            (b for b in self.bookings if b.conflict is not None or b.event_conflict_reason),
+            key=_sort_key,
+        )
 
     def list_requested(self) -> list[Booking]:
         requested = [b for b in self.bookings if b.status is BookingStatus.REQUESTED]

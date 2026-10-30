@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   EVENT_STATUSES,
   REQUESTABLE,
@@ -9,6 +9,8 @@ import {
   checkChangeRequest,
   checkSubmit,
   formatRecordedAt,
+  formatTimestamp,
+  checkClarification,
   statusNoteKind,
   statusNoteLabel,
   type ChangeRequestRefusal,
@@ -131,10 +133,10 @@ describe('US11.1 — who may request changes, and when', () => {
   })
 
   it('allows requests through Planning', () => {
-    expect(REQUESTABLE).toEqual(['Submitted', 'Under Review', 'Approved', 'Planning'])
+    expect(REQUESTABLE).toEqual(['Submitted', 'Approved', 'Planning', 'Pending Safety Check', 'Confirmed'])
   })
 
-  it.each(['Submitted', 'Under Review', 'Approved', 'Planning'] as EventStatus[])('allows the owner on %s', (status) => {
+  it.each(['Submitted', 'Approved', 'Planning', 'Pending Safety Check', 'Confirmed'] as EventStatus[])('allows the owner on %s', (status) => {
     expect(checkChangeRequest(event(status), 'user_1')).toEqual({ allowed: true })
     expect(checkChangeRequest(event(status, false), 'user_1')).toEqual({ allowed: true })
   })
@@ -153,7 +155,7 @@ describe('US11.1 — who may request changes, and when', () => {
     })
   })
 
-  it.each(['Rejected', 'Confirmed', 'Completed', 'Cancelled'] as EventStatus[])(
+  it.each(['Rejected', 'Under Review', 'Completed', 'Cancelled'] as EventStatus[])(
     'refuses a decided event (%s)',
     (status) => {
       expect(checkChangeRequest(event(status), 'user_1')).toEqual({
@@ -164,7 +166,7 @@ describe('US11.1 — who may request changes, and when', () => {
   )
 
   it('allows one request at a time', () => {
-    expect(checkChangeRequest(event('Under Review', true), 'user_1')).toEqual({
+    expect(checkChangeRequest(event('Approved', true), 'user_1')).toEqual({
       allowed: false,
       reason: 'already-pending',
     })
@@ -279,5 +281,24 @@ describe('recorded times, shown in Singapore time', () => {
   it('shows text it cannot read as it is', () => {
     expect(formatRecordedAt('')).toBe('')
     expect(formatRecordedAt('not a time')).toBe('not a time')
+  })
+})
+
+
+describe('US11.2 status and SGT boundaries', () => {
+  afterEach(() => vi.unstubAllEnvs())
+  it.each(['UTC', 'Asia/Singapore', 'America/New_York'])('preserves SGT planned midnight in %s', (zone) => {
+    vi.stubEnv('TZ', zone)
+    expect(formatTimestamp('2027-01-01T00:30')).toBe('01 Jan 2027, 00:30')
+    expect(formatRecordedAt('2026-12-31T16:30')).toBe('01 Jan 2027, 00:30')
+  })
+  it('permits amendments only after clarification in Under Review', () => {
+    const event = { status: 'Under Review' as const, organiserId: '1' }
+    expect(checkChangeRequest(event, '1').allowed).toBe(false)
+    expect(checkChangeRequest({ ...event, awaitingReply: true }, '1').allowed).toBe(true)
+  })
+  it.each(['Approved', 'Planning', 'Pending Safety Check', 'Confirmed'] as const)('requires a pending proposal for questions in %s', (status) => {
+    expect(checkClarification({ status }).allowed).toBe(false)
+    expect(checkClarification({ status, changeRequested: true }).allowed).toBe(true)
   })
 })

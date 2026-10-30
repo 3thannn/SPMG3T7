@@ -8,7 +8,7 @@ import {
   type SafetyReview,
 } from '../eventsStore'
 import { ApiError } from '../api'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt } from '../status'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
@@ -128,7 +128,7 @@ describe('the event (AC2)', () => {
     expect(fact(facts, 'Accessibility requirements')).toBe('Wheelchair access')
     expect(fact(facts, 'Preferred layout')).toBe('Theatre')
     expect(fact(facts, 'Venue requirements')).toBe('Stage, Projector')
-    expect(fact(facts, 'Waiting since')).toBe(formatTimestamp('2099-01-05T09:00:00'))
+    expect(fact(facts, 'Waiting since')).toBe(formatRecordedAt('2099-01-05T09:00:00'))
   })
 
   it('says what was not given', async () => {

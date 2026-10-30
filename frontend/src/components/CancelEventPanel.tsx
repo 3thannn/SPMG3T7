@@ -8,7 +8,7 @@ import {
 } from '../eventsStore'
 import { unexpectedFailureMessage, type Session } from '../api'
 import { can } from '../permissions'
-import { checkCancel, formatTimestamp } from '../status'
+import { checkCancel, formatRecordedAt } from '../status'
 
 type Props = {
   event: EventRecord
@@ -142,7 +142,7 @@ export function CancelledNotice({ event }: { event: EventRecord }) {
     <div className="event-cancelled" role="note">
       <p className="event-cancelled-title">
         Cancelled
-        {entry && ` by ${entry.byName || 'a former user'} on ${formatTimestamp(entry.at)}`}
+        {entry && ` by ${entry.byName || 'a former user'} on ${formatRecordedAt(entry.at)}`}
       </p>
       {entry?.notes && <p className="event-cancelled-reason">Reason: {entry.notes}</p>}
       <p className="event-cancelled-lede">

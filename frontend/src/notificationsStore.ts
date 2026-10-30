@@ -11,6 +11,11 @@ import type { EventStatus } from './status'
 
 /** US10.2: what a Coordinator is told about, one kind per acceptance criterion. */
 export type CoordinatorNoticeKind =
+  | 'change-submitted'
+  | 'arrangement-conflict'
+  | 'change-accepted'
+  | 'change-rejected'
+  | 'clarification-requested'
   | 'equipment-reserved'
   | 'equipment-unavailable'
   | 'assigned'
@@ -30,6 +35,11 @@ export type NotificationKind = 'event-status' | 'equipment-request' | Coordinato
 
 /** The label each non-status notice shows in place of a status badge. */
 export const KIND_LABELS: Record<Exclude<NotificationKind, 'event-status'>, string> = {
+  'change-submitted': 'Change request',
+  'arrangement-conflict': 'Arrangement conflict',
+  'change-accepted': 'Changes accepted',
+  'change-rejected': 'Changes rejected',
+  'clarification-requested': 'Clarification requested',
   'equipment-reserved': 'Equipment reserved',
   'equipment-unavailable': 'Equipment unavailable',
   'equipment-request': 'Equipment request',

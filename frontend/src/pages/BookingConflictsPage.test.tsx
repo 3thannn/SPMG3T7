@@ -13,7 +13,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import BookingConflictsPage from './BookingConflictsPage'
 import { listBookingConflicts, type FlaggedBooking } from '../bookingConflictsStore'
 import { CONFLICT_LABEL, formatBookingTimes } from '../eventsStore'
-import { formatTimestamp } from '../status'
+import { formatRecordedAt } from '../status'
 import { ApiError } from '../api'
 import { buildSession } from '../test/sessions'
 
@@ -100,7 +100,7 @@ it('TC-FF07 lists every flagged booking in the server order, with what a review 
   )
   expect(first).toHaveTextContent('Priya')
   expect(first).toHaveTextContent(
-    `Flagged ${formatTimestamp('2027-10-01T01:00:00')}: ${REASON}`,
+    `Flagged ${formatRecordedAt('2027-10-01T01:00:00')}: ${REASON}`,
   )
   expect(first).toHaveTextContent(
     `Booking #11, Board Retreat (Requested), occupying ${formatBookingTimes(

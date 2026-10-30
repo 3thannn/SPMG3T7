@@ -219,6 +219,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const clarificationCheck = checkClarification(event)
   // US4.6: a cancelled event is read-only, and nothing on it waits for anyone.
   const cancelled = event.status === 'Cancelled'
+  const closed = cancelled || event.status === 'Completed' || event.status === 'Rejected'
   // US11.1: a pending change request is answered before the event is decided.
   // One left waiting when the event was cancelled can no longer be answered.
   const changeRequested = (event.changeRequested ?? false) && !cancelled
@@ -237,7 +238,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   // US5.2: Coordinators can edit submitted events (not drafts), owners can edit their own drafts.
   // US11.1: an owner can also open the form on a submitted event, to propose changes.
   const editable =
-    !cancelled &&
+    !closed &&
     ((canEdit && event.status !== 'Draft' && !changeRequested) ||
       (isOwner && event.status === 'Draft') ||
       (isOwner && proposing))
@@ -443,7 +444,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     setAnswering('reject')
     setBanner(null)
     try {
-      const updated = await rejectEventChange(event.id, reason, session)
+      const updated = await rejectEventChange(event.id, reason, session, event.reviewRevision)
       setPage({ state: 'loaded', event: updated })
       setChangeRejection('')
       setBanner({
@@ -908,7 +909,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                   {lastReview.outcome === 'approved'
                     ? 'The Coordinator applied the changes on '
                     : 'The Coordinator kept the current details on '}
-                  <time dateTime={lastReview.at}>{formatTimestamp(lastReview.at)}</time>.
+                  <time dateTime={lastReview.at}>{formatRecordedAt(lastReview.at)}</time>.
                 </p>
                 {lastReview.requestNote && (
                   <blockquote className="timeline-note">
@@ -930,10 +931,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             {(event.reviewHistory?.length ?? 0) > 0 && <section aria-label="Change and clarification history">
               <h3>Change and clarification history</h3>
               <ol>{event.reviewHistory?.map((entry) => <li key={entry.revision}>
-                <strong>{entry.kind}</strong> ? {formatRecordedAt(entry.at)} ? User #{entry.byId}
+                <strong>{entry.kind}</strong> on {formatRecordedAt(entry.at)} by {entry.byName || `User #${entry.byId}`}
                 {entry.message && <p>{entry.message}</p>}
                 {entry.changes?.map((change, index) => <p key={index}>
-                  {change.changed_field || change.field}: {change.old_value ?? change.oldValue} ? {change.new_value ?? change.newValue}
+                  {change.changed_field || change.field}: {change.old_value ?? change.oldValue} to {change.new_value ?? change.newValue}
                 </p>)}
               </li>)}</ol>
             </section>}
@@ -942,7 +943,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                 <h3>Arrangement review</h3>
                 {event.arrangementReviewPending && <p role="alert">Some arrangement checks have not completed. Retry the checks.</p>}
                 <ul>{event.arrangementReview?.map((item) => <li key={`${item.kind}-${item.id}`}>
-                  <strong>{item.label}</strong>: {item.reason ? `${item.error ? 'Check incomplete' : 'Conflict ? review needed'}: ${item.reason}` : 'Checks passed'}
+                  <strong>{item.label}</strong>: {item.reason ? `${item.error ? 'Check incomplete' : 'Conflict \u2013 review needed'}: ${item.reason}` : 'Checks passed'}
                 </li>)}</ul>
                 {mayReview && <button type="button" className="btn btn-secondary btn-sm" disabled={writePending}
                   onClick={async () => {
@@ -1089,8 +1090,8 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                 {clarificationCheck.allowed ? (
                   <>
                     <p className="detail-clarify-lede">
-                      Ask the Organiser for information or changes. This moves the event to
-                      Under Review, and they will see your message here.
+                      Ask the Organiser for field amendments. They will be notified and can revise
+                      their proposal. The event keeps its current status.
                     </p>
                     <label className="detail-clarify-field">
                       <span className="detail-clarify-label">
@@ -1126,11 +1127,11 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         {/* US14.1. Not on a Draft: nothing can be requested for one, so the
             card would only ever say so. */}
         {/* US4.6: keyed so a cancellation reloads the card with its bookings released. */}
-        {readsEvents && event.status !== 'Draft' && <EventBookings key={`${event.updatedAt}-${JSON.stringify(event.arrangementReview)}`} event={event} session={session} onBookingRequested={refreshAfterBooking} />}
+        {readsEvents && event.status !== 'Draft' && <EventBookings key={`bookings-${event.status}-${event.updatedAt}-${JSON.stringify(event.arrangementReview)}`} event={event} session={session} onBookingRequested={refreshAfterBooking} />}
         {/* US20.1. Not on a Draft either: nobody registers for one. Keyed so a
             status change reloads what the card offers. */}
         {readsEvents && event.status !== 'Draft' && <EventRegistration key={event.status} event={event} session={session} />}
-        {readsEvents && <EventEquipment key={`${event.updatedAt}-${JSON.stringify(event.arrangementReview)}`} event={event} session={session} />}
+        {readsEvents && <EventEquipment key={`equipment-${event.status}-${event.updatedAt}-${JSON.stringify(event.arrangementReview)}`} event={event} session={session} />}
         {can(session, 'safety:review') && (
           <SafetyReviewDetails eventId={event.id} session={session} />
         )}
