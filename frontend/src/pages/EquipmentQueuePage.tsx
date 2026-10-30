@@ -29,12 +29,12 @@ export default function EquipmentQueuePage({ session }: { session: Session }) {
       {lines.map((line) => <li key={line.id}><a className="equipment-queue-card" href={`#/equipment-requests/${line.id}`}>
         <span className="equipment-queue-count"><strong>{line.quantity}</strong><span>{line.quantity === 1 ? 'unit' : 'units'}</span></span>
         <span className="equipment-queue-content">
-          <strong className="equipment-queue-name">{line.equipmentType}</strong>
+          <strong className="equipment-queue-name">{line.equipmentName || line.equipmentType}</strong>
           <span>{line.eventTitle || `Event ${line.eventId}`} · Requested {formatTimestamp(line.createdAt)}</span>
           <span>Needed {formatBookingTimes(line.startsAt, line.endsAt)}</span>
           {line.technicalRequirements && <span>Technical requirements: {line.technicalRequirements}</span>}
         </span>
-        <span className="equipment-request-status">{line.status}</span>
+        <span className={`equipment-request-status is-${line.status.toLowerCase()}`}>{line.status}</span>
         <span className="equipment-queue-arrow" aria-hidden="true">›</span>
       </a></li>)}
     </ul>}

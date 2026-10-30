@@ -58,6 +58,15 @@ BOOKING = Booking(
 )
 
 
+def test_replaced_booking_loads_as_history_without_holding_venue():
+    from app.events import _booking_out
+
+    booking = to_booking({**ROW, "status": "Replaced"})
+    assert booking.status is BookingStatus.REPLACED
+    assert not booking.holds_venue
+    assert _booking_out(booking).status is BookingStatus.REPLACED
+
+
 @pytest.mark.parametrize("count", [None, 0, 3])
 def test_supabase_counts_bookings_for_the_given_blackout(monkeypatch, count):
     client = MagicMock()

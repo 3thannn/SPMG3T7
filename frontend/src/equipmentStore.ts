@@ -1,4 +1,11 @@
 import { ApiError, authorizedFetch, unexpectedFailureMessage, type Session } from './api'
+import { formatBookingTimes } from './eventsStore'
+
+/** Equipment windows are naive SGT, independent of the viewer's timezone. */
+export function formatEquipmentTimes(start: string, end: string): string {
+  const planned = (value: string) => value && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? `${value}+08:00` : value
+  return formatBookingTimes(planned(start), planned(end))
+}
 
 export function equipmentErrorMessage(error: unknown, action: string): string {
   return error instanceof ApiError ? error.message : unexpectedFailureMessage(error, action)
@@ -28,12 +35,41 @@ export type EquipmentRequest = {
   supportNotes: string
   startsAt: string
   endsAt: string
-  status: 'Requested' | 'Removed'
+  status: 'Requested' | 'Reserved' | 'Unavailable' | 'Removed'
+  equipmentId?: string | null
+  requestedEquipmentId?: string | null
+  equipmentName?: string
+  unavailableReason?: string
   createdAt: string
   version: number
 }
 
 export type EquipmentRequestDetail = EquipmentRequest & { removedByName: string }
+
+export type EquipmentAvailability = {
+  equipmentId: string
+  name: string
+  location: string
+  totalQuantity: number
+  outOfServiceQuantity: number
+  reservedQuantity: number
+  availableQuantity: number
+  shortfall: number
+}
+
+export async function getEquipmentAvailability(id: string, session: Session): Promise<EquipmentAvailability[]> {
+  return (await (await authorizedFetch(`/equipment-requests/${id}/availability`, session.token)).json()) as EquipmentAvailability[]
+}
+
+export async function decideEquipmentRequest(
+  id: string, version: number, decision: { equipmentId: number } | { reason: string }, session: Session,
+): Promise<EquipmentRequest> {
+  const action = 'equipmentId' in decision ? 'reserve' : 'unavailable'
+  return (await (await authorizedFetch(`/equipment-requests/${id}/${action}`, session.token, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version, ...decision }),
+  })).json()) as EquipmentRequest
+}
 
 export type RequestSnapshot = {
   equipment_type: string
@@ -55,6 +91,7 @@ export type EquipmentHistoryEntry = {
 }
 
 export type RequestFormValues = {
+  equipmentId?: string
   equipmentType: string
   quantity: string
   technicalRequirements: string
@@ -65,6 +102,7 @@ export type RequestFormValues = {
 
 export function valuesFor(request: EquipmentRequest): RequestFormValues {
   return {
+    equipmentId: request.requestedEquipmentId || '',
     equipmentType: request.equipmentType,
     quantity: String(request.quantity),
     technicalRequirements: request.technicalRequirements,
@@ -103,7 +141,7 @@ export async function listEventEquipmentRequests(
   eventId: string,
   session: Session,
 ): Promise<EquipmentRequest[]> {
-  const response = await authorizedFetch(`/events/${eventId}/equipment-requests`, session.token)
+  const response = await authorizedFetch(`/events/${eventId}/equipment-requests?includeRemoved=true`, session.token)
   return (await response.json()) as EquipmentRequest[]
 }
 
@@ -125,6 +163,7 @@ export async function getEquipmentRequest(id: string, session: Session): Promise
 }
 
 export type RequestChanges = {
+  equipmentId?: number
   version?: number
   equipmentType?: string
   quantity?: number

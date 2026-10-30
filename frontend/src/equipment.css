@@ -65,6 +65,7 @@
 .equipment-fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 1rem; }
 .equipment-fieldset .equipment-section-title { padding: 0; }
 .equipment-form .field { min-width: 0; }
+.equipment-item-details { display: grid; gap: 0.25rem; margin-top: 0.4rem; overflow-wrap: anywhere; }
 .equipment-form .field label { font-size: 0.88rem; font-weight: 600; }
 .equipment-form :is(input, select, textarea) { width: 100%; font: inherit; }
 .equipment-form textarea { min-height: 5rem; resize: vertical; }
@@ -77,12 +78,17 @@
 .equipment-request-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
 .equipment-request-row { padding: 0.65rem 0.85rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg-soft); }
 .equipment-request-summary { display: grid; grid-template-columns: minmax(10rem, 16rem) 1fr auto auto; align-items: center; gap: 0.9rem; }
-.equipment-request-name { color: var(--ink-strong); font-weight: 600; }
+.equipment-request-name { color: var(--ink-strong); font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .equipment-request-times { color: var(--muted); font-size: 0.9rem; }
 .equipment-request-note { color: var(--muted); font-size: 0.86rem; overflow-wrap: anywhere; }
 .equipment-request-note { margin-top: 0.35rem; }
-.equipment-request-status { padding: 0.2rem 0.6rem; border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent); font-size: 0.74rem; font-weight: 600; }
-.equipment-request-status.is-removed { background: var(--bg-soft); color: var(--muted); }
+.equipment-request-status { padding: 0.2rem 0.6rem; border: 1px solid var(--accent-soft); border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent); font-size: 0.74rem; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
+.equipment-request-status.is-reserved { color: var(--ink-strong); border-color: var(--line-strong); background: var(--bg); font-weight: 700; }
+.equipment-request-status.is-unavailable { color: var(--danger); border-color: var(--danger-border); background: var(--danger-bg); }
+.equipment-request-status.is-removed { background: var(--bg); border-color: var(--line-strong); color: var(--muted); }
+.equipment-request-row.is-reserved { background: var(--bg-soft); border-color: var(--line-strong); }
+.equipment-request-row.is-removed { background: var(--bg); color: var(--muted); }
+.equipment-request-row.is-removed .equipment-request-name { color: var(--muted); font-weight: 500; text-decoration: line-through; }
 .equipment-request-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .equipment-request-form { margin-top: 1.5rem; padding: 1.25rem 0 0; border-top: 1px solid var(--line); gap: 0.85rem; justify-items: start; }
 .equipment-request-form .equipment-fieldset { width: 100%; grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
@@ -121,6 +127,22 @@
 .equipment-request-detail-action .equipment-request-form { margin-top: 0; width: 100%; }
 .equipment-request-detail-action .equipment-fieldset { grid-template-columns: 1fr; }
 .equipment-request-detail-action .equipment-requirements { grid-column: auto; }
+.equipment-reservation { display: grid; gap: 0.9rem; min-width: 0; }
+.equipment-reservation h3, .equipment-reservation > p { margin: 0; }
+.equipment-reservation > .muted { font-size: 0.84rem; line-height: 1.5; }
+.equipment-availability-summary { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.equipment-availability-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.equipment-availability-counts > div { padding: 1rem; min-width: 0; }
+.equipment-availability-counts > div + div { border-left: 1px solid var(--line); }
+.equipment-availability-primary { background: var(--bg-soft); }
+.equipment-availability-counts dt { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.4rem; }
+.equipment-availability-counts dd { margin: 0; color: var(--ink-strong); font-size: 1.75rem; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.equipment-availability-counts dd span { color: var(--muted); font-size: 0.75rem; font-weight: 400; }
+.equipment-availability-breakdown { display: grid; gap: 0.65rem; border-top: 1px solid var(--line); padding: 1rem; margin: 0; font-size: 0.84rem; }
+.equipment-availability-breakdown > div { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.equipment-availability-breakdown dt { color: var(--muted); }
+.equipment-availability-breakdown dd { margin: 0; color: var(--ink-strong); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.equipment-availability-shortfall { margin: 0; padding: 0.85rem 1rem; border-top: 1px solid var(--line); background: var(--bg-soft); font-size: 0.84rem; line-height: 1.5; }
 .equipment-removed-notice { margin-bottom: 1.25rem; padding: 0.85rem 1rem; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg-soft); color: var(--ink-strong); }
 
 @media (max-width: 720px) {
