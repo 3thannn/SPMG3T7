@@ -2,7 +2,10 @@
 
 Apply `SUPABASE_US11_2_CHANGE_REVIEW.sql`, then
 `SUPABASE_US11_2_REVIEW_FIXES.sql`, before deploying this backend/frontend pair.
-If the first script has already been applied, run only the follow-up fixes script. It follows the existing event-needs, US11.1, notification, lifecycle,
+If earlier versions have already been applied, rerun both scripts in that order.
+The first script also replaces the submission function to fix a PostgreSQL
+variable/column ambiguity; the follow-up alone does not replace that function.
+They follow the existing event-needs, US11.1, notification, lifecycle,
 US19.3 and exact-equipment-item migrations. It is additive and repeatable;
 existing requests, review outcomes, notification kinds and RLS remain intact.
 No live database migration was applied by this implementation.

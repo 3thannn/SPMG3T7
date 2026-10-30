@@ -76,8 +76,10 @@ BEGIN
             WHERE event_id=p_event_id AND status='pending';
         INSERT INTO public.event_change_requests(event_id,changed_field,old_value,new_value,change_type,
             requested_by_user_id,requested_at,request_note)
-        SELECT p_event_id,c->>'changed_field',c->>'old_value',c->>'new_value',c->>'change_type',
-            p_actor_id,at_time,p_payload->>'note' FROM jsonb_array_elements(p_payload->'changes') c;
+        SELECT p_event_id,proposed_change.value->>'changed_field',proposed_change.value->>'old_value',
+            proposed_change.value->>'new_value',proposed_change.value->>'change_type',
+            p_actor_id,at_time,p_payload->>'note'
+        FROM jsonb_array_elements(p_payload->'changes') AS proposed_change(value);
         entry := jsonb_build_object('kind','proposal','message',p_payload->>'note','changes',p_payload->'changes');
         state := state || jsonb_build_object('awaitingReply',FALSE);
     ELSE

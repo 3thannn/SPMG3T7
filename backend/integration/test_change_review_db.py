@@ -155,6 +155,42 @@ def test_reject_assignment_and_transaction_rollback(database):
     assert db.execute("SELECT count(*) FROM event_changes").fetchone()[0] == 0
 
 
+def test_submission_preserves_each_proposed_field_and_accepts_them_together(database):
+    db, _, _ = database
+    payload = proposal()
+    payload["changes"].append(
+        {
+            "changed_field": "expected_attendance",
+            "old_value": "",
+            "new_value": "40",
+            "change_type": "important",
+        }
+    )
+    assert review(db, 1, "submit", 0, payload)
+    assert db.execute("""SELECT changed_field,old_value,new_value,change_type,
+        requested_by_user_id,request_note,status FROM event_change_requests
+        ORDER BY changed_field""").fetchall() == [
+        ("expected_attendance", "", "40", "important", 1, "Amended", "pending"),
+        ("name", "Original", "Revised", "routine", 1, "Amended", "pending"),
+    ]
+    assert db.execute("SELECT name,expected_attendance,status FROM events").fetchone() == (
+        "Original", None, "Confirmed"
+    )
+    assert review(db, 2, "approve", 1, {})
+    assert db.execute("SELECT name,expected_attendance,status FROM events").fetchone() == (
+        "Revised", 40, "Confirmed"
+    )
+    assert db.execute("""SELECT changed_field,new_value,change_type::TEXT,changed_by_user_id
+        FROM event_changes ORDER BY changed_field""").fetchall() == [
+        ("expected_attendance", "40", "important", 2),
+        ("name", "Revised", "routine", 2),
+    ]
+    assert db.execute("SELECT status FROM event_change_requests").fetchall() == [
+        ("approved",), ("approved",)
+    ]
+    assert db.execute("SELECT arrangement_review_pending FROM events").fetchone()[0]
+
+
 def test_direct_edit_marker_and_sgt_timestamp(database):
     db, _, _ = database
     changes = Jsonb(
