@@ -16,6 +16,7 @@
 import { ApiError, authorizedFetch, type Session } from './api'
 import { formatTimestamp, type EventStatus, type StatusChange } from './status'
 import type { EventNeeds } from './eventNeeds'
+import { NO_FILTERS, venueQuery, type VenueFilters, type VenueRecord } from './venuesStore'
 
 export type EventRecord = {
   id: string
@@ -511,6 +512,7 @@ export type BookingRecord = {
    * request (Confirmed) or reject it with a reason (Rejected). US14.4: the
    * scheduled sweep marks a hold past its expiry Expired, which is final.
    * US12.2: A booking flagged by venue unavailability becomes 'Needs replacement'.
+   * US14.5: A booking with a replacement requested becomes 'Replaced' (final, kept for history).
    */
   status: 'Requested' | 'Cancelled' | 'Held' | 'Confirmed' | 'Rejected' | 'Expired' | 'Needs replacement' | 'Replaced'
   requestedAt: string
@@ -776,6 +778,52 @@ export async function requestHeldBooking(
       `/events/${eventId}/bookings/${bookingId}/request`,
       session.token,
       { method: 'POST' },
+    )
+    return (await response.json()) as BookingRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/**
+ * US14.5: search for available replacement venues for a booking flagged
+ * 'Needs replacement'. Returns venues free for the same time slot, excluding
+ * the original venue.
+ */
+export async function searchReplacementVenues(
+  bookingId: string,
+  session: Session,
+  filters: Pick<VenueFilters, 'minCapacity' | 'location' | 'accessibility'> = NO_FILTERS,
+): Promise<VenueRecord[]> {
+  try {
+    const response = await authorizedFetch(
+      `/bookings/${bookingId}/replacement-venues${venueQuery({ ...NO_FILTERS, ...filters })}`,
+      session.token,
+    )
+    return (await response.json()) as VenueRecord[]
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/**
+ * US14.5: request a replacement venue for a flagged booking. Creates a new
+ * booking with Requested status and marks the old booking as Replaced.
+ */
+export async function requestReplacementVenue(
+  bookingId: string,
+  venueId: string,
+  session: Session,
+): Promise<BookingRecord> {
+  try {
+    const response = await authorizedFetch(
+      `/bookings/${bookingId}/request-replacement`,
+      session.token,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ venueId }),
+      },
     )
     return (await response.json()) as BookingRecord
   } catch (error) {
