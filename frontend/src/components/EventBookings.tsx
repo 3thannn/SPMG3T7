@@ -11,6 +11,8 @@ import {
   listBookings,
   requestBooking,
   requestHeldBooking,
+  requestReplacementVenue,
+  searchReplacementVenues,
   validateBooking,
   type BookingInput,
   type BookingRecord,
@@ -166,6 +168,17 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
   const [holdError, setHoldError] = useState<{ bookingId: string; message: string } | null>(
     null,
   )
+  // US14.5: replacement venue search and selection
+  const [replacementSearch, setReplacementSearch] = useState<{
+    bookingId: string
+    venues: VenueRecord[]
+  } | null>(null)
+  const [replacementBusy, setReplacementBusy] = useState(false)
+  const [replacementFilters, setReplacementFilters] = useState({
+    minCapacity: '', location: '', accessibility: '',
+  })
+  const [replacementError, setReplacementError] = useState('')
+  const [selectedReplacementVenue, setSelectedReplacementVenue] = useState<string>('')
   const [notice, setNotice] = useState('')
   const [check, setCheck] = useState<Check | null>(null)
 
@@ -361,6 +374,80 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
       .finally(() => setCancelBusy(false))
   }
 
+  /** US14.5: search for replacement venues for a flagged booking. */
+  function searchReplacement(
+    booking: BookingRecord,
+    filters = { minCapacity: '', location: '', accessibility: '' },
+  ) {
+    setReplacementBusy(true)
+    setReplacementError('')
+    setReplacementFilters(filters)
+    setReplacementSearch({ bookingId: booking.id, venues: [] })
+    setSelectedReplacementVenue('')
+    setNotice('')
+    searchReplacementVenues(booking.id, session, filters)
+      .then((venues) => {
+        setReplacementSearch({ bookingId: booking.id, venues })
+        setSelectedReplacementVenue('')
+        if (venues.length === 0) {
+          setReplacementError('No replacement venues are available for the same time slot and filters.')
+        }
+      })
+      .catch((error: unknown) => {
+        setReplacementError(
+          error instanceof EventRuleError
+            ? error.message
+            : unexpectedFailureMessage(error, 'search for replacement venues'),
+        )
+      })
+      .finally(() => setReplacementBusy(false))
+  }
+
+  function closeReplacement() {
+    setReplacementSearch(null)
+    setReplacementError('')
+    setSelectedReplacementVenue('')
+  }
+
+  /** US14.5: request the selected replacement venue. */
+  function confirmReplacement(booking: BookingRecord) {
+    if (!selectedReplacementVenue) {
+      setReplacementError('Choose a replacement venue.')
+      return
+    }
+    setReplacementBusy(true)
+    setReplacementError('')
+    requestReplacementVenue(booking.id, selectedReplacementVenue, session)
+      .then((newBooking) => {
+        // Mark old booking as replaced
+        const updatedOldBooking: BookingRecord = { ...booking, status: 'Replaced' }
+        setBookings((current) =>
+          current.state === 'loaded'
+            ? {
+                state: 'loaded',
+                bookings: [...current.bookings, newBooking]
+                  .map((item) => (item.id === booking.id ? updatedOldBooking : item))
+                  .sort(bySchedule),
+              }
+            : current,
+        )
+        setReplacementSearch(null)
+        setSelectedReplacementVenue('')
+        setNotice(
+          `Requested ${newBooking.venueName} as a replacement. It is waiting for Venue Staff to approve it.`,
+        )
+        onBookingRequested?.()
+      })
+      .catch((error: unknown) => {
+        setReplacementError(
+          error instanceof EventRuleError
+            ? error.message
+            : unexpectedFailureMessage(error, 'request the replacement venue'),
+        )
+      })
+      .finally(() => setReplacementBusy(false))
+  }
+
   return (
     <section className="card card-pad event-bookings" aria-labelledby="event-bookings-title">
       <h2 className="detail-section-title" id="event-bookings-title">
@@ -407,6 +494,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
 
   function renderBooking(booking: BookingRecord) {
     const isCancelled = booking.status === 'Cancelled'
+    const isReplaced = booking.status === 'Replaced'
     const isHeld = booking.status === 'Held'
     // US14.4: Expired is what the scheduled sweep writes. A Held hold past its
     // expiry reads the same until the sweep reaches it.
@@ -415,9 +503,10 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     const cancelOpen = cancelling?.bookingId === booking.id
     const isRejected = booking.status === 'Rejected'
     const needsReplacement = booking.status === 'Needs replacement'
+    const replacementOpen = replacementSearch?.bookingId === booking.id
     const cancellable = booking.status === 'Requested' || (isHeld && !holdExpired)
     const rowClass =
-      isCancelled || isRejected
+      isCancelled || isRejected || isReplaced
         ? ' is-cancelled'
         : holdExpired
           ? ' is-expired'
@@ -458,6 +547,17 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
               disabled={cancelBusy}
             >
               Cancel
+            </button>
+          )}
+          {mayRequest && needsReplacement && !replacementOpen && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm booking-find-replacement"
+              aria-label={`Find a replacement venue for ${venueName}`}
+              onClick={() => searchReplacement(booking)}
+              disabled={replacementBusy || cancelBusy}
+            >
+              {replacementBusy ? 'Searching…' : 'Find replacement'}
             </button>
           )}
         </div>
@@ -518,6 +618,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
           </p>
         )}
         {cancelOpen && renderCancelForm(booking)}
+        {replacementOpen && renderReplacementForm(booking)}
       </li>
     )
   }
@@ -565,6 +666,98 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
             onClick={closeCancel}
           >
             Keep booking
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  function renderReplacementForm(booking: BookingRecord) {
+    const venueId = `booking-replacement-venue-${booking.id}`
+    const venues = replacementSearch?.venues ?? []
+    return (
+      <div className="booking-replacement-form">
+        <h4 className="booking-replacement-title">Find a replacement venue</h4>
+        <div className="booking-replacement-filters">
+          <label className="field">
+            Minimum capacity
+            <input value={replacementFilters.minCapacity} inputMode="numeric"
+              disabled={replacementBusy}
+              onChange={(changeEvent) => setReplacementFilters({
+                ...replacementFilters, minCapacity: changeEvent.target.value,
+              })} />
+          </label>
+          <label className="field">
+            Location
+            <input value={replacementFilters.location} disabled={replacementBusy}
+              onChange={(changeEvent) => setReplacementFilters({
+                ...replacementFilters, location: changeEvent.target.value,
+              })} />
+          </label>
+          <label className="field">
+            Accessibility
+            <input value={replacementFilters.accessibility} disabled={replacementBusy}
+              onChange={(changeEvent) => setReplacementFilters({
+                ...replacementFilters, accessibility: changeEvent.target.value,
+              })} />
+          </label>
+          <button type="button" className="btn btn-secondary btn-sm"
+            disabled={replacementBusy} onClick={() => searchReplacement(booking, replacementFilters)}>
+            Apply filters
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm"
+            disabled={replacementBusy} onClick={() => searchReplacement(booking)}>
+            Clear filters
+          </button>
+        </div>
+        <p className="booking-replacement-hint">
+          These venues are available for the same time slot. Select one to request it as a
+          replacement.
+        </p>
+        {replacementError && (
+          <p className="form-error" role="alert">
+            {replacementError}
+          </p>
+        )}
+        {venues.length > 0 && (
+          <div className="field">
+            <label htmlFor={venueId}>Choose a replacement venue</label>
+            <select
+              id={venueId}
+              value={selectedReplacementVenue}
+              disabled={replacementBusy}
+              onChange={(changeEvent) => {
+                setSelectedReplacementVenue(changeEvent.target.value)
+                setReplacementError('')
+              }}
+            >
+              <option value="">Select a venue</option>
+              {venues.map((venue) => (
+                <option key={venue.id} value={venue.id}>
+                  {venue.name} — holds {venue.capacity}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div className="booking-replacement-actions">
+          {venues.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={replacementBusy || !selectedReplacementVenue}
+              onClick={() => confirmReplacement(booking)}
+            >
+              {replacementBusy ? 'Requesting…' : 'Request replacement'}
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={replacementBusy}
+            onClick={closeReplacement}
+          >
+            {venues.length > 0 ? 'Cancel' : 'Close'}
           </button>
         </div>
       </div>

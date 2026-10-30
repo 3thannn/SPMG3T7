@@ -7,16 +7,17 @@ which creates a new booking and marks the old one REPLACED.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app import availability, booking_store, event_store, venue_store, venue_unavailability_store
 from app.auth import require_permission
 from app.booking_store import BookingStatus
+from app.event_status import CLOSED
 from app.events import BookingOut, _booking_out
 from app.permissions import Permission
 from app.users import User
-from app.venues import VenueOut, _to_out
+from app.venues import VenueOut, _filter_text, _min_capacity, _to_out
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
@@ -57,7 +58,13 @@ def _invalid_venue(message: str) -> HTTPException:
 
 
 @router.get("/{booking_id}/replacement-venues", response_model=list[VenueOut])
-def search_replacement_venues(booking_id: str, user: RequestsBookings) -> list[VenueOut]:
+def search_replacement_venues(
+    booking_id: str,
+    user: RequestsBookings,
+    min_capacity: Annotated[str, Query(alias="minCapacity")] = "",
+    location: str = "",
+    accessibility: str = "",
+) -> list[VenueOut]:
     """Search for available venues at the same time as a flagged booking.
 
     US14.5 AC1: From a 'Needs replacement' booking, search shows only venues
@@ -71,16 +78,19 @@ def search_replacement_venues(booking_id: str, user: RequestsBookings) -> list[V
     if booking is None:
         raise _not_found()
 
-    if booking.status is not BookingStatus.NEEDS_REPLACEMENT:
-        raise _not_flagged()
-
     # Verify the coordinator has access to this booking's event
     event = event_store.repository().get_event(booking.event_id)
     if event is None or event.coordinator_id != user.id:
         raise _not_found()
+    if booking.status is not BookingStatus.NEEDS_REPLACEMENT or event.status in CLOSED:
+        raise _not_flagged()
 
     # Get all venues
-    all_venues = venue_store.repository().list_venues()
+    all_venues = venue_store.repository().list_venues(venue_store.VenueFilters(
+        min_capacity=_min_capacity(min_capacity),
+        location=_filter_text(location, field="location"),
+        accessibility=_filter_text(accessibility, field="accessibility"),
+    ))
 
     # Filter to available venues (excluding the original venue)
     available_venues: list[VenueOut] = []
@@ -124,13 +134,12 @@ def request_replacement_venue(
     if old_booking is None:
         raise _not_found()
 
-    if old_booking.status is not BookingStatus.NEEDS_REPLACEMENT:
-        raise _not_flagged()
-
     # Verify the coordinator has access to this booking's event
     event = event_store.repository().get_event(old_booking.event_id)
     if event is None or event.coordinator_id != user.id:
         raise _not_found()
+    if old_booking.status is not BookingStatus.NEEDS_REPLACEMENT or event.status in CLOSED:
+        raise _not_flagged()
 
     # Validate replacement venue
     venue_id_str = payload.venue_id.strip()
@@ -142,6 +151,8 @@ def request_replacement_venue(
     new_venue = venue_store.repository().get_venue(new_venue_id)
     if new_venue is None:
         raise _invalid_venue("That venue is not in the catalogue.")
+    if new_venue_id == old_booking.venue_id:
+        raise _invalid_venue("Choose a different venue for the replacement.")
 
     # Check if replacement venue is available
     bookings_at_venue = booking_store.repository().list_for_venue(new_venue_id)
@@ -158,20 +169,12 @@ def request_replacement_venue(
     if not slot_check.available:
         raise _invalid_venue("That venue is not available for the same time slot.")
 
-    # Create new booking for replacement venue
-    new_booking = booking_store.repository().create(
-        event_id=old_booking.event_id,
-        venue_id=new_venue_id,
-        starts_at=old_booking.starts_at,
-        ends_at=old_booking.ends_at,
-        requested_by_id=user.id,
-        headcount=old_booking.headcount or event.expected_attendance or 0,
-        required_layout=old_booking.required_layout,
-        required_facilities=old_booking.required_facilities,
-        accessibility_needs=old_booking.accessibility_needs,
-    )
-
-    # Mark old booking as REPLACED
-    booking_store.repository().mark_replaced(old_booking.id)
-
+    try:
+        new_booking = booking_store.repository().request_replacement(
+            old_booking.id, venue_id=new_venue_id, actor_id=user.id,
+        )
+    except booking_store.SlotTaken:
+        raise _invalid_venue("That venue is not available for the same time slot.") from None
+    except booking_store.StaleBookingStatus:
+        raise _not_flagged() from None
     return _booking_out(new_booking)

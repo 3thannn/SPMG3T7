@@ -47,10 +47,11 @@ Three choices worth knowing:
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
+from threading import RLock
 from typing import Protocol
 
 from app import event_store, supabase_client, users, venue_store
-from app.event_status import EventStatus
+from app.event_status import CLOSED, EventStatus
 from app.venue_store import _now
 
 TABLE = "venue_bookings"
@@ -361,9 +362,25 @@ class Repository(Protocol):
 
     def mark_replaced(self, booking_id: int) -> Booking: ...
 
+    def request_replacement(self, booking_id: int, *, venue_id: int, actor_id: int) -> Booking: ...
+
 
 class SupabaseBookings:
     """The real store. Goes through the service role client, like the others."""
+
+    def request_replacement(self, booking_id: int, *, venue_id: int, actor_id: int) -> Booking:
+        result = supabase_client.admin().rpc(
+            "request_replacement_venue",
+            {"p_booking_id": booking_id, "p_venue_id": venue_id, "p_actor_id": actor_id},
+        ).execute()
+        if result.data == RPC_CLASH:
+            raise SlotTaken
+        if not result.data:
+            raise StaleBookingStatus
+        booking = self.get_booking(result.data)
+        if booking is None:
+            raise StaleBookingStatus
+        return booking
 
     def count_flagged_by_unavailability(self, unavailability_id: int) -> int:
         result = (
@@ -739,8 +756,35 @@ class InMemoryBookings:
     """
 
     bookings: list[Booking] = field(default_factory=list)
+    replacement_lock: RLock = field(default_factory=RLock, repr=False, compare=False)
     #: Well clear of anything a fixture might use, so a created row is obvious.
     next_id: int = 100
+
+    def request_replacement(self, booking_id: int, *, venue_id: int, actor_id: int) -> Booking:
+        with self.replacement_lock:
+            old = self.get_booking(booking_id)
+            event = event_store.repository().get_event(old.event_id) if old else None
+            venue = venue_store.repository().get_venue(venue_id)
+            if (
+                old is None or old.status is not BookingStatus.NEEDS_REPLACEMENT
+                or event is None or event.coordinator_id != actor_id or event.status in CLOSED
+                or venue is None or venue_id == old.venue_id
+            ):
+                raise StaleBookingStatus
+            self._refuse_taken_slot(venue_id, old.starts_at, old.ends_at)
+            self.next_id += 1
+            created = Booking(
+                id=self.next_id, event_id=old.event_id, venue_id=venue_id, venue_name=venue.name,
+                starts_at=old.starts_at, ends_at=old.ends_at, status=BookingStatus.REQUESTED,
+                requested_by_id=actor_id, requested_at=_now(), headcount=old.headcount,
+                required_layout=old.required_layout, required_facilities=old.required_facilities,
+                accessibility_needs=old.accessibility_needs,
+            )
+            self.bookings = [
+                replace(booking, status=BookingStatus.REPLACED) if booking.id == old.id else booking
+                for booking in self.bookings
+            ] + [created]
+            return created
 
     def count_flagged_by_unavailability(self, unavailability_id: int) -> int:
         return sum(
