@@ -39,6 +39,8 @@ export type EquipmentRequest = {
   equipmentId?: string | null
   requestedEquipmentId?: string | null
   equipmentName?: string
+  conflictReason?: string
+  conflictAt?: string
   unavailableReason?: string
   createdAt: string
   version: number

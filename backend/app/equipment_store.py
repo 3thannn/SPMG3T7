@@ -44,6 +44,8 @@ class EquipmentRequest:
     unavailable_reason: str = ""
     requested_equipment_id: int | None = None
     equipment_name: str = ""
+    event_conflict_reason: str = ""
+    event_conflict_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -108,10 +110,14 @@ def _request(row: dict) -> EquipmentRequest:
         unavailable_reason=row.get("unavailable_reason") or "",
         requested_equipment_id=row.get("requested_equipment_id"),
         equipment_name=(row.get("requested_equipment") or {}).get("name", ""),
+        event_conflict_reason=row.get("event_conflict_reason") or "",
+        event_conflict_at=str(row["event_conflict_at"]) if row.get("event_conflict_at") else "",
     )
 
 
 class Repository(Protocol):
+    def set_event_conflict(self, request_id: int, reason: str) -> None: ...
+
     def list_items(self) -> list[Equipment]: ...
     def get_item(self, item_id: int) -> Equipment | None: ...
     def save_item(self, item: Equipment) -> Equipment: ...
@@ -143,9 +149,18 @@ class SupabaseEquipment:
         "id, event_id, equipment_type, quantity, technical_requirements, "
         "support_notes, start_at, end_at, status, requested_by_id, "
         "created_at, version, updated_by_id, equipment_id, unavailable_reason, "
+        "event_conflict_reason, event_conflict_at, "
         "requested_equipment_id, requested_equipment:equipment!requested_equipment_id(name), "
         "events(name)"
     )
+
+    def set_event_conflict(self, request_id: int, reason: str) -> None:
+        supabase_client.admin().table("equipment_requests").update(
+            {
+                "event_conflict_reason": reason,
+                "event_conflict_at": _now() if reason else None,
+            }
+        ).eq("id", request_id).execute()
 
     def list_items(self) -> list[Equipment]:
         rows = (
@@ -407,6 +422,14 @@ class InMemoryEquipment:
     next_request_id: int = 1
     lock: RLock = field(default_factory=RLock, repr=False)
 
+    def set_event_conflict(self, request_id: int, reason: str) -> None:
+        self.requests = [
+            replace(row, event_conflict_reason=reason, event_conflict_at=_now() if reason else "")
+            if row.id == request_id
+            else row
+            for row in self.requests
+        ]
+
     def _record(
         self, request: EquipmentRequest, action: str, before: EquipmentRequest | None = None
     ) -> None:
@@ -587,6 +610,7 @@ class InMemoryEquipment:
                 r.quantity
                 for r in self.requests
                 if r.status == RESERVED
+                and r.id != request.id
                 and r.equipment_id == item.id
                 and datetime.fromisoformat(r.starts_at) < datetime.fromisoformat(request.ends_at)
                 and datetime.fromisoformat(r.ends_at) > datetime.fromisoformat(request.starts_at)

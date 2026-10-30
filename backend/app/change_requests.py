@@ -86,6 +86,9 @@ IMPORTANT_FIELDS: frozenset[str] = frozenset(
         "venue_id",
         "equipment",
         "equipment_needs",
+        "venue_requirements",
+        "preferred_layout",
+        "accessibility_needs",
     }
 )
 
@@ -176,9 +179,10 @@ def applied_values(changes: Iterable[FieldChange]) -> dict[str, Any]:
 #: request without moving back to Under Review; closed events cannot.
 REQUESTABLE: tuple[EventStatus, ...] = (
     EventStatus.SUBMITTED,
-    EventStatus.UNDER_REVIEW,
     EventStatus.APPROVED,
     EventStatus.PLANNING,
+    EventStatus.PENDING_SAFETY_CHECK,
+    EventStatus.CONFIRMED,
 )
 
 
@@ -208,7 +212,12 @@ CHANGE_REQUEST_REFUSAL_MESSAGES: dict[ChangeRequestRefusal, str] = {
 
 
 def check_change_request(
-    *, status: EventStatus, organiser_id: int, actor_id: int, change_requested: bool
+    *,
+    status: EventStatus,
+    organiser_id: int,
+    actor_id: int,
+    change_requested: bool,
+    awaiting_reply: bool = False,
 ) -> ChangeRequestRefusal | None:
     """US11.1: may this actor propose changes to this event now?
 
@@ -224,9 +233,9 @@ def check_change_request(
         return ChangeRequestRefusal.NOT_OWNER
     if status is EventStatus.DRAFT:
         return ChangeRequestRefusal.NOT_SUBMITTED
-    if status not in REQUESTABLE:
+    if status not in REQUESTABLE and not (status is EventStatus.UNDER_REVIEW and awaiting_reply):
         return ChangeRequestRefusal.ALREADY_DECIDED
-    if change_requested:
+    if change_requested and not awaiting_reply:
         return ChangeRequestRefusal.ALREADY_PENDING
     return None
 
@@ -244,7 +253,7 @@ def has_pending_request(*, status: EventStatus, change_requested: bool) -> bool:
     A request preserves its status except when an assigned Submitted event
     moves to Under Review. An unassigned Submitted event awaits Lead assignment.
     """
-    return change_requested and status in REQUESTABLE
+    return change_requested and status in (*REQUESTABLE, EventStatus.UNDER_REVIEW)
 
 
 #: How the history labels the entry a change request wrote.

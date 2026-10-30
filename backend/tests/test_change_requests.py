@@ -219,6 +219,9 @@ class TestRules:
             "venue_id",
             "equipment",
             "equipment_needs",
+            "venue_requirements",
+            "preferred_layout",
+            "accessibility_needs",
         }
 
     def test_change_type_uses_us5_2_s_column_values(self):
@@ -1109,7 +1112,7 @@ class TestApproving:
             client, auth_headers, preferredLayout="Banquet", equipmentNeeds="None / Not required"
         )
         assert [(change["field"], change["important"]) for change in event["pendingChanges"]] == [
-            ("preferred_layout", False),
+            ("preferred_layout", True),
             ("equipment_needs", True),
         ]
 

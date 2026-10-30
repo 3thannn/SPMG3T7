@@ -202,6 +202,8 @@ class RequestOut(BaseModel):
     version: int
     equipment_id: str | None = Field(default=None, serialization_alias="equipmentId")
     unavailable_reason: str = Field(default="", serialization_alias="unavailableReason")
+    conflict_reason: str = Field(default="", serialization_alias="conflictReason")
+    conflict_at: str = Field(default="", serialization_alias="conflictAt")
     requested_equipment_id: str | None = Field(
         default=None, serialization_alias="requestedEquipmentId"
     )
@@ -250,6 +252,8 @@ def _request_out(request: EquipmentRequest) -> RequestOut:
         version=request.version,
         equipment_id=str(request.equipment_id) if request.equipment_id is not None else None,
         unavailable_reason=request.unavailable_reason,
+        conflict_reason=request.event_conflict_reason,
+        conflict_at=request.event_conflict_at,
         requested_equipment_id=str(request.requested_equipment_id)
         if request.requested_equipment_id is not None
         else None,

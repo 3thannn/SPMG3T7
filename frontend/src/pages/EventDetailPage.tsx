@@ -1,3 +1,4 @@
+import { recheckArrangements } from '../eventsStore'
 import { Fragment, useEffect, useState } from 'react'
 import './EventDetailPage.css'
 import EventBookings from '../components/EventBookings'
@@ -237,7 +238,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   // US11.1: an owner can also open the form on a submitted event, to propose changes.
   const editable =
     !cancelled &&
-    ((canEdit && event.status !== 'Draft') ||
+    ((canEdit && event.status !== 'Draft' && !changeRequested) ||
       (isOwner && event.status === 'Draft') ||
       (isOwner && proposing))
   const dirty =
@@ -259,7 +260,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     setAsking(true)
     setBanner(null)
     try {
-      const updated = await requestClarification(event.id, message, session)
+      const updated = await requestClarification(event.id, message, session, event.reviewRevision)
       setPage({ state: 'loaded', event: updated })
       // Cleared only on success, so a refused request does not lose what was
       // typed and leave the Coordinator to write it again.
@@ -381,6 +382,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         },
         changeNote.trim(),
         session,
+        event.reviewRevision,
       )
       setPage({ state: 'loaded', event: updated })
       setDraft(draftFrom(updated))
@@ -414,12 +416,12 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     setAnswering('approve')
     setBanner(null)
     try {
-      const updated = await approveEventChange(event.id, session)
+      const updated = await approveEventChange(event.id, session, event.reviewRevision)
       setPage({ state: 'loaded', event: updated })
       setDraft(draftFrom(updated))
       setBanner({
         kind: 'ok',
-        text: 'Changes approved and applied. You can now decide the event.',
+        text: 'Changes approved and applied. The event keeps its current status.',
       })
     } catch (error) {
       setBanner({
@@ -793,6 +795,17 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     type="button"
                     className="btn btn-primary"
                     onClick={() => {
+                      const amended = { ...event }
+                      const names: Record<string, string> = { name: 'title', proposed_date: 'startsAt',
+                        end_date: 'endsAt', expected_attendance: 'expectedAttendance',
+                        venue_requirements: 'venueRequirements', preferred_layout: 'preferredLayout',
+                        accessibility_needs: 'accessibilityNeeds', equipment_needs: 'equipmentNeeds',
+                        registration_needs: 'registrationNeeds' }
+                      for (const change of event.pendingChanges || []) {
+                        const name = names[change.field] || change.field
+                        Object.assign(amended, { [name]: name === 'expectedAttendance' ? Number(change.newValue) : change.newValue })
+                      }
+                      setDraft(draftFrom(amended))
                       setProposing(true)
                       setBanner(null)
                     }}
@@ -911,6 +924,34 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                 )}
               </div>
             )}
+
+            {event.awaitingReply && <p role="status">The Coordinator requested amendments.
+              Open the change form and update at least one field to respond.</p>}
+            {(event.reviewHistory?.length ?? 0) > 0 && <section aria-label="Change and clarification history">
+              <h3>Change and clarification history</h3>
+              <ol>{event.reviewHistory?.map((entry) => <li key={entry.revision}>
+                <strong>{entry.kind}</strong> ? {formatRecordedAt(entry.at)} ? User #{entry.byId}
+                {entry.message && <p>{entry.message}</p>}
+                {entry.changes?.map((change, index) => <p key={index}>
+                  {change.changed_field || change.field}: {change.old_value ?? change.oldValue} ? {change.new_value ?? change.newValue}
+                </p>)}
+              </li>)}</ol>
+            </section>}
+            {(event.arrangementReviewPending || (event.arrangementReview?.length ?? 0) > 0) &&
+              <section aria-label="Arrangement review">
+                <h3>Arrangement review</h3>
+                {event.arrangementReviewPending && <p role="alert">Some arrangement checks have not completed. Retry the checks.</p>}
+                <ul>{event.arrangementReview?.map((item) => <li key={`${item.kind}-${item.id}`}>
+                  <strong>{item.label}</strong>: {item.reason ? `${item.error ? 'Check incomplete' : 'Conflict ? review needed'}: ${item.reason}` : 'Checks passed'}
+                </li>)}</ul>
+                {mayReview && <button type="button" className="btn btn-secondary btn-sm" disabled={writePending}
+                  onClick={async () => {
+                    setBusy(true)
+                    try { setPage({ state: 'loaded', event: await recheckArrangements(event.id, session) }) }
+                    catch (error) { setBanner({ kind: 'error', text: unexpectedFailureMessage(error, 'recheck arrangements') }) }
+                    finally { setBusy(false) }
+                  }}>Recheck arrangements</button>}
+              </section>}
 
             {/* US11.1: the Organiser's proposal, visible to both sides. The
                 Coordinator answers it here, before the decision below. */}
@@ -1085,11 +1126,11 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         {/* US14.1. Not on a Draft: nothing can be requested for one, so the
             card would only ever say so. */}
         {/* US4.6: keyed so a cancellation reloads the card with its bookings released. */}
-        {readsEvents && event.status !== 'Draft' && <EventBookings key={cancelled ? 'cancelled' : 'open'} event={event} session={session} onBookingRequested={refreshAfterBooking} />}
+        {readsEvents && event.status !== 'Draft' && <EventBookings key={`${event.updatedAt}-${JSON.stringify(event.arrangementReview)}`} event={event} session={session} onBookingRequested={refreshAfterBooking} />}
         {/* US20.1. Not on a Draft either: nobody registers for one. Keyed so a
             status change reloads what the card offers. */}
         {readsEvents && event.status !== 'Draft' && <EventRegistration key={event.status} event={event} session={session} />}
-        {readsEvents && <EventEquipment event={event} session={session} />}
+        {readsEvents && <EventEquipment key={`${event.updatedAt}-${JSON.stringify(event.arrangementReview)}`} event={event} session={session} />}
         {can(session, 'safety:review') && (
           <SafetyReviewDetails eventId={event.id} session={session} />
         )}

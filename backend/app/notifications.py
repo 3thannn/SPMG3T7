@@ -81,6 +81,23 @@ def notify_status_change(event: Event, to_status: EventStatus, notes: str = "") 
         )
 
 
+def notify_change_decision(event: Event, *, approved: bool, reason: str = "") -> None:
+    """Notify the owner without pretending the event itself changed status."""
+    outcome = "accepted" if approved else "rejected"
+    message = f'The change request for "{event.title}" was {outcome}.'
+    if reason:
+        message += f" Reason: {reason}"
+    try:
+        notification_store.repository().create(
+            user_id=event.organiser_id,
+            event_id=event.id,
+            status=event.status,
+            message=message,
+        )
+    except Exception:
+        logger.exception("Could not notify change decision for event %s", event.id)
+
+
 def _notify_equipment(request: EquipmentRequest, message: str) -> None:
     """One best-effort notice per active Tech Support profile."""
     try:
@@ -109,7 +126,7 @@ def _notify_equipment(request: EquipmentRequest, message: str) -> None:
 
 
 def _listed(items: list[str]) -> str:
-    """"A", "A and B", "A, B and C"."""
+    """ "A", "A and B", "A, B and C"."""
     if len(items) < 2:
         return "".join(items)
     return f"{', '.join(items[:-1])} and {items[-1]}"
@@ -198,8 +215,7 @@ def notify_event_cancelled(
 def notify_equipment_request(event: Event, request: EquipmentRequest) -> None:
     _notify_equipment(
         request,
-        f'New {request.equipment_type} request for "{event.title}" '
-        f"({request.quantity} needed).",
+        f'New {request.equipment_type} request for "{event.title}" ({request.quantity} needed).',
     )
 
 
@@ -215,6 +231,8 @@ def notify_equipment_change(request: EquipmentRequest, actor_name: str, action: 
 class CoordinatorNotice(StrEnum):
     """US10.2: the `kind` of a Coordinator notice, one per acceptance criterion."""
 
+    CHANGE_SUBMITTED = "change-submitted"
+    ARRANGEMENT_CONFLICT = "arrangement-conflict"
     ASSIGNED = "assigned"
     UNASSIGNED = "unassigned"
     HOLD_EXPIRING = "hold-expiring"
@@ -300,8 +318,7 @@ def notify_hold_expiring(event: Event, venue_name: str, expires_at: str) -> None
         event.coordinator_id,
         event,
         CoordinatorNotice.HOLD_EXPIRING,
-        f'The tentative hold on {venue_name} for "{_event_title(event)}" '
-        f"expires {expires_at}.",
+        f'The tentative hold on {venue_name} for "{_event_title(event)}" expires {expires_at}.',
     )
 
 
@@ -458,3 +475,22 @@ def set_read_state(
     if existing is None or existing.user_id != user.id:
         raise _not_found()
     return _to_out(store.set_read(numeric_id, is_read=payload.read))
+
+
+def notify_change_submitted(event: Event) -> None:
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.CHANGE_SUBMITTED,
+        f'New or revised change request for "{event.title}" needs review.',
+    )
+
+
+def notify_arrangement_conflicts(event: Event, failures: list[str]) -> None:
+    if failures:
+        _notify_coordinator(
+            event.coordinator_id,
+            event,
+            CoordinatorNotice.ARRANGEMENT_CONFLICT,
+            f'Arrangements for "{event.title}" need review: ' + "; ".join(failures),
+        )

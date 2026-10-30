@@ -51,6 +51,14 @@ export type EventRecord = {
    * changes await the Coordinator's review. Optional so older payloads and
    * fixtures still type-check; absent means no request.
    */
+  reviewRevision?: number
+  clarificationId?: number | null
+  awaitingReply?: boolean
+  reviewHistory?: { revision: number; kind: string; message?: string; at: string; byId: string;
+    changes?: { changed_field?: string; old_value?: string; new_value?: string;
+      field?: string; oldValue?: string; newValue?: string }[] }[]
+  arrangementReviewPending?: boolean
+  arrangementReview?: { kind: string; id: string; label: string; reason: string; error: boolean }[]
   changeRequested?: boolean
   changeRequestNote?: string
   /** US11.1: what the Organiser has asked for, in form order. */
@@ -199,12 +207,13 @@ export async function requestClarification(
   id: string,
   message: string,
   session: Session,
+  reviewRevision?: number,
 ): Promise<EventRecord> {
   try {
     const response = await authorizedFetch(`/events/${id}/clarification`, session.token, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, reviewRevision }),
     })
     return (await response.json()) as EventRecord
   } catch (error) {
@@ -855,12 +864,13 @@ export async function requestEventChange(
   draft: EventDraft,
   note: string,
   session: Session,
+  reviewRevision?: number,
 ): Promise<EventRecord> {
   try {
     const response = await authorizedFetch(`/events/${id}/change-request`, session.token, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...draft, note }),
+      body: JSON.stringify({ ...draft, note, reviewRevision }),
     })
     return (await response.json()) as EventRecord
   } catch (error) {
@@ -869,10 +879,10 @@ export async function requestEventChange(
 }
 
 /** US11.1: apply the Organiser's proposed changes. The event stays Under Review. */
-export async function approveEventChange(id: string, session: Session): Promise<EventRecord> {
+export async function approveEventChange(id: string, session: Session, reviewRevision?: number): Promise<EventRecord> {
   try {
     const response = await authorizedFetch(
-      `/events/${id}/change-request/approve`,
+      `/events/${id}/change-request/approve${reviewRevision === undefined ? '' : `?review_revision=${reviewRevision}`}`,
       session.token,
       { method: 'POST' },
     )
@@ -887,15 +897,22 @@ export async function rejectEventChange(
   id: string,
   reason: string,
   session: Session,
+  reviewRevision?: number,
 ): Promise<EventRecord> {
   try {
     const response = await authorizedFetch(`/events/${id}/change-request/reject`, session.token, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason, reviewRevision }),
     })
     return (await response.json()) as EventRecord
   } catch (error) {
     return asRuleError(error)
   }
+}
+
+export async function recheckArrangements(id: string, session: Session): Promise<EventRecord> {
+  const response = await authorizedFetch(`/events/${id}/arrangements/recheck`, session.token,
+    { method: 'POST' })
+  return await response.json() as EventRecord
 }
