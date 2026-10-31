@@ -1,9 +1,21 @@
 import { test as base, expect as baseExpect, type APIRequestContext, type Page } from '@playwright/test'
+import { execFile } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { promisify } from 'node:util'
 import type { Session } from '../src/api'
 import type { EventRecord } from '../src/eventsStore'
 
 export const api = process.env.E2E_API_URL || 'http://localhost:8000'
 export const expect = baseExpect.configure({ timeout: 15_000 })
+const runFile = promisify(execFile)
+const root = resolve(import.meta.dirname, '../..')
+const python = process.env.E2E_PYTHON || resolve(root, 'backend/.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
+async function cleanupData(prefix: string, apply = false) {
+  const { stdout } = await runFile(python, [resolve(import.meta.dirname, 'cleanup-data.py'), '--prefix', prefix, '--verify-api', api, apply ? '--apply' : '--check'], { cwd: root, timeout: 120_000 })
+  console.log(stdout.trim())
+}
 const accounts = {
   organiser: 'organiser', coordinator: 'coordinator', lead: 'coordinatorlead',
   venue: 'venuestaff', tech: 'technicalsupport', safety: 'safetyofficer',
@@ -11,7 +23,7 @@ const accounts = {
 export type Actor = keyof typeof accounts
 
 export class World {
-  readonly prefix = `Ariel-E2E-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  readonly prefix = `Ariel-E2E-${Date.now()}-${randomBytes(3).toString('hex')}`
   sessions = new Map<Actor, Session>()
   events: string[] = []
   venues: string[] = []
@@ -86,34 +98,40 @@ export class World {
     return item
   }
   async cleanup() {
-    const failures: string[] = []
-    for (const id of this.events) {
-      try {
-        const event = await this.call('organiser', 'GET', `/events/${id}`)
-        // Completed events are immutable; their test-owned venue and booking stay as history.
-        if (!['Completed', 'Cancelled', 'Rejected'].includes(event.status))
-          await this.call('organiser', 'POST', `/events/${id}/cancel`, { reason: `${this.prefix} teardown` })
-      } catch (error) { failures.push(String(error)) }
-    }
-    // History may retain foreign keys. Delete only exact IDs created by this test; document retained records.
-    for (const [actor, path, ids] of [['venue', 'venues', this.venues], ['tech', 'equipment', this.equipment]] as const) {
-      for (const id of ids) {
-        const response = await this.response(actor, 'DELETE', `/${path}/${id}`)
-        if (response.status() === 409) console.log(`Retained test history: ${path}/${id} (${this.prefix})`)
-        else if (!response.ok()) failures.push(`${path}/${id}: ${await response.text()}`)
-      }
-    }
-    expect(failures, 'Test-owned data cleanup failed').toEqual([])
+    // Admin deletion is confined to the exact run prefix, including immutable test history.
+    await cleanupData(this.prefix, true)
   }
+
 }
 
 export const test = base.extend<{ world: World }>({
-  world: async ({ request }, provide, testInfo) => {
+  world: async ({ request, context }, provide, testInfo) => {
+    if (process.env.E2E_ALLOW_SHARED_WRITES !== '1')
+      throw new Error('Live tests write shared data. Set E2E_ALLOW_SHARED_WRITES=1 to opt in; teardown fully removes test records.')
     const world = new World(request)
+    // Fail before writing if cleanup access is missing or a previous run left data.
+    // Run this suite with one worker so active test data is not mistaken for leftovers.
+    await cleanupData('Ariel-E2E-')
+    // UI writes must also go to the API whose database was verified, even if
+    // VITE_API_BASE_URL differs from E2E_API_URL. Abort before sending a request.
+    await context.route('**/*', async route => {
+      if (['fetch', 'xhr'].includes(route.request().resourceType())
+        && !route.request().url().startsWith(api.replace(/\/$/, '') + '/')) {
+        testInfo.annotations.push({ type: 'blocked-api', description: 'Browser API target differs from the verified E2E_API_URL; check VITE_API_BASE_URL.' })
+        await route.abort('blockedbyclient')
+        return
+      }
+      await route.continue()
+    })
+    const recovery = resolve(root, 'frontend/playwright/.cache/recovery', world.prefix + '.json')
+    await mkdir(resolve(root, 'frontend/playwright/.cache/recovery'), { recursive: true })
+    await writeFile(recovery, JSON.stringify({ prefix: world.prefix, api, state: 'running' }))
     try { await provide(world) } finally {
-      await testInfo.attach('test-owned-records', { body: JSON.stringify({ prefix: world.prefix,
-        events: world.events, venues: world.venues, equipment: world.equipment }, null, 2), contentType: 'application/json' })
+      const manifest = { prefix: world.prefix, api, events: world.events, venues: world.venues, equipment: world.equipment }
+      await writeFile(recovery, JSON.stringify({ ...manifest, state: 'cleanup-required' }, null, 2))
+      await testInfo.attach('test-owned-records', { body: JSON.stringify(manifest, null, 2), contentType: 'application/json' })
       await world.cleanup()
+      await writeFile(recovery, JSON.stringify({ ...manifest, state: 'cleaned' }, null, 2))
     }
   },
 })
