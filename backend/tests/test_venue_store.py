@@ -316,6 +316,36 @@ class TestWritingARecord:
         assert ("eq", "id", 3) in query.calls
 
 
+class TestDeletingABookedVenue:
+    """US9.5: the database's refusal becomes a named error; anything else does not."""
+
+    @pytest.fixture
+    def failing(self, monkeypatch):
+        def fail_with(error: Exception) -> None:
+            class FailingQuery(FakeQuery):
+                def execute(self):
+                    raise error
+
+            monkeypatch.setattr(supabase_client, "admin", lambda: FakeClient(FailingQuery()))
+
+        return fail_with
+
+    def test_the_trigger_refusal_becomes_a_named_error(self, failing):
+        failing(_ApiError("VB905"))
+
+        with pytest.raises(venue_store.VenueHasFutureBookings):
+            SupabaseVenues().delete_venue(3)
+
+    def test_any_other_failure_is_re_raised_as_it_was(self, failing):
+        original = _ApiError("08006")
+        failing(original)
+
+        with pytest.raises(_ApiError) as raised:
+            SupabaseVenues().delete_venue(3)
+
+        assert raised.value is original
+
+
 class TestDuplicateNames:
     """A unique violation is a rule; anything else is still a failure."""
 

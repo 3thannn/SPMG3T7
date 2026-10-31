@@ -222,6 +222,27 @@ class Booking:
     def holds_venue(self) -> bool:
         return self.holds_venue_at(local_now())
 
+    def ends_after(self, now: datetime) -> bool:
+        """Whether this booking has yet to end. One under way has not.
+
+        An end that cannot be read is taken as still to come, so a venue is
+        never deleted out from under a booking we could not judge (US9.5).
+        """
+        try:
+            return datetime.fromisoformat(self.ends_at) > now
+        except ValueError:
+            return True
+
+    def upcoming_at(self, now: datetime) -> bool:
+        """US9.5: whether this booking still holds its venue and has not ended."""
+        return self.holds_venue_at(now) and self.ends_after(now)
+
+    def awaiting_replacement_at(self, now: datetime) -> bool:
+        """US9.5: flagged by US12.2 and not yet ended, so its Coordinator still
+        has to find it another venue (US14.5). Deleting the venue would delete
+        the booking, and the Coordinator's task with it."""
+        return self.status is BookingStatus.NEEDS_REPLACEMENT and self.ends_after(now)
+
 
 class StaleBookingStatus(RuntimeError):
     """The booking changed after the route checked it, e.g. cancelled twice at once."""
@@ -344,8 +365,6 @@ class Repository(Protocol):
     def request_hold(
         self, booking_id: int, *, actor_id: int, expected_status: EventStatus
     ) -> Booking: ...
-
-    def venue_has_bookings(self, venue_id: int) -> bool: ...
 
     def list_requested(self) -> list[Booking]: ...
 
@@ -721,24 +740,6 @@ class SupabaseBookings:
         )
         return [to_booking(row) for row in rows]
 
-    def venue_has_bookings(self, venue_id: int) -> bool:
-        """Whether anything books this venue — asked before US9.1c deletes it.
-
-        Cancelled bookings count. They free the venue's slot, but they are
-        still the event's record of what was asked for, and the row cannot
-        outlive its venue.
-        """
-        rows = (
-            supabase_client.admin()
-            .table(TABLE)
-            .select("id")
-            .eq("venue_id", venue_id)
-            .limit(1)
-            .execute()
-            .data
-        )
-        return bool(rows)
-
     def mark_replaced(self, booking_id: int) -> Booking:
         """US14.5: NEEDS_REPLACEMENT -> REPLACED, kept for history.
 
@@ -999,9 +1000,6 @@ class InMemoryBookings:
         )
         if not found.available:
             raise SlotTaken
-
-    def venue_has_bookings(self, venue_id: int) -> bool:
-        return any(booking.venue_id == venue_id for booking in self.bookings)
 
     def _set_conflict(self, booking_id: int, flag: ConflictFlag | None) -> Booking:
         existing = self.get_booking(booking_id)
