@@ -283,14 +283,6 @@ def _request_write_error(error: APIError) -> NoReturn:
     raise error
 
 
-def _type(raw: str) -> str:
-    requested = raw.strip()
-    for item in equipment_store.repository().list_items():
-        if item.equipment_type.casefold() == requested.casefold():
-            return item.equipment_type
-    raise _error("invalid_equipment_type", "Choose a type from the equipment catalogue.")
-
-
 def _requested_item(item_id: int, supplied_type: str | None = None) -> Equipment:
     item = equipment_store.repository().get_item(item_id)
     if item is None:

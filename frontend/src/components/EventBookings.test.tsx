@@ -1259,3 +1259,19 @@ it('TC-FF02 shows no flag on a booking that has none', async () => {
   expect(row).not.toHaveTextContent('Conflict – review needed')
   expect(within(row).queryByRole('note')).not.toBeInTheDocument()
 })
+
+
+it('requests the start time the Coordinator typed, not the event start', async () => {
+  const user = userEvent.setup()
+  requestBookingMock.mockResolvedValue(booking())
+  render(<EventBookings event={event()} session={coordinator} />)
+  await formReady()
+
+  await user.selectOptions(screen.getByLabelText('Venue'), '1')
+  await user.clear(screen.getByLabelText('Starts'))
+  await user.type(screen.getByLabelText('Starts'), '2027-11-02T10:30')
+  await user.click(screen.getByRole('button', { name: 'Request venue' }))
+
+  await waitFor(() => expect(requestBookingMock).toHaveBeenCalled())
+  expect(requestBookingMock.mock.calls[0][1].startsAt).toBe('2027-11-02T10:30')
+})

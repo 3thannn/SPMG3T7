@@ -81,7 +81,7 @@ it('renders the landing hero', () => {
 
   render(<App />)
 
-  expect(screen.getByRole('heading', { name: 'EventHub', level: 1 })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'ConnectSphere', level: 1 })).toBeInTheDocument()
 })
 
 it('reports the backend as connected when the health check succeeds', async () => {

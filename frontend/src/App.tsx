@@ -192,6 +192,9 @@ export default function App() {
       }
     }
 
+    // Narrows the type only: "/" and "/signin" returned above, and every other
+    // route without a session got the sign-in form in the guard.
+    /* v8 ignore next */
     if (!session) {
       return <SignInPage onSignedIn={handleSignedIn} notice={notice} />
     }

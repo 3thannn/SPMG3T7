@@ -18,6 +18,9 @@
 
 .landing-hero h1 {
   margin: 0.4rem 0 0;
+  /* A lower floor than the global h1, so "ConnectSphere" stays on one line on
+     a 320px phone. From about 450px up the size is the same as every other h1. */
+  font-size: clamp(2.25rem, 8vw, 5.5rem);
 }
 
 .landing-lede {

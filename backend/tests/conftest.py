@@ -13,6 +13,8 @@ email, and the in-memory store keeps that same split rather than pretending the
 password is a column on the user.
 """
 
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -21,9 +23,11 @@ from app import (
     booking_store,
     equipment_store,
     event_store,
+    events,
     notification_store,
     registration_store,
     safety_decision_store,
+    supabase_client,
     venue_store,
     venue_unavailability_store,
 )
@@ -38,6 +42,7 @@ from app.safety_decision_store import InMemorySafetyDecisions
 from app.users import InMemoryUsers, User, use_repository
 from app.venue_store import InMemoryVenues, Venue
 from app.venue_unavailability_store import InMemoryUnavailability
+from tests.fakes import FakeClient
 
 #: The password every fixture account signs in with. The suite owns it;
 #: nothing outside the tests depends on the value.
@@ -82,6 +87,11 @@ TECH_SUPPORT_ID = 6
 #: Well clear of the ids tests add their own users under (7, 8, 99).
 ATTENDEE_ID = 20
 SECOND_ATTENDEE_ID = 21
+
+#: The suite's "today". Fixture events are dated from November 2026 on, so
+#: against the real clock they would start failing as "in the past" once those
+#: days passed. Before every fixture date, so all of them stay in the future.
+TODAY = date(2026, 10, 1)
 
 
 def fixture_users() -> list[User]:
@@ -142,6 +152,13 @@ def fixture_users() -> list[User]:
             role=Role.ATTENDEE,
         ),
     ]
+
+
+@pytest.fixture(autouse=True)
+def pinned_today(monkeypatch):
+    """Measure "in the past" from `TODAY`, not from the day the suite runs."""
+    monkeypatch.setattr(events, "_today", lambda: TODAY)
+    return TODAY
 
 
 @pytest.fixture(autouse=True)
@@ -284,6 +301,14 @@ def equipment_repository():
     previous = equipment_store.use_repository(store)
     yield store
     equipment_store.use_repository(previous)
+
+
+@pytest.fixture
+def fake(monkeypatch) -> FakeClient:
+    """The Supabase admin client, replaced by the recorder in `tests.fakes`."""
+    recorder = FakeClient()
+    monkeypatch.setattr(supabase_client, "admin", lambda: recorder)
+    return recorder
 
 
 @pytest.fixture

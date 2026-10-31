@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import EventDetailPage from './EventDetailPage'
 import { MISSING_MESSAGES, NO_NEEDS, NOT_REQUIRED } from '../eventNeeds'
 import {
@@ -112,7 +112,15 @@ const event: EventRecord = {
   history: [],
 }
 
+// Fixture events are dated November 2026. Against the real clock they would
+// start failing as "in the past" once those days went by, so today is pinned
+// before all of them. Only Date is faked: timers stay real for user-event.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-01T09:00:00') })
+})
+
 afterEach(() => {
+  vi.useRealTimers()
   vi.resetAllMocks()
 })
 

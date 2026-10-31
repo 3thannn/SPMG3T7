@@ -133,7 +133,7 @@ page.getByLabel('Password')
 page.getByPlaceholder('Search events...')
 
 // By text
-page.getByText('Welcome to EventHub')
+page.getByText('Welcome to ConnectSphere')
 ```
 
 #### Interacting with Elements

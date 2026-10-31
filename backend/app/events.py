@@ -390,6 +390,16 @@ def _validated(draft: EventDraft) -> EventDraft:
     return draft
 
 
+def _today() -> date:
+    """The date "in the past" is measured from, kept in one place for the tests.
+
+    The suite's events are dated in late 2026. Read straight from the clock, they
+    would start being refused as past once those days went by, so the tests pin
+    this rather than every fixture chasing the calendar.
+    """
+    return date.today()
+
+
 def _validate_submission(event: Event) -> None:
     if not event.title.strip():
         raise _invalid("Give the event a title.")
@@ -407,7 +417,7 @@ def _validate_submission(event: Event) -> None:
         start_date = date.fromisoformat(event.starts_at[:10])
     except ValueError:
         raise _invalid("Give the event a valid date.") from None
-    if start_date < date.today():
+    if start_date < _today():
         raise _invalid("The start date cannot be in the past.")
     if event.ends_at and event.ends_at.strip():
         try:
@@ -693,7 +703,9 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
 
     # Coordinators can only edit submitted events (not drafts)
     # Owners can only edit their own draft events
-    if is_coordinator and event.status == EventStatus.DRAFT:
+    # Not reachable today: `_readable` already answers 404 to anyone but the
+    # owner for a draft. Kept so the rule survives a change to who can read one.
+    if is_coordinator and event.status == EventStatus.DRAFT:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -1961,7 +1973,7 @@ def _validated_booking(payload: BookingInput, event: Event) -> _ValidBooking:
     ends_at, end = _booking_time(payload.ends_at, which="end")
     if end <= start:
         raise _invalid_booking("The booking must end after it starts.")
-    if start.date() < date.today():
+    if start.date() < _today():
         raise _invalid_booking("A booking cannot start in the past.")
 
     needs = BookingNeeds(

@@ -21,8 +21,6 @@ tested as requests; the Supabase store is tested against a fake client, so
 every line of the feature runs without a database.
 """
 
-from datetime import date
-
 import pytest
 
 from app import change_requests, supabase_client
@@ -66,6 +64,7 @@ from tests.conftest import (
     PASSWORD,
     SUBMITTABLE_NEED_ATTRS,
     SUBMITTABLE_NEEDS,
+    TODAY,
 )
 
 DRAFT = {
@@ -851,8 +850,8 @@ class TestProposalValidation:
             {"purpose": "p" * PURPOSE_MAX},
             {"endsAt": "2027-11-02T18:01"},
             {
-                "startsAt": f"{date.today().isoformat()}T23:00",
-                "endsAt": f"{date.today().isoformat()}T23:59",
+                "startsAt": f"{TODAY.isoformat()}T23:00",
+                "endsAt": f"{TODAY.isoformat()}T23:59",
             },
             {"venueRequirements": "None / Not required", "preferredLayout": "Banquet"},
         ],

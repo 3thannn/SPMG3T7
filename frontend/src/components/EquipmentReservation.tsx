@@ -26,8 +26,12 @@ export default function EquipmentReservation({ request, session, onDecided, onRe
   }, [request.id, request.version, session, refresh])
   const stock = items?.find((item) => item.equipmentId === request.requestedEquipmentId)
   async function decide(reserve: boolean) {
+    // Not reachable from the card: both buttons are disabled while busy, and
+    // Reserve is disabled without enough stock. Kept as the rule itself.
+    /* v8 ignore next */
     if (busy) return
     if (!reserve && !reason.trim()) { setError('Give a reason for marking this request Unavailable.'); return }
+    /* v8 ignore next */
     if (reserve && (!stock || stock.shortfall > 0)) return
     setBusy(true)
     setError('')

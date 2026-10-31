@@ -14,9 +14,6 @@ interface Props {
   session: Session
 }
 
-type SortField = 'title' | 'submittedAt' | 'startsAt' | 'expectedAttendance' | 'organiserName'
-type SortDirection = 'asc' | 'desc'
-
 /**
  * US8.2 + US8.3: Coordinator Lead's landing page - unassigned event queue.
  *
@@ -32,10 +29,7 @@ export default function UnassignedQueuePage({ session }: Props) {
   const [assignError, setAssignError] = useState('')
   const [assignSuccess, setAssignSuccess] = useState('')
 
-  // Search and sort state
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortField] = useState<SortField>('submittedAt')
-  const [sortDirection] = useState<SortDirection>('asc')
 
   // Load unassigned events
   useEffect(() => {
@@ -88,43 +82,12 @@ export default function UnassignedQueuePage({ session }: Props) {
       )
     }
 
-    // Apply sorting
-    const sorted = [...filtered].sort((a, b) => {
-      let aVal: string | number | null
-      let bVal: string | number | null
-
-      switch (sortField) {
-        case 'title':
-          aVal = a.title.toLowerCase()
-          bVal = b.title.toLowerCase()
-          break
-        case 'submittedAt':
-          aVal = a.submittedAt
-          bVal = b.submittedAt
-          break
-        case 'startsAt':
-          aVal = a.startsAt ?? ''
-          bVal = b.startsAt ?? ''
-          break
-        case 'expectedAttendance':
-          aVal = a.expectedAttendance ?? 0
-          bVal = b.expectedAttendance ?? 0
-          break
-        case 'organiserName':
-          aVal = a.organiserName.toLowerCase()
-          bVal = b.organiserName.toLowerCase()
-          break
-        default:
-          return 0
-      }
-
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
-      return 0
-    })
-
-    return sorted
-  }, [events, searchQuery, sortField, sortDirection])
+    // US8.2: oldest submission first, so the event waiting longest is on top.
+    // The sort controls went in 9770658; this was the order they defaulted to.
+    return [...filtered].sort((a, b) =>
+      a.submittedAt < b.submittedAt ? -1 : a.submittedAt > b.submittedAt ? 1 : 0,
+    )
+  }, [events, searchQuery])
 
   async function handleAssign(eventId: string, coordinatorId: string) {
     setAssigningEvent(eventId)

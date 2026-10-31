@@ -84,6 +84,8 @@ so running one twice is a no-op.
 | [`SUPABASE_US20_2_WITHDRAW.sql`](backend/SUPABASE_US20_2_WITHDRAW.sql) | US20.2 withdrawing: the Withdrawn status, `withdrawn_at` and `withdraw_registration`. Run after the US20.1 script | My Registrations and withdrawing return 500; registering and every other route are unaffected |
 | [`SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql`](backend/SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql) | US4.6 with registrations: cancelling marks them Event Cancelled and closes registration. Run after the US4.6 and US20.2 scripts | Cancelling still works, but registrations stay Registered on the cancelled event and registered Attendees are not told |
 | [`SUPABASE_US9_5_DELETE_VENUE_HISTORY.sql`](backend/SUPABASE_US9_5_DELETE_VENUE_HISTORY.sql) | US9.5: deleting a venue with no future bookings deletes its past and closed bookings with it, and the database refuses the delete while one is still to come. Run after the US14.3 and US12.2 scripts | Venues with only past or closed bookings still cannot be deleted: the API answers 500 when it tries |
+| [`SUPABASE_FIX_DECISION_RECORDED.sql`](backend/SUPABASE_FIX_DECISION_RECORDED.sql) | US4.6 alongside US12.2 and US14.5: one definition of `venue_bookings_decision_recorded` with every story's exception. Run after the US12.2 and US14.5 scripts | **Cancelling an event with a Confirmed booking returns 500**: the US12.2 script redefined the constraint without US4.6's exception for cancelled bookings |
+| [`SUPABASE_FIX_UNAVAILABILITY_NOTICE.sql`](backend/SUPABASE_FIX_UNAVAILABILITY_NOTICE.sql) | US12.2: puts back the committed `flag_bookings_for_unavailability()`, whose notice must carry no status. Only needed where the live function was changed outside the repo | **Marking a venue unavailable over an existing booking returns 500** (the browser says CORS): the notice violates `notifications_kind_valid` |
 | [`SUPABASE_US17_2_SAFETY_DECISIONS.sql`](backend/SUPABASE_US17_2_SAFETY_DECISIONS.sql) | US17.2 Safety Officer decisions: the `safety_reviews` and `safety_review_flags` tables, `record_safety_decision`, the re-review check in `send_event_to_safety_check`, and the `safety-rejected` notice kind. Run after the US4.4 and US20.1 scripts | Recording a safety decision, listing an event's decisions, resolving a flag and checking safety-check readiness return 500; every other route is unaffected |
 | [`SUPABASE_ADD_EVENT_NEEDS.sql`](backend/SUPABASE_ADD_EVENT_NEEDS.sql) | US2.1 (Sprint 3) mandatory event needs; run after the US4.5 script | **`GET /events` and every event page return 500**: each event read selects the new columns |
 | [`SUPABASE_ADD_VENUE_TURNAROUND.sql`](backend/SUPABASE_ADD_VENUE_TURNAROUND.sql) | US9.4 venue setup and turnaround time; run after the US14.1 script | **All five `/venues` routes return 500**: each venue read selects the new columns |
@@ -179,9 +181,55 @@ API running — there is no way past the form without it.
 These are exactly what CI runs, so green here means green there.
 
 ```bash
-cd backend  && ruff check . && python -m compileall -q app && pytest
-cd frontend && npm run lint && npm run build && npm test
+cd backend  && ruff check . && python -m compileall -q app && pytest --cov
+cd frontend && npm run lint && npm run build && npm test -- --coverage
 ```
+
+## Test coverage
+
+Both halves measure coverage in CI, and the build fails if it drops.
+
+| Half | Lines | Branches | Enforced by |
+| ---- | ----- | -------- | ----------- |
+| Backend (`app/`) | 100% | 100% | `fail_under = 100` in [`backend/pyproject.toml`](backend/pyproject.toml) |
+| Frontend (`src/`) | 100% | 94.8% | `thresholds` in [`frontend/vite.config.ts`](frontend/vite.config.ts) |
+
+Frontend lines, statements and functions are all at 100%. The branches still
+missing are mostly fallbacks in the page markup, such as a venue with no name
+showing "Unnamed venue". Raise `branches` in `vite.config.ts` as they are
+covered.
+
+### What is excluded, and why
+
+Each exclusion is marked in the code with the reason beside it.
+
+| Where | What | Why it cannot run |
+| ----- | ---- | ----------------- |
+| `frontend/src/main.tsx` | The whole file | It only mounts `<App />` into the page. |
+| `frontend/src/test/` | The whole folder | Test helpers, not product code. |
+| `backend/app/events.py`, `save_event` | "Coordinators can only edit submitted events" | `_readable` already answers 404 to anyone but the owner for a draft. Kept so the rule survives a change to who can read one. |
+| `frontend/src/components/EventBookings.tsx` | Blank cancellation reason; no replacement venue chosen | Each button is disabled until the field is filled. |
+| `frontend/src/pages/EventDetailPage.tsx` | Blank clarification request; blank rejection reason | Each button is disabled until the text is typed. |
+| `frontend/src/components/EquipmentReservation.tsx` | Deciding while busy; reserving without stock | Both buttons are disabled in exactly those states. |
+| `frontend/src/App.tsx` | `if (!session)` before the signed-in routes | Narrows the type only: every route without a session has already returned. |
+
+### What coverage does not measure
+
+Coverage counts the Python and TypeScript. It does not count the SQL functions
+in `backend/SUPABASE_*.sql`, and several rules live there: approving a booking
+under a lock on the venue, the conflict check, registering for a place,
+recording a safety decision. Those are tested against a real database by the
+`*_db.py` tests in `backend/tests/` and by `backend/integration/`. They need a
+database, so they are opt-in: set `SPMG3T7_DB_TESTS=1` (or `US19_DB_TEST_URL`)
+with `SUPABASE_DB_URL` in `backend/.env`. CI runs only
+`integration/test_unavailability_db.py` today.
+
+### Dates in the tests
+
+Fixture events are dated in late 2026. To stop them being refused as "in the
+past" once those days go by, the backend suite pins today to 1 October 2026
+(`TODAY` and `pinned_today` in `backend/tests/conftest.py`). The frontend tests
+that submit events pin `Date` the same way.
 
 ## How the two halves connect
 

@@ -76,7 +76,7 @@ export default function LandingPage({ session }: LandingPageProps) {
         </div>
 
         <div className="shell landing-hero-inner">
-          <h1>EventHub</h1>
+          <h1>ConnectSphere</h1>
 
           <p className="landing-lede">
             Plan it, submit it, track it. One place for organisers and coordinators to see

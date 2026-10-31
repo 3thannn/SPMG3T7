@@ -349,6 +349,9 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
   /** US14.2: cancel this one booking, then swap it in place in the list. */
   function confirmCancel(booking: BookingRecord) {
     const reason = cancelling?.reason.trim() ?? ''
+    // Not reachable from the card: Cancel booking stays disabled until a reason
+    // is typed. Kept so the rule survives a change to that button.
+    /* v8 ignore next */
     if (!reason) {
       setCancelError('Give a reason for cancelling this booking.')
       return
@@ -411,6 +414,9 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
 
   /** US14.5: request the selected replacement venue. */
   function confirmReplacement(booking: BookingRecord) {
+    // Not reachable from the card: Request replacement stays disabled until a
+    // venue is chosen. Kept so the rule survives a change to that button.
+    /* v8 ignore next */
     if (!selectedReplacementVenue) {
       setReplacementError('Choose a replacement venue.')
       return
