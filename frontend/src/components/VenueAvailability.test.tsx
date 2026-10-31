@@ -316,3 +316,23 @@ describe('the range helpers', () => {
     expect(validateAvailabilityRange(range)).toBe(problem)
   })
 })
+
+
+it('shows a range day it cannot read as the server sent it', async () => {
+  answer([], { from: 'someday', to: 'someday' })
+  render(<VenueAvailability venueId="1" session={session} today={TODAY} />)
+
+  expect(await screen.findByText(/from someday to\s+someday/)).toBeInTheDocument()
+})
+
+it('ignores a failure that lands after the card has gone', async () => {
+  let fail!: (error: Error) => void
+  getAvailabilityMock.mockReturnValue(new Promise((_resolve, reject) => (fail = reject)))
+  const { unmount } = render(<VenueAvailability venueId="1" session={session} today={TODAY} />)
+
+  unmount()
+  fail(new TypeError('Failed to fetch'))
+  await Promise.resolve()
+
+  expect(getAvailabilityMock).toHaveBeenCalledTimes(1)
+})

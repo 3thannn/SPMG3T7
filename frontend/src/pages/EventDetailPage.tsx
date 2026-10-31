@@ -268,6 +268,9 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   /** US7.3: attach the message and move the event to Under Review. */
   async function handleRequestClarification() {
     const message = clarification.trim()
+    // Not reachable from the page: the button stays disabled until a message is
+    // typed. Kept so the rule survives a change to that button.
+    /* v8 ignore next */
     if (!message) {
       setBanner({ kind: 'error', text: 'Say what you need from the Organiser.' })
       return
@@ -319,6 +322,9 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
   async function handleReject() {
     const reason = rejectionReason.trim()
+    // Not reachable from the page: Reject stays disabled until a reason is
+    // typed. Kept so the rule survives a change to that button.
+    /* v8 ignore next */
     if (!reason) {
       setBanner({ kind: 'error', text: 'Give the Organiser a reason for rejecting this event.' })
       return

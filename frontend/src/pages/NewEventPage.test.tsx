@@ -9,9 +9,9 @@
  * the right things and refusing what the columns cannot hold.
  */
 
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import NewEventPage, { SUBMIT_BLOCKED } from './NewEventPage'
 import { createEvent, EventRuleError, submitEvent, type EventRecord } from '../eventsStore'
 import { MISSING_MESSAGES, NO_NEEDS, NOT_REQUIRED } from '../eventNeeds'
@@ -27,7 +27,15 @@ vi.mock('../eventsStore', async (importOriginal) => ({
 const createEventMock = vi.mocked(createEvent)
 const submitEventMock = vi.mocked(submitEvent)
 
+// Fixture events are dated November 2026. Against the real clock they would
+// start failing as "in the past" once those days went by, so today is pinned
+// before all of them. Only Date is faked: timers stay real for user-event.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-01T09:00:00') })
+})
+
 afterEach(() => {
+  vi.useRealTimers()
   vi.resetAllMocks()
 })
 
@@ -469,5 +477,80 @@ describe('US2.1 — expected attendance upper bound', () => {
 
     await waitFor(() => expect(createEventMock).toHaveBeenCalled())
     expect(createEventMock.mock.calls[0][0].expectedAttendance).toBe(2147483647)
+  })
+})
+
+
+describe('checks the form makes before sending anything', () => {
+  it.each([
+    ['Title', 'Keep the title to'],
+    ['Purpose', 'Keep the purpose to'],
+  ])('%s over its limit, even past the input that normally stops it', async (label, message) => {
+    const user = userEvent.setup()
+    render(<NewEventPage session={organiser} />)
+
+    fireEvent.change(screen.getByLabelText(label), { target: { value: 'x'.repeat(5000) } })
+    await user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+    expect(await screen.findByText(new RegExp(message))).toBeInTheDocument()
+    expect(createEventMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [{ Starts: '2026-09-01T18:00' }, 'The start date cannot be in the past.'],
+    [{ 'Expected attendance': '0' }, 'Expected attendance must be at least 1.'],
+    [{ Ends: '2026-11-02T17:00' }, 'The end date must be after the start date.'],
+  ])('submitting with %o says %s', async (fields, message) => {
+    const user = userEvent.setup()
+    render(<NewEventPage session={organiser} />)
+    await fillRequired(user)
+    for (const [label, value] of Object.entries(fields)) {
+      await user.clear(screen.getByLabelText(label))
+      await user.type(screen.getByLabelText(label), value)
+    }
+
+    await user.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(submitEventMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('getting around', () => {
+  afterEach(() => {
+    window.location.hash = ''
+  })
+
+  it('a stray form submit saves a draft instead of reloading the page', async () => {
+    const user = userEvent.setup()
+    createEventMock.mockResolvedValue(created)
+    render(<NewEventPage session={organiser} />)
+    await user.type(screen.getByLabelText('Title'), 'Faculty Welcome Night')
+
+    const submitted = fireEvent.submit(screen.getByLabelText('Title').closest('form')!)
+
+    expect(submitted).toBe(false)
+    await waitFor(() => expect(createEventMock).toHaveBeenCalled())
+  })
+
+  it.each([
+    ['the back link', () => screen.getByRole('link', { name: /Events/ })],
+    ['Cancel', () => screen.getByRole('button', { name: 'Cancel' })],
+  ])('%s returns to the events list', async (_name, find) => {
+    const user = userEvent.setup()
+    render(<NewEventPage session={organiser} />)
+
+    await user.click(find())
+
+    expect(window.location.hash).toBe('#/events')
+  })
+
+  it('a role that cannot create events is sent back to the list', async () => {
+    const user = userEvent.setup()
+    render(<NewEventPage session={buildSession({ role: 'Event Coordinator', id: '2' })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Back to events' }))
+
+    expect(window.location.hash).toBe('#/events')
   })
 })

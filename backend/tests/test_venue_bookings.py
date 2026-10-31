@@ -11,14 +11,13 @@ conftest. No bookings exist until a test requests one.
 """
 
 from dataclasses import replace
-from datetime import date
 
 import pytest
 
 from app.booking_store import BookingStatus
 from app.event_status import BOOKABLE, BookingRefusal, EventStatus, check_booking
 from app.event_store import Event
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS, TODAY
 
 EVENT_ID = 900
 GREAT_HALL = "1"
@@ -558,7 +557,7 @@ class TestRefusals:
 
 def test_a_booking_starting_today_is_accepted(client, auth_headers, event):
     """The past is judged by date, so a time earlier today is not refused as past."""
-    today = date.today().isoformat()
+    today = TODAY.isoformat()
 
     response = request(
         client,

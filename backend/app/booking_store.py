@@ -382,8 +382,6 @@ class Repository(Protocol):
 
     def count_flagged_by_unavailability(self, unavailability_id: int) -> int: ...
 
-    def mark_replaced(self, booking_id: int) -> Booking: ...
-
     def request_replacement(self, booking_id: int, *, venue_id: int, actor_id: int) -> Booking: ...
 
 
@@ -740,26 +738,6 @@ class SupabaseBookings:
         )
         return [to_booking(row) for row in rows]
 
-    def mark_replaced(self, booking_id: int) -> Booking:
-        """US14.5: NEEDS_REPLACEMENT -> REPLACED, kept for history.
-
-        Only matches a booking that is still NEEDS_REPLACEMENT, so two
-        replacement requests cannot both succeed. Nothing else is written.
-        """
-        updated = (
-            supabase_client.admin()
-            .table(TABLE)
-            .update({"status": str(BookingStatus.REPLACED)})
-            .eq("id", booking_id)
-            .eq("status", str(BookingStatus.NEEDS_REPLACEMENT))
-            .execute()
-        )
-        if not updated.data:
-            raise StaleBookingStatus
-        booking = self.get_booking(booking_id)
-        assert booking is not None  # noqa: S101 — the row was just updated
-        return booking
-
 
 def _sort_key(booking: Booking) -> tuple[str, str, int]:
     return (booking.starts_at, booking.ends_at, booking.id)
@@ -1072,15 +1050,6 @@ class InMemoryBookings:
                 decision=self._decision(actor_id, reason, suggestion),
             ),
         )
-
-    def mark_replaced(self, booking_id: int) -> Booking:
-        """US14.5: NEEDS_REPLACEMENT -> REPLACED, kept for history."""
-        existing = self.get_booking(booking_id)
-        if existing is None or existing.status is not BookingStatus.NEEDS_REPLACEMENT:
-            raise StaleBookingStatus
-        replaced = replace(existing, status=BookingStatus.REPLACED)
-        self.bookings = [replaced if b.id == booking_id else b for b in self.bookings]
-        return replaced
 
 
 _repository: Repository = SupabaseBookings()

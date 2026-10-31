@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 from postgrest.exceptions import APIError
 
+from app.equipment_store import EquipmentRequest
 from app.event_status import EventStatus
 from app.permissions import Role
 from app.users import User
@@ -672,3 +673,233 @@ def test_database_planning_race_has_clear_conflict_and_no_audit_entry(
         client.get(f"/events/{planning_event}/equipment-history", headers=actors["coord"]).json()
         == []
     )
+
+
+# -- Refusals and database errors the paths above never reach ----------------
+
+
+def database_error(code: str, message: str) -> APIError:
+    return APIError({"code": code, "details": None, "hint": None, "message": message})
+
+
+def raising(error: APIError):
+    def fail(*_args, **_kwargs):
+        raise error
+
+    return fail
+
+
+def legacy_line(**overrides) -> EquipmentRequest:
+    """A request row as stored, for states the routes can no longer create."""
+    fields = dict(
+        id=50,
+        event_id=1,
+        equipment_type="Microphone",
+        quantity=1,
+        technical_requirements="",
+        support_notes="",
+        starts_at="2027-11-02T09:00",
+        ends_at="2027-11-02T17:00",
+        status="Requested",
+        requested_by_id=COORDINATOR_ID,
+        created_at="2026-10-01T09:00:00",
+        version=1,
+    )
+    return EquipmentRequest(**{**fields, **overrides})
+
+
+@pytest.mark.parametrize("raw", ["abc", "0", "-3"], ids=["not-a-number", "zero", "negative"])
+def test_an_id_that_cannot_name_an_item_is_not_found(client, actors, raw):
+    response = client.get(f"/equipment/{raw}", headers=actors["tech"])
+
+    assert response.status_code == 404
+
+
+def test_a_name_over_255_characters_is_refused(client, actors):
+    response = client.post("/equipment", json={**ITEM, "name": "x" * 256}, headers=actors["tech"])
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["message"] == "Name or type is too long."
+
+
+def test_updating_a_missing_item_is_not_found(client, actors):
+    response = client.put("/equipment/999", json=ITEM, headers=actors["tech"])
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "equipment_not_found"
+
+
+def test_an_unexpected_database_error_on_save_is_not_disguised_as_a_conflict(
+    client, actors, item, equipment_repository, monkeypatch
+):
+    monkeypatch.setattr(
+        equipment_repository, "save_item", raising(database_error("XX000", "disk full"))
+    )
+
+    with pytest.raises(APIError):
+        client.put(f"/equipment/{item['id']}", json=ITEM, headers=actors["tech"])
+
+
+def test_deleting_an_item_the_database_says_is_reserved_is_a_conflict(
+    client, actors, item, equipment_repository, monkeypatch
+):
+    monkeypatch.setattr(
+        equipment_repository,
+        "delete_item",
+        raising(database_error("P0001", "Equipment has active reservations")),
+    )
+
+    response = client.delete(f"/equipment/{item['id']}", headers=actors["tech"])
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["message"] == "This item has active reservations."
+
+
+def test_a_type_only_request_from_before_exact_items_still_protects_its_type(
+    client, actors, item, equipment_repository
+):
+    """Rows written before US19 named an exact item ask only for a type."""
+    equipment_repository.requests.append(
+        legacy_line(equipment_type="microphone", requested_equipment_id=None)
+    )
+
+    response = client.delete(f"/equipment/{item['id']}", headers=actors["tech"])
+
+    assert response.status_code == 409
+    assert "Active equipment requests still need this type" in (
+        response.json()["detail"]["message"]
+    )
+
+
+def test_an_unexpected_database_error_on_a_request_is_raised_not_hidden(
+    client, actors, planning_event, item, equipment_repository, monkeypatch
+):
+    monkeypatch.setattr(
+        equipment_repository, "create_request", raising(database_error("XX000", "disk full"))
+    )
+
+    with pytest.raises(APIError):
+        client.post(
+            f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
+        )
+
+
+def test_times_that_are_not_times_are_refused(client, actors, planning_event, item):
+    response = client.post(
+        f"/events/{planning_event}/equipment-requests",
+        json={**LINE, "startsAt": "after lunch", "endsAt": "teatime"},
+        headers=actors["coord"],
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["message"] == "Enter valid start and end times."
+
+
+def test_availability_for_a_missing_request_is_not_found(client, actors):
+    response = client.get("/equipment-requests/999/availability", headers=actors["tech"])
+
+    assert response.status_code == 404
+
+
+@pytest.fixture
+def open_line(client, actors, planning_event, item) -> dict:
+    response = client.post(
+        f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_an_unexpected_database_error_on_a_decision_is_raised(
+    client, actors, item, open_line, equipment_repository, monkeypatch
+):
+    monkeypatch.setattr(
+        equipment_repository, "decide", raising(database_error("XX000", "disk full"))
+    )
+
+    with pytest.raises(APIError):
+        client.post(
+            f"/equipment-requests/{open_line['id']}/reserve",
+            json={"version": 1, "equipmentId": int(item["id"])},
+            headers=actors["tech"],
+        )
+
+
+def test_editing_a_missing_request_is_not_found(client, actors):
+    response = client.patch(
+        "/equipment-requests/999", json={"version": 1}, headers=actors["coord"]
+    )
+
+    assert response.status_code == 404
+
+
+def test_a_request_whose_event_is_gone_is_not_found(client, actors, equipment_repository):
+    equipment_repository.requests.append(legacy_line(id=60, event_id=999))
+
+    response = client.patch(
+        "/equipment-requests/60", json={"version": 1, "quantity": 2}, headers=actors["tech"]
+    )
+
+    assert response.status_code == 404
+
+
+def test_an_edit_that_lost_a_race_to_the_event_leaving_planning_is_a_conflict(
+    client, actors, open_line, equipment_repository, monkeypatch
+):
+    monkeypatch.setattr(
+        equipment_repository,
+        "update_request",
+        raising(database_error("P0001", "Equipment requests can only change while Planning")),
+    )
+
+    response = client.patch(
+        f"/equipment-requests/{open_line['id']}",
+        json={"version": 1, "quantity": 2},
+        headers=actors["coord"],
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "rule_refused"
+
+
+def test_an_edit_that_matched_no_row_is_stale(
+    client, actors, open_line, equipment_repository, monkeypatch
+):
+    monkeypatch.setattr(equipment_repository, "update_request", lambda *_args: None)
+
+    response = client.patch(
+        f"/equipment-requests/{open_line['id']}",
+        json={"version": 1, "quantity": 2},
+        headers=actors["coord"],
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "stale_request"
+
+
+def test_a_removal_that_lost_a_race_to_the_event_leaving_planning_is_a_conflict(
+    client, actors, open_line, equipment_repository, monkeypatch
+):
+    monkeypatch.setattr(
+        equipment_repository,
+        "delete_request",
+        raising(database_error("P0001", "Equipment requests can only change while Planning")),
+    )
+
+    response = client.delete(
+        f"/equipment-requests/{open_line['id']}?version=1", headers=actors["coord"]
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "rule_refused"
+
+
+def test_an_unexpected_database_error_on_delete_is_raised_not_hidden(
+    client, actors, item, equipment_repository, monkeypatch
+):
+    monkeypatch.setattr(
+        equipment_repository, "delete_item", raising(database_error("XX000", "disk full"))
+    )
+
+    with pytest.raises(APIError):
+        client.delete(f"/equipment/{item['id']}", headers=actors["tech"])

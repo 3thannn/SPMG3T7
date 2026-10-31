@@ -8,3 +8,15 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+# `pytest --cov` measures app/ by line and by branch, and fails under 100%.
+# Code that cannot run is excluded with `# pragma: no cover` and a comment
+# saying why; the README lists every exclusion.
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 100

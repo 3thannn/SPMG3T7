@@ -52,8 +52,8 @@ jobs:
       - name: Build (byte-compile all sources)
         run: python -m compileall -q app
 
-      - name: Test
-        run: pytest
+      - name: Test, failing under 100% line and branch coverage
+        run: pytest --cov
 
       - name: Test database migrations and review RPCs
         env:
@@ -84,5 +84,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Test
-        run: npm test
+      - name: Test, failing under the coverage thresholds in vite.config.ts
+        run: npm test -- --coverage

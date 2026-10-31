@@ -297,3 +297,7 @@ describe('registering for events (US20.1)', () => {
     expect(canOpen(buildSession({ role: 'Attendee' }), '/notifications')).toBe(true)
   })
 })
+
+it('opens equipment details to everyone who can read the catalogue', () => {
+  expect(guardFor('/equipment/5')?.anyOf).toEqual(['equipment:read'])
+})

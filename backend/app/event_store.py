@@ -605,66 +605,6 @@ class SupabaseEvents:
         assert saved is not None  # noqa: S101
         return saved
 
-    def create_event_request(
-        self,
-        *,
-        name: str,
-        purpose: str,
-        description: str,
-        starts_at: str,
-        ends_at: str,
-        expected_attendance: int,
-        organiser_id: int,
-    ) -> Event:
-        """Event Request Creation: the row lands already Submitted.
-
-        The audit row is written in the same breath, for the reason the module
-        docstring gives: `status_changes.old_status` is NOT NULL, so there is no
-        entry that can mean "created straight into Submitted". Recording
-        Draft -> Submitted at the creation timestamp keeps the trail honest
-        about what happened — the event did exist as a draft, for no time at
-        all — and keeps the derived creation entry meaning what it always meant.
-
-        Direct creation leaves the event unassigned for the Lead's queue.
-        """
-        at = _now()
-        created = (
-            supabase_client.admin()
-            .table(EVENTS_TABLE)
-            .insert(
-                {
-                    "name": name,
-                    "purpose": purpose,
-                    "description": description,
-                    "proposed_date": starts_at,
-                    "end_date": ends_at,
-                    "expected_attendance": expected_attendance,
-                    "status": str(EventStatus.SUBMITTED),
-                    "organiser_id": organiser_id,
-                    "coordinator_id": None,
-                    "created_at": at,
-                    "updated_at": at,
-                    "submitted_at": at,
-                }
-            )
-            .execute()
-        )
-        event_id = created.data[0]["id"]
-        supabase_client.admin().table(CHANGES_TABLE).insert(
-            {
-                "event_id": event_id,
-                "old_status": str(EventStatus.DRAFT),
-                "new_status": str(EventStatus.SUBMITTED),
-                "changed_by_id": organiser_id,
-                "changed_at": at,
-            }
-        ).execute()
-        # Read back rather than assembled here: the insert response carries no
-        # embedded organiser name, exactly as in `create_event`.
-        event = self.get_event(event_id)
-        assert event is not None  # noqa: S101 — the row was just inserted
-        return event
-
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
         """Move the event and write the audit entry US4.2 requires.
 
@@ -1129,48 +1069,6 @@ class InMemoryEvents:
         return self._replace(
             replace(saved, arrangement_review_pending=pending or current.arrangement_review_pending)
         )
-
-    def create_event_request(
-        self,
-        *,
-        name: str,
-        purpose: str,
-        description: str,
-        starts_at: str,
-        ends_at: str,
-        expected_attendance: int,
-        organiser_id: int,
-    ) -> Event:
-        """The same two writes as the Supabase store, and the same history.
-
-        Direct creation leaves the event unassigned for the Lead's queue."""
-        at = _now()
-        self.next_id += 1
-        event = Event(
-            id=self.next_id,
-            title=name,
-            purpose=purpose,
-            description=description,
-            starts_at=starts_at,
-            ends_at=ends_at,
-            expected_attendance=expected_attendance,
-            status=EventStatus.SUBMITTED,
-            organiser_id=organiser_id,
-            organiser_name=self.names.get(organiser_id, ""),
-            created_at=at,
-            updated_at=at,
-            coordinator_id=None,
-        )
-        submission = StatusChange(
-            from_status=EventStatus.DRAFT,
-            to_status=EventStatus.SUBMITTED,
-            at=at,
-            by_id=organiser_id,
-            by_name=self.names.get(organiser_id, ""),
-        )
-        event = replace(event, history=(creation_entry(event), submission))
-        self.events.insert(0, event)
-        return event
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
         """US8.2: Moving to Submitted leaves coordinator_id as NULL (auto-assignment OFF)."""

@@ -4,7 +4,7 @@
  * Tests that the Lead can view unassigned events and assign coordinators.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import UnassignedQueuePage from './UnassignedQueuePage'
@@ -224,4 +224,127 @@ it('allows canceling coordinator selection', async () => {
   // Picker should be hidden, assign button should be back
   expect(screen.queryByText(/Select a coordinator to assign this event to/)).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Assign Coordinator/ })).toBeInTheDocument()
+})
+
+
+it('lists the event that has waited longest first', async () => {
+  listUnassignedEventsMock.mockResolvedValue([
+    buildUnassignedEvent({ id: '102', title: 'Later', submittedAt: '2027-02-03T10:00:00+08:00' }),
+    buildUnassignedEvent({ id: '103', title: 'Earliest', submittedAt: '2027-01-15T10:00:00+08:00' }),
+    buildUnassignedEvent({ id: '104', title: 'Middle', submittedAt: '2027-02-01T10:00:00+08:00' }),
+    buildUnassignedEvent({ id: '105', title: 'Same time', submittedAt: '2027-02-01T10:00:00+08:00' }),
+  ])
+  listCoordinatorsMock.mockResolvedValue(coordinators)
+
+  render(<UnassignedQueuePage session={lead} />)
+  await screen.findByText('Earliest')
+
+  const titles = screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)
+  expect(titles).toEqual(['Earliest', 'Middle', 'Same time', 'Later'])
+})
+
+it('narrows the queue by title, organiser, purpose or description, and clears', async () => {
+  const user = userEvent.setup()
+  listUnassignedEventsMock.mockResolvedValue([
+    buildUnassignedEvent(),
+    buildUnassignedEvent({
+      id: '102',
+      title: 'Workshop Series',
+      organiserName: 'Mei Lin',
+      purpose: null,
+      description: 'Hands-on sessions',
+    }),
+    buildUnassignedEvent({ id: '103', title: 'Alumni Night', purpose: null, description: null }),
+  ])
+  listCoordinatorsMock.mockResolvedValue(coordinators)
+  render(<UnassignedQueuePage session={lead} />)
+  await screen.findByText('Tech Conference')
+  const search = screen.getByPlaceholderText('Search events...')
+
+  for (const [query, shown] of [
+    ['workshop', 'Workshop Series'],
+    ['MEI', 'Workshop Series'],
+    ['annual tech', 'Tech Conference'],
+    ['hands-on', 'Workshop Series'],
+  ]) {
+    await user.clear(search)
+    await user.type(search, query)
+    expect(screen.getByText(shown)).toBeInTheDocument()
+    expect(screen.queryByText('Alumni Night')).not.toBeInTheDocument()
+  }
+
+  await user.click(screen.getByRole('button', { name: 'Clear search' }))
+
+  expect(screen.getByText('Tech Conference')).toBeInTheDocument()
+  expect(screen.getByText('Workshop Series')).toBeInTheDocument()
+  expect(screen.getByText('Alumni Night')).toBeInTheDocument()
+})
+
+it('clears the success message after five seconds', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    listUnassignedEventsMock.mockResolvedValue([buildUnassignedEvent()])
+    listCoordinatorsMock.mockResolvedValue(coordinators)
+    assignCoordinatorMock.mockResolvedValue()
+    render(<UnassignedQueuePage session={lead} />)
+
+    await user.click(await screen.findByRole('button', { name: /Assign Coordinator/ }))
+    await user.click(screen.getByRole('button', { name: /Alice Chen/ }))
+    expect(await screen.findByText(/Event assigned to Alice Chen successfully!/)).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+
+    expect(screen.queryByText(/Event assigned to Alice Chen successfully!/)).not.toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it.each([
+  ['the close button', () => userEvent.click(screen.getByRole('button', { name: 'Close' }))],
+  ['a click outside it', () => userEvent.click(document.querySelector('.modal-overlay')!)],
+])('closes the picker from %s, and not from a click inside it', async (_how, close) => {
+  listUnassignedEventsMock.mockResolvedValue([buildUnassignedEvent()])
+  listCoordinatorsMock.mockResolvedValue(coordinators)
+  render(<UnassignedQueuePage session={lead} />)
+  await userEvent.click(await screen.findByRole('button', { name: /Assign Coordinator/ }))
+
+  await userEvent.click(screen.getByText(/Select a coordinator to assign this event to/))
+  expect(screen.getByText(/Select a coordinator to assign this event to/)).toBeInTheDocument()
+
+  await close()
+
+  expect(screen.queryByText(/Select a coordinator to assign this event to/)).not.toBeInTheDocument()
+  expect(assignCoordinatorMock).not.toHaveBeenCalled()
+})
+
+it('ignores answers that arrive after the page has gone', async () => {
+  let deliverEvents!: (events: unassignedQueueStore.UnassignedEvent[]) => void
+  let deliverCoordinators!: (loaded: unassignedQueueStore.Coordinator[]) => void
+  listUnassignedEventsMock.mockReturnValue(new Promise((resolve) => (deliverEvents = resolve)))
+  listCoordinatorsMock.mockReturnValue(new Promise((resolve) => (deliverCoordinators = resolve)))
+  const { unmount } = render(<UnassignedQueuePage session={lead} />)
+
+  unmount()
+  deliverEvents([buildUnassignedEvent()])
+  deliverCoordinators(coordinators)
+  await Promise.resolve()
+
+  expect(listUnassignedEventsMock).toHaveBeenCalledTimes(1)
+})
+
+it('ignores a failure that arrives after the page has gone', async () => {
+  let fail!: (error: Error) => void
+  listUnassignedEventsMock.mockReturnValue(new Promise((_resolve, reject) => (fail = reject)))
+  listCoordinatorsMock.mockResolvedValue(coordinators)
+  const { unmount } = render(<UnassignedQueuePage session={lead} />)
+
+  unmount()
+  fail(new Error('Could not load unassigned events.'))
+  await Promise.resolve()
+
+  expect(listUnassignedEventsMock).toHaveBeenCalledTimes(1)
 })
