@@ -20,6 +20,7 @@ would leak one caller's identity into the next caller's request.
 
 from functools import lru_cache
 
+import httpx
 from supabase import Client, ClientOptions, create_client
 
 from app import config
@@ -29,12 +30,22 @@ _SERVER_SIDE = ClientOptions(auto_refresh_token=False, persist_session=False)
 
 
 @lru_cache(maxsize=1)
+def _admin_http() -> httpx.Client:
+    # PostgREST enables HTTP/2 by default. The shared HTTP/2 connection has
+    # disconnected under concurrent event-page reads; use pooled HTTP/1.1
+    # connections instead. Do not retry writes: an RPC may already have committed.
+    return httpx.Client(http2=False, timeout=120, follow_redirects=True)
+
+
+@lru_cache(maxsize=1)
 def admin() -> Client:
     """The service role client. Cached — it holds no per-caller state."""
     return create_client(
         config.supabase_url(),
         config.supabase_service_role_key(),
-        options=_SERVER_SIDE,
+        options=ClientOptions(
+            auto_refresh_token=False, persist_session=False, httpx_client=_admin_http()
+        ),
     )
 
 
@@ -66,3 +77,6 @@ def as_user(access_token: str) -> Client:
 def reset() -> None:
     """Drop the cached admin client — for tests, and after changing credentials."""
     admin.cache_clear()
+    if _admin_http.cache_info().currsize:
+        _admin_http().close()
+        _admin_http.cache_clear()
