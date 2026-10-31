@@ -59,7 +59,8 @@ type Loading = { state: 'loading' }
 type Loaded = { state: 'loaded'; event: EventRecord }
 type Missing = { state: 'missing' }
 type Forbidden = { state: 'forbidden' }
-type PageState = Loading | Loaded | Missing | Forbidden
+type Failed = { state: 'failed'; message: string }
+type PageState = Loading | Loaded | Missing | Forbidden | Failed
 
 function todayIso(): string {
   const now = new Date()
@@ -102,6 +103,7 @@ const NEED_LABELS: Record<keyof EventNeeds, string> = {
 
 export default function EventDetailPage({ eventId, session }: EventDetailPageProps) {
   const [page, setPage] = useState<PageState>({ state: 'loading' })
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [draft, setDraft] = useState({
     title: '',
     purpose: '',
@@ -149,11 +151,13 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
       }
       setPage({ state: 'loaded', event })
       setDraft(draftFrom(event))
+    }).catch((error: unknown) => {
+      if (!cancelled) setPage({ state: 'failed', message: unexpectedFailureMessage(error, 'load this event') })
     })
     return () => {
       cancelled = true
     }
-  }, [eventId, session])
+  }, [eventId, session, loadAttempt])
 
   useEffect(() => {
     if (page.state !== 'loaded' || page.event.status !== 'Confirmed') return
@@ -170,6 +174,16 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
         <p className="muted">Loading event…</p>
       </div>
     )
+  }
+
+  if (page.state === 'failed') {
+    return <div className="page shell">
+      <p role="alert" className="form-error">{page.message}</p>
+      <button type="button" className="btn btn-secondary" onClick={() => {
+        setPage({ state: 'loading' })
+        setLoadAttempt(attempt => attempt + 1)
+      }}>Retry loading event</button>
+    </div>
   }
 
   if (page.state === 'missing') {

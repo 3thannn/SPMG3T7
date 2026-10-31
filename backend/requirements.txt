@@ -4,6 +4,7 @@ uvicorn[standard]==0.52.4
 # Supabase: Postgres storage and Auth. The backend is the only thing that holds
 # these credentials — the browser talks to this API, never to Supabase directly.
 supabase==2.31.0
+httpx==0.28.1
 pydantic==2.11.7
 pydantic-settings==2.7.1
 # Loads backend/.env in local development. CI and deployments set real env vars.

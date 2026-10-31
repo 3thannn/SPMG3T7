@@ -1,0 +1,66 @@
+import { test, expect } from './ariel-fixtures'
+
+test.describe.configure({ timeout: 180_000 })
+
+test('SPMG3T7-39: Venue Staff create a validated venue; Coordinator is read-only', async ({ page, world }) => {
+  await world.open(page, 'venue', '/venues/new')
+  await page.getByRole('button', { name: 'Add venue', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  const name = `${world.prefix} UI venue`
+  await page.getByLabel('Name', { exact: true }).fill(name)
+  await page.getByLabel('Location', { exact: true }).fill('E2E store')
+  await page.getByLabel('Capacity', { exact: true }).fill('0')
+  await page.getByRole('button', { name: 'Add venue', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await page.getByLabel('Capacity', { exact: true }).fill('80')
+  const saved = page.waitForResponse(r => r.url().endsWith('/venues') && r.request().method() === 'POST')
+  await page.getByRole('button', { name: 'Add venue', exact: true }).click()
+  const response = await saved
+  expect(response.status()).toBe(201)
+  const venue = await response.json()
+  world.venues.push(venue.id)
+  await world.open(page, 'coordinator', `/venues/${venue.id}`)
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit venue', exact: true })).toHaveCount(0)
+  expect((await world.response('coordinator', 'POST', '/venues', { name: `${name} forbidden`, location: 'E2E', capacity: 40 })).status()).toBe(403)
+})
+
+test('SPMG3T7-63: Tech Support creates/edits stock; Coordinator reads usable quantity', async ({ page, world }) => {
+  await world.open(page, 'tech', '/equipment/new')
+  const name = `${world.prefix} UI equipment`
+  for (const [label, value] of [['Name', name], ['Type', `${world.prefix} type`], ['Location', 'E2E store'], ['Total quantity', '10'], ['Out-of-service quantity', '2']])
+    await page.getByLabel(label, { exact: true }).fill(value)
+  await page.getByRole('button', { name: 'Save equipment', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Give a reason')
+  await page.getByLabel('Out-of-service reason', { exact: true }).fill('Maintenance')
+  const created = page.waitForResponse(r => r.url().endsWith('/equipment') && r.request().method() === 'POST')
+  await page.getByRole('button', { name: 'Save equipment', exact: true }).click()
+  const response = await created
+  expect(response.status()).toBe(201)
+  const item = await response.json()
+  world.equipment.push(item.id)
+  await page.goto(`/#/equipment/${item.id}/edit`)
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue(name)
+  await page.getByLabel('Description', { exact: true }).fill('Updated test stock')
+  await page.getByRole('button', { name: 'Save equipment', exact: true }).click()
+  await expect(page).toHaveURL(/#\/equipment$/)
+  await world.open(page, 'coordinator', `/equipment/${item.id}`)
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+  await expect(page.getByText('Updated test stock', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Edit equipment', exact: true })).toHaveCount(0)
+  const stock = await world.call<{ usableQuantity: number }>('coordinator', 'GET', `/equipment/${item.id}`)
+  expect(stock.usableQuantity).toBe(8)
+  expect((await world.response('coordinator', 'PUT', `/equipment/${item.id}`, item)).status()).toBe(403)
+})
+
+test('SPMG3T7-64: existing sample catalogue has varied stock and maintenance examples', async ({ page, world }) => {
+  const items = await world.call<{ name: string; type: string; location: string; totalQuantity: number; outOfServiceQuantity: number; outOfServiceReason: string }[]>('coordinator', 'GET', '/equipment')
+  const samples = items.filter(i => !i.name.includes('E2E'))
+  expect(samples.length, 'Run backend/seed_equipment.py once if sample data is missing').toBeGreaterThanOrEqual(8)
+  expect(new Set(samples.map(i => i.type)).size).toBeGreaterThan(1)
+  expect(new Set(samples.map(i => i.location)).size).toBeGreaterThan(1)
+  expect(new Set(samples.map(i => i.totalQuantity)).size).toBeGreaterThan(1)
+  expect(samples.some(i => i.outOfServiceQuantity > 0 && !!i.outOfServiceReason)).toBeTruthy()
+  await world.open(page, 'coordinator', '/equipment')
+  await expect(page.getByRole('list', { name: 'Equipment catalogue' })).toContainText(samples[0].name)
+})

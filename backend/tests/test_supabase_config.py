@@ -4,6 +4,9 @@ Every test sets or clears the variables it depends on, so the suite behaves the
 same whether or not the developer running it has a real backend/.env on disk.
 """
 
+from concurrent.futures import ThreadPoolExecutor
+
+import httpx
 import pytest
 
 from app import supabase_client
@@ -98,3 +101,35 @@ def test_each_anonymous_client_is_its_own(configured):
 def test_a_user_client_carries_the_callers_token(configured):
     client = supabase_client.as_user("a-user-access-token")
     assert client.postgrest.headers["Authorization"] == "Bearer a-user-access-token"
+
+
+def test_concurrent_admin_reads_and_writes_use_http1_without_replaying_writes(
+    configured, monkeypatch
+):
+    requests = []
+    original_client = httpx.Client
+
+    def handle(request):
+        requests.append(request)
+        assert request.headers["Authorization"] == "Bearer service-role-key"
+        return httpx.Response(200, json=[{"id": 1}])
+
+    def transport_client(**kwargs):
+        assert kwargs["http2"] is False
+        return original_client(**kwargs, transport=httpx.MockTransport(handle))
+
+    monkeypatch.setattr(supabase_client.httpx, "Client", transport_client)
+    client = supabase_client.admin()
+    transport = client.options.httpx_client
+
+    def query(index):
+        if index % 2:
+            return client.table("events").insert({"name": f"test-{index}"}).execute()
+        return client.table("events").select("id").execute()
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(query, range(8)))
+    assert len(results) == len(requests) == 8
+    assert sum(request.method == "POST" for request in requests) == 4
+    supabase_client.reset()
+    assert transport.is_closed

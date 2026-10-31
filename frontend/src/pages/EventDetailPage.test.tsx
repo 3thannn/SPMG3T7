@@ -85,6 +85,17 @@ const submitEventMock = vi.mocked(submitEvent)
 const completeEventMock = vi.mocked(completeEvent)
 const organiser = buildSession({ role: 'Event Organiser', id: '1', name: 'Dylan' })
 
+it('shows a failed event load and retries without leaving the page stuck loading', async () => {
+  const user = userEvent.setup()
+  getEventMock.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue(event)
+  render(<EventDetailPage eventId="101" session={organiser} />)
+  expect(await screen.findByRole('alert')).toHaveTextContent(/could not load this event/i)
+  expect(screen.queryByText(/Loading event/)).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Retry loading event' }))
+  expect(await screen.findByLabelText('Title')).toHaveValue(event.title)
+  expect(getEventMock).toHaveBeenCalledTimes(2)
+})
+
 const event: EventRecord = {
   id: '101',
   title: 'Working title',
