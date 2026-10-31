@@ -1,0 +1,138 @@
+/* US12.3's card sits under the venue details, above the unavailable dates it
+   also lists: it answers "when can this be requested" before anything else. */
+.venue-availability {
+  padding: 1.5rem;
+  margin-top: 1rem;
+}
+
+.venue-availability-intro {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin: -0.25rem 0 1rem;
+}
+
+.availability-range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 12rem)) auto;
+  align-items: end;
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.availability-range .btn {
+  justify-self: start;
+}
+
+.availability-showing {
+  font-size: 0.86rem;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+.availability-none {
+  font-size: 0.92rem;
+}
+
+.availability-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+/* When, then what kind, then whose: the order someone planning scans for. */
+.availability-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) 9.5rem 1fr;
+  align-items: start;
+  gap: 0.9rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+
+.availability-when {
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+/* The four kinds set apart by weight, not only by colour: a closure and a
+   confirmed booking are solid, a request and a hold are outlined, because the
+   last two may still give the slot up. */
+.availability-tag {
+  justify-self: start;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+
+.availability-tag.is-confirmed {
+  color: var(--bg);
+  background: var(--navy);
+  border-color: var(--navy);
+}
+
+.availability-tag.is-requested {
+  color: var(--navy);
+  background: var(--bg);
+  border-color: var(--navy);
+}
+
+.availability-tag.is-hold {
+  color: var(--accent);
+  background: var(--bg);
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.availability-tag.is-unavailable {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+
+.availability-detail {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.availability-what {
+  color: var(--ink-strong);
+  font-weight: 500;
+}
+
+.availability-sub {
+  font-size: 0.84rem;
+}
+
+.availability-expiry {
+  color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .availability-range {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .availability-range .btn {
+    grid-column: 1 / -1;
+  }
+
+  .availability-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .availability-detail {
+    grid-column: 1 / -1;
+  }
+}

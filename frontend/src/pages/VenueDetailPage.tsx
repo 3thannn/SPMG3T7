@@ -13,6 +13,7 @@ import { navigate } from '../router'
 import { formatRecordedAt } from '../status'
 import { can } from '../permissions'
 import { unexpectedFailureMessage, type Session } from '../api'
+import VenueAvailability from '../components/VenueAvailability'
 import VenueHolds from '../components/VenueHolds'
 import VenueUnavailability from '../components/VenueUnavailability'
 
@@ -29,8 +30,8 @@ type PageState =
 
 /**
  * One venue record — US9.2 to read, US9.1b and US9.1c to act on, US9.4's setup
- * and turnaround time, and US12.1's unavailable dates for everyone to see and
- * Venue Staff to add to.
+ * and turnaround time, US12.3's view of what is taking it up, and US12.1's
+ * unavailable dates for everyone to see and Venue Staff to add to.
  *
  * A description list rather than a form, even for Venue Staff: editing happens
  * on its own page, so this one never has inputs and a Coordinator's view of it
@@ -191,6 +192,9 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
             </p>
           )}
         </section>
+
+        {/* US12.3: everyone who can open the venue sees what is taking it up. */}
+        <VenueAvailability venueId={venue.id} session={session} />
 
         <VenueUnavailability venueId={venue.id} session={session} mayMark={mayEdit} />
 

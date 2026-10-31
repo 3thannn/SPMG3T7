@@ -20,7 +20,7 @@ ever compares them.
 
 import re
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -29,12 +29,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from app import (
     booking_store,
     conflict_flags,
+    event_store,
+    venue_availability,
     venue_store,
     venue_turnaround,
     venue_unavailability_store,
 )
 from app.auth import require_permission
-from app.permissions import Permission
+from app.permissions import Permission, has_permission
 from app.users import User
 from app.venue_store import DuplicateVenueName, Venue, VenueFilters, VenueHasFutureBookings
 from app.venue_turnaround import BookingConflict, InvalidMinutes, OccupiedBooking, Recheck
@@ -742,6 +744,157 @@ def list_unavailability(
     venue = _existing_venue(venue_id)
     entries = venue_unavailability_store.repository().list_for_venue(venue.id)
     return [_unavailability_out(entry) for entry in entries]
+
+
+# -- US12.3: what is taking up a venue -------------------------------------------
+
+
+class AvailabilityEntryOut(BaseModel):
+    """One thing occupying the venue. Fields that do not apply to its kind are empty."""
+
+    #: "confirmed", "requested", "hold" or "unavailable".
+    kind: str
+    #: When the venue is taken, "YYYY-MM-DDTHH:MM" local time: a booking's full
+    #: occupied window (setup and turnaround included), a period's whole days.
+    starts_at: str = Field(serialization_alias="startsAt")
+    ends_at: str = Field(serialization_alias="endsAt")
+    booking_id: str = Field(default="", serialization_alias="bookingId")
+    #: Empty when the viewer may not see which event it is (see `_visible_titles`).
+    event_id: str = Field(default="", serialization_alias="eventId")
+    event_title: str = Field(default="", serialization_alias="eventTitle")
+    #: The booking's own times, without setup and turnaround.
+    event_starts_at: str = Field(default="", serialization_alias="eventStartsAt")
+    event_ends_at: str = Field(default="", serialization_alias="eventEndsAt")
+    hold_expires_at: str = Field(default="", serialization_alias="holdExpiresAt")
+    period_id: str = Field(default="", serialization_alias="periodId")
+    #: A period's first and last day, both included.
+    start_date: str = Field(default="", serialization_alias="startDate")
+    end_date: str = Field(default="", serialization_alias="endDate")
+    reason_type: str = Field(default="", serialization_alias="reasonType")
+    other_reason: str = Field(default="", serialization_alias="otherReason")
+
+
+class AvailabilityOut(BaseModel):
+    venue_id: str = Field(serialization_alias="venueId")
+    #: The range actually shown, so the page can say what it is looking at.
+    from_date: str = Field(serialization_alias="from")
+    to_date: str = Field(serialization_alias="to")
+    setup_minutes: int = Field(serialization_alias="setupMinutes")
+    turnaround_minutes: int = Field(serialization_alias="turnaroundMinutes")
+    entries: list[AvailabilityEntryOut]
+
+
+def _minutes_iso(moment) -> str:
+    return moment.isoformat(timespec="minutes")
+
+
+_OFF_THE_CALENDAR = "That range runs off the calendar. Pick nearer dates."
+
+
+def _availability_range(raw_from: str, raw_to: str, today: date) -> tuple[date, date]:
+    """AC1: the range asked for, or the next 14 days. One date alone starts or ends 14 days."""
+    from_text, to_text = raw_from.strip(), raw_to.strip()
+    if not from_text and not to_text:
+        return venue_availability.default_range(today)
+    span = timedelta(days=venue_availability.DEFAULT_DAYS - 1)
+    try:
+        if from_text:
+            first = _filter_date(from_text, which="from")
+            last = _filter_date(to_text, which="to") if to_text else first + span
+        else:
+            last = _filter_date(to_text, which="to")
+            first = last - span
+    except OverflowError:
+        raise _invalid_filter(_OFF_THE_CALENDAR) from None
+    # The list reads up to midnight after the last day, which has to exist.
+    if last == date.max:
+        raise _invalid_filter(_OFF_THE_CALENDAR)
+    if last < first:
+        raise _invalid_filter("The to date cannot be earlier than the from date.")
+    if (last - first).days + 1 > venue_availability.MAX_DAYS:
+        raise _invalid_filter(f"Pick a range of {venue_availability.MAX_DAYS} days or fewer.")
+    return first, last
+
+
+def _visible_titles(user: User, event_ids: set[int]) -> dict[int, str]:
+    """Event titles this viewer may see, by event id.
+
+    Venue Staff decide every request at their venues and already see every
+    title in their queue (US16.1). A Coordinator sees only the events assigned
+    to them (US8.6), so anyone else's booking is shown by number, status and
+    times alone, as US15.1's clash messages do.
+    """
+    sees_all = has_permission(user.role, Permission.BOOKINGS_DECIDE)
+    titles: dict[int, str] = {}
+    for event_id in event_ids:
+        event = event_store.repository().get_event(event_id)
+        if event is not None and (sees_all or event.coordinator_id == user.id):
+            titles[event_id] = event.title
+    return titles
+
+
+def _entry_out(
+    entry: venue_availability.Entry, titles: dict[int, str]
+) -> AvailabilityEntryOut:
+    out = AvailabilityEntryOut(
+        kind=entry.kind.value,
+        starts_at=_minutes_iso(entry.starts_at),
+        ends_at=_minutes_iso(entry.ends_at),
+    )
+    if entry.booking is not None:
+        booking = entry.booking
+        visible = booking.event_id in titles
+        out.booking_id = str(booking.id)
+        out.event_id = str(booking.event_id) if visible else ""
+        out.event_title = titles.get(booking.event_id, "")
+        out.event_starts_at = booking.starts_at[:16]
+        out.event_ends_at = booking.ends_at[:16]
+        out.hold_expires_at = booking.hold_expires_at[:16]
+    if entry.period is not None:
+        period = entry.period
+        out.period_id = str(period.id)
+        out.start_date = period.start_date.isoformat()
+        out.end_date = period.end_date.isoformat()
+        out.reason_type = period.reason_type.value
+        out.other_reason = period.other_reason
+    return out
+
+
+@router.get("/{venue_id}/availability", response_model=AvailabilityOut)
+def venue_availability_view(
+    venue_id: str,
+    user: Annotated[User, Depends(require_permission(Permission.VENUES_READ))],
+    from_: Annotated[str, Query(alias="from")] = "",
+    to: str = "",
+) -> AvailabilityOut:
+    """US12.3: everything taking up a venue over a date range, in time order.
+
+    `from` and `to` are YYYY-MM-DD, both included; the next 14 days when
+    neither is given. Read with the catalogue's permission, so whoever can
+    open the venue can see when it is taken. See app/venue_availability.py for
+    what is listed and why.
+    """
+    venue = _existing_venue(venue_id)
+    now = booking_store.local_now()
+    first, last = _availability_range(from_, to, now.date())
+    found = venue_availability.entries(
+        venue,
+        booking_store.repository().list_for_venue(venue.id),
+        venue_unavailability_store.repository().list_for_venue(venue.id),
+        first_day=first,
+        last_day=last,
+        now=now,
+    )
+    titles = _visible_titles(user, {e.booking.event_id for e in found if e.booking})
+    setup, turnaround = venue.buffers
+    return AvailabilityOut(
+        venue_id=str(venue.id),
+        from_date=first.isoformat(),
+        to_date=last.isoformat(),
+        setup_minutes=setup,
+        turnaround_minutes=turnaround,
+        entries=[_entry_out(entry, titles) for entry in found],
+    )
 
 
 @router.post(
