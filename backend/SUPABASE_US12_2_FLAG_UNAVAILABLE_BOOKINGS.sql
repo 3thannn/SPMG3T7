@@ -31,10 +31,16 @@ ALTER TABLE public.venue_bookings
     ADD COLUMN IF NOT EXISTS flagged_by_unavailability_id INTEGER
         REFERENCES public.venue_unavailability(id) ON DELETE SET NULL;
 
+-- Every story's exception in one definition, as SUPABASE_FIX_DECISION_RECORDED.sql
+-- has it. This used to leave out US4.6's, so re-running this script broke
+-- cancelling an event with a Confirmed booking.
 ALTER TABLE public.venue_bookings DROP CONSTRAINT IF EXISTS venue_bookings_decision_recorded;
 ALTER TABLE public.venue_bookings ADD CONSTRAINT venue_bookings_decision_recorded CHECK (
-    status::text = 'Needs replacement'
-    OR ((status::text IN ('Confirmed', 'Rejected')) = (decided_at IS NOT NULL))
+    CASE
+        WHEN status::text IN ('Confirmed', 'Rejected') THEN decided_at IS NOT NULL
+        WHEN status::text IN ('Cancelled', 'Needs replacement', 'Replaced') THEN TRUE
+        ELSE decided_at IS NULL
+    END
 );
 
 CREATE OR REPLACE FUNCTION public.flag_bookings_for_unavailability()
