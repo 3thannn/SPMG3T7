@@ -49,6 +49,22 @@ describe('the catalogue', () => {
     expect(sent(spy).path).toBe('/venues?minCapacity=100&location=Library')
   })
 
+  it('sends layout, facilities and the time, and leaves blank ones out', async () => {
+    const spy = stubFetch(ok([]))
+
+    await listVenues(staff, {
+      ...NO_FILTERS,
+      layout: ' Theatre ',
+      facilities: 'Stage, Projector',
+      startsAt: '2027-11-02T18:00',
+      endsAt: '  ',
+    })
+
+    expect(sent(spy).path).toBe(
+      '/venues?layout=Theatre&facilities=Stage%2C+Projector&startsAt=2027-11-02T18%3A00',
+    )
+  })
+
   it('a filter the server cannot read is a sentence the reader can fix', async () => {
     stubFetch(failure(400, 'Give the capacity as a whole number.'))
 

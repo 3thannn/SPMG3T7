@@ -69,6 +69,12 @@
   grid-template-columns: repeat(2, minmax(0, 14rem));
 }
 
+/* A date and a time need more room than a date alone. Still one column on a
+   narrow screen: the media query below comes later and wins. */
+.venue-filter-row-times {
+  grid-template-columns: repeat(2, minmax(0, 18rem));
+}
+
 .venue-filter-dates-note {
   display: block;
   margin-top: 0.75rem;
@@ -206,7 +212,18 @@
   transform: translateX(4px);
 }
 
-/* Responsive */
+/* Responsive. Widest first: at phone width both queries match, and the
+   later one wins, so the phone rule has to come last. */
+@media (max-width: 1024px) {
+  .venue-filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .venue-filter-row-dates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 640px) {
   .venue-filter-row,
   .venue-filter-row-dates {
@@ -239,15 +256,5 @@
 
   .venue-card:hover .venue-arrow {
     transform: translateY(4px);
-  }
-}
-
-@media (max-width: 1024px) {
-  .venue-filter-row {
-    grid-template-columns: 1fr;
-  }
-
-  .venue-filter-row-dates {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

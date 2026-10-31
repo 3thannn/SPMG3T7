@@ -130,6 +130,12 @@ class VenueFilters:
     #: A venue with nothing recorded therefore never matches, which is the
     #: honest answer — an unfilled field is not evidence of a feature.
     accessibility: str = ""
+    #: The brief's "supported layout": a case-insensitive substring of
+    #: `venues.supported_layouts`, so "theatre" finds "Theatre, Banquet".
+    layout: str = ""
+    #: The brief's "required facilities": the venue must list every one, each
+    #: matched as a case-insensitive substring of `venues.facilities`.
+    facilities: tuple[str, ...] = ()
     #: US12.1: venues to leave out — those with a blackout period over the
     #: dates a Coordinator is planning for. Ids rather than dates, so this store
     #: needs to know nothing about blackouts; the route works out which venues
@@ -143,6 +149,8 @@ class VenueFilters:
             self.min_capacity is not None
             or bool(self.location.strip())
             or bool(self.accessibility.strip())
+            or bool(self.layout.strip())
+            or bool(self.facilities)
             or bool(self.excluded_ids)
         )
 
@@ -254,6 +262,14 @@ class SupabaseVenues:
         accessibility = filters.accessibility.strip()
         if accessibility:
             query = query.ilike("accessibility_features", _contains_pattern(accessibility))
+
+        layout = filters.layout.strip()
+        if layout:
+            query = query.ilike("supported_layouts", _contains_pattern(layout))
+
+        # One condition per facility on the same column; PostgREST ANDs them.
+        for facility in filters.facilities:
+            query = query.ilike("facilities", _contains_pattern(facility))
 
         if filters.excluded_ids:
             # Sorted so the same exclusions always make the same request.
@@ -421,7 +437,12 @@ def _matches(venue: Venue, filters: VenueFilters) -> bool:
     if accessibility and accessibility not in venue.accessibility_features.lower():
         return False
 
-    return True
+    layout = filters.layout.strip().lower()
+    if layout and layout not in venue.supported_layouts.lower():
+        return False
+
+    listed = venue.facilities.lower()
+    return all(facility.lower() in listed for facility in filters.facilities)
 
 
 @dataclass

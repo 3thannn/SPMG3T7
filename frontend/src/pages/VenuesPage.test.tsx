@@ -9,7 +9,7 @@
  * one role that holds it.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import VenuesPage from './VenuesPage'
@@ -455,4 +455,28 @@ it('says nothing about dates when none were given', async () => {
   render(<VenuesPage session={coordinator} />)
 
   expect(await screen.findByRole('status')).not.toHaveTextContent('available')
+})
+
+
+it("sends the brief's other criteria: layout, facilities and the time it is needed", async () => {
+  listVenuesMock.mockResolvedValue([buildVenue()])
+
+  render(<VenuesPage session={coordinator} />)
+  await screen.findByText('Great Hall')
+
+  await userEvent.type(screen.getByLabelText('Layout'), 'Theatre')
+  await userEvent.type(screen.getByLabelText('Facilities'), 'Stage, Projector')
+  fireEvent.change(screen.getByLabelText('Free from'), { target: { value: '2027-11-02T18:00' } })
+  fireEvent.change(screen.getByLabelText('Free until'), { target: { value: '2027-11-02T21:00' } })
+  await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+
+  await waitFor(() => {
+    expect(lastFilters()).toEqual({
+      ...NO_FILTERS,
+      layout: 'Theatre',
+      facilities: 'Stage, Projector',
+      startsAt: '2027-11-02T18:00',
+      endsAt: '2027-11-02T21:00',
+    })
+  })
 })
