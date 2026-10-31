@@ -102,7 +102,7 @@ export default function TopNav({ route, session, onSignOut }: TopNavProps) {
           }}
         >
           <span className="topnav-wordmark">
-            Event<span className="topnav-wordmark-tail">Hub</span>
+            Connect<span className="topnav-wordmark-tail">Sphere</span>
           </span>
         </a>
 
