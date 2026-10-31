@@ -52,7 +52,7 @@ Following the 5-step test case design methodology:
   decision that confirmed it.
 - **"Equipment reservations are released"**: every equipment line not already
   Removed becomes Removed, whatever its status, so it leaves Tech Support's queue.
-  Reserved lines (US19.3, not built yet) will be released the same way.
+  Reserved lines (US19.3) are released the same way, so their stock is free again.
 - **Notifications are in-app**, like every other notice. The person who cancels is
   not sent a notice about their own action; they see it on the page.
 - **"Affected Venue Staff"**: venues have no assigned staff member, so every Venue

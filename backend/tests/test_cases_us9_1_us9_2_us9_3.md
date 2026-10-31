@@ -15,9 +15,10 @@
 | --- | --- | --- |
 | US9.1a | Venue Staff add a venue: name, capacity (a positive whole number) and location required; facilities, accessibility features, supported layouts and operating hours optional | Done |
 | US9.1b | Venue Staff edit any field except the system-generated ones (`id`, `created_at`) | Done |
-| US9.1c | Venue Staff remove a venue | Done — a hard delete; since US14.1, refused while the venue has bookings |
+| US9.1c | Venue Staff remove a venue | Done — a hard delete; since US9.5, refused only while the venue has future bookings (its past and cancelled ones are deleted with it) |
 | US9.2 | A Coordinator lists the catalogue and opens any venue, with every recorded detail | Done |
 | US9.3 | A Coordinator filters by minimum capacity, location and accessibility, combined with AND | Done — filtered in Postgres |
+| US9.3 (follow-up) | The brief's remaining criteria: supported layout, required facilities (every one listed), and a time, which leaves out venues booked or closed then, setup and turnaround included | Done — `tests/test_venue_search_filters.py`; `VenuesPage.test.tsx`, `venuesStore.calls.test.ts` |
 
 ## Test Case Design Approach
 Following the 5-step test case design methodology:
