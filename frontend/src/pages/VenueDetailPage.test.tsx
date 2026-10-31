@@ -14,6 +14,7 @@ import VenueDetailPage from './VenueDetailPage'
 import {
   VenueRuleError,
   deleteVenue,
+  getAvailability,
   getVenue,
   listUnavailability,
   type VenueRecord,
@@ -32,17 +33,26 @@ vi.mock('../venuesStore', async (importOriginal) => ({
   getVenue: vi.fn(),
   deleteVenue: vi.fn(),
   listUnavailability: vi.fn(),
+  getAvailability: vi.fn(),
 }))
 
 const getVenueMock = vi.mocked(getVenue)
 const deleteVenueMock = vi.mocked(deleteVenue)
 const listUnavailabilityMock = vi.mocked(listUnavailability)
 
-// US12.1's and US14.3's cards fetch on their own; their behaviour is covered
-// in VenueUnavailability.test.tsx and VenueHolds.test.tsx. Here they only need
-// to answer.
+// US12.1's, US12.3's and US14.3's cards fetch on their own; their behaviour is
+// covered in VenueUnavailability.test.tsx, VenueAvailability.test.tsx and
+// VenueHolds.test.tsx. Here they only need to answer.
 beforeEach(() => {
   listUnavailabilityMock.mockResolvedValue([])
+  vi.mocked(getAvailability).mockResolvedValue({
+    venueId: '1',
+    from: '2027-03-01',
+    to: '2027-03-14',
+    setupMinutes: 0,
+    turnaroundMinutes: 0,
+    entries: [],
+  })
   vi.mocked(listHolds).mockResolvedValue([])
   vi.mocked(listHoldableEvents).mockResolvedValue([])
 })

@@ -560,11 +560,114 @@ export function formatDateRange(startDate: string, endDate: string): string {
  *
  * Shows the custom text when type is "other", otherwise the human-readable label.
  */
-export function formatUnavailabilityReason(record: UnavailabilityRecord): string {
+export function formatUnavailabilityReason(
+  record: Pick<UnavailabilityRecord, 'reasonType' | 'otherReason'>,
+): string {
   if (record.reasonType === 'other') {
     return record.otherReason || 'No reason given'
   }
   return UNAVAILABILITY_REASON_TYPES[record.reasonType] || 'No reason given'
+}
+
+// -- US12.3: what is taking up a venue ------------------------------------------
+
+export type AvailabilityKind = 'confirmed' | 'requested' | 'hold' | 'unavailable'
+
+/** AC2: each entry labelled by type. */
+export const AVAILABILITY_KIND_LABELS: Record<AvailabilityKind, string> = {
+  confirmed: 'Confirmed booking',
+  requested: 'Requested booking',
+  hold: 'Tentative hold',
+  unavailable: 'Unavailable',
+}
+
+/**
+ * One thing occupying a venue. Fields that do not apply to its kind are empty.
+ * Times are "YYYY-MM-DDTHH:MM" in the venue's local time.
+ */
+export type AvailabilityEntry = {
+  kind: AvailabilityKind
+  /** A booking's full occupied window, setup and turnaround included; a period's whole days. */
+  startsAt: string
+  endsAt: string
+  bookingId: string
+  /** Empty when the viewer may not see which event it is. */
+  eventId: string
+  eventTitle: string
+  /** The booking's own times, without setup and turnaround. */
+  eventStartsAt: string
+  eventEndsAt: string
+  holdExpiresAt: string
+  periodId: string
+  startDate: string
+  endDate: string
+  reasonType: UnavailabilityReasonType | ''
+  otherReason: string
+}
+
+export type VenueAvailability = {
+  venueId: string
+  /** The range the server used, both days included. */
+  from: string
+  to: string
+  setupMinutes: number
+  turnaroundMinutes: number
+  entries: AvailabilityEntry[]
+}
+
+export type AvailabilityRange = { from: string; to: string }
+
+/**
+ * A server time marked as Singapore time, so a browser elsewhere reads it right.
+ *
+ * Booking times come as naive Singapore local time ("2027-03-03T09:30"), and a
+ * browser reads a naive time as its own local time. The formatters then show
+ * it in Singapore time, which would move it by the difference anywhere else.
+ */
+export function asSingaporeTime(iso: string): string {
+  return !iso || /(Z|[+-]\d{2}:\d{2})$/.test(iso) ? iso : `${iso}+08:00`
+}
+
+/** AC1: the range shown before anyone picks one, today included. */
+export const AVAILABILITY_DEFAULT_DAYS = 14
+/** The server's cap, mirrored so the form can say so before sending. */
+export const AVAILABILITY_MAX_DAYS = 366
+
+/** A YYYY-MM-DD date moved by whole days, worked in UTC so no clock change can shift it. */
+export function addDays(iso: string, days: number): string {
+  const [year, month, day] = iso.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
+}
+
+/** AC1: the next 14 days. */
+export function defaultAvailabilityRange(today: string = todayIso()): AvailabilityRange {
+  return { from: today, to: addDays(today, AVAILABILITY_DEFAULT_DAYS - 1) }
+}
+
+/** The first problem with a picked range, or '' when it can be asked for. */
+export function validateAvailabilityRange({ from, to }: AvailabilityRange): string {
+  if (!from) return 'Choose a from date.'
+  if (!to) return 'Choose a to date.'
+  if (to < from) return 'The to date cannot be earlier than the from date.'
+  if (addDays(from, AVAILABILITY_MAX_DAYS - 1) < to) {
+    return `Pick a range of ${AVAILABILITY_MAX_DAYS} days or fewer.`
+  }
+  return ''
+}
+
+/** US12.3: everything taking up a venue over a range, in time order. */
+export async function getAvailability(
+  venueId: string,
+  range: AvailabilityRange,
+  session: Session,
+): Promise<VenueAvailability> {
+  const query = new URLSearchParams({ from: range.from, to: range.to })
+  try {
+    const response = await authorizedFetch(`/venues/${venueId}/availability?${query}`, session.token)
+    return (await response.json()) as VenueAvailability
+  } catch (error) {
+    return asRuleError(error)
+  }
 }
 
 /**
