@@ -120,6 +120,10 @@ describe('hasFilters', () => {
         accessibility: ' ',
         availableFrom: ' ',
         availableTo: '',
+        layout: ' ',
+        facilities: '  ',
+        startsAt: '',
+        endsAt: ' ',
       }),
     ).toBe(false)
   })

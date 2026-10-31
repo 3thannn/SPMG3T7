@@ -258,6 +258,7 @@ it('the equipment queue says when it could not be loaded (US19)', async () => {
 
 describe('answers that land after the page has gone', () => {
   it.each([
+    ['the events list', () => render(<EventsPage session={organiser} />), listEvents],
     ['Notifications', () => render(<NotificationsPage session={organiser} />), listNotifications],
     ['the equipment queue', () => render(<EquipmentQueuePage session={support} />), listEquipmentQueue],
   ] as const)('%s ignores a failure', async (_page, show, call) => {

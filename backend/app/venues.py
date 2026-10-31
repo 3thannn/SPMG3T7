@@ -20,13 +20,14 @@ ever compares them.
 
 import re
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app import (
+    availability,
     booking_store,
     conflict_flags,
     event_store,
@@ -142,6 +143,54 @@ def _filter_text(raw: str, *, field: str) -> str:
     return trimmed
 
 
+def _facility_list(raw: str) -> tuple[str, ...]:
+    """The facilities a venue must list, from one comma-separated box."""
+    text = _filter_text(raw, field="facilities")
+    return tuple(part.strip() for part in text.split(",") if part.strip())
+
+
+_FILTER_TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?")
+
+
+def _filter_time(text: str, *, which: str) -> datetime:
+    if not _FILTER_TIME.fullmatch(text):
+        raise _invalid_filter(
+            f"Give the {which} time as a date and time, such as 2027-03-03T09:30."
+        )
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        # Well-formed but not on any calendar or clock: 2027-02-30, 25:00.
+        raise _invalid_filter(f"The {which} time {text} is not a real date and time.") from None
+
+
+def _free_window(raw_start: str, raw_end: str) -> tuple[str, str] | None:
+    """The time a venue is needed for, or None when none was asked about.
+
+    Both or neither: a start with no end is not a window anything can be free in.
+    """
+    start_text, end_text = raw_start.strip(), raw_end.strip()
+    if not start_text and not end_text:
+        return None
+    if not start_text or not end_text:
+        raise _invalid_filter("Give both a start and an end time to find the venues free then.")
+    if _filter_time(end_text, which="end") <= _filter_time(start_text, which="start"):
+        raise _invalid_filter("The end time must be after the start time.")
+    return start_text, end_text
+
+
+def _free(venue: Venue, starts_at: str, ends_at: str) -> bool:
+    """Free under US15.1's own rule, setup and turnaround included, so the
+    catalogue agrees with what a booking request for that time would be told."""
+    return availability.check_slot(
+        venue,
+        starts_at,
+        ends_at,
+        bookings_at_venue=booking_store.repository().list_for_venue(venue.id),
+        unavailability=venue_unavailability_store.repository().list_for_venue(venue.id),
+    ).available
+
+
 def _as_id(raw: str) -> int:
     """Ids are strings on the wire and integers in the table."""
     try:
@@ -168,6 +217,25 @@ def list_venues(
         str,
         Query(description=("Case-insensitive substring of the venue's accessibility features.")),
     ] = "",
+    layout: Annotated[
+        str,
+        Query(description="Case-insensitive substring of the venue's supported layouts."),
+    ] = "",
+    facilities: Annotated[
+        str,
+        Query(description="Comma-separated. The venue must list every one."),
+    ] = "",
+    starts_at: Annotated[
+        str,
+        Query(
+            alias="startsAt",
+            description="YYYY-MM-DDTHH:MM. With endsAt, only venues free for that time.",
+        ),
+    ] = "",
+    ends_at: Annotated[
+        str,
+        Query(alias="endsAt", description="YYYY-MM-DDTHH:MM, after startsAt."),
+    ] = "",
     available_from: Annotated[
         str,
         Query(
@@ -191,6 +259,10 @@ def list_venues(
     
     US12.1 adds the dates being planned for: a venue marked unavailable on any
     of them is left out, so a Coordinator is not offered it in the first place.
+
+    The brief's remaining criteria came after: a supported layout, required
+    facilities, and a time, which leaves out every venue a request for that
+    time would be refused at, by a booking or a blackout.
     """
     window = _availability_window(available_from, available_to)
     excluded = (
@@ -198,13 +270,19 @@ def list_venues(
         if window
         else frozenset()
     )
+    needed = _free_window(starts_at, ends_at)
     filters = VenueFilters(
         min_capacity=_min_capacity(min_capacity),
         location=_filter_text(location, field="location"),
         accessibility=_filter_text(accessibility, field="accessibility"),
+        layout=_filter_text(layout, field="layout"),
+        facilities=_facility_list(facilities),
         excluded_ids=excluded,
     )
-    return [_to_out(venue) for venue in venue_store.repository().list_venues(filters)]
+    venues = venue_store.repository().list_venues(filters)
+    if needed:
+        venues = [venue for venue in venues if _free(venue, *needed)]
+    return [_to_out(venue) for venue in venues]
 
 
 @router.get("/{venue_id}", response_model=VenueOut)

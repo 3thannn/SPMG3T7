@@ -8,7 +8,7 @@
 | # | Criterion | Status |
 | --- | --- | --- |
 | AC1 | The Coordinator attaches a message to the event | Done |
-| AC2 | The event's status moves to Under Review | Done |
+| AC2 | The event's status moves to Under Review | Done — for a Submitted or Under Review event. Since US11.2 a Coordinator can also question a later-stage change request, and that event keeps its status |
 | AC3 | The message is visible to the Organiser | Done — in the event's status history |
 | — | The Organiser's reply | Out of scope: that is US11.1 |
 

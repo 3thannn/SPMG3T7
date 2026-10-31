@@ -132,6 +132,17 @@ export type VenueFilters = {
    */
   availableFrom: string
   availableTo: string
+  /** The brief's "supported layout", matched as part of the venue's layouts. */
+  layout: string
+  /** Comma-separated, as typed. The venue must list every one. */
+  facilities: string
+  /**
+   * The time the venue is needed, as YYYY-MM-DDTHH:MM from datetime inputs. A
+   * venue with a booking or a blackout then is left out. The server wants both
+   * or neither, and says so.
+   */
+  startsAt: string
+  endsAt: string
 }
 
 export const NO_FILTERS: VenueFilters = {
@@ -140,6 +151,10 @@ export const NO_FILTERS: VenueFilters = {
   accessibility: '',
   availableFrom: '',
   availableTo: '',
+  layout: '',
+  facilities: '',
+  startsAt: '',
+  endsAt: '',
 }
 
 /** Whether anything was actually asked for — a blank box is not a filter. */
@@ -148,6 +163,10 @@ export function hasFilters(filters: VenueFilters): boolean {
     filters.minCapacity.trim() !== '' ||
     filters.location.trim() !== '' ||
     filters.accessibility.trim() !== '' ||
+    filters.layout.trim() !== '' ||
+    filters.facilities.trim() !== '' ||
+    filters.startsAt.trim() !== '' ||
+    filters.endsAt.trim() !== '' ||
     hasDates(filters)
   )
 }
@@ -189,6 +208,10 @@ export function venueQuery(filters: VenueFilters): string {
   if (accessibility) params.set('accessibility', accessibility)
   if (availableFrom) params.set('availableFrom', availableFrom)
   if (availableTo) params.set('availableTo', availableTo)
+  for (const name of ['layout', 'facilities', 'startsAt', 'endsAt'] as const) {
+    const value = filters[name].trim()
+    if (value) params.set(name, value)
+  }
 
   const query = params.toString()
   return query ? `?${query}` : ''

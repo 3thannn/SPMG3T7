@@ -152,6 +152,26 @@ export default function VenuesPage({ session }: VenuesPageProps) {
                 onChange={(changeEvent) => set('accessibility', changeEvent.target.value)}
               />
             </label>
+
+            <label className="venue-filter">
+              <span className="venue-filter-label">Layout</span>
+              <input
+                type="text"
+                placeholder="Any layout"
+                value={fields.layout}
+                onChange={(changeEvent) => set('layout', changeEvent.target.value)}
+              />
+            </label>
+
+            <label className="venue-filter">
+              <span className="venue-filter-label">Facilities</span>
+              <input
+                type="text"
+                placeholder="e.g. Stage, Projector"
+                value={fields.facilities}
+                onChange={(changeEvent) => set('facilities', changeEvent.target.value)}
+              />
+            </label>
           </div>
 
           {/* US12.1: a venue closed on any of these days is left out, so it is
@@ -181,6 +201,36 @@ export default function VenuesPage({ session }: VenuesPageProps) {
             <p className="venue-filter-note venue-filter-dates-note">
               Venues marked unavailable on any of these dates are left out. One date alone
               means that day.
+            </p>
+          </fieldset>
+
+          {/* The brief's "date and time": a venue already booked or closed then,
+              setup and turnaround included, is left out, just as a request for
+              that time would be refused. */}
+          <fieldset className="venue-filter-dates">
+            <legend className="venue-filter-label">Time you need it</legend>
+            <div className="venue-filter-row venue-filter-row-dates venue-filter-row-times">
+              <label className="venue-filter">
+                <span className="venue-filter-label">Free from</span>
+                <input
+                  type="datetime-local"
+                  value={fields.startsAt}
+                  onChange={(changeEvent) => set('startsAt', changeEvent.target.value)}
+                />
+              </label>
+
+              <label className="venue-filter">
+                <span className="venue-filter-label">Free until</span>
+                <input
+                  type="datetime-local"
+                  min={fields.startsAt || undefined}
+                  value={fields.endsAt}
+                  onChange={(changeEvent) => set('endsAt', changeEvent.target.value)}
+                />
+              </label>
+            </div>
+            <p className="venue-filter-note venue-filter-dates-note">
+              Venues already booked or closed at that time are left out.
             </p>
           </fieldset>
 
