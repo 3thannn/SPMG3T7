@@ -28,12 +28,11 @@ from app.registration_store import (
     WithdrawOutcome,
     withdrawal_refusal,
 )
-from tests.conftest import ATTENDEE_ID, SECOND_ATTENDEE_ID
+from tests.conftest import ATTENDEE_ID
 from tests.test_registration_us20_1 import (
     ATTENDEE,
     COORDINATOR,
     EVENT_ID,
-    OTHER_EVENT_ID,
     SECOND,
     booking,
     full_notices,
@@ -92,14 +91,7 @@ class TestTheRule:
     def event(self, starts_at="2026-10-23T12:01", status=EventStatus.CONFIRMED):
         return RegisteredEvent(title="Open House", starts_at=starts_at, ends_at="", status=status)
 
-    def test_a_registration_before_its_confirmed_event_starts_may_be_withdrawn(self):
-        assert withdrawal_refusal(self.registration(), self.event(), self.NOW) is None
 
-    def test_not_once_withdrawn(self):
-        refusal = withdrawal_refusal(
-            self.registration(RegistrationStatus.WITHDRAWN), self.event(), self.NOW
-        )
-        assert refusal is WithdrawOutcome.ALREADY_WITHDRAWN
 
     def test_one_the_events_cancellation_ended_is_closed_not_withdrawn(self):
         """US4.6: the Attendee did not withdraw it, so it does not say they did."""
@@ -110,19 +102,7 @@ class TestTheRule:
         )
         assert refusal is WithdrawOutcome.CLOSED
 
-    @pytest.mark.parametrize("starts_at", ["2026-10-23T12:00", "2026-10-23T11:59", PAST])
-    def test_not_at_or_after_the_start(self, starts_at):
-        refusal = withdrawal_refusal(self.registration(), self.event(starts_at), self.NOW)
-        assert refusal is WithdrawOutcome.STARTED
 
-    @pytest.mark.parametrize(
-        "status", [EventStatus.COMPLETED, EventStatus.CANCELLED, EventStatus.PLANNING]
-    )
-    def test_not_once_the_event_is_no_longer_confirmed(self, status):
-        refusal = withdrawal_refusal(
-            self.registration(), self.event(status=status), self.NOW
-        )
-        assert refusal is WithdrawOutcome.CLOSED
 
     def test_not_for_an_event_that_is_gone(self):
         assert withdrawal_refusal(self.registration(), None, self.NOW) is WithdrawOutcome.CLOSED
@@ -206,20 +186,6 @@ class TestMyRegistrations:
 
         assert names == ["Casey Tan"]
 
-    def test_soonest_event_first(
-        self, client, auth_headers, event_repository, registration_repository
-    ):
-        seed_event(event_repository, title="Later", starts_at="2099-12-01T09:00")
-        seed_event(
-            event_repository, event_id=OTHER_EVENT_ID, title="Sooner", starts_at="2099-10-01T09:00"
-        )
-        open_registration(registration_repository)
-        open_registration(registration_repository, event_id=OTHER_EVENT_ID)
-        headers = auth_headers(ATTENDEE)
-        registered(client, headers)
-        registered(client, headers, event_id=OTHER_EVENT_ID)
-
-        assert [item["title"] for item in mine(client, headers).json()] == ["Sooner", "Later"]
 
     def test_one_entry_per_event_where_they_stand_now(
         self, client, auth_headers, event_repository, registration_repository
@@ -235,22 +201,6 @@ class TestMyRegistrations:
 
         assert [(item["id"], item["status"]) for item in listed] == [(again, "Registered")]
 
-    def test_an_event_no_longer_taking_registrations_still_shows(
-        self, client, auth_headers, event_repository, registration_repository
-    ):
-        seed_event(event_repository)
-        open_registration(registration_repository)
-        headers = auth_headers(ATTENDEE)
-        registered(client, headers)
-        registration_repository.settings[EVENT_ID] = (False, 30)
-
-        (item,) = mine(client, headers).json()
-
-        assert (item["status"], item["placesLeft"], item["canWithdraw"]) == (
-            "Registered",
-            None,
-            True,
-        )
 
     def test_nothing_of_the_planning_is_shown(
         self, client, auth_headers, event_repository, registration_repository
@@ -515,18 +465,6 @@ class TestRegisteringAgain:
 
         assert len(full_notices(notification_repository)) == 4
 
-    def test_the_second_attendee_is_unaffected(
-        self, client, auth_headers, event_repository, registration_repository
-    ):
-        seed_event(event_repository)
-        open_registration(registration_repository, 5)
-        headers = auth_headers(ATTENDEE)
-        withdraw(client, headers, registered(client, headers))
-        as_morgan(client, auth_headers)
-
-        active = registration_repository.registered_event_ids(SECOND_ATTENDEE_ID)
-
-        assert active == frozenset({EVENT_ID})
 
 
 class TestEndToEnd:

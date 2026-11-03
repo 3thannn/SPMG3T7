@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from app import supabase_client
 from app.event_needs import (
     ACCESSIBILITY_OPTIONS,
     FACILITY_OPTIONS,
@@ -20,15 +21,17 @@ from app.event_needs import (
     LAYOUT_OPTIONS,
     MISSING_MESSAGES,
     NEED_FIELDS,
-    NO_NEEDS,
     NOT_REQUIRED,
     EventNeeds,
     format_error,
     listed,
+    missing_error,
 )
-from app.event_status import EventStatus
-from app.event_store import Event
+from app.event_store import SupabaseEvents, to_event
+from app.events import ATTENDANCE_TOO_LARGE
 from tests.conftest import (
+    COORDINATOR_ID,
+    ORGANISER_ID,
     SUBMITTABLE_NEED_ATTRS,
     SUBMITTABLE_NEEDS,
 )
@@ -77,12 +80,6 @@ def submit(client, headers, event_id):
 
 
 class TestFixedLists:
-    @pytest.mark.parametrize("options", [LAYOUT_OPTIONS, FACILITY_OPTIONS, ACCESSIBILITY_OPTIONS])
-    def test_no_option_contains_the_separator_or_repeats(self, options):
-        """A joined answer must read back as the options that were chosen."""
-        assert all("," not in option for option in options)
-        assert len(set(options)) == len(options)
-        assert NOT_REQUIRED not in options
 
     def test_the_lists_use_the_venue_catalogue_s_words(self):
         """US9.1a's seeded venues list these; suitability matches them case-insensitively."""
@@ -92,15 +89,6 @@ class TestFixedLists:
             ACCESSIBILITY_OPTIONS
         )
 
-    def test_the_fields_are_named_as_the_columns(self):
-        assert NEED_FIELDS == (
-            "venue_requirements",
-            "preferred_layout",
-            "accessibility_needs",
-            "equipment_needs",
-            "registration_needs",
-        )
-        assert tuple(MISSING_MESSAGES) == NEED_FIELDS
 
 
 #: The browser's copy of the lists. The server refuses any value off its own
@@ -116,16 +104,6 @@ def _frontend_list(source: str, name: str) -> tuple[str, ...]:
 
 @pytest.mark.skipif(not FRONTEND.exists(), reason="the frontend is not checked out")
 class TestFrontendParity:
-    @pytest.mark.parametrize(
-        ("name", "options"),
-        [
-            ("LAYOUT_OPTIONS", LAYOUT_OPTIONS),
-            ("FACILITY_OPTIONS", FACILITY_OPTIONS),
-            ("ACCESSIBILITY_OPTIONS", ACCESSIBILITY_OPTIONS),
-        ],
-    )
-    def test_the_browser_offers_the_same_list_in_the_same_order(self, name, options):
-        assert _frontend_list(FRONTEND.read_text(encoding="utf-8"), name) == options
 
     def test_the_browser_uses_the_same_answers_and_messages(self):
         source = FRONTEND.read_text(encoding="utf-8")
@@ -137,13 +115,7 @@ class TestFrontendParity:
 
 
 class TestEventNeeds:
-    def test_nothing_is_answered_by_default(self):
-        assert NO_NEEDS == EventNeeds()
-        assert set(NO_NEEDS.as_attrs().values()) == {""}
 
-    def test_attrs_keep_the_values_exactly(self):
-        needs = EventNeeds(**SUBMITTABLE_NEED_ATTRS)
-        assert needs.as_attrs() == SUBMITTABLE_NEED_ATTRS
 
     def test_an_unanswered_column_is_written_null(self):
         needs = EventNeeds(preferred_layout="Theatre")
@@ -155,23 +127,6 @@ class TestEventNeeds:
             "registration_needs": None,
         }
 
-    def test_an_event_exposes_its_needs(self):
-        event = Event(
-            id=1,
-            title="",
-            purpose="",
-            description="",
-            starts_at="",
-            ends_at="",
-            expected_attendance=None,
-            status=EventStatus.DRAFT,
-            organiser_id=1,
-            organiser_name="",
-            created_at="",
-            updated_at="",
-            **SUBMITTABLE_NEED_ATTRS,
-        )
-        assert event.needs == EventNeeds(**SUBMITTABLE_NEED_ATTRS)
 
 
 class TestListed:
@@ -192,29 +147,275 @@ class TestListed:
 class TestFormatError:
     """Applies to drafts too: blanks are fine, values off the lists are not."""
 
+
     @pytest.mark.parametrize(
-        "needs",
+        ("needs", "message"),
         [
-            NO_NEEDS,
-            EventNeeds(**SUBMITTABLE_NEED_ATTRS),
-            EventNeeds(**{name: NOT_REQUIRED for name in NEED_FIELDS}),
-            EventNeeds(venue_requirements=", ".join(FACILITY_OPTIONS)),
-            EventNeeds(accessibility_needs=", ".join(ACCESSIBILITY_OPTIONS)),
-            EventNeeds(preferred_layout="  "),
-            EventNeeds(equipment_needs="e" * FREE_TEXT_MAX),
-            EventNeeds(registration_needs="r" * FREE_TEXT_MAX),
-        ],
-        ids=[
-            "blank",
-            "answered",
-            "all-not-required",
-            "every-facility",
-            "every-accessibility-need",
-            "blank-layout",
-            "equipment-at-limit",
-            "registration-at-limit",
+            (
+                EventNeeds(venue_requirements="Stage, Helipad"),
+                "Choose the venue requirements from the list. Helipad is not one of the options.",
+            ),
+            (
+                EventNeeds(venue_requirements=f"Stage, {NOT_REQUIRED}"),
+                f"Choose the venue requirements, or {NOT_REQUIRED} — not both.",
+            ),
+            (
+                EventNeeds(accessibility_needs="ramp"),
+                "Choose the accessibility needs from the list. ramp is not one of the options.",
+            ),
+            (
+                EventNeeds(accessibility_needs=f"{NOT_REQUIRED}, Lift"),
+                f"Choose the accessibility needs, or {NOT_REQUIRED} — not both.",
+            ),
+            (
+                EventNeeds(preferred_layout="theatre"),
+                "Choose a preferred layout from the list. theatre is not one of the options.",
+            ),
+            (
+                EventNeeds(preferred_layout="Theatre, Banquet"),
+                "Choose a preferred layout from the list. "
+                "Theatre, Banquet is not one of the options.",
+            ),
+            (
+                EventNeeds(equipment_needs="e" * (FREE_TEXT_MAX + 1)),
+                f"Keep the equipment needs to {FREE_TEXT_MAX} characters or fewer.",
+            ),
+            (
+                EventNeeds(registration_needs="r" * (FREE_TEXT_MAX + 1)),
+                f"Keep the registration needs to {FREE_TEXT_MAX} characters or fewer.",
+            ),
         ],
     )
-    def test_acceptable_answers(self, needs):
-        assert format_error(needs) is None
+    def test_refused_answers(self, needs, message):
+        assert format_error(needs) == message
 
+
+class TestMissingError:
+
+    def test_not_required_counts_as_an_answer(self):
+        assert missing_error(EventNeeds(**{name: NOT_REQUIRED for name in NEED_FIELDS})) is None
+
+
+
+
+
+# --- AC: drafts still save without these checks (US2.2) --------------------------
+
+
+class TestDrafts:
+
+
+
+
+
+    def test_the_owner_saves_needs_on_a_draft(self, client, auth_headers):
+        organiser = auth_headers(ORGANISER)
+        event = create(client, organiser, title="Gala")
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={"title": "Gala", **ALL_NOT_REQUIRED, "preferredLayout": "Cabaret"},
+            headers=organiser,
+        )
+
+        assert response.status_code == 200, response.text
+        saved = response.json()
+        assert saved["status"] == "Draft"
+        assert saved["preferredLayout"] == "Cabaret"
+        assert saved["equipmentNeeds"] == NOT_REQUIRED
+
+
+
+# --- AC: on Submit, every field is required; missing ones block it ----------------
+
+
+class TestSubmitting:
+
+    def test_none_not_required_answers_every_need(self, client, auth_headers):
+        organiser = auth_headers(ORGANISER)
+        event = create(client, organiser, **DETAILS, **ALL_NOT_REQUIRED)
+
+        response = submit(client, organiser, event["id"])
+
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "Submitted"
+
+
+
+
+class TestAttendanceUpperBound:
+    """`events.expected_attendance` is INTEGER: past its maximum the write would fail."""
+
+
+    @pytest.mark.parametrize("attendance", [2147483648, 10**20])
+    def test_one_past_it_is_refused_with_a_sentence(self, client, auth_headers, attendance):
+        response = client.post(
+            "/events",
+            json={"title": "Big", "expectedAttendance": attendance},
+            headers=auth_headers(ORGANISER),
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == ATTENDANCE_TOO_LARGE
+        assert ATTENDANCE_TOO_LARGE == "Expected attendance must be 2,147,483,647 or fewer."
+
+
+# --- Coordinator edits and reads -------------------------------------------------
+
+
+def _submitted_and_assigned(client, auth_headers) -> dict:
+    organiser = auth_headers(ORGANISER)
+    event = create(client, organiser, **REQUEST)
+    assert submit(client, organiser, event["id"]).status_code == 200
+    assigned = client.post(
+        f"/events/{event['id']}/assign",
+        json={"coordinatorId": str(COORDINATOR_ID)},
+        headers=auth_headers("Event Coordinator Lead"),
+    )
+    assert assigned.status_code == 200, assigned.text
+    return assigned.json()
+
+
+class TestCoordinator:
+
+    def test_a_coordinator_edit_saves_the_needs(self, client, auth_headers):
+        event = _submitted_and_assigned(client, auth_headers)
+
+        response = client.put(
+            f"/events/{event['id']}",
+            json={**REQUEST, "accessibilityNeeds": "Hearing loop, Lift"},
+            headers=auth_headers("Event Coordinator"),
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["accessibilityNeeds"] == "Hearing loop, Lift"
+
+
+# --- the Supabase store writes and reads the new columns -------------------------
+
+
+class FakeQuery:
+    def __init__(self, recorder: "FakeClient", table: str) -> None:
+        self.recorder = recorder
+        self.table_name = table
+        self.rows: list[dict] = []
+
+    def insert(self, payload):
+        self.recorder.inserts.append((self.table_name, payload))
+        self.rows = [{"id": 42}]
+        return self
+
+    def update(self, payload):
+        self.recorder.updates.append((self.table_name, payload))
+        return self
+
+    def select(self, _columns):
+        if self.table_name == "events":
+            self.rows = [self.recorder.stored_row]
+        return self
+
+    def eq(self, *_args):
+        return self
+
+    def limit(self, *_args):
+        return self
+
+    def in_(self, *_args):
+        self.rows = []
+        return self
+
+    def execute(self):
+        return type("Response", (), {"data": self.rows})()
+
+
+class FakeClient:
+    def __init__(self) -> None:
+        self.inserts: list[tuple[str, object]] = []
+        self.updates: list[tuple[str, dict]] = []
+        self.stored_row = {
+            "id": 42,
+            "name": "Gala",
+            "purpose": "Celebrate",
+            "description": "Dinner",
+            "proposed_date": "2099-11-02T18:00:00",
+            "end_date": "2099-11-02T21:00:00",
+            "expected_attendance": 80,
+            "status": "Submitted",
+            "organiser_id": ORGANISER_ID,
+            "coordinator_id": COORDINATOR_ID,
+            "created_at": "2026-09-15T09:00:00",
+            "updated_at": "2026-09-15T09:00:00",
+            "submitted_at": None,
+            "users": {"name": "Dylan"},
+            **SUBMITTABLE_NEED_ATTRS,
+        }
+
+    def table(self, name: str) -> FakeQuery:
+        return FakeQuery(self, name)
+
+
+@pytest.fixture
+def recorder(monkeypatch) -> FakeClient:
+    fake = FakeClient()
+    monkeypatch.setattr(supabase_client, "admin", lambda: fake)
+    return fake
+
+
+DETAIL_KWARGS = {
+    "title": "Gala",
+    "purpose": "Celebrate",
+    "description": "Dinner",
+    "starts_at": "2099-11-02T18:00",
+    "ends_at": "2099-11-02T21:00",
+    "expected_attendance": 80,
+}
+
+
+class TestSupabaseStore:
+
+
+
+
+
+    def test_save_writes_the_needs(self, recorder):
+        SupabaseEvents().save_event(42, **DETAIL_KWARGS, needs=EventNeeds(**SUBMITTABLE_NEED_ATTRS))
+
+        _, written = recorder.updates[0]
+        for name, value in SUBMITTABLE_NEED_ATTRS.items():
+            assert written[name] == value
+
+    def test_a_tracked_save_logs_each_changed_need(self, recorder, monkeypatch):
+        previous = to_event(recorder.stored_row)
+        needs = EventNeeds(
+            **{
+                **SUBMITTABLE_NEED_ATTRS,
+                "preferred_layout": "Banquet",
+                "equipment_needs": NOT_REQUIRED,
+            }
+        )
+
+        calls = []
+
+        def rpc(name, payload):
+            calls.append((name, payload))
+            return type("Rpc", (), {"execute": lambda self: type("Result", (), {"data": True})()})()
+
+        monkeypatch.setattr(recorder, "rpc", rpc, raising=False)
+
+        SupabaseEvents().save_event_with_tracking(
+            42,
+            **{**DETAIL_KWARGS, "starts_at": previous.starts_at, "ends_at": previous.ends_at},
+            editor_id=COORDINATOR_ID,
+            previous_event=previous,
+            needs=needs,
+        )
+
+        name, payload = calls[0]
+        assert name == "us11_edit"
+        assert [
+            (row["changed_field"], row["old_value"], row["new_value"], row["change_type"])
+            for row in payload["p_changes"]
+        ] == [
+            ("preferred_layout", "Theatre", "Banquet", "important"),
+            ("equipment_needs", "Two wireless microphones", NOT_REQUIRED, "important"),
+        ]

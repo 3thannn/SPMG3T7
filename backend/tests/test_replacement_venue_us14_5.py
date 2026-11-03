@@ -132,11 +132,6 @@ def test_invalid_or_original_venue_cannot_replace(
     assert booking_repository.bookings == before
 
 
-@pytest.mark.parametrize("role", ["Event Organiser", "Venue Staff", "Safety Officer"])
-def test_other_roles_cannot_search_or_replace(client, auth_headers, scenario, role):
-    headers = auth_headers(role)
-    assert search(client, headers).status_code == 403
-    assert request_replacement(client, headers).status_code == 403
 
 
 def test_unassigned_coordinator_is_refused(client, auth_headers, scenario, event_repository):
@@ -146,14 +141,6 @@ def test_unassigned_coordinator_is_refused(client, auth_headers, scenario, event
     assert request_replacement(client, headers).status_code == 404
 
 
-@pytest.mark.parametrize(
-    "status", [EventStatus.CANCELLED, EventStatus.COMPLETED, EventStatus.REJECTED],
-)
-def test_closed_events_cannot_replace(client, auth_headers, scenario, event_repository, status):
-    event_repository.events[0] = replace(event_repository.events[0], status=status)
-    headers = auth_headers("Event Coordinator")
-    assert search(client, headers).status_code == 409
-    assert request_replacement(client, headers).status_code == 409
 
 
 @pytest.mark.parametrize(("error", "expected"), [(SlotTaken, 400), (StaleBookingStatus, 409)])

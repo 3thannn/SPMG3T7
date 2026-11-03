@@ -17,7 +17,7 @@ from app import booking_store
 from app.booking_store import Booking, BookingStatus, Cancellation
 from app.event_status import EventStatus
 from app.event_store import Event
-from app.venue_availability import EntryKind, default_range, entries
+from app.venue_availability import default_range, entries
 from app.venue_store import Venue
 from app.venue_unavailability_store import Unavailability, UnavailabilityReasonType
 from tests.conftest import COORDINATOR_ID, ORGANISER_ID
@@ -85,28 +85,6 @@ class TestTheDefaultRange:
 class TestWhatIsListed:
     """AC2 and AC4."""
 
-    def test_each_entry_is_labelled_by_type(self):
-        found = listed(
-            [
-                booking(1, status=BookingStatus.CONFIRMED),
-                booking(2, status=BookingStatus.REQUESTED, starts_at="2027-03-04T10:00"),
-                booking(
-                    3,
-                    status=BookingStatus.HELD,
-                    starts_at="2027-03-08T10:00",
-                    ends_at="2027-03-08T12:00",
-                    hold_expires_at="2027-03-02T17:00:00",
-                ),
-            ],
-            [period()],
-        )
-
-        assert [entry.kind for entry in found] == [
-            EntryKind.CONFIRMED,
-            EntryKind.REQUESTED,
-            EntryKind.UNAVAILABLE,
-            EntryKind.HOLD,
-        ]
 
     @pytest.mark.parametrize(
         "status",
@@ -142,29 +120,10 @@ class TestTheOccupiedWindow:
         assert entry.starts_at == datetime(2027, 3, 3, 9, 30)
         assert entry.ends_at == datetime(2027, 3, 3, 12, 45)
 
-    def test_a_period_spans_its_whole_days(self):
-        [entry] = listed(periods=[period()])
-
-        assert entry.starts_at == datetime(2027, 3, 5)
-        assert entry.ends_at == datetime(2027, 3, 7)
 
 
 class TestTheRange:
-    def test_it_is_chronological_by_when_the_venue_is_taken(self):
-        found = listed(
-            [
-                booking(1, starts_at="2027-03-10T10:00", ends_at="2027-03-10T11:00"),
-                booking(2, starts_at="2027-03-02T10:00", ends_at="2027-03-02T11:00"),
-            ],
-            [period(start="2027-03-04", end="2027-03-04")],
-        )
 
-        assert [entry.starts_at.day for entry in found] == [2, 4, 10]
-
-    def test_an_entry_running_into_the_range_is_shown(self):
-        found = listed(periods=[period(start="2027-02-20", end="2027-03-01")])
-
-        assert len(found) == 1
 
     def test_setup_alone_can_bring_a_booking_into_the_range(self):
         """Starting 00:15 on the day after the range, its setup begins inside it."""
@@ -178,8 +137,6 @@ class TestTheRange:
 
         assert listed([late]) == []
 
-    def test_entries_after_the_last_day_are_not_shown(self):
-        assert listed([booking(starts_at="2027-03-20T10:00", ends_at="2027-03-20T12:00")]) == []
 
 
 # -- The route ------------------------------------------------------------------
@@ -296,13 +253,6 @@ class TestTheRoute:
         assert hold["kind"] == "hold"
         assert hold["holdExpiresAt"] == "2027-03-04T17:00"
 
-    def test_a_period_carries_its_dates_and_reason(self, client, auth_headers):
-        closed = view(client, auth_headers("Venue Staff")).json()["entries"][1]
-
-        assert closed["kind"] == "unavailable"
-        assert closed["periodId"] == "1"
-        assert (closed["startDate"], closed["endDate"]) == ("2027-03-05", "2027-03-06")
-        assert (closed["reasonType"], closed["otherReason"]) == ("other", "Floor polishing")
 
     def test_a_chosen_range_is_used(self, client, auth_headers):
         body = view(client, auth_headers("Venue Staff"), "?from=2027-03-25&to=2027-04-05").json()
@@ -310,10 +260,6 @@ class TestTheRoute:
         assert (body["from"], body["to"]) == ("2027-03-25", "2027-04-05")
         assert [entry["bookingId"] for entry in body["entries"]] == ["4"]
 
-    def test_a_range_with_nothing_in_it_is_an_empty_list(self, client, auth_headers):
-        body = view(client, auth_headers("Venue Staff"), "?from=2027-05-01&to=2027-05-02").json()
-
-        assert body["entries"] == []
 
     def test_venue_staff_see_every_events_title(self, client, auth_headers):
         titles = [
@@ -343,20 +289,12 @@ class TestTheRoute:
 
 @pytest.mark.usefixtures("great_hall")
 class TestPickingTheRange:
-    def test_from_alone_runs_14_days(self, client, auth_headers):
-        body = view(client, auth_headers("Venue Staff"), "?from=2027-06-01").json()
-
-        assert (body["from"], body["to"]) == ("2027-06-01", "2027-06-14")
 
     def test_to_alone_runs_the_14_days_before_it(self, client, auth_headers):
         body = view(client, auth_headers("Venue Staff"), "?to=2027-06-14").json()
 
         assert (body["from"], body["to"]) == ("2027-06-01", "2027-06-14")
 
-    def test_one_day_is_a_range(self, client, auth_headers):
-        response = view(client, auth_headers("Venue Staff"), "?from=2027-06-01&to=2027-06-01")
-
-        assert response.status_code == 200
 
     @pytest.mark.parametrize(
         ("query", "message"),

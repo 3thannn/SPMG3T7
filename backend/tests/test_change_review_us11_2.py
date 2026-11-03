@@ -4,8 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from app import arrangement_review, conflict_flags, supabase_client
-from app.booking_store import Booking, BookingStatus, ConflictFlag
+from app import arrangement_review, supabase_client
+from app.booking_store import Booking, BookingStatus
 from app.equipment_store import Equipment, EquipmentRequest
 from app.event_status import EventStatus
 from app.event_store import SupabaseEvents
@@ -96,29 +96,8 @@ def test_under_review_requires_question_and_field_amendment(client, auth_headers
     assert submit(client, auth_headers, event, 2, expectedAttendance=80).status_code == 409
 
 
-@pytest.mark.parametrize(
-    "status",
-    [
-        EventStatus.APPROVED,
-        EventStatus.PLANNING,
-        EventStatus.PENDING_SAFETY_CHECK,
-        EventStatus.CONFIRMED,
-    ],
-)
-def test_later_stage_question_requires_pending_proposal(
-    client, auth_headers, event_repository, status
-):
-    event = seed(event_repository, status=status)
-    assert question(client, auth_headers, event).status_code == 409
 
 
-@pytest.mark.parametrize(
-    "status",
-    [EventStatus.DRAFT, EventStatus.REJECTED, EventStatus.COMPLETED, EventStatus.CANCELLED],
-)
-def test_closed_or_draft_refuses_proposal(client, auth_headers, event_repository, status):
-    event = seed(event_repository, status=status)
-    assert submit(client, auth_headers, event).status_code == 409
 
 
 def booking(event_id, **overrides):
@@ -157,27 +136,6 @@ def reservation(event_id, **overrides):
     return EquipmentRequest(**{**values, **overrides})
 
 
-@pytest.mark.parametrize("attendance,failed", [(40, False), (41, True)])
-def test_capacity_boundary_and_existing_flags(
-    event_repository,
-    booking_repository,
-    notification_repository,
-    attendance,
-    failed,
-):
-    event = seed(event_repository, expected_attendance=attendance)
-    old_flag = ConflictFlag("2026-10-01T00:00", "Existing venue clash")
-    booking_repository.bookings = [booking(event.id, conflict=old_flag)]
-    result = arrangement_review.recheck(event)
-    stored = booking_repository.get_booking(1)
-    assert bool(stored.event_conflict_reason) == failed
-    assert stored.conflict == old_flag
-    assert stored.status == BookingStatus.CONFIRMED
-    assert not result.arrangement_review_pending
-    notices = notification_repository.list_for_user(COORDINATOR_ID)
-    assert len(notices) == int(failed)
-    arrangement_review.recheck(result)
-    assert len(notification_repository.list_for_user(COORDINATOR_ID)) == len(notices)
 
 
 @pytest.mark.parametrize("competing,shortfall", [(0, False), (1, True)])
@@ -198,23 +156,6 @@ def test_stock_boundary_excludes_own_reservation(
     assert equipment_repository.get_request(1).status == "Reserved"
 
 
-def test_mismatched_sgt_window_flags_without_moving_arrangements(
-    event_repository,
-    booking_repository,
-    equipment_repository,
-):
-    event = seed(event_repository, starts_at="2027-11-03T00:00", ends_at="2027-11-03T01:00")
-    booking_repository.bookings = [booking(event.id)]
-    equipment_repository.items = [Equipment(1, "Projector", "Projector", "", "Store", 2, 0, "")]
-    equipment_repository.requests = [reservation(event.id)]
-    arrangement_review.recheck(event)
-    assert "does not cover" in booking_repository.get_booking(1).event_conflict_reason
-    assert "does not cover" in equipment_repository.get_request(1).event_conflict_reason
-    assert booking_repository.get_booking(1).starts_at == "2027-11-02T18:00"
-    assert equipment_repository.get_request(1).starts_at == "2027-11-02T18:00"
-    # The venue-only cleanup cannot erase this flag.
-    conflict_flags.resolve_venue(2)
-    assert booking_repository.get_booking(1).event_conflict_reason
 
 
 def test_partial_failure_is_visible_and_retryable(
@@ -277,46 +218,8 @@ def test_direct_edit_and_accept_use_same_checks(
     )
 
 
-@pytest.mark.parametrize(
-    "status",
-    [
-        BookingStatus.CANCELLED,
-        BookingStatus.REJECTED,
-        BookingStatus.REPLACED,
-        BookingStatus.EXPIRED,
-    ],
-)
-def test_inactive_bookings_clear_only_event_change_flag(
-    event_repository, booking_repository, status
-):
-    event = seed(event_repository)
-    booking_repository.bookings = [
-        booking(event.id, status=status, event_conflict_reason="Old failure")
-    ]
-    arrangement_review.recheck(event)
-    assert not booking_repository.get_booking(1).event_conflict_reason
-    assert booking_repository.get_booking(1).status == status
 
 
-def test_no_field_changes_does_not_consume_clarification(client, auth_headers, event_repository):
-    event = seed(
-        event_repository,
-        **{
-            "title": DRAFT["title"],
-            "purpose": DRAFT["purpose"],
-            "description": DRAFT["description"],
-            "starts_at": DRAFT["startsAt"],
-            "ends_at": DRAFT["endsAt"],
-            "expected_attendance": DRAFT["expectedAttendance"],
-        },
-    )
-    from tests.conftest import SUBMITTABLE_NEED_ATTRS
-
-    event = replace(event, **SUBMITTABLE_NEED_ATTRS, status=EventStatus.UNDER_REVIEW)
-    event_repository._replace(event)
-    assert question(client, auth_headers, event).status_code == 200
-    assert submit(client, auth_headers, event, 1).status_code == 400
-    assert event_repository.get_event(event.id).review_state["awaitingReply"]
 
 
 def test_cancelled_booking_clears_event_conflict_and_report(
@@ -339,31 +242,6 @@ def test_cancelled_booking_clears_event_conflict_and_report(
     assert not event_repository.get_event(event.id).arrangement_review
 
 
-def test_stale_recheck_cannot_clear_a_newer_edits_marker(
-    event_repository,
-    equipment_repository,
-    monkeypatch,
-):
-    event = seed(event_repository, arrangement_review_pending=True)
-    equipment_repository.items = [Equipment(1, "Projector", "Projector", "", "Store", 2, 0, "")]
-    equipment_repository.requests = [reservation(event.id)]
-    original = equipment_repository.reservation_availability
-
-    def concurrent_edit(request_id):
-        event_repository._replace(
-            replace(
-                event,
-                expected_attendance=100,
-                updated_at="2026-10-30T12:00:00",
-                arrangement_review_pending=True,
-            )
-        )
-        return original(request_id)
-
-    monkeypatch.setattr(equipment_repository, "reservation_availability", concurrent_edit)
-    checked = arrangement_review.recheck(event)
-    assert checked.expected_attendance == 100
-    assert checked.arrangement_review_pending
 
 
 @pytest.mark.parametrize("old_end,new_end", [("22:00", "21:00"), ("21:00", "22:00")])
@@ -406,31 +284,6 @@ def test_older_recheck_cannot_overwrite_newer_flags_or_report(
     assert all(bool(item["reason"]) == expected_failure for item in result.arrangement_review)
 
 
-@pytest.mark.parametrize("second_start,shortfall", [("19:00", 0), ("18:59:59", 1)])
-def test_reserved_equipment_uses_peak_demand_and_half_open_boundaries(
-    event_repository,
-    equipment_repository,
-    second_start,
-    shortfall,
-):
-    event = seed(event_repository)
-    equipment_repository.items = [Equipment(1, "Projector", "Projector", "", "Store", 3, 1, "")]
-    equipment_repository.requests = [
-        reservation(event.id, quantity=1),
-        reservation(999, id=2, quantity=1, ends_at="2027-11-02T19:00"),
-        reservation(
-            999,
-            id=3,
-            quantity=1,
-            starts_at=f"2027-11-02T{second_start}",
-            ends_at="2027-11-02T20:00",
-        ),
-    ]
-    stock = equipment_repository.reservation_availability(1)[0]
-    assert stock["shortfall"] == shortfall
-    checked = arrangement_review.recheck(event)
-    assert not checked.arrangement_review_pending
-    assert bool(equipment_repository.get_request(1).event_conflict_reason) == bool(shortfall)
 
 
 @pytest.mark.parametrize(

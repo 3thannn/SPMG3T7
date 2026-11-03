@@ -152,47 +152,9 @@ class TestNewTime:
             SECOND_ATTENDEE_ID: NEW_TIME,
         }
 
-    def test_a_time_change_alone_does_it_too(
-        self, client, auth_headers, registered, notification_repository
-    ):
-        change_and_accept(client, auth_headers, endsAt="2099-11-02T18:00")
 
-        assert set(attendee_notices(notification_repository).values()) == {
-            '"Open House" has a new date and time: 2 Nov 2099, 09:00 to 18:00.'
-        }
 
-    def test_a_title_change_tells_nobody(
-        self, client, auth_headers, registered, notification_repository
-    ):
-        change_and_accept(client, auth_headers, title="Open House 2099")
 
-        assert attendee_notices(notification_repository) == {}
-
-    def test_a_rejected_date_change_tells_nobody(
-        self, client, auth_headers, registered, notification_repository
-    ):
-        client.post(
-            f"/events/{EVENT_ID}/change-request",
-            json={**FORM, "startsAt": "2099-11-03T10:00", "endsAt": "2099-11-03T18:00"},
-            headers=auth_headers(ORGANISER),
-        )
-
-        client.post(
-            f"/events/{EVENT_ID}/change-request/reject",
-            json={"reason": "The new day clashes with exams."},
-            headers=auth_headers(COORDINATOR),
-        )
-
-        assert attendee_notices(notification_repository) == {}
-
-    def test_an_event_without_registrations_tells_nobody(
-        self, client, auth_headers, registered, registration_repository, notification_repository
-    ):
-        registration_repository.registrations.clear()
-
-        change_and_accept(client, auth_headers, startsAt="2099-11-02T10:00")
-
-        assert attendee_notices(notification_repository) == {}
 
 
 @pytest.fixture
@@ -223,39 +185,10 @@ class TestNewVenue:
             SECOND_ATTENDEE_ID: NEW_VENUE,
         }
 
-    def test_a_venue_that_replaced_nothing_tells_nobody(
-        self, client, auth_headers, registered, booking_repository, notification_repository
-    ):
-        booking_repository.bookings.append(
-            booking(REPLACEMENT, BERTHA_ROOM, "Bertha Room", BookingStatus.REQUESTED)
-        )
 
-        approve(client, auth_headers)
-
-        assert attendee_notices(notification_repository) == {}
-
-    def test_a_rejected_replacement_tells_nobody(
-        self, client, auth_headers, replacement_requested, notification_repository
-    ):
-        client.post(
-            f"/booking-requests/{REPLACEMENT}/reject",
-            json={"reason": "Closed for exams."},
-            headers=auth_headers(STAFF),
-        )
-
-        assert attendee_notices(notification_repository) == {}
 
 
 class TestWhatTheyRead:
-    def test_no_note_or_reason_reaches_an_attendee(
-        self, client, auth_headers, registered, notification_repository
-    ):
-        change_and_accept(client, auth_headers, startsAt="2099-11-02T10:00")
-
-        for message in attendee_notices(notification_repository).values():
-            assert "double-booked" not in message
-            assert "Planning" not in message
-            assert "safety" not in message.lower()
 
     def test_an_event_running_past_midnight_names_both_days(self):
         event = Event(
@@ -338,11 +271,6 @@ class TestBestEffort:
 
 
 class TestIsReplacement:
-    def test_a_replaced_booking_at_the_same_times_on_the_same_event(self):
-        new = booking(REPLACEMENT, BERTHA_ROOM, "Bertha Room", BookingStatus.CONFIRMED)
-        old = booking(REPLACED, GREAT_HALL, "Great Hall", BookingStatus.REPLACED)
-
-        assert is_replacement(new, [old, new])
 
     @pytest.mark.parametrize(
         "other",

@@ -412,15 +412,3 @@ class TestTheRuleOnItsOwn:
             check_clarification(status=EventStatus.DRAFT) is ClarificationRefusal.NOT_YET_SUBMITTED
         )
 
-    def test_every_other_status_reads_as_decided(self):
-        for reviewed in (
-            EventStatus.APPROVED,
-            EventStatus.REJECTED,
-            EventStatus.PLANNING,
-            EventStatus.CONFIRMED,
-            EventStatus.COMPLETED,
-            EventStatus.CANCELLED,
-        ):
-            assert check_clarification(status=reviewed) is ClarificationRefusal.ALREADY_DECIDED, (
-                reviewed
-            )

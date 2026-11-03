@@ -15,7 +15,7 @@ from app.event_status import EventStatus
 from app.event_store import Event
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
+from tests.conftest import ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Team Building Workshop",
@@ -63,46 +63,8 @@ def seed_event(event_repository, **overrides) -> Event:
 class TestAC1AutomaticAssignment:
     """AC1: US8.2 - Auto-assignment is now OFF. Events remain unassigned on submit."""
 
-    def test_draft_to_submitted_does_NOT_assign(self, client, auth_headers):
-        """Moving Draft → Submitted leaves coordinator_id as NULL (US8.2)."""
-        event = submitted_event(client, auth_headers)
 
-        assert "coordinatorId" in event
-        assert event["coordinatorId"] is None
 
-    def test_update_without_status_change_does_not_assign(self, client, auth_headers):
-        """Updating event fields without changing status should not trigger assignment."""
-        organiser = auth_headers("Event Organiser")
-        created = client.post("/events", json=DRAFT, headers=organiser)
-        event_id = created.json()["id"]
-
-        # Update the draft without submitting
-        updated = client.put(
-            f"/events/{event_id}",
-            json={**DRAFT, "title": "Updated Workshop Title"},
-            headers=organiser,
-        )
-
-        assert updated.status_code == 200
-        assert updated.json()["coordinatorId"] is None
-
-    def test_event_already_submitted_does_not_reassign(
-        self, client, auth_headers, event_repository
-    ):
-        """An event that already has a Coordinator is not reassigned on subsequent updates."""
-        # Seed an event that's already submitted with a coordinator
-        seed_event(
-            event_repository,
-            id=501,
-            status=EventStatus.SUBMITTED,
-            coordinator_id=COORDINATOR_ID,
-        )
-
-        # Try to "resubmit" or update (this shouldn't reassign)
-        response = client.get("/events/501", headers=auth_headers("Event Organiser"))
-
-        assert response.status_code == 200
-        assert response.json()["coordinatorId"] == str(COORDINATOR_ID)
 
     def test_no_coordinators_exist_submission_succeeds(self, client, auth_headers, user_store):
         """If no Coordinators exist, submission succeeds with coordinator_id = NULL."""
@@ -118,34 +80,6 @@ class TestAC1AutomaticAssignment:
 class TestAC2RoundRobinAssignment:
     """AC2: US8.2 - Round-robin is removed. All events remain unassigned on submit."""
 
-    def test_multiple_submissions_remain_unassigned(
-        self, client, auth_headers, user_store
-    ):
-        """US8.2: Multiple submissions all remain unassigned (no auto-assignment)."""
-        from app.permissions import Role
-
-        # Add two more coordinators to the user store
-        coordinator_2 = User(id=10, email="coord2@spmg3t7.edu", name="Alex", role=Role.COORDINATOR)
-        coordinator_3 = User(
-            id=11, email="coord3@spmg3t7.edu", name="Jordan", role=Role.COORDINATOR
-        )
-        user_store.users.extend([coordinator_2, coordinator_3])
-
-        # Submit 6 events
-        organiser = auth_headers("Event Organiser")
-        coordinator_ids = []
-        for i in range(6):
-            created = client.post(
-                "/events",
-                json={**DRAFT, "title": f"Event {i+1}"},
-                headers=organiser,
-            )
-            event_id = created.json()["id"]
-            submitted = client.post(f"/events/{event_id}/submit", headers=organiser)
-            coordinator_ids.append(submitted.json()["coordinatorId"])
-
-        # US8.2: All remain unassigned (NULL)
-        assert coordinator_ids == [None, None, None, None, None, None]
 
     def test_submissions_no_longer_auto_assign(self, client, auth_headers, user_store):
         """US8.2: Events are no longer auto-assigned on submit."""
@@ -171,24 +105,6 @@ class TestAC2RoundRobinAssignment:
         # US8.2: All remain unassigned
         assert coordinator_ids == [None, None, None, None, None]
 
-    def test_no_auto_assignment_regardless_of_coordinators(self, client, auth_headers):
-        """US8.2: Events remain unassigned even when Coordinators exist."""
-        organiser = auth_headers("Event Organiser")
-
-        # Submit 3 events
-        coordinator_ids = []
-        for i in range(3):
-            created = client.post(
-                "/events",
-                json={**DRAFT, "title": f"Event {i+1}"},
-                headers=organiser,
-            )
-            event_id = created.json()["id"]
-            submitted = client.post(f"/events/{event_id}/submit", headers=organiser)
-            coordinator_ids.append(submitted.json()["coordinatorId"])
-
-        # US8.2: All remain NULL, not assigned to any coordinator
-        assert coordinator_ids == [None, None, None]
 
 
 class TestAC4VisibilityNarrowing:

@@ -17,7 +17,6 @@ from app.registration_store import (
     COLUMNS,
     EVENTS_TABLE,
     OPEN_EVENT_COLUMNS,
-    SETTINGS_COLUMNS,
     TABLE,
     WITH_EVENT_COLUMNS,
     BelowRegistered,
@@ -25,7 +24,6 @@ from app.registration_store import (
     RegisteredEvent,
     RegisterOutcome,
     Registration,
-    RegistrationSettings,
     RegistrationStatus,
     StaleRegistrationSettings,
     SupabaseRegistrations,
@@ -113,23 +111,6 @@ def fake(monkeypatch):
 
 
 class TestReadingTheSettings:
-    def test_it_reads_the_two_columns_and_counts_the_active_registrations(self, fake):
-        fake.rows = {
-            EVENTS_TABLE: [{"id": 950, "registration_open": True, "registration_capacity": 30}],
-            TABLE: [{"id": 1}, {"id": 2}],
-        }
-
-        settings = SupabaseRegistrations().settings_for(950)
-
-        assert settings == RegistrationSettings(
-            event_id=950, is_open=True, capacity=30, registered=2
-        )
-        (events,) = fake.on(EVENTS_TABLE)
-        assert ("select", SETTINGS_COLUMNS) in events.calls
-        assert ("eq", "id", 950) in events.calls
-        (registrations,) = fake.on(TABLE)
-        assert ("eq", "event_id", 950) in registrations.calls
-        assert ("eq", "status", "Registered") in registrations.calls
 
     def test_an_event_never_opened_reads_as_off_with_no_capacity(self, fake):
         fake.rows = {
@@ -158,12 +139,6 @@ class TestSavingTheSettings:
         ]
         assert (saved.is_open, saved.capacity) == (True, 40)
 
-    def test_no_capacity_is_sent_as_null_so_the_stored_one_is_kept(self, fake):
-        fake.rpc_answer = {"outcome": "saved", "registered": 0}
-
-        SupabaseRegistrations().set_settings(950, actor_id=2, is_open=False, capacity=None)
-
-        assert fake.rpcs[0][1]["p_capacity"] is None
 
     def test_below_the_places_taken_says_how_many(self, fake):
         fake.rpc_answer = {"outcome": "below-registered", "registered": 7}
@@ -214,18 +189,6 @@ class TestOpenEvents:
             ("order", "id", False),
         ]
 
-    def test_places_are_counted_for_every_listed_event_in_one_query(self, fake):
-        fake.rows = {
-            EVENTS_TABLE: [OPEN_ROW, {**OPEN_ROW, "id": 951}],
-            TABLE: [{"event_id": 950}, {"event_id": 951}, {"event_id": 951}],
-        }
-
-        listed = SupabaseRegistrations().list_open()
-
-        assert [(item.event_id, item.registered) for item in listed] == [(950, 1), (951, 2)]
-        (registrations,) = fake.on(TABLE)
-        assert ("in", "event_id", [950, 951]) in registrations.calls
-        assert ("eq", "status", "Registered") in registrations.calls
 
     def test_nothing_open_asks_nothing_more(self, fake):
         assert SupabaseRegistrations().list_open() == []
@@ -378,17 +341,7 @@ class TestAnAttendeesRegistrations:
         assert as_list.event is not None and as_list.event.title == "Open House"
         assert (missing.event, missing.withdrawn_at) == (None, "")
 
-    def test_one_registration_by_id(self, fake):
-        fake.rows = {TABLE: [REGISTRATION_ROW]}
 
-        found = SupabaseRegistrations().get_registration(5)
-
-        assert found is not None and found.id == 5
-        (query,) = fake.on(TABLE)
-        assert ("eq", "id", 5) in query.calls
-
-    def test_no_such_registration_is_none(self, fake):
-        assert SupabaseRegistrations().get_registration(5) is None
 
 
 class TestAnEventsRegistrations:

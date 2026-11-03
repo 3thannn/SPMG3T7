@@ -35,7 +35,7 @@ from app.event_confirmation import (
     current_approval,
 )
 from app.event_status import EventStatus
-from app.event_store import Event, StaleEventStatus, StatusChange
+from app.event_store import Event, StaleEventStatus, StatusChange, SupabaseEvents
 from app.permissions import Role
 from app.safety_decision_store import SafetyDecision
 from app.safety_decisions import SafetyOutcome
@@ -412,3 +412,30 @@ class TestRules:
         assert current_approval([decision(SafetyOutcome.CHANGES_REQUESTED)], ENTERED) is None
         approval = decision(SafetyOutcome.APPROVED)
         assert current_approval([approval], ENTERED) is approval
+
+
+class TestStores:
+    def test_in_memory_confirms_only_its_own_waiting_event(self, event_repository, waiting):
+        with pytest.raises(StaleEventStatus):
+            event_repository.confirm_event(EVENT_ID, actor_id=77)
+
+        confirmed = event_repository.confirm_event(EVENT_ID, actor_id=COORDINATOR_ID)
+
+        assert confirmed.status is EventStatus.CONFIRMED
+        with pytest.raises(StaleEventStatus):
+            event_repository.confirm_event(EVENT_ID, actor_id=COORDINATOR_ID)
+
+    def test_supabase_confirms_through_one_rpc(self, fake, monkeypatch):
+        store = SupabaseEvents()
+        marker = object()
+        monkeypatch.setattr(store, "get_event", lambda _id: marker)
+        fake.rpc_answers["confirm_event"] = True
+
+        assert store.confirm_event(42, actor_id=COORDINATOR_ID) is marker
+        assert fake.rpcs == [
+            ("confirm_event", {"p_event_id": 42, "p_coordinator_id": COORDINATOR_ID})
+        ]
+
+        fake.rpc_answers["confirm_event"] = False
+        with pytest.raises(StaleEventStatus):
+            store.confirm_event(42, actor_id=COORDINATOR_ID)

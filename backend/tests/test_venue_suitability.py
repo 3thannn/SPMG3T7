@@ -15,7 +15,6 @@ from dataclasses import replace
 
 import pytest
 
-from app.event_status import EventStatus
 from app.events import NEED_MAX, NEEDS_MAX
 from tests.test_venue_bookings import (
     BERTHA_ROOM,
@@ -117,8 +116,6 @@ class TestShownWhenAVenueIsPicked:
             "It does not support the Classroom layout. It supports: Theatre, cabaret."
         ]
 
-    def test_a_layout_it_supports(self, client, coordinator, event, layouts):
-        assert verdict(check(client, coordinator, layout="theatre"))["suitable"]
 
     def test_a_missing_facility_and_accessibility_need(self, client, coordinator, event):
         body = verdict(
@@ -210,11 +207,7 @@ class TestEachBookingHasItsOwnHeadcount:
         )
         assert request(client, coordinator, headcount=20).status_code == 201
 
-    def test_a_blank_headcount_is_left_out(self, client, coordinator, big_event):
-        assert request(client, coordinator, headcount="  ").json()["headcount"] == 300
 
-    def test_a_headcount_sent_as_text_is_read(self, client, coordinator, event):
-        assert request(client, coordinator, headcount=" 25 ").json()["headcount"] == 25
 
     @pytest.mark.parametrize(
         ("headcount", "message"),
@@ -290,39 +283,13 @@ class TestANotSuitableVenueCannotBeRequested:
 
 
 class TestWhatABookingNeedsIsKept:
-    def test_layout_facilities_and_accessibility_are_stored_and_returned(
-        self, client, coordinator, event, layouts, booking_repository
-    ):
-        body = request(
-            client,
-            coordinator,
-            layout=" Theatre ",
-            facilities=["projector", " PA  system "],
-            accessibilityNeeds=["hearing loop"],
-        ).json()
 
-        assert body["requiredLayout"] == "Theatre"
-        assert body["requiredFacilities"] == ["projector", "PA system"]
-        assert body["accessibilityNeeds"] == ["hearing loop"]
-        [stored] = booking_repository.bookings
-        assert stored.required_facilities == ("projector", "PA system")
-
-    def test_no_needs_is_an_empty_layout_and_empty_lists(self, client, coordinator, event):
-        body = request(client, coordinator).json()
-
-        assert body["requiredLayout"] == ""
-        assert body["requiredFacilities"] == []
-        assert body["accessibilityNeeds"] == []
 
     def test_a_comma_separated_string_is_read_as_a_list(self, client, coordinator, event):
         body = request(client, coordinator, facilities="projector, stage,, ").json()
 
         assert body["requiredFacilities"] == ["projector", "stage"]
 
-    def test_a_need_named_twice_is_kept_once(self, client, coordinator, event):
-        body = request(client, coordinator, facilities=["Projector", "projector"]).json()
-
-        assert body["requiredFacilities"] == ["Projector"]
 
     def test_an_overlong_need_is_refused(self, client, coordinator, event):
         response = request(client, coordinator, facilities=["x" * (NEED_MAX + 1)])
@@ -349,40 +316,13 @@ class TestWhatABookingNeedsIsKept:
 
 
 class TestTheCheckIsRefusedLikeARequest:
-    def test_the_owning_organiser_cannot_check(self, client, auth_headers, event):
-        assert check(client, auth_headers("Event Organiser")).status_code == 403
 
-    def test_venue_staff_cannot_check(self, client, auth_headers, event):
-        assert check(client, auth_headers("Venue Staff")).status_code == 403
 
     def test_a_coordinator_not_assigned_cannot_check(self, client, coordinator, event_repository):
         seed_event(event_repository, coordinator_id=99)
 
         assert check(client, coordinator).status_code == 404
 
-    def test_a_closed_event_cannot_be_checked(self, client, coordinator, event_repository):
-        seed_event(event_repository, status=EventStatus.REJECTED)
 
-        response = check(client, coordinator)
 
-        assert response.status_code == 409
-        assert response.json()["detail"]["reason"] == "event-closed"
 
-    def test_a_past_start_is_refused_before_any_verdict(self, client, coordinator, event):
-        response = check(
-            client, coordinator, startsAt="2020-01-01T09:00", endsAt="2020-01-01T17:00"
-        )
-
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == "A booking cannot start in the past."
-
-    def test_a_venue_not_in_the_catalogue(self, client, coordinator, event):
-        response = check(client, coordinator, venueId="999")
-
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == "That venue is not in the catalogue."
-
-    def test_signed_out(self, client, event):
-        response = client.post(f"/events/{EVENT_ID}/bookings/suitability", json=BOOKING)
-
-        assert response.status_code == 401

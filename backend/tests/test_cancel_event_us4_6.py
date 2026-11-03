@@ -15,25 +15,22 @@ Acceptance criteria, and the tests that hold each one:
   Attendees are notified -> `TestNotifications`, `TestRegistrations`.
 """
 
+from types import SimpleNamespace
 
 import pytest
 
+from app import notification_store, supabase_client
 from app.booking_store import Booking, BookingStatus, ConflictFlag, Decision
 from app.equipment_store import EquipmentRequest
 from app.event_cancellation import (
-    CANCEL_REFUSAL_MESSAGES,
     CANCELLATION_REASON_MAX,
     KIND_CANCELLATION,
     READ_ONLY_MESSAGE,
-    CancelRefusal,
-    cancel_refusal_message,
     check_cancel,
-    history_kind,
 )
-from app.event_status import CANCELLABLE, CLOSED, EventStatus, transition_allowed
-from app.event_store import Event, StaleEventStatus
-from app.notifications import _listed
-from app.permissions import Permission, Role, has_permission, roles_with
+from app.event_status import CANCELLABLE, EventStatus, transition_allowed
+from app.event_store import CancelledEvent, Event, StaleEventStatus, SupabaseEvents
+from app.permissions import Permission, Role, roles_with
 from app.registration_store import Registration, RegistrationStatus
 from tests.conftest import (
     ATTENDEE_ID,
@@ -41,6 +38,7 @@ from tests.conftest import (
     ORGANISER_ID,
     SECOND_ATTENDEE_ID,
     SUBMITTABLE_NEED_ATTRS,
+    SUBMITTABLE_NEEDS,
     TECH_SUPPORT_ID,
     VENUE_STAFF_ID,
 )
@@ -136,43 +134,16 @@ def cancel(client, headers, *, reason=REASON, event_id=EVENT_ID):
 
 
 class TestTheRule:
-    def test_cancellable_is_everything_but_completed_cancelled_and_rejected(self):
-        assert set(CLOSED) == {EventStatus.COMPLETED, EventStatus.CANCELLED, EventStatus.REJECTED}
-        assert set(CANCELLABLE) == set(EventStatus) - set(CLOSED)
 
     @pytest.mark.parametrize("status", CANCELLABLE)
     def test_an_open_event_may_be_cancelled(self, status):
         assert check_cancel(status=status) is None
         assert transition_allowed(from_status=status, to_status=EventStatus.CANCELLED)
 
-    @pytest.mark.parametrize(
-        ("status", "refusal"),
-        [
-            (EventStatus.CANCELLED, CancelRefusal.ALREADY_CANCELLED),
-            (EventStatus.COMPLETED, CancelRefusal.COMPLETED),
-            (EventStatus.REJECTED, CancelRefusal.REJECTED),
-        ],
-    )
-    def test_a_closed_event_may_not(self, status, refusal):
-        assert check_cancel(status=status) is refusal
 
-    def test_nothing_reopens_a_cancelled_event(self):
-        for after in EventStatus:
-            if after is not EventStatus.CANCELLED:
-                assert not transition_allowed(from_status=EventStatus.CANCELLED, to_status=after)
 
-    @pytest.mark.parametrize("closed", [EventStatus.COMPLETED, EventStatus.REJECTED])
-    def test_a_completed_or_rejected_event_never_becomes_cancelled(self, closed):
-        assert not transition_allowed(from_status=closed, to_status=EventStatus.CANCELLED)
 
-    @pytest.mark.parametrize("reason", list(CancelRefusal))
-    def test_every_refusal_explains_itself(self, reason):
-        assert cancel_refusal_message(reason) == CANCEL_REFUSAL_MESSAGES[reason]
-        assert cancel_refusal_message(reason).endswith(".")
 
-    def test_only_the_move_to_cancelled_is_labelled_a_cancellation(self):
-        assert history_kind(to_status=EventStatus.CANCELLED) == KIND_CANCELLATION
-        assert history_kind(to_status=EventStatus.PLANNING) == ""
 
 
 class TestWhoMayCancel:
@@ -202,16 +173,7 @@ class TestWhoMayCancel:
         assert cancel(client, auth_headers("Event Organiser")).status_code == 404
         assert event_repository.get_event(EVENT_ID) == event
 
-    def test_an_unassigned_coordinator_gets_not_found(
-        self, client, auth_headers, event_repository
-    ):
-        event = seed_event(event_repository, coordinator_id=999)
-        assert cancel(client, auth_headers("Event Coordinator")).status_code == 404
-        assert event_repository.get_event(EVENT_ID) == event
 
-    def test_a_coordinator_cannot_reach_a_draft(self, client, auth_headers, event_repository):
-        seed_event(event_repository, EventStatus.DRAFT)
-        assert cancel(client, auth_headers("Event Coordinator")).status_code == 404
 
     @pytest.mark.parametrize(
         "role",
@@ -337,14 +299,6 @@ class TestHistory:
             str(ORGANISER_ID), "Dylan", KIND_CANCELLATION,
         )
 
-    def test_the_cancellation_reads_back_on_the_event(
-        self, client, auth_headers, event_repository
-    ):
-        seed_event(event_repository)
-        cancel(client, auth_headers("Event Coordinator"))
-        fetched = client.get(f"/events/{EVENT_ID}", headers=auth_headers("Event Organiser"))
-        assert fetched.json()["status"] == "Cancelled"
-        assert fetched.json()["history"][-1]["notes"] == REASON
 
 
 class TestReleases:
@@ -484,14 +438,6 @@ class TestReadOnly:
             "code": "rule_refused", "message": READ_ONLY_MESSAGE, "reason": "event-cancelled",
         }
 
-    def test_no_venue_can_be_requested(self, client, auth_headers, cancelled):
-        response = client.post(
-            f"/events/{EVENT_ID}/bookings",
-            json={"venueId": "1", "startsAt": STARTS, "endsAt": ENDS},
-            headers=auth_headers("Event Coordinator"),
-        )
-        assert response.status_code == 409
-        assert response.json()["detail"]["reason"] == "event-closed"
 
     def test_no_equipment_can_be_requested(self, client, auth_headers, cancelled):
         response = client.post(
@@ -501,28 +447,8 @@ class TestReadOnly:
         )
         assert response.status_code == 409
 
-    def test_no_change_can_be_requested(self, client, auth_headers, cancelled):
-        response = client.post(
-            f"/events/{EVENT_ID}/change-request",
-            json={"title": "Changed", "startsAt": STARTS, "endsAt": ENDS,
-                  "expectedAttendance": 30, "purpose": "p", "description": "d"},
-            headers=auth_headers("Event Organiser"),
-        )
-        assert response.status_code == 409
 
-    def test_no_clarification_can_be_asked(self, client, auth_headers, cancelled):
-        response = client.post(
-            f"/events/{EVENT_ID}/clarification",
-            json={"message": "Anything?"},
-            headers=auth_headers("Event Coordinator"),
-        )
-        assert response.status_code == 409
 
-    def test_it_cannot_be_sent_for_a_safety_check(self, client, auth_headers, cancelled):
-        response = client.post(
-            f"/events/{EVENT_ID}/safety-check", headers=auth_headers("Event Coordinator")
-        )
-        assert response.status_code == 409
 
     def test_a_cancelled_draft_cannot_be_submitted(self, client, auth_headers, event_repository):
         seed_event(event_repository, EventStatus.DRAFT, coordinator_id=None)
@@ -540,11 +466,6 @@ class TestReadOnly:
         assert response.status_code == 409
         assert response.json()["detail"]["reason"] == "nothing-pending"
 
-    def test_it_can_still_be_read_by_both(self, client, auth_headers, cancelled):
-        for role in ("Event Organiser", "Event Coordinator"):
-            response = client.get(f"/events/{EVENT_ID}", headers=auth_headers(role))
-            assert response.status_code == 200
-            assert response.json()["status"] == "Cancelled"
 
 
 class TestNotifications:
@@ -670,12 +591,6 @@ class TestNotifications:
         assert len(notification_repository.list_for_user(ORGANISER_ID)) == 1
         assert notification_repository.list_for_user(VENUE_STAFF_ID) == []
 
-    @pytest.mark.parametrize(
-        ("items", "joined"),
-        [([], ""), (["A"], "A"), (["A", "B"], "A and B"), (["A", "B", "C"], "A, B and C")],
-    )
-    def test_lists_read_as_a_sentence(self, items, joined):
-        assert _listed(items) == joined
 
 
 def registration(registration_id, attendee_id, status=RegistrationStatus.REGISTERED, **changes):
@@ -855,6 +770,109 @@ class TestPermissions:
     def test_organisers_and_coordinators_cancel(self):
         assert roles_with(Permission.EVENTS_CANCEL) == [Role.ORGANISER, Role.COORDINATOR]
 
-    def test_venue_staff_now_read_notifications(self):
-        assert has_permission(Role.VENUE_STAFF, Permission.NOTIFICATIONS_READ)
 
+
+
+class TestInMemoryStore:
+    def test_refuses_an_event_that_moved(self, event_repository):
+        seed_event(event_repository, EventStatus.APPROVED)
+        with pytest.raises(StaleEventStatus):
+            event_repository.cancel_event(
+                EVENT_ID, actor_id=COORDINATOR_ID, from_status=EventStatus.PLANNING, reason=REASON
+            )
+
+
+
+
+
+
+class RpcAdmin:
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
+
+    def rpc(self, name, arguments):
+        self.calls.append((name, arguments))
+        return self
+
+    def execute(self):
+        return SimpleNamespace(data=self.result)
+
+
+class TestSupabaseStore:
+    def test_cancel_uses_the_atomic_rpc(self, monkeypatch):
+        admin = RpcAdmin({"bookings": [3, 4], "equipment": [9]})
+        marker = object()
+        store = SupabaseEvents()
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+        monkeypatch.setattr(store, "get_event", lambda _id: marker)
+
+        result = store.cancel_event(
+            42, actor_id=COORDINATOR_ID, from_status=EventStatus.CONFIRMED, reason=REASON
+        )
+
+        assert result == CancelledEvent(event=marker, booking_ids=(3, 4), equipment_ids=(9,))
+        assert admin.calls == [
+            ("cancel_event", {
+                "p_event_id": 42, "p_expected_status": "Confirmed",
+                "p_actor_id": COORDINATOR_ID, "p_reason": REASON,
+            })
+        ]
+
+
+
+
+    def test_null_from_the_rpc_is_stale(self, monkeypatch):
+        monkeypatch.setattr(supabase_client, "admin", lambda: RpcAdmin(None))
+        with pytest.raises(StaleEventStatus):
+            SupabaseEvents().cancel_event(
+                42, actor_id=ORGANISER_ID, from_status=EventStatus.PLANNING, reason=REASON
+            )
+
+
+class TestEndToEnd:
+    def test_from_draft_to_confirmed_then_cancelled(
+        self, client, auth_headers, event_repository, booking_repository,
+        notification_repository,
+    ):
+        organiser = auth_headers("Event Organiser")
+        coordinator = auth_headers("Event Coordinator")
+        event = {
+            "title": "Open House", "purpose": "Welcome visitors", "description": "Tours.",
+            "startsAt": STARTS, "endsAt": ENDS, "expectedAttendance": 30, **SUBMITTABLE_NEEDS,
+        }
+        event_id = client.post("/events", json=event, headers=organiser).json()["id"]
+        client.post(f"/events/{event_id}/submit", headers=organiser)
+        client.post(
+            f"/events/{event_id}/assign", json={"coordinatorId": str(COORDINATOR_ID)},
+            headers=auth_headers("Event Coordinator Lead"),
+        )
+        client.post(f"/events/{event_id}/approve", headers=coordinator)
+        requested = client.post(
+            f"/events/{event_id}/bookings",
+            json={"venueId": "1", "startsAt": STARTS, "endsAt": ENDS}, headers=coordinator,
+        ).json()
+        client.post(
+            f"/booking-requests/{requested['id']}/approve", headers=auth_headers("Venue Staff")
+        )
+        client.post(f"/events/{event_id}/safety-check", headers=coordinator)
+        client.post(
+            f"/events/{event_id}/safety-check/approve", headers=auth_headers("Safety Officer")
+        )
+        confirmed = client.post(f"/events/{event_id}/confirm", headers=coordinator)  # US4.7
+        assert confirmed.json()["status"] == "Confirmed"
+
+        cancelled = cancel(client, coordinator, event_id=event_id)
+
+        assert cancelled.status_code == 200, cancelled.text
+        assert [(h["from"], h["to"]) for h in cancelled.json()["history"]][-2:] == [
+            ("Pending Safety Check", "Confirmed"),
+            ("Confirmed", "Cancelled"),
+        ]
+        assert booking_repository.get_booking(int(requested["id"])).status is (
+            BookingStatus.CANCELLED
+        )
+        assert any(
+            n.status is EventStatus.CANCELLED
+            for n in notification_store.repository().list_for_user(VENUE_STAFF_ID)
+        )

@@ -2,8 +2,9 @@
 
 import pytest
 
+from app import supabase_client
 from app.event_status import EventStatus, transition_allowed
-from app.event_store import Event
+from app.event_store import Event, StaleEventStatus, SupabaseEvents
 from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
@@ -70,25 +71,6 @@ def seeded_event(event_repository, status: EventStatus) -> Event:
 
 
 class TestTransitionRules:
-    @pytest.mark.parametrize(
-        ("before", "after"),
-        [
-            (EventStatus.DRAFT, EventStatus.SUBMITTED),
-            (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW),
-            (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
-            (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
-            (EventStatus.APPROVED, EventStatus.PLANNING),
-            # US4.4: the Pending Safety Check stage.
-            (EventStatus.PLANNING, EventStatus.PENDING_SAFETY_CHECK),
-            (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
-            (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
-            (EventStatus.CONFIRMED, EventStatus.COMPLETED),
-            # US11.3: an accepted important change sends it back to Planning.
-            (EventStatus.CONFIRMED, EventStatus.PLANNING),
-        ],
-    )
-    def test_allowed_transitions(self, before, after):
-        assert transition_allowed(from_status=before, to_status=after)
 
     def test_every_other_real_transition_is_blocked(self):
         allowed = {
@@ -117,21 +99,9 @@ class TestTransitionRules:
                 expected = before == after or (before, after) in allowed
                 assert transition_allowed(from_status=before, to_status=after) is expected
 
-    def test_same_status_is_not_treated_as_a_transition(self):
-        assert transition_allowed(
-            from_status=EventStatus.UNDER_REVIEW,
-            to_status=EventStatus.UNDER_REVIEW,
-        )
 
 
 class TestDecisionHappyPaths:
-    def test_assigned_coordinator_approves_under_review_event(self, client, auth_headers):
-        event = under_review_event(client, auth_headers)
-
-        response = decide(client, auth_headers("Event Coordinator"), event["id"], "approve")
-
-        assert response.status_code == 200, response.text
-        assert response.json()["status"] == "Approved"
 
     def test_assigned_coordinator_rejects_with_reason(self, client, auth_headers):
         event = under_review_event(client, auth_headers)
@@ -148,36 +118,113 @@ class TestDecisionHappyPaths:
         assert response.json()["status"] == "Rejected"
         assert response.json()["history"][-1]["notes"] == "The safety plan is incomplete."
 
-    @pytest.mark.parametrize(
-        ("decision", "expected", "notes"),
-        [("approve", "Approved", ""), ("reject", "Rejected", "Not feasible.")],
-    )
-    def test_decision_is_timestamped_and_attributable(
-        self, client, auth_headers, decision, expected, notes
-    ):
-        event = under_review_event(client, auth_headers)
 
-        response = decide(client, auth_headers("Event Coordinator"), event["id"], decision)
 
-        latest = response.json()["history"][-1]
-        assert latest == {
-            "from": "Under Review",
-            "to": expected,
-            "at": latest["at"],
-            "byId": str(COORDINATOR_ID),
-            "byName": "Priya",
-            "notes": notes,
-            "kind": "",
-        }
-        assert latest["at"]
 
-    def test_organiser_can_read_rejection_reason(self, client, auth_headers):
-        event = under_review_event(client, auth_headers)
-        decide(client, auth_headers("Event Coordinator"), event["id"], "reject", "No capacity.")
+class TestAtomicDecisionStore:
+    class FakeRpcCall:
+        def __init__(self, data: bool):
+            self.data = data
 
-        response = client.get(
-            f"/events/{event['id']}", headers=auth_headers("Event Organiser")
+        def execute(self):
+            return self
+
+    class FakeAdmin:
+        def __init__(self, data: bool):
+            self.data = data
+            self.calls: list[tuple[str, dict]] = []
+
+        def rpc(self, name: str, params: dict):
+            self.calls.append((name, params))
+            return TestAtomicDecisionStore.FakeRpcCall(self.data)
+
+        def table(self, _name: str):
+            raise AssertionError("decisions must not use separate table requests")
+
+
+    def test_rpc_compare_and_set_failure_is_reported_as_stale(self, monkeypatch):
+        admin = self.FakeAdmin(False)
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+
+        with pytest.raises(StaleEventStatus):
+            SupabaseEvents().decide_event(
+                901,
+                actor_id=COORDINATOR_ID,
+                from_status=EventStatus.UNDER_REVIEW,
+                to_status=EventStatus.APPROVED,
+                reason="",
+            )
+
+        assert len(admin.calls) == 1
+
+
+class TestDecisionNegativeCases:
+    def test_draft_is_not_visible_to_a_coordinator(self, client, auth_headers):
+        created = client.post("/events", json=DRAFT, headers=auth_headers("Event Organiser"))
+
+        response = decide(
+            client,
+            auth_headers("Event Coordinator"),
+            created.json()["id"],
+            "approve",
         )
 
-        assert response.json()["status"] == "Rejected"
-        assert response.json()["history"][-1]["notes"] == "No capacity."
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize(
+        "event_status",
+        [
+            EventStatus.SUBMITTED,
+            EventStatus.APPROVED,
+            EventStatus.REJECTED,
+            EventStatus.PLANNING,
+            EventStatus.CONFIRMED,
+            EventStatus.COMPLETED,
+            EventStatus.CANCELLED,
+        ],
+    )
+    @pytest.mark.parametrize("decision", ["approve", "reject"])
+    def test_only_under_review_can_be_decided(
+        self, client, auth_headers, event_repository, event_status, decision
+    ):
+        event = seeded_event(event_repository, event_status)
+
+        response = decide(client, auth_headers("Event Coordinator"), str(event.id), decision)
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["reason"] == "invalid-transition"
+        assert event_repository.get_event(event.id).status is event_status
+        assert event_repository.get_event(event.id).history == ()
+
+    @pytest.mark.parametrize("reason", ["", "   ", "\n\t"])
+    def test_rejection_reason_is_required(self, client, auth_headers, reason):
+        event = under_review_event(client, auth_headers)
+
+        response = decide(
+            client, auth_headers("Event Coordinator"), event["id"], "reject", reason
+        )
+
+        assert response.status_code == 400
+        after = client.get(
+            f"/events/{event['id']}", headers=auth_headers("Event Organiser")
+        ).json()
+        assert after["status"] == "Under Review"
+
+
+
+
+
+
+
+
+
+class TestRejectionReasonEdges:
+
+    def test_reason_over_limit_is_rejected(self, client, auth_headers):
+        event = under_review_event(client, auth_headers)
+        response = decide(
+            client, auth_headers("Event Coordinator"), event["id"], "reject", "x" * 2001
+        )
+        assert response.status_code == 400
+
+

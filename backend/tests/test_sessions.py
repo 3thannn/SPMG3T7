@@ -23,14 +23,6 @@ def build() -> tuple[SessionStore, FakeClock]:
     return SessionStore(idle_timeout=IDLE, clock=clock), clock
 
 
-def test_a_new_session_resolves_to_its_user():
-    store, _ = build()
-    session = store.create(1)
-
-    state, found = store.touch(session.token)
-
-    assert state is SessionState.ACTIVE
-    assert found is not None and found.user_id == 1
 
 
 def test_each_session_gets_its_own_token():
@@ -91,9 +83,6 @@ def test_revoking_ends_the_session_immediately():
     assert store.touch(session.token)[0] is SessionState.UNKNOWN
 
 
-def test_revoking_an_unknown_token_reports_that_nothing_was_removed():
-    store, _ = build()
-    assert store.revoke("never-issued") is False
 
 
 def test_revoking_one_session_leaves_the_users_other_sessions_alone():

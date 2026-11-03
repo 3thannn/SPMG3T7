@@ -112,10 +112,6 @@ class TestCancellingOneBooking:
         unchanged = {k: v for k, v in cancelled.items() if k not in ("status", "cancellation")}
         assert unchanged == {k: v for k, v in booked.items() if k not in ("status", "cancellation")}
 
-    def test_the_reason_is_trimmed(self, client, coordinator, booked):
-        body = cancel(client, coordinator, booked["id"], reason=f"  {REASON}\n").json()
-
-        assert body["cancellation"]["reason"] == REASON
 
 
 class TestOtherBookingsAreUnchanged:

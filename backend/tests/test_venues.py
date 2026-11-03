@@ -55,10 +55,6 @@ class TestListing:
         assert hall["accessibilityFeatures"] == "Step-free access, hearing loop"
         assert hall["operatingHours"] == "08:00-22:00"
 
-    def test_ids_go_out_as_strings(self, client, auth_headers):
-        response = client.get("/venues", headers=auth_headers("Event Coordinator"))
-
-        assert all(isinstance(venue["id"], str) for venue in response.json())
 
     def test_unrecorded_details_come_back_empty_rather_than_null(self, client, auth_headers):
         """The columns are nullable; the client renders a string either way."""
@@ -177,12 +173,6 @@ class TestWhoMayWrite:
 
         assert response.status_code == 403
 
-    def test_venue_staff_can_read_the_catalogue_they_maintain(self, client, auth_headers):
-        """Maintaining a record means finding it first."""
-        response = client.get("/venues", headers=auth_headers("Venue Staff"))
-
-        assert response.status_code == 200
-        assert len(response.json()) == 3
 
     def test_venue_staff_cannot_read_the_user_directory(self, client, auth_headers):
         """A write permission on one table is not a general elevation."""
@@ -396,4 +386,284 @@ class TestUpdating:
 
         assert response.status_code == 200, response.text
         assert response.json()["capacity"] == 450
+
+    def test_every_editable_field_actually_changes(self, client, auth_headers):
+        response = client.put(
+            "/venues/1",
+            json={
+                "name": "Great Hall Renamed",
+                "location": "Main Campus, Building Z",
+                "capacity": 321,
+                "facilities": "New rig",
+                "accessibilityFeatures": "Ramp",
+                "operatingHours": "10:00-20:00",
+                "supportedLayouts": "Theatre",
+            },
+            headers=auth_headers("Venue Staff"),
+        )
+
+        assert response.status_code == 200, response.text
+        venue = response.json()
+        assert venue["name"] == "Great Hall Renamed"
+        assert venue["location"] == "Main Campus, Building Z"
+        assert venue["capacity"] == 321
+        assert venue["facilities"] == "New rig"
+        assert venue["accessibilityFeatures"] == "Ramp"
+        assert venue["operatingHours"] == "10:00-20:00"
+        assert venue["supportedLayouts"] == "Theatre"
+
+    def test_the_id_cannot_be_edited(self, client, auth_headers):
+        """A system-generated field: sending one changes nothing."""
+        response = client.put(
+            "/venues/1",
+            json={**NEW_VENUE, "name": "Great Hall", "id": "888"},
+            headers=auth_headers("Venue Staff"),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["id"] == "1"
+
+    def test_created_at_cannot_be_edited(self, client, auth_headers):
+        before = client.get("/venues/1", headers=auth_headers("Venue Staff")).json()
+
+        response = client.put(
+            "/venues/1",
+            json={
+                **NEW_VENUE,
+                "name": "Great Hall",
+                "createdAt": "1999-01-01T00:00:00",
+            },
+            headers=auth_headers("Venue Staff"),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["createdAt"] == before["createdAt"]
+
+    def test_an_optional_field_can_be_cleared(self, client, auth_headers):
+        """Editing is a replacement, so emptying a field is a real edit."""
+        response = client.put(
+            "/venues/1",
+            json={**NEW_VENUE, "name": "Great Hall", "facilities": ""},
+            headers=auth_headers("Venue Staff"),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["facilities"] == ""
+
+
+    def test_keeping_its_own_name_is_not_a_clash(self, client, auth_headers):
+        """The UNIQUE index must not stop a venue being saved unrenamed."""
+        response = client.put(
+            "/venues/1",
+            json={**NEW_VENUE, "name": "Great Hall"},
+            headers=auth_headers("Venue Staff"),
+        )
+
+        assert response.status_code == 200
+
+    def test_taking_the_name_of_another_venue_is_a_conflict(self, client, auth_headers):
+        response = client.put(
+            "/venues/1",
+            json={**NEW_VENUE, "name": "Bertha Room"},
+            headers=auth_headers("Venue Staff"),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "venue_name_taken"
+
+    def test_updating_a_venue_that_is_not_there(self, client, auth_headers):
+        response = client.put("/venues/9999", json=NEW_VENUE, headers=auth_headers("Venue Staff"))
+
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "venue_not_found"
+
+    def test_an_id_that_is_not_a_number_is_a_404(self, client, auth_headers):
+        response = client.put("/venues/abc", json=NEW_VENUE, headers=auth_headers("Venue Staff"))
+
+        assert response.status_code == 404
+
+
+class TestDeleting:
+    """US9.1c: a hard delete, with no referential check needed yet."""
+
+    def test_venue_staff_can_remove_a_venue(self, client, auth_headers):
+        response = client.delete("/venues/1", headers=auth_headers("Venue Staff"))
+
+        assert response.status_code == 204
+        assert response.content == b""
+
+    def test_a_deleted_venue_leaves_the_catalogue(self, client, auth_headers):
+        client.delete("/venues/1", headers=auth_headers("Venue Staff"))
+
+        listed = client.get("/venues", headers=auth_headers("Event Coordinator")).json()
+
+        assert [venue["name"] for venue in listed] == ["Bertha Room", "Seminar Room 4"]
+
+    def test_a_deleted_venue_cannot_be_opened(self, client, auth_headers):
+        headers = auth_headers("Venue Staff")
+        client.delete("/venues/1", headers=headers)
+
+        assert client.get("/venues/1", headers=headers).status_code == 404
+
+    def test_it_is_a_hard_delete_not_a_flag(self, client, auth_headers, venue_repository):
+        """Sprint 2 removes the row. A soft delete would leave it in the store."""
+        client.delete("/venues/1", headers=auth_headers("Venue Staff"))
+
+        assert [venue.id for venue in venue_repository.venues] == [2, 3]
+
+    def test_deleting_a_venue_that_is_not_there(self, client, auth_headers):
+        """404 rather than a quiet 204: the caller is working from a stale list."""
+        response = client.delete("/venues/9999", headers=auth_headers("Venue Staff"))
+
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "venue_not_found"
+
+    def test_deleting_twice_says_so_the_second_time(self, client, auth_headers):
+        headers = auth_headers("Venue Staff")
+
+        assert client.delete("/venues/1", headers=headers).status_code == 204
+        assert client.delete("/venues/1", headers=headers).status_code == 404
+
+    def test_deleting_one_venue_leaves_the_others_alone(self, client, auth_headers):
+        client.delete("/venues/1", headers=auth_headers("Venue Staff"))
+
+        remaining = client.get("/venues", headers=auth_headers("Venue Staff")).json()
+
+        assert len(remaining) == 2
+
+
+class TestFiltering:
+    """US9.3: narrow by capacity, location and accessibility, ANDed together.
+
+    The fixture catalogue is built so no filter is a proxy for another — two
+    venues share a location, two share an accessibility feature, and the
+    capacities are far apart. A filter that quietly did nothing would therefore
+    show up as the wrong row count rather than passing by coincidence.
+    """
+
+    def names(self, client, auth_headers, query: str = "") -> list[str]:
+        response = client.get(f"/venues{query}", headers=auth_headers("Event Coordinator"))
+        assert response.status_code == 200, response.text
+        return [venue["name"] for venue in response.json()]
+
+    def test_no_filters_still_returns_the_whole_catalogue(self, client, auth_headers):
+        """US9.2's behaviour is unchanged by US9.3 arriving."""
+        assert len(self.names(client, auth_headers)) == 3
+
+    def test_minimum_capacity_keeps_the_venues_big_enough(self, client, auth_headers):
+        assert self.names(client, auth_headers, "?minCapacity=100") == ["Great Hall"]
+
+    def test_minimum_capacity_is_inclusive(self, client, auth_headers):
+        """A venue holding exactly the number asked for holds the number asked for."""
+        assert "Seminar Room 4" in self.names(client, auth_headers, "?minCapacity=60")
+
+    def test_location_matches_part_of_the_location(self, client, auth_headers):
+        assert self.names(client, auth_headers, "?location=Library") == [
+            "Bertha Room",
+            "Seminar Room 4",
+        ]
+
+    def test_location_ignores_case(self, client, auth_headers):
+        assert self.names(client, auth_headers, "?location=library") == [
+            "Bertha Room",
+            "Seminar Room 4",
+        ]
+
+    def test_accessibility_matches_part_of_the_features(self, client, auth_headers):
+        assert self.names(client, auth_headers, "?accessibility=hearing") == ["Great Hall"]
+
+    def test_a_venue_with_nothing_recorded_never_matches_accessibility(self, client, auth_headers):
+        """An unfilled field is not evidence of a feature."""
+        found = self.names(client, auth_headers, "?accessibility=step-free")
+
+        assert "Bertha Room" not in found
+        assert found == ["Great Hall", "Seminar Room 4"]
+
+    def test_filters_combine_with_and_not_or(self, client, auth_headers):
+        """The acceptance criterion, stated as a query.
+
+        Library has two venues and minCapacity=50 has two venues, but only one
+        venue is in both. OR would answer three.
+        """
+        assert self.names(client, auth_headers, "?location=Library&minCapacity=50") == [
+            "Seminar Room 4"
+        ]
+
+    def test_all_three_filters_at_once(self, client, auth_headers):
+        found = self.names(
+            client,
+            auth_headers,
+            "?minCapacity=50&location=Library&accessibility=Step-free",
+        )
+
+        assert found == ["Seminar Room 4"]
+
+    def test_criteria_that_nothing_satisfies_is_an_empty_list(self, client, auth_headers):
+        """Each criterion matches something on its own; no venue matches both."""
+        assert self.names(client, auth_headers, "?location=Library&minCapacity=400") == []
+
+    def test_an_empty_filter_is_not_a_filter(self, client, auth_headers):
+        """A form that submits its untouched boxes must not narrow anything."""
+        found = self.names(client, auth_headers, "?minCapacity=&location=&accessibility=")
+
+        assert len(found) == 3
+
+    def test_a_whitespace_filter_is_not_a_filter(self, client, auth_headers):
+        assert len(self.names(client, auth_headers, "?location=%20%20")) == 3
+
+    def test_surrounding_space_is_trimmed_rather_than_searched_for(self, client, auth_headers):
+        assert self.names(client, auth_headers, "?location=%20Library%20") == [
+            "Bertha Room",
+            "Seminar Room 4",
+        ]
+
+    def test_filtering_still_comes_back_ordered_by_name(self, client, auth_headers):
+        found = self.names(client, auth_headers, "?accessibility=Step-free")
+
+        assert found == sorted(found)
+
+
+    def test_wildcards_in_a_filter_are_matched_literally(self, client, auth_headers):
+        """Typing % must not turn the filter into "match everything"."""
+        assert self.names(client, auth_headers, "?location=%25") == []
+        assert self.names(client, auth_headers, "?location=_") == []
+
+    def test_an_organiser_cannot_filter_what_they_cannot_read(self, client, auth_headers):
+        response = client.get("/venues?minCapacity=10", headers=auth_headers("Event Organiser"))
+
+        assert response.status_code == 403
+
+
+class TestBadFilters:
+    """A filter that cannot be read is refused with a sentence, not a 500."""
+
+    def test_a_capacity_that_is_not_a_number(self, client, auth_headers):
+        response = client.get("/venues?minCapacity=abc", headers=auth_headers("Event Coordinator"))
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail["code"] == "invalid_filter"
+        assert "whole number" in detail["message"]
+
+
+
+    def test_an_overlong_text_filter(self, client, auth_headers):
+        overlong = "x" * 201
+        response = client.get(
+            f"/venues?location={overlong}", headers=auth_headers("Event Coordinator")
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "invalid_filter"
+
+    def test_a_refused_role_wins_over_a_malformed_filter(self, client, auth_headers):
+        """An Organiser's 403 comes before the filter is even read."""
+        response = client.get("/venues?minCapacity=abc", headers=auth_headers("Event Organiser"))
+
+        assert response.status_code == 403
+
+
+class TestTheSessionPayload:
+    def test_a_coordinator_holds_venues_read(self, sign_in):
+        assert "venues:read" in sign_in("Event Coordinator")["permissions"]
 

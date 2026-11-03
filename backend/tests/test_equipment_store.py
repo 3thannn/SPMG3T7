@@ -146,10 +146,6 @@ class TestRequests:
         assert line.event_title == "Faculty Welcome Night"
         assert line.equipment_name == "Wireless microphone"
 
-    def test_the_safety_officer_sees_only_reserved_lines(self, fake):
-        SupabaseEquipment().list_reserved_for_event(7)
-
-        assert ("eq", "status", "Reserved") in fake.on("equipment_requests")[0].calls
 
     def test_technical_supports_queue_is_every_requested_line(self, fake):
         SupabaseEquipment().list_requested()

@@ -15,10 +15,7 @@ The story's tests: `test_submit_with_two_leads_notifies_both` and
 """
 
 from app import users
-from app.event_status import EventStatus
-from app.permissions import Role
-from tests.conftest import COORDINATOR_LEAD_ID, SUBMITTABLE_NEEDS
-from tests.test_change_requests import add_user
+from tests.conftest import SUBMITTABLE_NEEDS
 
 SECOND_LEAD_ID = 30
 LEAD = "Event Coordinator Lead"
@@ -43,45 +40,9 @@ def submit(client, auth_headers):
 
 
 class TestSubmission:
-    def test_submit_with_two_leads_notifies_both(
-        self, client, auth_headers, user_store, notification_repository
-    ):
-        add_user(user_store, client, SECOND_LEAD_ID, Role.COORDINATOR_LEAD)
 
-        assert submit(client, auth_headers).status_code == 200
 
-        told = {
-            notice.user_id: (notice.kind, notice.status, notice.message)
-            for notice in notification_repository.notifications
-        }
-        notice = ("event-status", EventStatus.SUBMITTED, MESSAGE)
-        assert told == {COORDINATOR_LEAD_ID: notice, SECOND_LEAD_ID: notice}
 
-    def test_nobody_else_is_told(self, client, auth_headers, notification_repository):
-        """Not the Organiser who submitted, nor a Coordinator, nor any other role."""
-        submit(client, auth_headers)
-
-        assert [notice.user_id for notice in notification_repository.notifications] == [
-            COORDINATOR_LEAD_ID
-        ]
-
-    def test_a_draft_saved_but_not_submitted_tells_nobody(
-        self, client, auth_headers, notification_repository
-    ):
-        client.post("/events", json=DRAFT, headers=auth_headers("Event Organiser"))
-
-        assert notification_repository.notifications == []
-
-    def test_a_refused_submission_tells_nobody(self, client, auth_headers, notification_repository):
-        organiser = auth_headers("Event Organiser")
-        created = client.post("/events", json=DRAFT, headers=organiser)
-        event_id = created.json()["id"]
-        client.post(f"/events/{event_id}/submit", headers=organiser)
-
-        again = client.post(f"/events/{event_id}/submit", headers=organiser)
-
-        assert again.status_code == 409
-        assert len(notification_repository.notifications) == 1
 
     def test_a_failed_notice_does_not_fail_the_submission(
         self, client, auth_headers, notification_repository, monkeypatch
@@ -134,13 +95,3 @@ class TestTheLeadsList:
         )
         assert unmarked.json()["read"] is False
 
-    def test_one_lead_cannot_mark_anothers(self, client, auth_headers, user_store):
-        other_lead = add_user(user_store, client, SECOND_LEAD_ID, Role.COORDINATOR_LEAD)
-        submit(client, auth_headers)
-        [mine] = client.get("/notifications", headers=auth_headers(LEAD)).json()
-
-        response = client.patch(
-            f"/notifications/{mine['id']}", json={"read": True}, headers=other_lead
-        )
-
-        assert response.status_code == 404

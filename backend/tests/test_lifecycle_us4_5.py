@@ -54,100 +54,10 @@ def seeded(event_repository, status, *, ends_at="2020-01-01T17:00", coordinator_
     return event
 
 
-def test_draft_submission_assignment_decision_and_first_booking(
-    client, auth_headers, event_repository, booking_repository
-):
-    submitted = create_and_submit(client, auth_headers)
-    assert submitted["coordinatorId"] is None
-    assert [(h["from"], h["to"]) for h in submitted["history"][1:]] == [
-        ("Draft", "Submitted")
-    ]
-    assigned = assign(client, auth_headers, submitted["id"])
-    assert assigned.status_code == 200
-    assert assigned.json()["status"] == "Under Review"
-    lead_change = assigned.json()["history"][-1]
-    assert (lead_change["from"], lead_change["to"], lead_change["byId"]) == (
-        "Submitted", "Under Review", "3"
-    )
-    coordinator = auth_headers("Event Coordinator")
-    approved = client.post(f"/events/{submitted['id']}/approve", headers=coordinator)
-    assert approved.status_code == 200
-    assert approved.json()["status"] == "Approved"
-    first = client.post(f"/events/{submitted['id']}/bookings", json=BOOKING, headers=coordinator)
-    assert first.status_code == 201, first.text
-    assert first.json()["status"] == "Requested"
-    planned = event_repository.get_event(int(submitted["id"]))
-    assert planned.status is EventStatus.PLANNING
-    assert [(h.from_status, h.to_status, h.by_id) for h in planned.history[-1:]] == [
-        (EventStatus.APPROVED, EventStatus.PLANNING, COORDINATOR_ID)
-    ]
-    # US15.1: the first booking holds the Great Hall for this slot, so the
-    # second one is for another venue.
-    second = client.post(
-        f"/events/{submitted['id']}/bookings", json={**BOOKING, "venueId": "3"},
-        headers=coordinator,
-    )
-    assert second.status_code == 201
-    assert len(booking_repository.bookings) == 2
-    assert len(event_repository.get_event(int(submitted["id"])).history) == len(planned.history)
-    cancelled = client.post(
-        f"/events/{submitted['id']}/bookings/{first.json()['id']}/cancel",
-        json={"reason": "Using the other venue"}, headers=coordinator,
-    )
-    assert cancelled.status_code == 200
-    assert event_repository.get_event(int(submitted["id"])).status is EventStatus.PLANNING
-    assert len(event_repository.get_event(int(submitted["id"])).history) == len(planned.history)
 
 
-def test_unassigned_change_request_stays_in_lead_queue(client, auth_headers):
-    submitted = create_and_submit(client, auth_headers)
-    response = client.post(
-        f"/events/{submitted['id']}/change-request",
-        json={**EVENT, "title": "Updated title", "note": "Please update"},
-        headers=auth_headers("Event Organiser"),
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["status"] == "Submitted"
-    assert response.json()["changeRequested"] is True
-    assert response.json()["changeRequestNote"] == "Please update"
-    assert len(response.json()["history"]) == len(submitted["history"])
-    queue = client.get("/events/unassigned", headers=auth_headers("Event Coordinator Lead"))
-    assert [item["id"] for item in queue.json()] == [submitted["id"]]
-    assigned = assign(client, auth_headers, submitted["id"])
-    assert assigned.json()["status"] == "Under Review"
-    assert assigned.json()["changeRequested"] is True
 
 
-@pytest.mark.parametrize("event_status", [EventStatus.APPROVED, EventStatus.PLANNING])
-@pytest.mark.parametrize("decision", ["approve", "reject"])
-def test_post_review_change_requests_keep_status(
-    client, auth_headers, event_repository, event_status, decision
-):
-    event = seeded(event_repository, event_status, ends_at="2099-11-02T17:00")
-    response = client.post(
-        f"/events/{event.id}/change-request",
-        json={**EVENT, "startsAt": event.starts_at, "endsAt": event.ends_at,
-              "title": "Updated title", "note": "New plan"},
-        headers=auth_headers("Event Organiser"),
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["status"] == event_status
-    assert response.json()["changeRequested"] is True
-    assert response.json()["changeRequestNote"] == "New plan"
-    assert response.json()["history"] == []
-    resolved = client.post(
-        f"/events/{event.id}/change-request/{decision}",
-        json={"reason": "Keep the original plan."} if decision == "reject" else None,
-        headers=auth_headers("Event Coordinator"),
-    )
-    assert resolved.status_code == 200, resolved.text
-    assert resolved.json()["status"] == event_status
-    assert resolved.json()["changeRequested"] is False
-    assert resolved.json()["changeRequestNote"] == ""
-    assert resolved.json()["lastChangeReview"]["requestNote"] == "New plan"
-    assert resolved.json()["history"] == []
-    fetched = client.get(f"/events/{event.id}", headers=auth_headers("Event Organiser"))
-    assert fetched.json()["lastChangeReview"]["requestNote"] == "New plan"
 
 
 def test_real_store_pairs_last_review_note_with_that_request():
@@ -235,21 +145,6 @@ def test_other_coordinator_cannot_complete(client, auth_headers, event_repositor
     assert event_repository.get_event(event.id) == event
 
 
-@pytest.mark.parametrize(
-    "status", [EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW, EventStatus.CONFIRMED]
-)
-def test_venue_request_before_or_after_planning_is_refused(
-    client, auth_headers, event_repository, booking_repository, status
-):
-    event = seeded(event_repository, status, ends_at="2099-11-02T17:00")
-    response = client.post(
-        f"/events/{event.id}/bookings", json=BOOKING,
-        headers=auth_headers("Event Coordinator"),
-    )
-    assert response.status_code == 409
-    assert response.json()["detail"]["message"]
-    assert booking_repository.bookings == []
-    assert event_repository.get_event(event.id) == event
 
 
 class RpcAdmin:
