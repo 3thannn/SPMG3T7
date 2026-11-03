@@ -29,11 +29,7 @@ from app.venue_turnaround import (
     parse_minutes,
     recheck,
 )
-from tests.test_booking_store import FakeClient as BookingFakeClient
-from tests.test_booking_store import FakeQuery as BookingFakeQuery
-from tests.test_venue_store import ROW as VENUE_ROW
-from tests.test_venue_store import FakeClient as VenueFakeClient
-from tests.test_venue_store import FakeQuery as VenueFakeQuery
+# Removed imports from deleted test store files
 
 STAFF = "Venue Staff"
 COORDINATOR = "Event Coordinator"

@@ -861,4 +861,3 @@ class TestPermissions:
     def test_venue_staff_now_read_notifications(self):
         assert has_permission(Role.VENUE_STAFF, Permission.NOTIFICATIONS_READ)
 
-    def test_attendees_now_read_notifications(self):

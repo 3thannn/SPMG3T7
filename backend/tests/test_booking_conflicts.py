@@ -1065,8 +1065,3 @@ class FakeClient:
             return type("R", (), {"data": self.answer})()
         return type("R", (), {"data": self.rows})()
 
-
-ROW = {
-    "id": 11, "event_id": EVENT_ID, "venue_id": 1, "start_at": at("10:00"),
-    "end_at": at("12:00"), "status": "Confirmed", "created_at": "2027-09-01",
-    "conflict_flagged_at": "2027-10-01T01:00:00", "conflict_reason": "Overlaps booking #12.",
