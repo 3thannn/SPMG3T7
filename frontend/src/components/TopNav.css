@@ -36,7 +36,7 @@
 .topnav-inner {
   display: flex;
   align-items: center;
-  gap: 1.75rem;
+  gap: 1.25rem;
   height: 70px;
 }
 
@@ -74,6 +74,42 @@
   border-radius: var(--radius-pill);
   background: var(--bg-sunken);
   border: 1px solid var(--line);
+  /* A role with many pages (the Lead has six) never wraps a link onto two
+     lines: the rail scrolls sideways instead. No scrollbar: it is dragged, or
+     moved with the wheel or a swipe (TopNav.tsx), and fades where links are
+     hidden. */
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  --fade: 2.25rem;
+}
+
+.topnav-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.topnav-rail[data-fade-start='true'] {
+  mask-image: linear-gradient(to right, transparent, #000 var(--fade));
+}
+
+.topnav-rail[data-fade-end='true'] {
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent);
+}
+
+.topnav-rail[data-fade-start='true'][data-fade-end='true'] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--fade),
+    #000 calc(100% - var(--fade)),
+    transparent
+  );
+}
+
+.topnav-rail.is-dragging,
+.topnav-rail.is-dragging a {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .topnav-rail a {
@@ -81,7 +117,11 @@
   color: var(--muted);
   font-size: 0.9rem;
   font-weight: 500;
-  padding: 0.42rem 0.95rem;
+  white-space: nowrap;
+  /* Dragging the rail scrolls it, so nothing in it is picked up or selected. */
+  user-select: none;
+  -webkit-user-drag: none;
+  padding: 0.42rem 0.8rem;
   border-radius: var(--radius-pill);
   transition:
     color 120ms ease,
@@ -106,6 +146,7 @@
   align-items: center;
   gap: 0.7rem;
   margin-left: auto;
+  flex: none;
 }
 
 .topnav-identity {
@@ -113,6 +154,7 @@
   flex-direction: column;
   align-items: flex-end;
   line-height: 1.25;
+  white-space: nowrap;
 }
 
 .topnav-name {
@@ -139,6 +181,18 @@
   font-size: 0.85rem;
   font-weight: 600;
   flex: none;
+}
+
+/* Smaller windows: tighter links, so a long rail fits more often. */
+@media (max-width: 1280px) {
+  .topnav-inner {
+    gap: 1rem;
+  }
+
+  .topnav-rail a {
+    padding: 0.42rem 0.62rem;
+    font-size: 0.86rem;
+  }
 }
 
 @media (max-width: 860px) {

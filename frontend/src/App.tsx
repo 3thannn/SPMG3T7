@@ -148,7 +148,7 @@ export default function App() {
       {renderRoute()}
       <footer className="app-footer">
         <div className="shell app-footer-inner">
-          <span>SPMG3T7 · Sprint 1</span>
+          <span>ConnectSphere</span>
           <span role="status" className="app-health" data-state={backend}>
             {backend === 'checking' && 'Checking backend…'}
             {backend === 'connected' && 'Backend connected'}
