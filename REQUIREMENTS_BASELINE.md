@@ -108,10 +108,10 @@ them as core. An answer about a feature outside those 20 does not make it core.
 
 | # | Customer said | Source | Release 1? | State in Jira and code |
 | --- | --- | --- | --- | --- |
-| G1 | Rejected events can be resubmitted after changes | Wk4 (three answers) | **Yes**: core "Event Review and Approval" and "Event Status Management" | **No story.** Rejected has no way out in `event_status.py` |
+| G1 | Rejected events can be resubmitted after changes | Wk4 (three answers) | **Yes**: core "Event Review and Approval" and "Event Status Management" | **Met (D2, CODE_AUDIT.md)**: the owning Organiser revises a Rejected event and resubmits it; it rejoins the Leads' queue. Checked against the Week 4 instructions, which do not make Rejected final |
 | G2 | Venue Staff set **and update** the hold duration | Wk9 | **Yes**: Week 7 change #4 | US14.6 is **To Do**; no update or release route |
 | G3 | A hold starts **after** venue approval; the Coordinator confirms once Venue Staff approve | Wk9 | **Yes**: Week 7 change #4 | Built the other way round: Held → Requested → Confirmed (US14.3). Needs a team decision |
-| G4a | Registration timing and closing are the **Organiser's** call, and capacity is at the Organiser's discretion | Wk4 | **Partly**: core "Attendee Registration" says "where enabled" but not by whom | US20.1 gives the switch and capacity to the **Coordinator** |
+| G4a | Registration timing and closing are the **Organiser's** call, and capacity is at the Organiser's discretion | Wk4 | **Partly**: core "Attendee Registration" says "where enabled" but not by whom | **Met (D3, CODE_AUDIT.md)**: the owning Organiser opens, closes and sizes registration, as well as the assigned Coordinator (US20.1); `SUPABASE_FIX_ORGANISER_REGISTRATION.sql` applied to the live database on 2026-11-03 |
 | G6 | One person can hold several roles | Wk4 (three answers) | **Partly**: core "User Authorisation and Authentication" | **No story.** A user has exactly one `role` |
 | G7 | Room layouts are managed in the venue catalogue (add, edit, delete) | Wk9 | **Partly**: core "Venue Catalogue" includes supported layouts; "Room Layout Management" itself is not core | Layouts are a fixed list in `event_needs.py` |
 | G11 | Safety Officer checks emergency access, crowd movement and equipment placement | Wk7 #6 | **Yes** | The review shows attendance, capacity, layout, accessibility and equipment. Wk9 says the Safety Officer "do not need to input but to approve", which may be enough. Worth one sentence in the docs |
@@ -121,7 +121,7 @@ them as core. An answer about a feature outside those 20 does not make it core.
 | G9 | Organisers in one organisation see the organisation's events | Wk2, Wk4 | **No**: "Client Management" is non-core | Organisers see only their own events |
 | G10 | Organiser can ask to withdraw a request via the Coordinator | Wk4 | **No**: "Cancellation Management" is non-core | Partly met anyway: US4.6 lets the Organiser cancel |
 
-G1, G2 and G3 are the ones an instructor is most likely to test, because they sit
+G1 and G4a are now met (D2, D3). G2 and G3 are the ones an instructor is most likely to test, because they sit
 inside core features or Week 7 changes. The "No" rows need only a written
 "not in Release 1" note in the backlog, not code or tests.
 

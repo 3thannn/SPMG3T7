@@ -59,13 +59,12 @@ and tests are in CODE_AUDIT.md section 4 and as `TC-D*` cases.
 
 ## What is left (optional, in order)
 
-1. **Apply `backend/SUPABASE_FIX_ORGANISER_REGISTRATION.sql` to the live
-   Supabase** (project `tlugwwgxiljuwytontqc`) **only after the user says yes**.
-   Until then an Organiser's registration save on production is refused (409).
+1. Done: `SUPABASE_FIX_ORGANISER_REGISTRATION.sql` was applied to the live Supabase on
+   2026-11-03 with the user's approval.
 2. Raise coverage if wanted: restore the Supabase store contract tests (~240
    functions; full suite at commit `da67018`), add each as a `category:
    Technical` case, rebuild the workbook, raise the floors.
-3. Update `REQUIREMENTS_BASELINE.md` for D2/D3/D7/D8.
+3. Done: `REQUIREMENTS_BASELINE.md` updated (G1, G4a met).
 
 Notes:
 - Minor, not fixed: an Organiser on an Under Review event sees "already been
