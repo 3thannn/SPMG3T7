@@ -331,6 +331,10 @@ class TestWhoConfirms:
         # US8.6: an event that is not theirs is not there, as everywhere else.
         assert response.status_code == 404
         assert event_repository.get_event(EVENT_ID).status is PSC
+        # D4: the refusal says what is true without revealing whether it exists.
+        assert response.json()["detail"]["message"] == (
+            "That event does not exist, or you do not have access to it."
+        )
 
     @pytest.mark.parametrize("role", ["Event Coordinator Lead", "Event Organiser"])
     def test_the_lead_and_the_organiser_are_refused(self, client, auth_headers, waiting, role):
