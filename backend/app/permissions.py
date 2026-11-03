@@ -192,6 +192,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.QUEUE_VIEW_UNASSIGNED,
             Permission.COORDINATORS_ASSIGN,
             Permission.EQUIPMENT_READ,
+            # US10.3: told when a submitted event lands in the unassigned queue.
+            Permission.NOTIFICATIONS_READ,
         }
     ),
     # US9.1a-c: Venue Staff own the catalogue and nothing else. They read it

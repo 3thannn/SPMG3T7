@@ -166,6 +166,16 @@ class TestConfirm:
             )
         ]
 
+    def test_nobody_else_is_told(self, client, auth_headers, waiting, notification_repository):
+        """US10.3: the confirmation is the Organiser's news alone."""
+        approve(client, auth_headers)
+        before = len(notification_repository.notifications)
+
+        confirm(client, auth_headers(COORDINATOR))
+
+        written = notification_repository.notifications[before:]
+        assert [notice.user_id for notice in written] == [ORGANISER_ID]
+
     def test_readiness_says_when_it_can_be_confirmed(self, client, auth_headers, waiting):
         headers = auth_headers(COORDINATOR)
         before = client.get(f"/events/{EVENT_ID}/confirmation", headers=headers).json()

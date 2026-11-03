@@ -14,7 +14,7 @@ from app.event_status import EventStatus
 from app.event_store import Event
 from app.notification_store import TABLE, SupabaseNotifications
 from app.notifications import CoordinatorNotice
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
+from tests.conftest import COORDINATOR_ID, COORDINATOR_LEAD_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 OTHER_COORDINATOR_ID = 99
 
@@ -92,7 +92,12 @@ class TestAssignment:
         assign(client, auth_headers, event_id)
 
         by_recipient = {item.user_id: item.kind for item in notification_repository.notifications}
-        assert by_recipient == {ORGANISER_ID: "event-status", COORDINATOR_ID: "assigned"}
+        assert by_recipient == {
+            ORGANISER_ID: "event-status",
+            COORDINATOR_ID: "assigned",
+            # US10.3: the Lead heard of the submission that put it in the queue.
+            COORDINATOR_LEAD_ID: "event-status",
+        }
 
     def test_tc_cn03_a_refused_assignment_does_not_notify(self, client, auth_headers):
         event_id = submitted_event(client, auth_headers)

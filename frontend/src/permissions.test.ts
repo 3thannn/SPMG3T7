@@ -216,7 +216,8 @@ describe('notifications (US10.1)', () => {
     expect(canOpen(buildSession({ role: 'Event Organiser' }), '/notifications')).toBe(true)
     // US10.2
     expect(canOpen(buildSession({ role: 'Event Coordinator' }), '/notifications')).toBe(true)
-    expect(canOpen(buildSession({ role: 'Event Coordinator Lead' }), '/notifications')).toBe(false)
+    // US10.3
+    expect(canOpen(buildSession({ role: 'Event Coordinator Lead' }), '/notifications')).toBe(true)
     expect(canOpen(buildSession({ role: 'Safety Officer' }), '/notifications')).toBe(false)
   })
 

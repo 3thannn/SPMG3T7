@@ -174,8 +174,10 @@ def test_supabase_atomic_rpc_errors(monkeypatch, result, error):
     client.rpc.return_value.execute.return_value.data = result
     monkeypatch.setattr(supabase_client, "admin", lambda: client)
     with pytest.raises(error):
-        SupabaseBookings().request_replacement(10, venue_id=2, actor_id=2)
+        SupabaseBookings().request_replacement(10, venue_id=2, actor_id=2, reason="Why")
+    # US12.4: through the wrapper that also reopens a Confirmed event.
     client.rpc.assert_called_once_with(
-        "request_replacement_venue", {"p_booking_id": 10, "p_venue_id": 2, "p_actor_id": 2},
+        "us12_4_request_replacement",
+        {"p_booking_id": 10, "p_venue_id": 2, "p_actor_id": 2, "p_reason": "Why"},
     )
     client.table.assert_not_called()

@@ -24,6 +24,11 @@ words `notify_hold_expiring` and `notify_hold_expired` set out.
 US20.1 adds one more of the same kind of notice, for the Organiser as well as
 the Coordinator: the event's registrations have reached capacity. US11.3 adds
 another for both: an accepted change sent a Confirmed event back to Planning.
+
+US10.3 tells every Coordinator Lead when a submitted event lands in the
+unassigned queue, and the Organiser when the Coordinator confirms it (US4.7).
+US12.4 reuses US11.3's notice when a replacement venue sends a Confirmed event
+back to Planning; the database tells the Organiser when the venue fell through.
 """
 
 import logging
@@ -83,6 +88,36 @@ def notify_status_change(event: Event, to_status: EventStatus, notes: str = "") 
         logger.exception(
             "Could not write the US10.1 notification for event %s -> %s", event.id, to_status
         )
+
+
+def notify_submitted(event: Event) -> None:
+    """US10.3: every Coordinator Lead hears a new event is waiting for assignment.
+
+    A status notice (Submitted), as US4.6's are, one per Lead; the customer
+    supports more than one. Best effort: the submission already happened.
+    """
+    try:
+        recipients = users.list_users()
+    except Exception:
+        logger.exception("Could not look up the US10.3 Leads for event %s", event.id)
+        return
+    message = f"New event waiting for assignment: {event.title.strip() or 'an untitled event'}"
+    for recipient in recipients:
+        if recipient.role is not Role.COORDINATOR_LEAD:
+            continue
+        try:
+            notification_store.repository().create(
+                user_id=recipient.id,
+                event_id=event.id,
+                status=EventStatus.SUBMITTED,
+                message=message,
+            )
+        except Exception:
+            logger.exception(
+                "Could not write the US10.3 submission notice for event %s to user %s",
+                event.id,
+                recipient.id,
+            )
 
 
 def notify_change_decision(event: Event, *, approved: bool, reason: str = "") -> None:
@@ -428,15 +463,18 @@ def notify_event_full(event: Event, capacity: int) -> None:
         _notify_coordinator(person, event, CoordinatorNotice.EVENT_FULL, message)
 
 
-def notify_back_in_planning(event: Event, reason: str) -> None:
-    """US11.3: an accepted change sent the Confirmed event back to Planning, and why.
+def notify_back_in_planning(event: Event, reason: str, *, actor_id: int | None = None) -> None:
+    """US11.3/US12.4: the Confirmed event went back to Planning, and why.
 
     Both hear: the Organiser, whose event is no longer Confirmed, and the
     Coordinator, who now has its arrangements and safety check to see to again.
+    US12.4's move is the Coordinator's own (requesting a replacement venue), so
+    it passes `actor_id` and only the Organiser hears.
     """
     message = f'"{_event_title(event)}" is back in Planning. {reason}'
     for person in dict.fromkeys((event.coordinator_id, event.organiser_id)):
-        _notify_coordinator(person, event, CoordinatorNotice.BACK_IN_PLANNING, message)
+        if person != actor_id:
+            _notify_coordinator(person, event, CoordinatorNotice.BACK_IN_PLANNING, message)
 
 
 class NotificationOut(BaseModel):
