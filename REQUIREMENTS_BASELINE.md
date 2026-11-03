@@ -16,7 +16,7 @@ can be made against acceptance criteria instead of coverage.
 | 5 | Week 7 customer changes (6 changes) | Changed requirements for Release 1 | All |
 | 6 | Week 9 clarification answers (26 Q&A) | Answers about the Week 7 changes | All |
 | 7 | Jira project `SPMG3T7` (22 epics, 65 stories) | The team's stories and ACs | All 87 issues. Issue comments were not read |
-| 8 | Repo audits (`TEST_SUITE_US_AC_AUDIT.md`, `INDEPENDENT_TEST_REDUCTION_AUDIT.md`, `CONNECTSPHERE_AUDIT_REPORT.md`) | Earlier conflict analysis | Conflict, risk and fix-list sections |
+| 8 | Earlier AI-assisted audits of the test suite | Prior conflict analysis, used as a cross-check | Removed from the repo in the cleanup commit; still in git history |
 
 When sources disagree, the later customer statement wins: Week 9 > Week 7 > Week 4
 answers > Week 2 answers. A Jira AC that contradicts a later customer answer is

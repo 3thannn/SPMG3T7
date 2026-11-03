@@ -103,8 +103,8 @@ The tests are bigger than the code they test, and on `main` about twice its size
 
 **Sizing by acceptance criteria instead.** The 65 Jira stories carry 284 current AC
 items. One happy path plus one or two negative or boundary cases each comes to
-roughly **600 to 850 automated tests** across all layers. That is also the 610-690
-target in `handover.md`, now with a reason a reviewer can check.
+roughly **600 to 850 automated tests** across all layers. That also matches the 610-690 target
+the team set earlier, now with a reason a reviewer can check.
 
 **Which tests matter most, from this audit:**
 
