@@ -52,7 +52,7 @@ jobs:
       - name: Build (byte-compile all sources)
         run: python -m compileall -q app
 
-      - name: Test, failing under 100% line and branch coverage
+      - name: Test, failing under the coverage floor in pyproject.toml
         run: pytest --cov
 
       - name: Test database migrations and review RPCs

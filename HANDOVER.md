@@ -38,11 +38,16 @@ Test reference formats in test_cases.txt: `backend/tests/test_x.py::Class::test`
 
 ## Current numbers (all green locally)
 
-- Backend: 593 test runs (`pytest`), 6 DB suites (21 tests) on Postgres.
-- Frontend: 66 Vitest tests; lint and `tsc -b` clean.
-- E2E: 38 Playwright journeys (`npm run test:e2e`), in CI as job `e2e`.
-- Coverage after the cut: backend about 78%, frontend about 50%. **CI gates still
-  say 100% / 94%, so CI's coverage steps fail until task 1 below is done.**
+- Backend: 591 pass (`pytest --cov`, floor 77% in `backend/pyproject.toml`).
+- DB suites: 20 tests on Postgres (`integration/`).
+- Frontend: 66 Vitest tests, floors in `frontend/vite.config.ts` (lines 52 / statements 51 / functions 49 / branches 48); lint, `tsc -b` and build clean.
+- E2E: 38 Playwright journeys (`npm run test:e2e`), CI job `e2e`.
+- Workbook: `docs/testing/ConnectSphere_Test_Cases.xlsx`, built by
+  `docs/testing/build_workbook.py <junit-results-dir>` (see its docstring for
+  the four JUnit runs). 488 cases: 481 Passed, 5 Evidence, 2 Not Executed
+  (opt-in DB tests: `tests/test_hold_expiry_db.py` needs the live project,
+  `tests/test_equipment_reservations_db.py` needs a database with every
+  migration applied). Layout follows the seniors' sheets.
 
 ## Defects fixed (test-first)
 
@@ -52,28 +57,15 @@ Organiser controls registration, D7 cancel a Confirmed/flagged booking, D8
 instructions and Week 7 changes before following the customer's answer. Details
 and tests are in CODE_AUDIT.md section 4 and as `TC-D*` cases.
 
-## What is left, in order
+## What is left (optional, in order)
 
-1. **Coverage: the "middle" option the user agreed to.** Restore the Supabase
-   store contract tests (≈240 functions: classes named `*Supabase*`/`*Store*` and
-   `tests/test_*_store.py`) from git history (commit `da67018` has the full suite),
-   which takes the backend to ~86%. Add one load-error test per frontend page if
-   cheap. Add each as a test case with `category: Technical`, and group them in
-   the workbook ("Supabase booking store sends the right queries"). Then set
-   `backend/pyproject.toml` `--cov-fail-under` and `frontend/vite.config.ts`
-   thresholds to the reached level, and list what is not covered and why in the
-   workbook (rubric: "100% unless not possible and stated why").
-2. **The workbook** `docs/testing/build_workbook.py` → `docs/testing/ConnectSphere_Test_Cases.xlsx`
-   (openpyxl). Sheets: one per epic or per role like the seniors (Unit/API,
-   E2E), plus "Stories and ACs", "Defects fixed" (D1–D8), "Superseded rules",
-   "Not covered and why". Read test_cases.txt with `tcparse.parse`, AC text
-   from the YAML. Status column = Passed only if the test passed in a run you
-   just did (run pytest/vitest/playwright with JSON reporters and match).
-3. **Apply `backend/SUPABASE_FIX_ORGANISER_REGISTRATION.sql` to the live
-   Supabase** (project `tlugwwgxiljuwytontqc`) **only after the user says yes**;
-   until then an Organiser's registration save on production is refused (409).
-   The DB is otherwise read-only unless the user asks.
-4. Update `REQUIREMENTS_BASELINE.md` for D2/D3/D7/D8, then commit and push.
+1. **Apply `backend/SUPABASE_FIX_ORGANISER_REGISTRATION.sql` to the live
+   Supabase** (project `tlugwwgxiljuwytontqc`) **only after the user says yes**.
+   Until then an Organiser's registration save on production is refused (409).
+2. Raise coverage if wanted: restore the Supabase store contract tests (~240
+   functions; full suite at commit `da67018`), add each as a `category:
+   Technical` case, rebuild the workbook, raise the floors.
+3. Update `REQUIREMENTS_BASELINE.md` for D2/D3/D7/D8.
 
 Notes:
 - Minor, not fixed: an Organiser on an Under Review event sees "already been
@@ -81,8 +73,6 @@ Notes:
   asks a question). Copy only.
 - The team's `backend/tests/test_cases_*.md` docs cite tests that the cut
   removed; the workbook replaces them. Ask before deleting them.
-- Opt-in DB tests (`tests/test_hold_expiry_db.py` and similar) ran against the live
-  project and are gone after the cut. Keep it that way unless asked.
 
 ## How to run things
 
