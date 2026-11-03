@@ -207,7 +207,10 @@ export default function EventRegistration({ event, session }: Props) {
   // Bumped on every save, so the list's count against the capacity is read again.
   const [saves, setSaves] = useState(0)
 
-  const manages = can(session, 'registration:manage') && event.coordinatorId === session.id
+  // US20.1: the assigned Coordinator; D3: the owning Organiser as well.
+  const manages =
+    can(session, 'registration:manage') &&
+    (event.coordinatorId === session.id || event.organiserId === session.id)
   const settable = SETTABLE.includes(event.status)
   const seesPeople =
     can(session, 'registrations:read') &&

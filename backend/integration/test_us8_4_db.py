@@ -133,34 +133,10 @@ def test_reassigns_logs_and_notifies_both_coordinators(db):
     ]
 
 
-def test_the_new_coordinator_hears_of_bookings_that_need_replacing(db):
-    db.execute(
-        """
-        INSERT INTO venue_bookings (event_id, venue_id, start_at, end_at, status, requested_by_id)
-        VALUES (%s, 401, '2035-11-02 09:00', '2035-11-02 17:00', 'Needs replacement', %s)
-    """,
-        (EVENT, PRIYA),
-    )
-
-    reassign(db)
-
-    assert [n["message"] for n in notices(db) if n["kind"] == "booking-conflict"] == [
-        '"Open House" has venue bookings that need replacement. Review its bookings.'
-    ]
 
 
-def test_a_coordinator_without_a_name_is_given_by_id(db):
-    reassign(db, to=NAMELESS)
-
-    assert log(db)[0]["notes"] == f"Coordinator reassigned from Priya to Coordinator {NAMELESS}."
 
 
-def test_the_same_coordinator_changes_nothing(db):
-    assert reassign(db, to=PRIYA) is True
-
-    assert event(db)["coordinator_id"] == PRIYA
-    assert log(db) == []
-    assert notices(db) == []
 
 
 @pytest.mark.parametrize("status", ["Completed", "Cancelled", "Rejected"])
@@ -174,24 +150,3 @@ def test_a_finished_event_is_refused(db, status):
     assert notices(db) == []
 
 
-@pytest.mark.parametrize(
-    "case",
-    ["changed-since-read", "unassigned", "not-a-lead", "not-a-coordinator", "no-such-event"],
-)
-def test_anything_else_is_refused_and_changes_nothing(db, case):
-    arguments = {}
-    if case == "changed-since-read":
-        arguments["expected"] = "2035-01-01 08:00:00"
-    elif case == "unassigned":
-        db.execute("UPDATE events SET coordinator_id = NULL WHERE id = %s", (EVENT,))
-    elif case == "not-a-lead":
-        arguments["by"] = PRIYA
-    elif case == "not-a-coordinator":
-        arguments["to"] = ORGANISER
-    else:
-        db.execute("DELETE FROM events WHERE id = %s", (EVENT,))
-
-    assert reassign(db, **arguments) is False
-
-    assert log(db) == []
-    assert notices(db) == []

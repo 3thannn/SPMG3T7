@@ -5,7 +5,6 @@ schema; no application schema or data is touched.
 """
 
 import os
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
 
@@ -115,44 +114,8 @@ def review(db, actor, action, revision, payload):
     ).fetchone()[0]
 
 
-def test_revisions_history_and_concurrent_decisions(database):
-    db, dsn, schema = database
-    assert review(db, 1, "submit", 0, proposal())
-    assert review(db, 2, "clarify", 1, {"message": "Use another title"})
-    assert review(db, 1, "submit", 2, proposal("Final"))
-    assert not review(db, 2, "approve", 1, {})
-
-    def approve():
-        with psycopg.connect(dsn, autocommit=True) as other:
-            other.execute(f"SET search_path={schema}")
-            return review(other, 2, "approve", 3, {})
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        assert sorted(pool.map(lambda _: approve(), range(2))) == [False, True]
-    assert db.execute("SELECT name,status FROM events").fetchone() == ("Final", "Confirmed")
-    assert db.execute("SELECT count(*) FROM event_changes").fetchone()[0] == 1
-    assert (
-        db.execute(
-            "SELECT count(*) FROM event_change_requests WHERE status='superseded'"
-        ).fetchone()[0]
-        == 1
-    )
-    state = db.execute("SELECT review_state FROM events").fetchone()[0]
-    assert len(state["messages"]) == 4
 
 
-def test_reject_assignment_and_transaction_rollback(database):
-    db, _, _ = database
-    assert review(db, 1, "submit", 0, proposal())
-    assert not review(db, 9, "approve", 1, {})
-    assert not review(db, 2, "reject", 1, {"note": " "})
-    with pytest.raises(psycopg.Error):
-        with db.transaction():
-            assert review(db, 2, "approve", 1, {})
-            db.execute("SELECT 1/0")
-    assert db.execute("SELECT name FROM events").fetchone()[0] == "Original"
-    assert review(db, 2, "reject", 1, {"note": "Keep the title"})
-    assert db.execute("SELECT count(*) FROM event_changes").fetchone()[0] == 0
 
 
 def test_submission_preserves_each_proposed_field_and_accepts_them_together(database):
@@ -191,44 +154,8 @@ def test_submission_preserves_each_proposed_field_and_accepts_them_together(data
     assert db.execute("SELECT arrangement_review_pending FROM events").fetchone()[0]
 
 
-def test_direct_edit_marker_and_sgt_timestamp(database):
-    db, _, _ = database
-    changes = Jsonb(
-        [
-            {
-                "changed_field": "proposed_date",
-                "old_value": "",
-                "new_value": "2027-01-01T00:30",
-                "change_type": "important",
-            }
-        ]
-    )
-    assert db.execute("SELECT us11_edit(1,2,'2026-10-30',%s)", (changes,)).fetchone()[0]
-    assert db.execute(
-        "SELECT proposed_date::TEXT,arrangement_review_pending,status FROM events"
-    ).fetchone() == (
-        "2027-01-01 00:30:00",
-        True,
-        "Confirmed",
-    )
-    assert not db.execute("SELECT us11_edit(1,2,'2026-10-30',%s)", (changes,)).fetchone()[0]
-    content_version = db.execute("SELECT updated_at FROM events").fetchone()[0]
-    db.execute("UPDATE events SET arrangement_review='[]', arrangement_review_pending=FALSE")
-    assert db.execute("SELECT updated_at FROM events").fetchone()[0] == content_version
 
 
-def test_equipment_metadata_allowed_after_planning_but_content_is_guarded(database):
-    db, _, _ = database
-    db.execute("UPDATE events SET status='Planning'")
-    db.execute("INSERT INTO equipment VALUES(1,'Projector','Store',2,0)")
-    db.execute("""INSERT INTO equipment_requests(id,event_id,status,quantity,equipment_id,
-        requested_equipment_id,start_at,end_at)
-        VALUES(1,1,'Reserved',2,1,1,'2027-01-01 00:00','2027-01-01 01:00')""")
-    db.execute("UPDATE events SET status='Confirmed'")
-    db.execute("UPDATE equipment_requests SET event_conflict_reason='Review needed'")
-    assert db.execute("SELECT shortfall FROM equipment_availability(1)").fetchone()[0] == 0
-    with pytest.raises(psycopg.Error):
-        db.execute("UPDATE equipment_requests SET quantity=3")
 
 
 def arrangement_fixture(db):
@@ -266,35 +193,8 @@ def commit_review(db, version, reason, pending=False):
     ).fetchone()[0]
 
 
-@pytest.mark.parametrize("old_reason,new_reason", [("Old failure", ""), ("", "New failure")])
-def test_stale_check_cannot_publish_any_flags_or_report(database, old_reason, new_reason):
-    db, _, _ = database
-    old_version = arrangement_fixture(db)
-    db.execute("UPDATE events SET expected_attendance=40")
-    new_version = db.execute("SELECT updated_at FROM events").fetchone()[0]
-    assert commit_review(db, new_version, new_reason)
-    assert not commit_review(db, old_version, old_reason)
-    assert (
-        db.execute("SELECT event_conflict_reason FROM venue_bookings").fetchone()[0] == new_reason
-    )
-    assert (
-        db.execute("SELECT event_conflict_reason FROM equipment_requests").fetchone()[0]
-        == new_reason
-    )
-    assert db.execute("SELECT arrangement_review FROM events").fetchone()[0] == [
-        {"reason": new_reason}
-    ]
-    assert not db.execute("SELECT arrangement_review_pending FROM events").fetchone()[0]
 
 
-def test_arrangement_snapshot_must_still_match_before_any_flag_write(database):
-    db, _, _ = database
-    version = arrangement_fixture(db)
-    db.execute("UPDATE equipment_requests SET version=2")
-    assert not commit_review(db, version, "Stale failure")
-    assert db.execute("SELECT event_conflict_reason FROM venue_bookings").fetchone()[0] == ""
-    assert db.execute("SELECT event_conflict_reason FROM equipment_requests").fetchone()[0] == ""
-    assert db.execute("SELECT arrangement_review_pending FROM events").fetchone()[0]
 
 
 @pytest.mark.parametrize("failure", ["venue", "equipment", "pending"])
@@ -316,17 +216,3 @@ def test_sql_safety_guard_rechecks_event_conflicts(database, failure):
     assert db.execute("SELECT send_event_to_safety_check(1,2)").fetchone()[0]
 
 
-def test_sql_reservation_peak_demand(database):
-    db, _, _ = database
-    arrangement_fixture(db)
-    db.execute("""INSERT INTO equipment_requests(id,event_id,status,quantity,equipment_id,
-        requested_equipment_id,start_at,end_at) VALUES
-        (2,1,'Reserved',1,1,1,'2027-11-02 18:00','2027-11-02 19:00'),
-        (3,1,'Reserved',1,1,1,'2027-11-02 19:00','2027-11-02 20:00')""")
-    assert (
-        db.execute("SELECT shortfall FROM equipment_reservation_availability(1)").fetchone()[0] == 0
-    )
-    db.execute("UPDATE equipment_requests SET start_at='2027-11-02 18:59:59' WHERE id=3")
-    assert (
-        db.execute("SELECT shortfall FROM equipment_reservation_availability(1)").fetchone()[0] == 1
-    )

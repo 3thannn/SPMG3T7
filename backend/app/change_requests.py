@@ -257,15 +257,32 @@ def has_pending_request(*, status: EventStatus, change_requested: bool) -> bool:
     return change_requested and status in (*REQUESTABLE, EventStatus.UNDER_REVIEW)
 
 
-def reopens_planning(*, status: EventStatus, changes: Iterable[FieldChange]) -> bool:
-    """US11.3: whether approving these changes sends the event back to Planning.
+#: Statuses an important change sends back to Planning (US11.3, CODE_AUDIT.md D1).
+REOPENING_STATUSES = (EventStatus.CONFIRMED, EventStatus.PENDING_SAFETY_CHECK)
 
-    Only a Confirmed event, and only when a change is important by US5.2's rule.
-    Before Confirmed, the checks a change could upset are still to come. A
-    routine change, such as the title, does not affect whether the event is
-    safe or workable. Either way the status stays.
+
+def reopens_planning(*, status: EventStatus, changes: Iterable[FieldChange]) -> bool:
+    """Whether these changes send the event back to Planning.
+
+    Only when a change is important by US5.2's rule, and only for an event whose
+    safety check is under way or done: Pending Safety Check (US4.4) or Confirmed
+    (US11.3). The Safety Officer reviews attendance, timing and arrangements, so
+    an important change there leaves any decision describing a different event;
+    back in Planning it needs a fresh check and decision before it is confirmed.
+    In Planning and earlier, the checks a change could upset are still to come. A
+    routine change, such as the title, does not affect whether the event is safe
+    or workable, so the status stays.
     """
-    return status is EventStatus.CONFIRMED and any(change.important for change in changes)
+    return status in REOPENING_STATUSES and any(change.important for change in changes)
+
+
+def _important_fields(changes: Iterable[FieldChange]) -> tuple[str, str]:
+    """The important fields in form order, as prose, and "change" or "changes"."""
+    labels = [label_for(change.field) for change in ordered(changes) if change.important]
+    if not labels:
+        return "", ""
+    listed = labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} and {labels[-1]}"
+    return listed, "change" if len(labels) == 1 else "changes"
 
 
 def reopen_reason(changes: Iterable[FieldChange]) -> str:
@@ -273,14 +290,26 @@ def reopen_reason(changes: Iterable[FieldChange]) -> str:
 
     Empty when none of the changes is important, as then it does not go back.
     """
-    labels = [label_for(change.field) for change in ordered(changes) if change.important]
-    if not labels:
+    listed, noun = _important_fields(changes)
+    if not listed:
         return ""
-    listed = labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} and {labels[-1]}"
-    noun = "change" if len(labels) == 1 else "changes"
     return (
         f"Approved {noun} to {listed}. The arrangements are re-checked, and the event "
         "needs a new safety check before it is Confirmed again."
+    )
+
+
+def edit_reopen_reason(changes: Iterable[FieldChange]) -> str:
+    """D1: why a Coordinator's own edit sent the event back to Planning.
+
+    Empty when none of the changes is important, as then it does not go back.
+    """
+    listed, noun = _important_fields(changes)
+    if not listed:
+        return ""
+    return (
+        f"The Coordinator changed the {listed} during the safety check. The arrangements "
+        "are re-checked, and the event needs a new safety check before it is Confirmed."
     )
 
 

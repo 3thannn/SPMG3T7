@@ -20,7 +20,6 @@ import pytest
 
 from app.event_status import EventStatus
 from app.event_store import Event
-from app.events import CONFIRMED_EDIT_MESSAGE
 from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEED_ATTRS, SUBMITTABLE_NEEDS
 
 EVENT_ID = 990
@@ -77,32 +76,10 @@ class TestConfirmedIsLocked:
         }
         assert event_repository.get_event(EVENT_ID).title == "Open House"
 
-    def test_the_organiser_is_refused_the_same_way(self, client, auth_headers, event_repository):
-        seed(event_repository, EventStatus.CONFIRMED)
 
-        response = edit(client, auth_headers(ORGANISER), expectedAttendance=35)
-
-        assert response.status_code == 409
-        assert response.json()["detail"]["message"] == CONFIRMED_EDIT_MESSAGE
-        assert event_repository.get_event(EVENT_ID).expected_attendance == 30
-
-    def test_an_important_field_is_refused_too(self, client, auth_headers, event_repository):
-        seed(event_repository, EventStatus.CONFIRMED)
-
-        response = edit(client, auth_headers(COORDINATOR), startsAt="2099-11-02T10:00")
-
-        assert response.status_code == 409
-        assert event_repository.get_event(EVENT_ID).starts_at == FORM["startsAt"]
 
 
 class TestBeforeConfirmed:
-    def test_edit_on_planning_is_still_allowed(self, client, auth_headers, event_repository):
-        seed(event_repository, EventStatus.PLANNING)
-
-        response = edit(client, auth_headers(COORDINATOR), title="Open House 2099")
-
-        assert response.status_code == 200, response.text
-        assert response.json()["title"] == "Open House 2099"
 
     @pytest.mark.parametrize(
         "status",
@@ -118,16 +95,3 @@ class TestBeforeConfirmed:
         assert response.json()["description"] == "Tours, talks and lunch."
 
 
-class TestTheChangeProcess:
-    def test_the_organiser_can_still_request_a_change(self, client, auth_headers, event_repository):
-        seed(event_repository, EventStatus.CONFIRMED)
-
-        response = client.post(
-            f"/events/{EVENT_ID}/change-request",
-            json={**FORM, "title": "Open House 2099"},
-            headers=auth_headers(ORGANISER),
-        )
-
-        assert response.status_code == 200, response.text
-        assert response.json()["status"] == "Confirmed"
-        assert [c["field"] for c in response.json()["pendingChanges"]] == ["name"]

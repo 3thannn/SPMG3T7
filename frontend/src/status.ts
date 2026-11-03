@@ -86,7 +86,10 @@ export function checkSubmit(
 ): SubmitCheck {
   if (event.organiserId !== actorId) return { allowed: false, reason: 'not-owner' }
   if (event.status === 'Submitted') return { allowed: false, reason: 'already-submitted' }
-  if (event.status !== 'Draft') return { allowed: false, reason: 'not-draft' }
+  // D2: a Rejected event may be revised and submitted again.
+  if (event.status !== 'Draft' && event.status !== 'Rejected') {
+    return { allowed: false, reason: 'not-draft' }
+  }
   return { allowed: true }
 }
 
@@ -97,7 +100,7 @@ export function submitRefusalMessage(reason: SubmitRefusal): string {
     case 'not-owner':
       return 'Only the Organiser who owns this event can submit it.'
     case 'not-draft':
-      return 'Only a Draft event can be submitted.'
+      return 'Only a Draft or Rejected event can be submitted.'
   }
 }
 

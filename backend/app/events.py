@@ -47,6 +47,7 @@ from app import (
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
 from app.availability import SlotCheck
 from app.booking_store import (
+    CANCELLABLE,
     Booking,
     BookingStatus,
     HoldExpired,
@@ -352,6 +353,10 @@ def _require_transition(from_status: EventStatus, to_status: EventStatus) -> Non
     )
 
 
+#: D4: true whether the event is missing or not the caller's, and says neither.
+EVENT_NOT_FOUND_MESSAGE = "That event does not exist, or you do not have access to it."
+
+
 def _not_found() -> HTTPException:
     """The same answer whether the event is missing or simply not the caller's.
 
@@ -360,7 +365,7 @@ def _not_found() -> HTTPException:
     """
     return HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail={"code": EventError.NOT_FOUND, "message": "That event no longer exists."},
+        detail={"code": EventError.NOT_FOUND, "message": EVENT_NOT_FOUND_MESSAGE},
     )
 
 
@@ -743,9 +748,12 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
     """
     event = _readable(_as_id(event_id), user)
     _refuse_if_cancelled(event)
-    if event.status in (EventStatus.COMPLETED, EventStatus.REJECTED):
-        raise _stale_request()
     is_owner = event.organiser_id == user.id
+    # D2: a Rejected event is back with its Organiser to revise and resubmit.
+    if event.status is EventStatus.COMPLETED or (
+        event.status is EventStatus.REJECTED and not is_owner
+    ):
+        raise _stale_request()
     is_coordinator = has_permission(user.role, Permission.EVENTS_EDIT)
 
     # Coordinators can only edit submitted events (not drafts)
@@ -788,7 +796,11 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
 
     # US11.1: once submitted, the event is the Coordinator's to review. The
     # Organiser proposes changes instead, so they are reviewed, not applied.
-    if is_owner and not is_coordinator and event.status is not EventStatus.DRAFT:
+    if (
+        is_owner
+        and not is_coordinator
+        and event.status not in (EventStatus.DRAFT, EventStatus.REJECTED)
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -833,6 +845,10 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
         )
     if saved.arrangement_review_pending:
         saved = arrangement_review.recheck(saved)
+    # D1: an important edit during the safety check sent it back to Planning.
+    # The Coordinator made the edit, so only the Organiser needs telling.
+    if event.status is not saved.status and saved.status is EventStatus.PLANNING:
+        notify_back_in_planning(saved, saved.history[-1].notes, actor_id=user.id)
     return _to_out(saved)
 
 
@@ -1782,8 +1798,11 @@ def _resolve_change(
     if resolved.arrangement_review_pending:
         resolved = arrangement_review.recheck(resolved)
     notify_change_decision(resolved, approved=approve, reason=note)
-    # US11.3: the store moved it, if anything did; the route only tells people.
-    if event.status is EventStatus.CONFIRMED and resolved.status is EventStatus.PLANNING:
+    # US11.3 and D1: the store moved it, if anything did; the route only tells people.
+    if (
+        event.status in change_requests.REOPENING_STATUSES
+        and resolved.status is EventStatus.PLANNING
+    ):
         notify_back_in_planning(resolved, change_requests.reopen_reason(event.pending_changes))
     # US10.4: registered Attendees hear the new date and time, and nothing else.
     if approve and change_requests.moves_when(event.pending_changes):
@@ -2376,6 +2395,21 @@ def _booking_not_found() -> HTTPException:
     )
 
 
+def _not_cancellable(booking: Booking) -> HTTPException:
+    """D7: Rejected, Replaced or Expired bookings no longer hold the venue."""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": (
+                f"This booking is {booking.status}, so it no longer holds the venue. "
+                "There is nothing to cancel."
+            ),
+            "reason": "not-cancellable",
+        },
+    )
+
+
 def _already_cancelled() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
@@ -2427,6 +2461,8 @@ def cancel_booking(
         raise _already_cancelled()
     if booking.hold_expired:
         raise _nothing_to_cancel(booking)
+    if booking.status not in CANCELLABLE:
+        raise _not_cancellable(booking)
 
     reason = payload.reason.strip()
     if not reason:

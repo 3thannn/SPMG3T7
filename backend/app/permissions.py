@@ -99,7 +99,7 @@ class Permission(StrEnum):
     EQUIPMENT_WRITE = "equipment:write"
     EQUIPMENT_REQUEST = "equipment:request"
     EQUIPMENT_QUEUE = "equipment:queue"
-    REGISTRATION_MANAGE = "registration:manage"  # US20.1: assigned Coordinator
+    REGISTRATION_MANAGE = "registration:manage"  # US20.1 assigned Coordinator; D3 owning Organiser
     REGISTRATIONS_CREATE = "registrations:create"  # US20.1: Attendee
     REGISTRATIONS_READ = "registrations:read"  # US20.3: owning Organiser, assigned Coordinator
 
@@ -150,6 +150,9 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.NOTIFICATIONS_READ,
             # US20.3: who registered for an event they own.
             Permission.REGISTRATIONS_READ,
+            # D3: open and close registration on an event they own; the Week 4
+            # answers leave timing and closing to the Organiser.
+            Permission.REGISTRATION_MANAGE,
         }
     ),
     Role.COORDINATOR: frozenset(

@@ -16,6 +16,7 @@ trigger in SUPABASE_US9_5_DELETE_VENUE_HISTORY.sql: the in-memory venue store
 deletes the venue only.
 """
 
+from dataclasses import replace
 from datetime import timedelta
 
 from app import (
@@ -45,14 +46,22 @@ from app.venue_unavailability_store import (
     UnavailabilityReasonType,
 )
 from tests.conftest import (
-    ACCOUNTS,
     COORDINATOR_ID,
     ORGANISER_ID,
-    PASSWORD,
     SUBMITTABLE_NEED_ATTRS,
     fixture_users,
     fixture_venues,
 )
+
+E2E_PASSWORD = "password"
+
+
+def _e2e_users() -> list[users.User]:
+    """Use the documented browser-test accounts without changing pytest data."""
+    return [
+        replace(user, email=user.email.replace("@spmg3t7.edu", "@connectsphere.com"))
+        for user in fixture_users()
+    ]
 
 #: Venue ids the specs refer to. 1-3 are the pytest suite's own catalogue.
 FUTURE_BOOKING = 1  # Great Hall: two bookings still to come
@@ -137,6 +146,34 @@ def _safety_event(event_id: int, title: str, attendance: int, entered: timedelta
             ),
         ),
         **{**SUBMITTABLE_NEED_ATTRS, "accessibility_needs": "Wheelchair access, Hearing loop"},
+    )
+
+
+#: Event 1, which bookings 1, 2 and 5 belong to: a Planning event assigned to
+#: Priya, so the booking journeys (US16.1 decisions, US14.2 cancel, US14.5
+#: replacement of the flagged booking) have an event to work on.
+OPEN_HOUSE = 1
+
+
+def _open_house() -> Event:
+    coordinator = next(user for user in fixture_users() if user.id == COORDINATOR_ID)
+    organiser = next(user for user in fixture_users() if user.id == ORGANISER_ID)
+    return Event(
+        id=OPEN_HOUSE,
+        title="Open House",
+        purpose="Show the campus to visitors",
+        description="Seeded for the booking browser tests.",
+        starts_at=_at(timedelta(days=7))[:16],
+        ends_at=_at(timedelta(days=7, hours=8))[:16],
+        expected_attendance=60,
+        status=EventStatus.PLANNING,
+        organiser_id=organiser.id,
+        organiser_name=organiser.name,
+        created_at=_at(timedelta(days=-70)),
+        updated_at=_at(timedelta(days=-60)),
+        coordinator_id=coordinator.id,
+        coordinator_name=coordinator.name,
+        **SUBMITTABLE_NEED_ATTRS,
     )
 
 
@@ -262,14 +299,15 @@ def seed() -> None:
     ]
     venues.extend(safety_venues)
 
+    test_users = _e2e_users()
     users.use_repository(
         users.InMemoryUsers(
-            users=fixture_users(),
-            passwords={email: PASSWORD for email in ACCOUNTS.values()},
+            users=test_users,
+            passwords={user.email: E2E_PASSWORD for user in test_users},
         )
     )
     events = InMemoryEvents(
-        events=safety_events, names={user.id: user.name for user in fixture_users()}
+        events=[_open_house(), *safety_events], names={user.id: user.name for user in test_users}
     )
     event_store.use_repository(events)
     safety_decision_store.use_repository(InMemorySafetyDecisions(names=events.names))

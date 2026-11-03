@@ -20,6 +20,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'notifications:read',
     // US20.3: who registered for an event they own.
     'registrations:read',
+    // D3: open and close registration on an event they own.
+    'registration:manage',
   ],
   'Event Coordinator': [
     'events:read:submitted',

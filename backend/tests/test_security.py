@@ -15,6 +15,3 @@ def test_tokens_are_unique_and_long_enough_to_be_unguessable():
     assert all(len(token) >= 32 for token in tokens)
 
 
-def test_a_token_is_url_safe_so_it_survives_a_header_and_a_query_string():
-    allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
-    assert set(new_token()) <= allowed

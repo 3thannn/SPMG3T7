@@ -44,7 +44,7 @@ is no way past the form without it, by design.
 
 Use one of the development accounts — [the backend
 README](../backend/README.md#development-accounts) has the table. Both share the
-password `Sprint1!demo`.
+password `password`.
 
 Where you land is the server's decision, sent on the session rather than decided
 here:

@@ -118,7 +118,8 @@ function describeNeeds(booking: BookingRecord): string {
  *
  * US16.1: Venue Staff confirm or reject each request. A decision shows who
  * made it and when; a rejection shows the reason and any suggested
- * alternative. Only a Requested or still-active Held booking can be cancelled.
+ * alternative. A Requested, Confirmed, flagged or still-active Held booking can
+ * be cancelled (D7 in CODE_AUDIT.md).
  *
  * US15.1: the check also says whether the slot is free, counting the venue's
  * setup and turnaround time and its unavailability periods. A taken slot shows
@@ -511,7 +512,13 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     const isRejected = booking.status === 'Rejected'
     const needsReplacement = booking.status === 'Needs replacement'
     const replacementOpen = replacementSearch?.bookingId === booking.id
-    const cancellable = booking.status === 'Requested' || (isHeld && !holdExpired)
+    // D7: a Confirmed or flagged booking can be cancelled too; cancelling is
+    // how a flag clears (US12.2 AC5, US15.2 AC4).
+    const cancellable =
+      booking.status === 'Requested' ||
+      booking.status === 'Confirmed' ||
+      needsReplacement ||
+      (isHeld && !holdExpired)
     const rowClass =
       isCancelled || isRejected || isReplaced
         ? ' is-cancelled'

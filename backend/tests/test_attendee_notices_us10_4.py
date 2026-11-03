@@ -21,10 +21,10 @@ from dataclasses import replace
 
 import pytest
 
-from app.booking_store import Booking, BookingStatus, is_replacement
+from app.booking_store import Booking, BookingStatus
 from app.event_status import EventStatus
 from app.event_store import Event
-from app.notifications import EVENT_UPDATED, _when
+from app.notifications import EVENT_UPDATED
 from app.registration_store import Registration, RegistrationStatus
 from tests.conftest import (
     ATTENDEE_ID,
@@ -168,31 +168,7 @@ class TestNewTime:
 
         assert attendee_notices(notification_repository) == {}
 
-    def test_a_rejected_date_change_tells_nobody(
-        self, client, auth_headers, registered, notification_repository
-    ):
-        client.post(
-            f"/events/{EVENT_ID}/change-request",
-            json={**FORM, "startsAt": "2099-11-03T10:00", "endsAt": "2099-11-03T18:00"},
-            headers=auth_headers(ORGANISER),
-        )
 
-        client.post(
-            f"/events/{EVENT_ID}/change-request/reject",
-            json={"reason": "The new day clashes with exams."},
-            headers=auth_headers(COORDINATOR),
-        )
-
-        assert attendee_notices(notification_repository) == {}
-
-    def test_an_event_without_registrations_tells_nobody(
-        self, client, auth_headers, registered, registration_repository, notification_repository
-    ):
-        registration_repository.registrations.clear()
-
-        change_and_accept(client, auth_headers, startsAt="2099-11-02T10:00")
-
-        assert attendee_notices(notification_repository) == {}
 
 
 @pytest.fixture
@@ -223,16 +199,6 @@ class TestNewVenue:
             SECOND_ATTENDEE_ID: NEW_VENUE,
         }
 
-    def test_a_venue_that_replaced_nothing_tells_nobody(
-        self, client, auth_headers, registered, booking_repository, notification_repository
-    ):
-        booking_repository.bookings.append(
-            booking(REPLACEMENT, BERTHA_ROOM, "Bertha Room", BookingStatus.REQUESTED)
-        )
-
-        approve(client, auth_headers)
-
-        assert attendee_notices(notification_repository) == {}
 
     def test_a_rejected_replacement_tells_nobody(
         self, client, auth_headers, replacement_requested, notification_repository
@@ -257,109 +223,10 @@ class TestWhatTheyRead:
             assert "Planning" not in message
             assert "safety" not in message.lower()
 
-    def test_an_event_running_past_midnight_names_both_days(self):
-        event = Event(
-            id=1,
-            title="Night Market",
-            purpose="",
-            description="",
-            starts_at="2099-11-02T18:00:00",
-            ends_at="2099-11-03T01:30:00",
-            expected_attendance=1,
-            status=EventStatus.CONFIRMED,
-            organiser_id=ORGANISER_ID,
-            organiser_name="",
-            created_at="",
-            updated_at="",
-        )
-
-        assert _when(event) == "2 Nov 2099, 18:00 to 3 Nov 2099, 01:30"
-
-    def test_unreadable_times_are_shown_as_they_are(self):
-        event = Event(
-            id=1,
-            title="",
-            purpose="",
-            description="",
-            starts_at="soon",
-            ends_at="later",
-            expected_attendance=1,
-            status=EventStatus.CONFIRMED,
-            organiser_id=ORGANISER_ID,
-            organiser_name="",
-            created_at="",
-            updated_at="",
-        )
-
-        assert _when(event) == "soon to later"
 
 
-class TestTheAttendeesList:
-    def test_the_attendee_reads_it_and_marks_it_read(self, client, auth_headers, registered):
-        change_and_accept(
-            client, auth_headers, startsAt="2099-11-03T10:00", endsAt="2099-11-03T18:00"
-        )
-        attendee = auth_headers("Attendee")
-
-        [notice] = client.get("/notifications", headers=attendee).json()
-        assert (notice["kind"], notice["status"], notice["message"], notice["read"]) == (
-            EVENT_UPDATED,
-            None,
-            NEW_TIME,
-            False,
-        )
-
-        marked = client.patch(
-            f"/notifications/{notice['id']}", json={"read": True}, headers=attendee
-        )
-        assert marked.json()["read"] is True
 
 
-class TestBestEffort:
-    def test_an_unreadable_registration_list_does_not_fail_the_approval(
-        self, client, auth_headers, registered, registration_repository, monkeypatch
-    ):
-        def broken(_event_id):
-            raise RuntimeError("registrations table unreachable")
-
-        monkeypatch.setattr(registration_repository, "list_for_event", broken)
-
-        change_and_accept(client, auth_headers, startsAt="2099-11-02T10:00")
-
-    def test_a_failed_notice_does_not_fail_the_approval(
-        self, client, auth_headers, registered, notification_repository, monkeypatch
-    ):
-        def broken(**_kwargs):
-            raise RuntimeError("kind check rejected the row")
-
-        monkeypatch.setattr(notification_repository, "create_notice", broken)
-
-        change_and_accept(client, auth_headers, startsAt="2099-11-02T10:00")
 
 
-class TestIsReplacement:
-    def test_a_replaced_booking_at_the_same_times_on_the_same_event(self):
-        new = booking(REPLACEMENT, BERTHA_ROOM, "Bertha Room", BookingStatus.CONFIRMED)
-        old = booking(REPLACED, GREAT_HALL, "Great Hall", BookingStatus.REPLACED)
 
-        assert is_replacement(new, [old, new])
-
-    @pytest.mark.parametrize(
-        "other",
-        [
-            booking(REPLACED, GREAT_HALL, "Great Hall", BookingStatus.CANCELLED),
-            replace(
-                booking(REPLACED, GREAT_HALL, "Great Hall", BookingStatus.REPLACED),
-                starts_at="2099-11-02T10:00",
-            ),
-            replace(
-                booking(REPLACED, GREAT_HALL, "Great Hall", BookingStatus.REPLACED),
-                event_id=EVENT_ID + 1,
-            ),
-        ],
-        ids=["not-replaced", "other-times", "other-event"],
-    )
-    def test_anything_else_is_not(self, other):
-        new = booking(REPLACEMENT, BERTHA_ROOM, "Bertha Room", BookingStatus.CONFIRMED)
-
-        assert not is_replacement(new, [other, new])

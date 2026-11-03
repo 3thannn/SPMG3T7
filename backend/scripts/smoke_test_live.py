@@ -28,16 +28,16 @@ from app import supabase_client  # noqa: E402
 from app.booking_store import local_now  # noqa: E402
 from app.main import app  # noqa: E402
 
-PASSWORD = "Sprint1!demo"
+PASSWORD = "password"
 ACCOUNTS = {
-    "organiser": "organiser@spmg3t7.edu",
-    "coordinator": "coordinator@spmg3t7.edu",
-    "lead": "coordinatorlead@spmg3t7.edu",
-    "venue staff": "venuestaff@spmg3t7.edu",
-    "safety officer": "safetyofficer@spmg3t7.edu",
-    "tech support": "technicalsupport@spmg3t7.edu",
-    "attendee": "attendee@spmg3t7.edu",
-    "attendee 2": "attendee2@spmg3t7.edu",
+    "organiser": "organiser@connectsphere.com",
+    "coordinator": "coordinator@connectsphere.com",
+    "lead": "coordinatorlead@connectsphere.com",
+    "venue staff": "venuestaff@connectsphere.com",
+    "safety officer": "safetyofficer@connectsphere.com",
+    "tech support": "technicalsupport@connectsphere.com",
+    "attendee": "attendee@connectsphere.com",
+    "attendee 2": "attendee2@connectsphere.com",
 }
 NEEDS = {
     "venueRequirements": "Stage, Projector",

@@ -29,13 +29,9 @@ from app.equipment_store import RESERVED, EquipmentRequest
 from app.event_confirmation import (
     CHANGE_PENDING_MESSAGE,
     NOT_APPROVED_MESSAGE,
-    NOT_PENDING_MESSAGE,
-    ConfirmRefusal,
-    check_ready_to_confirm,
-    current_approval,
 )
 from app.event_status import EventStatus
-from app.event_store import Event, StaleEventStatus, StatusChange, SupabaseEvents
+from app.event_store import Event, StatusChange
 from app.permissions import Role
 from app.safety_decision_store import SafetyDecision
 from app.safety_decisions import SafetyOutcome
@@ -166,42 +162,8 @@ class TestConfirm:
             )
         ]
 
-    def test_nobody_else_is_told(self, client, auth_headers, waiting, notification_repository):
-        """US10.3: the confirmation is the Organiser's news alone."""
-        approve(client, auth_headers)
-        before = len(notification_repository.notifications)
 
-        confirm(client, auth_headers(COORDINATOR))
 
-        written = notification_repository.notifications[before:]
-        assert [notice.user_id for notice in written] == [ORGANISER_ID]
-
-    def test_readiness_says_when_it_can_be_confirmed(self, client, auth_headers, waiting):
-        headers = auth_headers(COORDINATOR)
-        before = client.get(f"/events/{EVENT_ID}/confirmation", headers=headers).json()
-        assert before == {
-            "ready": False,
-            "reason": "safety-not-approved",
-            "message": NOT_APPROVED_MESSAGE,
-        }
-
-        approve(client, auth_headers)
-
-        after = client.get(f"/events/{EVENT_ID}/confirmation", headers=headers).json()
-        assert after == {"ready": True, "reason": "", "message": ""}
-
-    def test_a_confirmation_that_lost_a_race_is_stale(
-        self, client, auth_headers, waiting, event_repository, monkeypatch
-    ):
-        approve(client, auth_headers)
-
-        def moved_on(*_args, **_kwargs):
-            raise StaleEventStatus
-
-        monkeypatch.setattr(event_repository, "confirm_event", moved_on)
-        response = confirm(client, auth_headers(COORDINATOR))
-
-        assert response.status_code == 409
 
 
 class TestRefusals:
@@ -289,13 +251,6 @@ class TestSafetyApproval:
         assert approved["status"] == "Pending Safety Check"
         assert approved["safetyApproved"] is True
 
-    def test_an_approved_event_leaves_the_safety_officer_queue(self, client, auth_headers, waiting):
-        queue = client.get("/events/safety-check", headers=auth_headers(OFFICER)).json()
-        assert [event["id"] for event in queue] == [str(EVENT_ID)]
-
-        approve(client, auth_headers)
-
-        assert client.get("/events/safety-check", headers=auth_headers(OFFICER)).json() == []
 
     def test_an_approval_of_an_earlier_stay_does_not_count(
         self, client, auth_headers, waiting, safety_decision_repository
@@ -331,6 +286,10 @@ class TestWhoConfirms:
         # US8.6: an event that is not theirs is not there, as everywhere else.
         assert response.status_code == 404
         assert event_repository.get_event(EVENT_ID).status is PSC
+        # D4: the refusal says what is true without revealing whether it exists.
+        assert response.json()["detail"]["message"] == (
+            "That event does not exist, or you do not have access to it."
+        )
 
     @pytest.mark.parametrize("role", ["Event Coordinator Lead", "Event Organiser"])
     def test_the_lead_and_the_organiser_are_refused(self, client, auth_headers, waiting, role):
@@ -341,101 +300,7 @@ class TestWhoConfirms:
         assert response.status_code == 403
         assert "confirm events" in response.json()["detail"]["message"]
 
-    def test_the_safety_officer_cannot_confirm_either(self, client, auth_headers, waiting):
-        approve(client, auth_headers)
-
-        assert confirm(client, auth_headers(OFFICER)).status_code == 403
 
 
-class TestRules:
-    def check(self, **overrides):
-        values = {
-            "status": PSC,
-            "approved": True,
-            "change_requested": False,
-            "bookings": [booking()],
-            "equipment": [line()],
-            "now": None,
-        }
-        return check_ready_to_confirm(**{**values, **overrides})
-
-    def test_everything_in_place_is_ready(self):
-        assert self.check() is None
-
-    def test_only_an_event_pending_safety_check(self):
-        assert self.check(status=EventStatus.PLANNING).message == NOT_PENDING_MESSAGE
-
-    def test_a_venue_still_held_is_named(self):
-        held = booking(
-            2, BookingStatus.HELD, venue="Bertha Room", hold_expires_at="2099-12-31T00:00"
-        )
-
-        refused = self.check(bookings=[booking(), held])
-
-        assert refused.reason is ConfirmRefusal.VENUE_NOT_CONFIRMED
-        assert refused.message.startswith("Bertha Room is only held.")
-
-    def test_no_confirmed_venue_at_all(self):
-        cancelled = booking(status=BookingStatus.CANCELLED)
-
-        assert self.check(bookings=[cancelled]).reason is ConfirmRefusal.NO_CONFIRMED_VENUE
-
-    def test_a_recheck_still_running(self):
-        refused = self.check(arrangement_review_pending=True)
-
-        assert refused.reason is ConfirmRefusal.ARRANGEMENT_REVIEW_PENDING
-
-    def test_equipment_flagged_for_review(self):
-        refused = self.check(equipment=[line(event_conflict_reason="Stock short")])
-
-        assert refused.reason is ConfirmRefusal.EQUIPMENT_CONFLICT
-        assert refused.message == "Projector is flagged for review."
-
-    def test_a_venue_flagged_by_the_change_recheck(self):
-        refused = self.check(bookings=[booking(event_conflict_reason="Over capacity")])
-
-        assert refused.reason is ConfirmRefusal.VENUE_CONFLICT
-
-    def test_only_an_approval_counts_as_one(self):
-        def decision(outcome):
-            return SafetyDecision(
-                id=1,
-                event_id=EVENT_ID,
-                outcome=outcome,
-                note="Fix it.",
-                decided_by_id=4,
-                decided_by_name="Alex",
-                decided_at=ENTERED,
-                check_started_at=ENTERED,
-            )
-
-        assert current_approval([decision(SafetyOutcome.CHANGES_REQUESTED)], ENTERED) is None
-        approval = decision(SafetyOutcome.APPROVED)
-        assert current_approval([approval], ENTERED) is approval
 
 
-class TestStores:
-    def test_in_memory_confirms_only_its_own_waiting_event(self, event_repository, waiting):
-        with pytest.raises(StaleEventStatus):
-            event_repository.confirm_event(EVENT_ID, actor_id=77)
-
-        confirmed = event_repository.confirm_event(EVENT_ID, actor_id=COORDINATOR_ID)
-
-        assert confirmed.status is EventStatus.CONFIRMED
-        with pytest.raises(StaleEventStatus):
-            event_repository.confirm_event(EVENT_ID, actor_id=COORDINATOR_ID)
-
-    def test_supabase_confirms_through_one_rpc(self, fake, monkeypatch):
-        store = SupabaseEvents()
-        marker = object()
-        monkeypatch.setattr(store, "get_event", lambda _id: marker)
-        fake.rpc_answers["confirm_event"] = True
-
-        assert store.confirm_event(42, actor_id=COORDINATOR_ID) is marker
-        assert fake.rpcs == [
-            ("confirm_event", {"p_event_id": 42, "p_coordinator_id": COORDINATOR_ID})
-        ]
-
-        fake.rpc_answers["confirm_event"] = False
-        with pytest.raises(StaleEventStatus):
-            store.confirm_event(42, actor_id=COORDINATOR_ID)

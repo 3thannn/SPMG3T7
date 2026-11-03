@@ -1,0 +1,98 @@
+# Handover: test traceability, test cut, defect fixes
+
+Branch: `chore/playwright-test-reduction-handover`. Commit as
+`3thannn <ethan.leong@gmail.com>`. Read this first; it supersedes
+`HANDOVER_CLOUD_SESSION.md` for the testing work.
+
+## The goal (from the team)
+
+We had about 4,000 tests, too many to show that each one is needed and checks the right
+thing. The aim is a defensible set: every Jira acceptance criterion (AC) has
+test cases written the Week 4 way (happy path, one negative per rule,
+boundaries), each tied to one automated test that someone has read. Plus an
+**xlsx workbook laid out like the seniors' sheets** ("Created By / Date of
+Creation / Executed By / Date of Execution" header block, then one plain row per
+test case: Test Case ID, Test Scenario, User Story Reference, Pre-Conditions,
+Test Steps, Test Data, Expected Result, Status). Simple, student-style wording.
+Do not invent TDD dates or claim tests were written first unless they were
+(only the D1–D8 fixes were truly test-first).
+
+## Where things are
+
+| File | What it is |
+|---|---|
+| `docs/testing/acceptance_criteria.yaml` | Every Jira story and AC, numbered `US4.7-AC2`; `kind` = behaviour / superseded / note / evidence / not built |
+| `docs/testing/test_cases.txt` | **The source of truth: 488 test cases.** Format: `- id:` then `  key: value`, continuation lines indented 4 spaces. Fields: id, ac (comma list), category, scenario, preconditions, steps, data, expected, layer, test, why |
+| `docs/testing/tools/tcparse.py` | Parser and validator: `python docs/testing/tools/tcparse.py docs/testing/test_cases.txt` |
+| `docs/testing/tools/tcrefs.py` | Checks that every `test:` reference exists (backend AST, frontend titles incl. `it.each`, `evidence: path`) |
+| `docs/testing/tools/tcgen.py` | Appends cases from pipe-separated rows (11 fields) |
+| `docs/testing/tools/show.py` | Prints a test's source: `show.py tests/test_x.py::Class::test` or `pages/X.test.tsx::title` |
+| `docs/testing/tools/prune_backend.py`, `prune_frontend.cjs`, `unused_frontend.cjs` | How the cut was done (remove every test not referenced in test_cases.txt; then remove unused helpers). Hooks are left alone. Re-run only with a keep list generated from the current test_cases.txt |
+| `CODE_AUDIT.md` | What the code does; defects D1–D8 and their status |
+| `REQUIREMENTS_BASELINE.md` | Customer rule changes vs Jira |
+| `frontend/e2e-isolated/` | **All E2E now:** 38 browser journeys against `backend/e2e_server.py` (real API, in-memory stores, reset per test). `support.ts` has accounts and API set-up helpers. The old `e2e/` folder signed in to the live Supabase and was removed |
+
+Test reference formats in test_cases.txt: `backend/tests/test_x.py::Class::test`,
+`backend/integration/test_x_db.py::test`, `frontend/src/path.test.tsx::title`,
+`frontend/e2e-isolated/x.spec.ts::title`, `evidence: README.md`.
+
+## Current numbers (all green locally)
+
+- Backend: 591 pass (`pytest --cov`, floor 77% in `backend/pyproject.toml`).
+- DB suites: 20 tests on Postgres (`integration/`).
+- Frontend: 66 Vitest tests, floors in `frontend/vite.config.ts` (lines 52 / statements 51 / functions 49 / branches 48); lint, `tsc -b` and build clean.
+- E2E: 38 Playwright journeys (`npm run test:e2e`), CI job `e2e`.
+- Workbook: `docs/testing/ConnectSphere_Test_Cases.xlsx`, built by
+  `docs/testing/build_workbook.py <junit-results-dir>` (see its docstring for
+  the four JUnit runs). 488 cases: 481 Passed, 5 Evidence, 2 Not Executed
+  (opt-in DB tests: `tests/test_hold_expiry_db.py` needs the live project,
+  `tests/test_equipment_reservations_db.py` needs a database with every
+  migration applied). Layout follows the seniors' sheets.
+
+## Defects fixed (test-first)
+
+D1 stale safety approval, D4 misleading 404, D2 resubmit Rejected events, D3
+Organiser controls registration, D7 cancel a Confirmed/flagged booking, D8
+"No bookings were flagged" message. Each was checked against the Week 4
+instructions and Week 7 changes before following the customer's answer. Details
+and tests are in CODE_AUDIT.md section 4 and as `TC-D*` cases.
+
+## What is left (optional, in order)
+
+1. Done: `SUPABASE_FIX_ORGANISER_REGISTRATION.sql` was applied to the live Supabase on
+   2026-11-03 with the user's approval.
+2. Raise coverage if wanted: restore the Supabase store contract tests (~240
+   functions; full suite at commit `da67018`), add each as a `category:
+   Technical` case, rebuild the workbook, raise the floors.
+3. Done: `REQUIREMENTS_BASELINE.md` updated (G1, G4a met).
+
+Notes:
+- Minor, not fixed: an Organiser on an Under Review event sees "already been
+  decided" when change requests are unavailable (they open once the Coordinator
+  asks a question). Copy only.
+- The team's `backend/tests/test_cases_*.md` docs cite tests that the cut
+  removed; the workbook replaces them. Ask before deleting them.
+
+## How to run things
+
+```bash
+cd backend && python -m pytest -q
+```
+
+```bash
+cd backend && TEST_POSTGRES_DSN=postgresql://postgres@localhost:5433/postgres python -m pytest -q --no-cov integration
+```
+
+```bash
+cd frontend && npm run lint && npx tsc -b && npx vitest run --coverage
+```
+
+```bash
+cd frontend && npm run test:e2e
+```
+
+E2E needs `backend/.venv` (a symlink to any venv with the backend requirements
+works) and, when the container's Chromium doesn't match Playwright 1.64, set
+`PW_CHROMIUM_PATH` to a Chromium binary (in the cloud container:
+`/opt/pw-browsers/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell`).
+A local Postgres for the DB suites: `initdb`/`pg_ctl` from `/usr/lib/postgresql/16/bin`, port 5433.

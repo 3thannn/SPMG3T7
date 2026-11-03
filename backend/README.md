@@ -656,7 +656,7 @@ curl -X POST http://localhost:8000/attendee/events/12/registrations \
 - **Full notice.** The registration that takes the last place tells the
   assigned Coordinator and the Organiser (kind `event-full`), best effort.
 - **Attendee accounts.** `python seed_new_users.py --attendees-only` creates
-  `attendee@spmg3t7.edu` and `attendee2@spmg3t7.edu`.
+  `attendee@connectsphere.com` and `attendee2@connectsphere.com`.
 
 Run [`SUPABASE_US20_1_REGISTRATION.sql`](SUPABASE_US20_1_REGISTRATION.sql)
 first. [`TEST_US20_1_REGISTRATION.sql`](TEST_US20_1_REGISTRATION.sql) checks it in
@@ -858,9 +858,9 @@ joined on email, so both must use the same address. One account per role:
 
 | Email                      | Role              |
 | -------------------------- | ----------------- |
-| `organiser@spmg3t7.edu`    | Event Organiser   |
-| `coordinator@spmg3t7.edu`  | Event Coordinator |
-| `venuestaff@spmg3t7.edu`   | Venue Staff       |
+| `organiser@connectsphere.com`    | Event Organiser   |
+| `coordinator@connectsphere.com`  | Event Coordinator |
+| `venuestaff@connectsphere.com`   | Venue Staff       |
 
 These are development credentials, not secrets, and they must not survive into a
 deployed environment. Creating them by hand is deliberate: nothing in the app
@@ -875,7 +875,7 @@ Try the whole thing from a terminal:
 
 ```bash
 # Sign in
-curl -X POST http://localhost:8000/auth/login   -H 'Content-Type: application/json'   -d '{"email":"organiser@spmg3t7.edu","password":"Sprint1!demo"}'
+curl -X POST http://localhost:8000/auth/login   -H 'Content-Type: application/json'   -d '{"email":"organiser@connectsphere.com","password":"password"}'
 
 # Then, with the token it returned, ask for something an Organiser may not have
 curl http://localhost:8000/auth/users -H "Authorization: Bearer <token>"
@@ -969,8 +969,8 @@ frontend URL.
    `SUPABASE_DB_URL` is only for this optional migration runner; the API uses
    `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
 3. Run `.venv/Scripts/python.exe seed_new_users.py --tech-only`. It creates
-   Bryan's `technicalsupport@spmg3t7.edu` Auth login and `Technical Support`
-   profile. New Auth accounts use `PASSWORD`, which defaults to `Sprint1!demo`
+   Bryan's `technicalsupport@connectsphere.com` Auth login and `Technical Support`
+   profile. New Auth accounts use `PASSWORD`, which defaults to `password`
    and can be overridden with `SEED_PASSWORD`. Existing passwords are not reset.
 4. Start the API, then run `.venv/Scripts/python.exe seed_equipment.py`. It
    signs in through `/auth/login`, creates ten sample items through `/equipment`,

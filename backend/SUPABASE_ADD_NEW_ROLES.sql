@@ -9,8 +9,8 @@ ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'Safety Officer';
 -- Note: You still need to create auth accounts separately (see instructions below)
 INSERT INTO public.users (id, email, name, role, created_at, updated_at)
 VALUES
-    (3, 'coordinatorlead@spmg3t7.edu', 'Jordan', 'Event Coordinator Lead', NOW(), NOW()),
-    (5, 'safetyofficer@spmg3t7.edu', 'Alex', 'Safety Officer', NOW(), NOW())
+    (3, 'coordinatorlead@connectsphere.com', 'Jordan', 'Event Coordinator Lead', NOW(), NOW()),
+    (5, 'safetyofficer@connectsphere.com', 'Alex', 'Safety Officer', NOW(), NOW())
 ON CONFLICT (id) DO UPDATE SET
     email = EXCLUDED.email,
     name = EXCLUDED.name,

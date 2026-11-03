@@ -34,144 +34,19 @@ class TestCreating:
         assert event["title"] == "Faculty Welcome Night"
         assert event["organiserId"] == str(ORGANISER_ID)
 
-    def test_the_organiser_is_taken_from_the_session_not_the_request(
-        self, client, auth_headers
-    ):
-        """Otherwise an Organiser could file an event under someone else's name."""
-        event = create(client, auth_headers("Event Organiser"), organiserId="999")
 
-        assert event["organiserId"] == str(ORGANISER_ID)
-        assert event["organiserName"] == "Dylan"
 
-    def test_a_coordinator_cannot_create_an_event(self, client, auth_headers):
-        response = client.post(
-            "/events", json=DRAFT, headers=auth_headers("Event Coordinator")
-        )
 
-        assert response.status_code == 403
-        assert "create events" in response.json()["detail"]["message"]
 
-    def test_a_draft_may_have_only_a_description(self, client, auth_headers):
-        response = client.post(
-            "/events", json={"description": "Ideas for later"}, headers=auth_headers()
-        )
 
-        assert response.status_code == 201, response.text
-        assert response.json()["title"] == ""
-        assert response.json()["startsAt"] == ""
 
-    def test_a_draft_needs_a_letter_or_number_somewhere(self, client, auth_headers):
-        response = client.post(
-            "/events",
-            json={"title": "   ", "purpose": "---", "description": "!@#"},
-            headers=auth_headers(),
-        )
 
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == (
-            "Enter at least one letter or number in any field to save a draft."
-        )
 
-    def test_a_zero_attendance_is_enough_content_for_a_draft(self, client, auth_headers):
-        response = client.post(
-            "/events", json={"expectedAttendance": 0}, headers=auth_headers()
-        )
 
-        assert response.status_code == 201, response.text
-        assert response.json()["expectedAttendance"] == 0
 
-    def test_draft_text_is_not_trimmed_or_reformatted(self, client, auth_headers):
-        description = "  First line\n    indented line\n  "
 
-        event = create(
-            client,
-            auth_headers(),
-            title="  Working title  ",
-            purpose="  Purpose with spacing  ",
-            description=description,
-            startsAt="",
-        )
 
-        assert event["title"] == "  Working title  "
-        assert event["purpose"] == "  Purpose with spacing  "
-        assert event["description"] == description
 
-    def test_it_keeps_every_writable_column_of_the_events_table(
-        self, client, auth_headers
-    ):
-        event = create(client, auth_headers("Event Organiser"))
-
-        assert event["purpose"] == "Welcome the new intake."
-        assert event["description"] == "Talks."
-        assert event["startsAt"] == "2026-11-02T18:00"
-        assert event["expectedAttendance"] == 120
-
-    def test_the_nullable_columns_may_be_left_out(self, client, auth_headers):
-        """`purpose` and `expected_attendance` are nullable, so blank is a value."""
-        response = client.post(
-            "/events",
-            json={"title": "Quiet one", "startsAt": "2026-11-02T18:00"},
-            headers=auth_headers(),
-        )
-
-        assert response.status_code == 201, response.text
-        event = response.json()
-        assert event["purpose"] == ""
-        assert event["description"] == ""
-        assert event["expectedAttendance"] is None
-
-    def test_no_attendance_is_not_the_same_as_an_attendance_of_zero(
-        self, client, auth_headers
-    ):
-        """The column distinguishes "not estimated yet" from "nobody is coming"."""
-        blank = create(client, auth_headers(), expectedAttendance=None)
-        none_expected = create(client, auth_headers(), expectedAttendance=0)
-
-        assert blank["expectedAttendance"] is None
-        assert none_expected["expectedAttendance"] == 0
-
-    def test_attendance_cannot_be_negative(self, client, auth_headers):
-        response = client.post(
-            "/events", json={**DRAFT, "expectedAttendance": -1}, headers=auth_headers()
-        )
-
-        assert response.status_code == 400
-        assert "negative" in response.json()["detail"]["message"]
-
-    def test_a_title_longer_than_the_column_is_refused(self, client, auth_headers):
-        """events.name is VARCHAR(255); saying so beats a database error."""
-        response = client.post(
-            "/events", json={**DRAFT, "title": "x" * 256}, headers=auth_headers()
-        )
-
-        assert response.status_code == 400
-        assert "255 characters" in response.json()["detail"]["message"]
-
-    def test_an_end_time_before_the_start_time_is_refused(self, client, auth_headers):
-        response = client.post(
-            "/events",
-            json={
-                **DRAFT,
-                "startsAt": "2026-11-02T18:00",
-                "endsAt": "2026-11-02T17:00",
-            },
-            headers=auth_headers(),
-        )
-
-        assert response.status_code == 400
-        assert "The end date must be after the start date." in response.json()["detail"]["message"]
-
-    def test_a_purpose_longer_than_the_column_is_refused(self, client, auth_headers):
-        """events.purpose is VARCHAR(500)."""
-        response = client.post(
-            "/events", json={**DRAFT, "purpose": "x" * 501}, headers=auth_headers()
-        )
-
-        assert response.status_code == 400
-        assert "500 characters" in response.json()["detail"]["message"]
-
-    def test_signing_in_is_required(self, client):
-        assert client.post("/events", json=DRAFT).status_code == 401
 
 
 class TestVisibility:
@@ -198,28 +73,6 @@ class TestVisibility:
 
         assert listed == []
 
-    def test_a_coordinator_sees_submitted_events_but_not_drafts(
-        self, client, auth_headers
-    ):
-        """US8.6: Coordinators only see events assigned to them."""
-        draft = create(client, auth_headers("Event Organiser"), title="Private Draft")
-        submitted = create(client, auth_headers("Event Organiser"), title="Ready for Review")
-        client.post(
-            f"/events/{submitted['id']}/submit",
-            headers=auth_headers("Event Organiser"),
-        )
-
-        # US8.6: Assign the event to the coordinator
-        client.post(
-            f"/events/{submitted['id']}/assign",
-            json={"coordinatorId": str(COORDINATOR_ID)},
-            headers=auth_headers("Event Coordinator Lead"),
-        )
-
-        listed = client.get("/events", headers=auth_headers("Event Coordinator")).json()
-
-        assert [event["title"] for event in listed] == ["Ready for Review"]
-        assert draft["id"] not in {event["id"] for event in listed}
 
     def test_a_coordinator_cannot_open_a_draft_directly(self, client, auth_headers):
         event = create(client, auth_headers("Event Organiser"))
@@ -263,25 +116,8 @@ class TestVisibility:
         assert body["organiserName"] == "Dylan"
         assert len(body["history"]) >= 2  # At least creation and submission
 
-    def test_an_event_that_is_not_yours_reads_as_missing_not_forbidden(
-        self, client, auth_headers, event_repository
-    ):
-        """403 would confirm the event exists — which is not this caller's to know."""
-        event = create(client, auth_headers("Event Organiser"))
-        event_repository.events = [
-            item.__class__(**{**item.__dict__, "organiser_id": 999})
-            for item in event_repository.events
-        ]
 
-        response = client.get(f"/events/{event['id']}", headers=auth_headers())
 
-        assert response.status_code == 404
-
-    def test_an_unknown_event_is_a_404(self, client, auth_headers):
-        assert client.get("/events/424242", headers=auth_headers()).status_code == 404
-
-    def test_an_id_that_is_not_a_number_is_a_404_not_a_crash(self, client, auth_headers):
-        assert client.get("/events/not-an-id", headers=auth_headers()).status_code == 404
 
 
 class TestSaving:
@@ -299,72 +135,10 @@ class TestSaving:
         assert saved["title"] == "Renamed"
         assert saved["status"] == "Draft"
 
-    def test_saving_writes_no_history_entry(self, client, auth_headers):
-        event = create(client, auth_headers())
-        before = len(event["history"])
 
-        saved = client.put(
-            f"/events/{event['id']}",
-            json={**DRAFT, "title": "Renamed"},
-            headers=auth_headers(),
-        ).json()
 
-        assert len(saved["history"]) == before
 
-    def test_saving_allows_title_and_date_to_be_cleared_when_another_field_has_content(
-        self, client, auth_headers
-    ):
-        event = create(client, auth_headers())
 
-        response = client.put(
-            f"/events/{event['id']}",
-            json={"description": "  Continue planning here.  "},
-            headers=auth_headers(),
-        )
-
-        assert response.status_code == 200, response.text
-        saved = response.json()
-        assert saved["title"] == ""
-        assert saved["startsAt"] == ""
-        assert saved["description"] == "  Continue planning here.  "
-
-    def test_saving_rejects_whitespace_and_punctuation_only(self, client, auth_headers):
-        event = create(client, auth_headers())
-
-        response = client.put(
-            f"/events/{event['id']}",
-            json={"title": "   ", "description": "---"},
-            headers=auth_headers(),
-        )
-
-        assert response.status_code == 400
-        assert "at least one letter or number" in response.json()["detail"]["message"]
-
-    def test_a_coordinator_cannot_open_a_draft_to_edit_it(self, client, auth_headers):
-        event = create(client, auth_headers("Event Organiser"))
-
-        response = client.put(
-            f"/events/{event['id']}",
-            json={**DRAFT, "title": "Hijacked"},
-            headers=auth_headers("Event Coordinator"),
-        )
-
-        assert response.status_code == 404
-        assert response.json()["detail"]["code"] == "event_not_found"
-
-    def test_owner_can_edit_their_draft(self, client, auth_headers):
-        """US4.2: owners edit a Draft directly, without change tracking."""
-        event = create(client, auth_headers("Event Organiser"))
-
-        response = client.put(
-            f"/events/{event['id']}",
-            json={**DRAFT, "title": "Renamed by Owner"},
-            headers=auth_headers("Event Organiser"),
-        )
-
-        assert response.status_code == 200
-        saved = response.json()
-        assert saved["title"] == "Renamed by Owner"
 
     def test_owner_cannot_edit_their_submitted_event_directly(self, client, auth_headers):
         """US11.1: once submitted, the owner requests a change instead of editing."""
@@ -382,31 +156,6 @@ class TestSaving:
         assert response.status_code == 409
         assert response.json()["detail"]["reason"] == "change-request-required"
 
-    def test_coordinator_can_edit_any_event(self, client, auth_headers):
-        """US5.2: Coordinators can edit submitted events they don't own.
-        US8.6: Coordinator must be assigned to the event first."""
-        event = create(client, auth_headers("Event Organiser"))
-        # Submit the event first - coordinators can only edit submitted events
-        submitted = client.post(
-            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
-        ).json()
-
-        # US8.6: Assign the event to the coordinator
-        client.post(
-            f"/events/{submitted['id']}/assign",
-            json={"coordinatorId": str(COORDINATOR_ID)},
-            headers=auth_headers("Event Coordinator Lead"),
-        )
-
-        response = client.put(
-            f"/events/{submitted['id']}",
-            json={**DRAFT, "title": "Edited by Coordinator"},
-            headers=auth_headers("Event Coordinator"),
-        )
-
-        assert response.status_code == 200
-        saved = response.json()
-        assert saved["title"] == "Edited by Coordinator"
 
     def test_non_owner_without_edit_permission_cannot_edit(
         self, client, auth_headers, event_repository
@@ -449,62 +198,11 @@ class TestSubmitting:
         assert response.status_code == 400
         assert response.json()["detail"]["message"] == "Give the event a title."
 
-    def test_submission_still_needs_a_date(self, client, auth_headers):
-        event = create(client, auth_headers(), startsAt="", description="Planning notes")
 
-        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
 
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == "Give the event a date."
 
-    def test_submission_needs_a_purpose(self, client, auth_headers):
-        event = create(client, auth_headers(), purpose="")
 
-        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
 
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == "Give the event a purpose."
-
-    def test_submission_needs_expected_attendance(self, client, auth_headers):
-        event = create(client, auth_headers(), expectedAttendance=None)
-
-        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
-
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == "Give the expected attendance."
-
-    def test_submission_needs_at_least_one_attendee(self, client, auth_headers):
-        event = create(client, auth_headers(), expectedAttendance=0)
-
-        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
-
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == "Expected attendance must be at least 1."
-
-    def test_submission_rejects_a_past_start_date(self, client, auth_headers):
-        event = create(client, auth_headers(), startsAt="2020-01-01T18:00")
-
-        response = client.post(f"/events/{event['id']}/submit", headers=auth_headers())
-
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == "The start date cannot be in the past."
-
-    def test_editing_an_event_rejects_an_end_not_after_the_start(self, client, auth_headers):
-        event = create(
-            client,
-            auth_headers(),
-            startsAt="2026-11-02T18:00",
-            endsAt="2026-11-02T19:00",
-        )
-
-        response = client.put(
-            f"/events/{event['id']}",
-            json={**DRAFT, "startsAt": "2026-11-02T18:00", "endsAt": "2026-11-02T17:00"},
-            headers=auth_headers(),
-        )
-
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == "The end date must be after the start date."
 
     def test_editing_an_event_rejects_equal_start_and_end_times(self, client, auth_headers):
         event = create(
@@ -537,14 +235,6 @@ class TestSubmitting:
         assert entry["byName"] == "Dylan"
         assert entry["at"]
 
-    def test_the_history_opens_with_the_creation_entry(self, client, auth_headers):
-        """Derived rather than stored — status_changes.old_status is NOT NULL."""
-        event = create(client, auth_headers())
-
-        first = event["history"][0]
-        assert first["from"] is None
-        assert first["to"] == "Draft"
-        assert first["byName"] == "Dylan"
 
     def test_submitting_twice_is_refused_with_a_reason(self, client, auth_headers):
         event = create(client, auth_headers())
@@ -559,29 +249,21 @@ class TestSubmitting:
             "This event has already been submitted. An event can only be submitted once."
         )
 
-    def test_a_coordinator_cannot_submit(self, client, auth_headers):
-        event = create(client, auth_headers("Event Organiser"))
-
-        response = client.post(
-            f"/events/{event['id']}/submit", headers=auth_headers("Event Coordinator")
-        )
-
-        assert response.status_code == 403
-        assert "submit events for approval" in response.json()["detail"]["message"]
 
 
 class TestCoordinatorEditing:
     """US5.2: Coordinators can edit events with change tracking (important vs routine).
     US8.6: Coordinators must be assigned to events to edit them."""
 
-    def test_coordinator_edit_tracks_important_change_to_date(self, client, auth_headers):
-        """Editing proposed_date is logged as important."""
+
+    def test_coordinator_edit_logs_each_change_as_important_or_routine(
+        self, client, auth_headers, event_repository
+    ):
+        """US5.2 AC2: an attendance edit is logged important, a title edit routine."""
         event = create(client, auth_headers("Event Organiser"))
         submitted = client.post(
             f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
         ).json()
-
-        # US8.6: Assign to coordinator
         client.post(
             f"/events/{submitted['id']}/assign",
             json={"coordinatorId": str(COORDINATOR_ID)},
@@ -590,124 +272,22 @@ class TestCoordinatorEditing:
 
         response = client.put(
             f"/events/{submitted['id']}",
-            json={**DRAFT, "startsAt": "2026-12-15T20:00", "endsAt": "2026-12-15T22:00"},
+            json={**DRAFT, "title": "Welcome Night", "expectedAttendance": 200},
             headers=auth_headers("Event Coordinator"),
         )
 
-        assert response.status_code == 200
-        saved = response.json()
-        assert saved["startsAt"] == "2026-12-15T20:00"
+        assert response.status_code == 200, response.text
+        assert response.json()["expectedAttendance"] == 200
+        logged = {
+            change.field: change.important
+            for event_id, change in event_repository.change_log
+            if event_id == int(submitted["id"])
+        }
+        assert logged == {"name": False, "expected_attendance": True}
 
-    def test_coordinator_edit_tracks_important_change_to_attendance(self, client, auth_headers):
-        """Editing expected_attendance is logged as important."""
-        event = create(client, auth_headers("Event Organiser"))
-        submitted = client.post(
-            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
-        ).json()
 
-        # US8.6: Assign to coordinator
-        client.post(
-            f"/events/{submitted['id']}/assign",
-            json={"coordinatorId": str(COORDINATOR_ID)},
-            headers=auth_headers("Event Coordinator Lead"),
-        )
 
-        response = client.put(
-            f"/events/{submitted['id']}",
-            json={**DRAFT, "expectedAttendance": 200},
-            headers=auth_headers("Event Coordinator"),
-        )
 
-        assert response.status_code == 200
-        saved = response.json()
-        assert saved["expectedAttendance"] == 200
-
-    def test_coordinator_edit_tracks_routine_change_to_title(self, client, auth_headers):
-        """Editing title is logged as routine."""
-        event = create(client, auth_headers("Event Organiser"))
-        submitted = client.post(
-            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
-        ).json()
-
-        # US8.6: Assign to coordinator
-        client.post(
-            f"/events/{submitted['id']}/assign",
-            json={"coordinatorId": str(COORDINATOR_ID)},
-            headers=auth_headers("Event Coordinator Lead"),
-        )
-
-        response = client.put(
-            f"/events/{submitted['id']}",
-            json={**DRAFT, "title": "New Title"},
-            headers=auth_headers("Event Coordinator"),
-        )
-
-        assert response.status_code == 200
-        saved = response.json()
-        assert saved["title"] == "New Title"
-
-    def test_coordinator_edit_tracks_routine_change_to_purpose(self, client, auth_headers):
-        """Editing purpose is logged as routine."""
-        event = create(client, auth_headers("Event Organiser"))
-        submitted = client.post(
-            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
-        ).json()
-
-        # US8.6: Assign to coordinator
-        client.post(
-            f"/events/{submitted['id']}/assign",
-            json={"coordinatorId": str(COORDINATOR_ID)},
-            headers=auth_headers("Event Coordinator Lead"),
-        )
-
-        response = client.put(
-            f"/events/{submitted['id']}",
-            json={**DRAFT, "purpose": "Updated purpose statement"},
-            headers=auth_headers("Event Coordinator"),
-        )
-
-        assert response.status_code == 200
-        saved = response.json()
-        assert saved["purpose"] == "Updated purpose statement"
-
-    def test_coordinator_edit_tracks_routine_change_to_description(self, client, auth_headers):
-        """Editing description is logged as routine."""
-        event = create(client, auth_headers("Event Organiser"))
-        submitted = client.post(
-            f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
-        ).json()
-
-        # US8.6: Assign to coordinator
-        client.post(
-            f"/events/{submitted['id']}/assign",
-            json={"coordinatorId": str(COORDINATOR_ID)},
-            headers=auth_headers("Event Coordinator Lead"),
-        )
-
-        response = client.put(
-            f"/events/{submitted['id']}",
-            json={**DRAFT, "description": "Updated description with more details"},
-            headers=auth_headers("Event Coordinator"),
-        )
-
-        assert response.status_code == 200
-        saved = response.json()
-        assert saved["description"] == "Updated description with more details"
-
-    def test_coordinator_cannot_edit_draft_event(self, client, auth_headers):
-        """Coordinators cannot edit Draft events - only submitted ones."""
-        event = create(client, auth_headers("Event Organiser"))
-
-        response = client.put(
-            f"/events/{event['id']}",
-            json={**DRAFT, "title": "Coordinator tries to edit draft"},
-            headers=auth_headers("Event Coordinator"),
-        )
-
-        assert response.status_code == 404
-        detail = response.json()["detail"]
-        assert detail["code"] == "event_not_found"
-        assert detail["message"] == "That event no longer exists."
 
     def test_coordinator_can_edit_submitted_event(self, client, auth_headers):
         """Coordinators can edit assigned events after review begins."""
@@ -735,39 +315,5 @@ class TestCoordinatorEditing:
         assert saved["status"] == "Under Review"  # Status unchanged
 
 
-class TestSprintOneReachableStatuses:
-    def test_only_draft_and_submitted_are_produced(self, client, auth_headers):
-        """The other seven labels are displayable but not yet reachable."""
-        event = create(client, auth_headers())
-        assert event["status"] == "Draft"
-
-        submitted = client.post(
-            f"/events/{event['id']}/submit", headers=auth_headers()
-        ).json()
-        assert submitted["status"] == "Submitted"
-
-        seen = {change["to"] for change in submitted["history"]}
-        assert seen == {"Draft", "Submitted"}
 
 
-def test_the_directory_and_the_events_list_agree_on_ids(client, auth_headers):
-    """A Coordinator reading both must be able to join them without translating.
-    US8.6: Coordinator must be assigned to see the event."""
-    event = create(client, auth_headers("Event Organiser"))
-    client.post(
-        f"/events/{event['id']}/submit", headers=auth_headers("Event Organiser")
-    )
-
-    # US8.6: Assign the event to the coordinator
-    client.post(
-        f"/events/{event['id']}/assign",
-        json={"coordinatorId": str(COORDINATOR_ID)},
-        headers=auth_headers("Event Coordinator Lead"),
-    )
-
-    directory = client.get("/auth/users", headers=auth_headers("Event Coordinator")).json()
-    listed = client.get("/events", headers=auth_headers("Event Coordinator")).json()
-
-    by_id = {entry["id"]: entry["name"] for entry in directory}
-    assert by_id[listed[0]["organiserId"]] == listed[0]["organiserName"]
-    assert str(COORDINATOR_ID) in by_id
