@@ -120,6 +120,7 @@ describe('US11.1 — change request notes in the history', () => {
     ['clarification', 'Requested by Coordinator'],
     ['rejection', 'Rejection reason'],
     ['change-request', 'Change requested by Organiser'],
+    ['reassignment', 'Coordinator reassigned by Lead'],
   ] as [StatusNoteKind, string][])('labels a %s note "%s"', (kind, label) => {
     expect(statusNoteLabel(kind)).toBe(label)
   })

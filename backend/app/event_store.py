@@ -384,6 +384,15 @@ class Repository(Protocol):
         self, event_id: int, coordinator_id: int, assigned_by_id: int
     ) -> Event: ...
 
+    def reassign_coordinator(
+        self,
+        event_id: int,
+        coordinator_id: int,
+        *,
+        reassigned_by_id: int,
+        expected_updated_at: str,
+    ) -> Event: ...
+
     def complete_event(self, event_id: int, *, actor_id: int) -> Event: ...
 
     def plan_event(self, event_id: int, *, actor_id: int) -> Event: ...
@@ -811,6 +820,40 @@ class SupabaseEvents:
         assigned = self.get_event(event_id)
         assert assigned is not None  # noqa: S101 - the row was just updated
         return assigned
+
+    def reassign_coordinator(
+        self,
+        event_id: int,
+        coordinator_id: int,
+        *,
+        reassigned_by_id: int,
+        expected_updated_at: str,
+    ) -> Event:
+        """US8.4: reassign_event_coordinator, in one transaction.
+
+        It re-checks what the route checked (a Lead reassigning an assigned,
+        active event to a Coordinator) and that the event has not changed since
+        `expected_updated_at`, then moves it, logs it and notifies both
+        Coordinators. Anything else is reported as stale.
+        """
+        result = (
+            supabase_client.admin()
+            .rpc(
+                "reassign_event_coordinator",
+                {
+                    "p_event_id": event_id,
+                    "p_coordinator_id": coordinator_id,
+                    "p_assigned_by_id": reassigned_by_id,
+                    "p_expected_updated_at": expected_updated_at,
+                },
+            )
+            .execute()
+        )
+        if result.data is not True:
+            raise StaleEventStatus
+        reassigned = self.get_event(event_id)
+        assert reassigned is not None  # noqa: S101 - the row was just updated
+        return reassigned
 
     def complete_event(self, event_id: int, *, actor_id: int) -> Event:
         """Complete only an ended Confirmed event, with its audit entry."""
@@ -1417,40 +1460,92 @@ class InMemoryEvents:
         )
 
     def assign_coordinator(self, event_id: int, coordinator_id: int, assigned_by_id: int) -> Event:
-        """US8.3/US8.4: Assign or reassign a Coordinator to an event."""
+        """US8.3: what assign_event_coordinator does: Submitted -> Under Review.
+
+        A first assignment only, as in the database. Reassigning an event that
+        already has a Coordinator is `reassign_coordinator` (US8.4).
+        """
         existing = self.get_event(event_id)
-        assert existing is not None  # noqa: S101 - the caller checked it exists
-
-        # US8.4: Allow reassignment (coordinator_id is not None)
-        # Only create a status change entry if moving from SUBMITTED to UNDER_REVIEW
+        if (
+            existing is None
+            or existing.status is not EventStatus.SUBMITTED
+            or existing.coordinator_id is not None
+        ):
+            raise StaleEventStatus
         at = _now()
-        entry = None
-        new_status = existing.status
-
-        if existing.status is EventStatus.SUBMITTED:
-            # Initial assignment: SUBMITTED -> UNDER_REVIEW
-            entry = StatusChange(
-                from_status=EventStatus.SUBMITTED,
-                to_status=EventStatus.UNDER_REVIEW,
-                at=at,
-                by_id=assigned_by_id,
-                by_name=self.names.get(assigned_by_id, ""),
-            )
-            new_status = EventStatus.UNDER_REVIEW
-
-        # Update coordinator name when assigning/reassigning
-        coordinator_name = self.names.get(coordinator_id, "")
-
         return self._replace(
             replace(
                 existing,
                 coordinator_id=coordinator_id,
-                coordinator_name=coordinator_name,
-                status=new_status,
+                coordinator_name=self.names.get(coordinator_id, ""),
+                status=EventStatus.UNDER_REVIEW,
                 updated_at=at,
-                history=(*existing.history, entry) if entry else existing.history,
+                history=(
+                    *existing.history,
+                    StatusChange(
+                        from_status=EventStatus.SUBMITTED,
+                        to_status=EventStatus.UNDER_REVIEW,
+                        at=at,
+                        by_id=assigned_by_id,
+                        by_name=self.names.get(assigned_by_id, ""),
+                    ),
+                ),
             )
         )
+
+    def reassign_coordinator(
+        self,
+        event_id: int,
+        coordinator_id: int,
+        *,
+        reassigned_by_id: int,
+        expected_updated_at: str,
+    ) -> Event:
+        """US8.4: what reassign_event_coordinator does, including its notices."""
+        # Imported here: both modules import this one.
+        from app import booking_store, notifications, reassignment
+
+        existing = self.get_event(event_id)
+        if (
+            existing is None
+            or existing.coordinator_id is None
+            or existing.status in CLOSED
+            or existing.updated_at != expected_updated_at
+        ):
+            raise StaleEventStatus
+        previous = existing.coordinator_id
+        if previous == coordinator_id:
+            return existing
+        at = _now()
+        reassigned = self._replace(
+            replace(
+                existing,
+                coordinator_id=coordinator_id,
+                coordinator_name=self.names.get(coordinator_id, ""),
+                updated_at=at,
+                history=(
+                    *existing.history,
+                    StatusChange(
+                        from_status=existing.status,
+                        to_status=existing.status,
+                        at=at,
+                        by_id=reassigned_by_id,
+                        by_name=self.names.get(reassigned_by_id, ""),
+                        notes=reassignment.note(
+                            self.names.get(previous) or f"Coordinator {previous}",
+                            self.names.get(coordinator_id) or f"Coordinator {coordinator_id}",
+                        ),
+                    ),
+                ),
+            )
+        )
+        notifications.notify_reassigned(reassigned, previous, coordinator_id)
+        if any(
+            booking.status is booking_store.BookingStatus.NEEDS_REPLACEMENT
+            for booking in booking_store.repository().list_for_event(event_id)
+        ):
+            notifications.notify_handover_needs_replacement(reassigned)
+        return reassigned
 
     def complete_event(self, event_id: int, *, actor_id: int) -> Event:
         existing = self.get_event(event_id)

@@ -355,6 +355,20 @@ def notify_reassigned(event: Event, previous_id: int | None, new_id: int | None)
     notify_assigned(event, new_id)
 
 
+def notify_handover_needs_replacement(event: Event) -> None:
+    """US8.4: the new Coordinator inherits bookings that need a replacement venue.
+
+    In production reassign_event_coordinator writes this notice, with the
+    reassignment ones, in these words; the in-memory store calls this.
+    """
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.BOOKING_CONFLICT,
+        f'"{event.title}" has venue bookings that need replacement. Review its bookings.',
+    )
+
+
 def notify_hold_expiring(event: Event, venue_name: str, expires_at: str) -> None:
     """US14.4: a tentative hold is about to lapse. `expires_at` is shown as given.
 

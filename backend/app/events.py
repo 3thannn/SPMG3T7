@@ -35,6 +35,7 @@ from app import (
     event_confirmation,
     event_needs,
     event_store,
+    reassignment,
     safety_check,
     safety_decision_store,
     safety_decisions,
@@ -128,6 +129,7 @@ class StatusChangeOut(BaseModel):
     #: wrote, so the history can label its note. US4.4: "safety-return" on the
     #: entry the Safety Officer wrote sending an event back to Planning.
     #: US4.6: "cancellation" on the entry that cancelled the event.
+    #: US8.4: "reassignment" on the entry a Lead's reassignment wrote.
     #: Worked out, not stored; empty on every other entry.
     kind: str = ""
 
@@ -268,7 +270,10 @@ def _to_out(event: Event) -> EventOut:
                 by_id=str(change.by_id),
                 by_name=change.by_name,
                 notes=change.notes,
-                kind=safety_check.history_kind(
+                kind=reassignment.history_kind(
+                    from_status=change.from_status, to_status=change.to_status, notes=change.notes
+                )
+                or safety_check.history_kind(
                     from_status=change.from_status, to_status=change.to_status
                 )
                 or event_cancellation.history_kind(to_status=change.to_status)
@@ -610,10 +615,12 @@ def reassign_coordinator(
     payload: AssignmentPayload,
     user: Annotated[User, Depends(require_permission(Permission.COORDINATORS_ASSIGN))],
 ) -> EventOut:
-    """US8.4: Lead reassigns an already-assigned event to a different Coordinator.
+    """US8.4: Lead reassigns an already-assigned, active event to a different Coordinator.
 
-    The new Coordinator gains access and the previous Coordinator loses access.
-    This allows workload redistribution and coverage when coordinators are unavailable."""
+    The new Coordinator gains access and the previous Coordinator loses access
+    (US8.6). The store logs it in the event's history, naming the previous
+    Coordinator, and notifies both (US10.2) in the same transaction. Choosing
+    the Coordinator already assigned changes nothing."""
     from app import users
 
     event = event_store.repository().get_event(_as_id(event_id))
@@ -630,6 +637,12 @@ def reassign_coordinator(
                 "reason": "not-assigned",
             },
         )
+    closed = reassignment.closed_message(event.status)
+    if closed is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": EventError.REFUSED, "message": closed, "reason": "event-closed"},
+        )
 
     # Validate the coordinator ID
     try:
@@ -645,10 +658,16 @@ def reassign_coordinator(
     if coordinator.role != Role.COORDINATOR:
         raise _invalid("That user is not a Coordinator.")
 
-    # Reassign the coordinator (reuses the same assign_coordinator method)
-    reassigned = event_store.repository().assign_coordinator(
-        event.id, coordinator_id, assigned_by_id=user.id
-    )
+    try:
+        reassigned = event_store.repository().reassign_coordinator(
+            event.id,
+            coordinator_id,
+            reassigned_by_id=user.id,
+            expected_updated_at=event.updated_at,
+        )
+    except StaleEventStatus:
+        # Changed since it was read (another Lead, or the event moved on).
+        raise _stale_request() from None
     return _to_out(reassigned)
 
 

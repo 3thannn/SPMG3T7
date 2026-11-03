@@ -2,7 +2,8 @@
  * US8.2, US8.3, US8.4: Unassigned queue, coordinator assignment, and reassignment for Lead.
  */
 
-import { authorizedFetch, type Session, unexpectedFailureMessage } from './api'
+import { ApiError, authorizedFetch, type Session, unexpectedFailureMessage } from './api'
+import { EventRuleError } from './eventsStore'
 import type { EventStatus } from './status'
 
 export type UnassignedEvent = {
@@ -74,7 +75,11 @@ export async function reassignCoordinator(
       body: JSON.stringify({ coordinatorId }),
     })
   } catch (error) {
-    throw new Error(unexpectedFailureMessage(error, 'reassign coordinator'))
+    // US8.4: a refusal says why (a finished event, or one changed meanwhile).
+    if (error instanceof ApiError && (error.status === 400 || error.status === 409)) {
+      throw new EventRuleError(error.message)
+    }
+    throw error
   }
 }
 
