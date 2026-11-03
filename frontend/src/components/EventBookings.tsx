@@ -440,10 +440,9 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
         setReplacementSearch(null)
         setSelectedReplacementVenue('')
         setNotice(
-          `Requested ${newBooking.venueName} as a replacement. It is waiting for Venue Staff to approve it.` +
-            // US12.4: the server moved a Confirmed event back to Planning.
-            (event.status === 'Confirmed' ? ' The event is back in Planning.' : ''),
+          `Requested ${newBooking.venueName} as a replacement. It is waiting for Venue Staff to approve it.`,
         )
+        // US12.4: the page reloads the event, and says so if it went back to Planning.
         onBookingRequested?.()
       })
       .catch((error: unknown) => {

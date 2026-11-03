@@ -271,7 +271,8 @@ it('tells the Organiser registration is on but the event is waiting for the Safe
   const [turnedOn, confirmed] = checklist()
   expect(turnedOn).toHaveTextContent('Done: Registration is turned on.')
   expect(confirmed).toHaveTextContent(
-    'Not yet: The event is Confirmed. It is Pending Safety Check, waiting for the Safety Officer to sign it off.',
+    'Not yet: The event is Confirmed. It is Pending Safety Check. It is Confirmed once the ' +
+      'Safety Officer signs it off and the Coordinator confirms it.',
   )
   expect(
     screen.getByText(
@@ -287,7 +288,8 @@ it('names the safety check as the step left for a Planning event', async () => {
   expect(await screen.findByText('Not visible to Attendees yet')).toBeInTheDocument()
   expect(checklist()[1]).toHaveTextContent(
     'Not yet: The event is Confirmed. It is Planning. It is Confirmed after the Coordinator ' +
-      'sends it for its safety check and the Safety Officer signs it off.',
+      'sends it for its safety check, the Safety Officer signs it off, and the Coordinator ' +
+      'confirms it.',
   )
   // The Coordinator is the one who can change it, so is not told to ask someone.
   expect(screen.queryByText(/Only the event’s assigned Coordinator/)).not.toBeInTheDocument()

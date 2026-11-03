@@ -374,7 +374,18 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
 
   function refreshAfterBooking() {
     void getEvent(event.id, session).then((updated) => {
-      if (updated) setPage({ state: 'loaded', event: updated })
+      if (!updated) return
+      setPage({ state: 'loaded', event: updated })
+      // US12.4: a replacement venue sent a Confirmed event back to Planning. Said
+      // here, not on the bookings card: the status change remounts the card.
+      if (event.status === 'Confirmed' && updated.status === 'Planning') {
+        setBanner({
+          kind: 'ok',
+          text:
+            'This event is back in Planning. The replacement venue needs Venue Staff’s approval ' +
+            'and a new safety check, then you confirm the event again.',
+        })
+      }
     }).catch(() => {
       setBanner({ kind: 'error', text: 'The venue request was saved. Refresh to see the latest event status.' })
     })

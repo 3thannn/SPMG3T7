@@ -408,16 +408,27 @@ it('reports a catalogue that will not load and keeps the form shut', async () =>
 
 // -- The status rule -------------------------------------------------------------
 
-it.each(['Rejected', 'Cancelled', 'Confirmed', 'Completed'] as const)(
+it.each([
+  ['Rejected', 'This event is closed, so no more venues can be requested for it.'],
+  ['Cancelled', 'This event is closed, so no more venues can be requested for it.'],
+  ['Completed', 'This event is closed, so no more venues can be requested for it.'],
+  // Still going ahead, so not "closed": a booking that falls through can be replaced.
+  [
+    'Confirmed',
+    'Venues are requested while an event is in Planning, so no new ones can be requested now. A booking that needs replacing can still be replaced.',
+  ],
+  [
+    'Pending Safety Check',
+    'Venues are requested while an event is in Planning, so no new ones can be requested now. A booking that needs replacing can still be replaced.',
+  ],
+] as const)(
   'tells the Coordinator why a %s event takes no more requests',
-  async (status) => {
+  async (status, message) => {
     listBookingsMock.mockResolvedValue([booking()])
 
     render(<EventBookings event={event({ status })} session={coordinator} />)
 
-    expect(
-      await screen.findByText('This event is closed, so no more venues can be requested for it.'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(message)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Request venue' })).not.toBeInTheDocument()
     expect(listVenuesMock).not.toHaveBeenCalled()
     // The bookings it had are still shown.

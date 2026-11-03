@@ -164,10 +164,11 @@ it('US12.4 warns that a Confirmed event goes back to Planning, and says it did',
 
   expect(
     await screen.findByText(
-      'Requested Seminar Room 4 as a replacement. It is waiting for Venue Staff to approve it. The event is back in Planning.',
+      'Requested Seminar Room 4 as a replacement. It is waiting for Venue Staff to approve it.',
     ),
   ).toBeTruthy()
-  // The page reloads the event, which now reads Planning.
+  // The page reloads the event, which now reads Planning, and says so
+  // (EventDetailPage.paths.test.tsx).
   expect(onBookingRequested).toHaveBeenCalledTimes(1)
 })
 

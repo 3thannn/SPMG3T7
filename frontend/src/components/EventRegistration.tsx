@@ -53,13 +53,17 @@ const VISIBILITY_LABELS: Record<Visibility, string> = {
 
 /** The step the event still has to take to be Confirmed, from where it is now. */
 function untilConfirmed(status: EventStatus): string {
+  // US4.7: the Safety Officer's approval no longer confirms it; the Coordinator does.
   if (status === 'Pending Safety Check') {
-    return 'It is Pending Safety Check, waiting for the Safety Officer to sign it off.'
+    return (
+      'It is Pending Safety Check. It is Confirmed once the Safety Officer signs it off ' +
+      'and the Coordinator confirms it.'
+    )
   }
   if (status === 'Approved' || status === 'Planning') {
     return (
-      `It is ${status}. It is Confirmed after the Coordinator sends it for its safety check ` +
-      'and the Safety Officer signs it off.'
+      `It is ${status}. It is Confirmed after the Coordinator sends it for its safety check, ` +
+      'the Safety Officer signs it off, and the Coordinator confirms it.'
     )
   }
   return `It is ${status}. It is Confirmed after it is approved and passes its safety check.`
