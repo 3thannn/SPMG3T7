@@ -305,6 +305,10 @@ export type ChangeRequestCheck =
   | { allowed: true }
   | { allowed: false; reason: ChangeRequestRefusal }
 
+/** US5.3: a Confirmed event's details are locked; the server says the same. */
+export const CONFIRMED_LOCKED_MESSAGE =
+  'This event is confirmed. Changes need to go through a change request.'
+
 /**
  * US11.1: may this Organiser propose changes to this event now?
  *

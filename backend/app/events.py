@@ -729,6 +729,10 @@ SUBMITTED_EDIT_MESSAGE = (
     "Request a change instead and the Coordinator will review it."
 )
 
+#: US5.3: a Confirmed event's details are locked for everyone, the Coordinator
+#: included. Changes go through US11.1 -> US11.2 -> US11.3, so they are re-checked.
+CONFIRMED_EDIT_MESSAGE = "This event is confirmed. Changes need to go through a change request."
+
 
 @router.put("/{event_id}", response_model=EventOut)
 def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
@@ -766,6 +770,19 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
             detail={
                 "code": ErrorCode.FORBIDDEN,
                 "message": "Only the Organiser who owns this event or a Coordinator can edit it.",
+            },
+        )
+
+    # US5.3: Confirmed locks the details. Earlier statuses keep US5.2's rules.
+    # A confirmation that lands mid-edit is caught too: the Coordinator's save
+    # carries the version it read (us11_edit's p_updated_at).
+    if event.status is EventStatus.CONFIRMED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": CONFIRMED_EDIT_MESSAGE,
+                "reason": "confirmed-locked",
             },
         )
 
