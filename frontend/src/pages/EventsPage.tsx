@@ -180,7 +180,7 @@ export default function EventsPage({ session }: EventsPageProps) {
                       {event.changeRequested && event.status !== 'Cancelled' && (
                         <span className="event-row-flag">Change requested</span>
                       )}
-                      <StatusBadge status={event.status} />
+                      <StatusBadge status={event.status} safetyApproved={event.safetyApproved} />
                     </div>
                     <p className="event-meta">
                       {seesAcrossOrganisers && <>Organiser: {event.organiserName}</>}

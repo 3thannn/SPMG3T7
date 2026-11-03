@@ -1,13 +1,17 @@
-"""US17.2: the Safety Officer records a decision.
+"""US17.2 (reopened in Sprint 5): the Safety Officer records a decision.
 
 Acceptance criteria, and the tests that hold each one:
 
-* Approve -> event moves to Confirmed -> `TestApprove`.
+* Approve -> decision recorded as approved on the current Pending Safety Check
+  stay; the event stays Pending Safety Check ("Safety approved, awaiting
+  Coordinator confirmation") until the assigned Coordinator confirms it (US4.7)
+  -> `TestApprove`, `TestAwaitingConfirmation`. The original criterion,
+  Approve -> Confirmed, was wrong and is what the reopening replaced.
 * Request changes -> back to Planning; note required; affected venue/equipment
   arrangements flagged for re-review; assigned Coordinator notified (US10.2)
   -> `TestRequestChanges`, `TestReReview`.
-* Reject -> reason required; back to Planning with the reason (the story's
-  assumption) -> `TestReject`.
+* Reject -> reason required; back to Planning with the reason (now
+  customer-confirmed) -> `TestReject`.
 * Every decision is timestamped and attributable (US4.2 audit pattern) ->
   `TestDecisionRecord`.
 * An event coming back into Pending Safety Check needs a fresh decision ->
@@ -248,7 +252,7 @@ class TestRules:
         assert refusal is SafetyCheckRefusal.CHANGE_PENDING
 
 
-# -- AC1: Approve -> Confirmed --------------------------------------------------
+# -- AC1: Approve -> recorded; the event awaits its Coordinator -------------------
 
 
 class TestApprove:
@@ -282,6 +286,57 @@ class TestApprove:
             'The Safety Officer approved the safety check for "Open House". '
             "Confirm the event once its venues and equipment are all in place."
         )
+
+
+class TestAwaitingConfirmation:
+    """US17.2 (reopened): what an approved event looks like to everyone else.
+
+    The status stays Pending Safety Check; `safetyApproved` is what the pages
+    read to say "Safety approved, awaiting Coordinator confirmation".
+    """
+
+    def test_the_organiser_sees_it_still_pending_but_approved(
+        self, client, officer, auth_headers, world
+    ):
+        decide(client, officer, "approve", {"checkStartedAt": ENTERED})
+        organiser = auth_headers("Event Organiser")
+        mine = client.get(f"/events/{EVENT_ID}", headers=organiser).json()
+        assert (mine["status"], mine["safetyApproved"]) == ("Pending Safety Check", True)
+        [listed] = client.get("/events", headers=organiser).json()
+        assert (listed["status"], listed["safetyApproved"]) == ("Pending Safety Check", True)
+
+    def test_the_lead_sees_it_too(self, client, officer, auth_headers, world):
+        decide(client, officer, "approve")
+        [listed] = client.get("/events", headers=auth_headers("Event Coordinator Lead")).json()
+        assert listed["safetyApproved"] is True
+
+    def test_nothing_is_approved_before_the_decision(self, client, auth_headers, world):
+        mine = client.get(f"/events/{EVENT_ID}", headers=auth_headers("Event Organiser")).json()
+        assert (mine["status"], mine["safetyApproved"]) == ("Pending Safety Check", False)
+
+    @pytest.mark.parametrize("action", ["request-changes", "reject"])
+    def test_a_send_back_is_never_shown_as_approved(
+        self, client, officer, auth_headers, world, action
+    ):
+        response = decide(client, officer, action, {"note": "Exit blocked."})
+        assert (response.json()["status"], response.json()["safetyApproved"]) == (
+            "Planning",
+            False,
+        )
+
+    def test_it_stays_approved_until_the_coordinator_confirms(
+        self, client, officer, coordinator, world, auth_headers
+    ):
+        decide(client, officer, "approve")
+        confirmed = client.post(f"/events/{EVENT_ID}/confirm", headers=coordinator)
+        assert confirmed.status_code == 200, confirmed.text
+        # Confirmed now: the stage is over, so nothing says it is awaited.
+        assert (confirmed.json()["status"], confirmed.json()["safetyApproved"]) == (
+            "Confirmed",
+            False,
+        )
+        mine = client.get(f"/events/{EVENT_ID}", headers=auth_headers("Event Organiser")).json()
+        assert mine["safetyApproved"] is False
 
 
 # -- AC2: Request changes -------------------------------------------------------

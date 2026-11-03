@@ -195,7 +195,7 @@ export default function TeamAssignmentsPage({ session }: TeamAssignmentsPageProp
                         {event.purpose && <div className="event-purpose">{event.purpose}</div>}
                       </td>
                       <td>
-                        <StatusBadge status={event.status} size="sm" />
+                        <StatusBadge status={event.status} safetyApproved={event.safetyApproved} size="sm" />
                       </td>
                       <td className="coordinator-cell">
                         {event.coordinatorName ? (

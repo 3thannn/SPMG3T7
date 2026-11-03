@@ -1014,3 +1014,92 @@ describe('US4.7: the Coordinator confirms the event once every approval is in', 
     await expect(failure.promise).rejects.toThrow('gone')
   })
 })
+
+// --- US17.2 (reopened): an approval awaits the Coordinator ---------------------
+
+describe('US17.2 (reopened): the approval stays attributable while it awaits confirmation', () => {
+  const approved = () => eventAt('Pending Safety Check', { safetyApproved: true })
+  const approval = (overrides: Partial<SafetyDecision> = {}) =>
+    decisionOf({ id: '9', outcome: 'approved', note: '', ...overrides })
+  const shown = (container: HTMLElement) => container.querySelector('.safety-approval')
+
+  it('tells the Safety Officer an approval no longer confirms the event', async () => {
+    renderPanel(eventAt('Pending Safety Check'), officer)
+
+    expect(
+      await screen.findByText(
+        /Approve it for its Coordinator to confirm once everything else is in place/,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Approve to confirm this event/)).not.toBeInTheDocument()
+  })
+
+  it('shows the Coordinator who approved it and when, above Confirm event', async () => {
+    confirmReadinessMock.mockResolvedValue(READY)
+    decisionsMock.mockResolvedValue([approval(), decisionOf({ outcome: 'rejected' })])
+    const { container } = renderPanel(approved(), coordinator)
+
+    await waitFor(() => expect(shown(container)).not.toBeNull())
+    // decidedAt is naive UTC; 11:00 there is 19:00 in Singapore.
+    expect(shown(container)).toHaveTextContent('Approved by Alex · 02 Jan 2099, 19:00')
+    expect(decisionsMock).toHaveBeenCalledWith('101', coordinator)
+    expect(await screen.findByRole('button', { name: 'Confirm event' })).toBeEnabled()
+  })
+
+  it('shows the Safety Officer their own approval, and nothing to decide', async () => {
+    decisionsMock.mockResolvedValue([approval({ decidedByName: '' })])
+    const { container } = renderPanel(approved(), officer)
+
+    expect(screen.getByText(/It stays Pending Safety Check until the Coordinator/)).toBeInTheDocument()
+    await waitFor(() => expect(shown(container)).not.toBeNull())
+    expect(shown(container)).toHaveTextContent('Approved by the Safety Officer ·')
+    // An approval carries no note, so no empty note is drawn under it.
+    expect(container.querySelector('.safety-decision-note')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Approve safety check' })).not.toBeInTheDocument()
+  })
+
+  it('shows no approval when the newest decision is not one', async () => {
+    confirmReadinessMock.mockResolvedValue(READY)
+    decisionsMock.mockResolvedValue([decisionOf()])
+    const { container } = renderPanel(approved(), coordinator)
+
+    await waitFor(() => expect(decisionsMock).toHaveBeenCalled())
+    await screen.findByRole('button', { name: 'Confirm event' })
+    expect(shown(container)).toBeNull()
+  })
+
+  it('shows no approval when there are no decisions to read', async () => {
+    decisionsMock.mockResolvedValue([])
+    const { container } = renderPanel(approved(), officer)
+
+    await waitFor(() => expect(decisionsMock).toHaveBeenCalled())
+    expect(shown(container)).toBeNull()
+    expect(screen.getByText(/You approved this safety check/)).toBeInTheDocument()
+  })
+
+  it('still lets the Coordinator confirm when the approval cannot be loaded', async () => {
+    confirmReadinessMock.mockResolvedValue(READY)
+    decisionsMock.mockRejectedValue(new ApiError('Boom', 'unknown', 500))
+    const { container } = renderPanel(approved(), coordinator)
+
+    const button = await screen.findByRole('button', { name: 'Confirm event' })
+    await waitFor(() => expect(button).toBeEnabled())
+    expect(shown(container)).toBeNull()
+  })
+
+  it('stops loading the approval once the panel has gone', async () => {
+    const answer = deferred<SafetyDecision[]>()
+    decisionsMock.mockReturnValue(answer.promise)
+    const { unmount } = renderPanel(approved(), officer)
+    unmount()
+    answer.resolve([approval()])
+    await answer.promise
+
+    const failure = deferred<SafetyDecision[]>()
+    decisionsMock.mockReturnValue(failure.promise)
+    const second = renderPanel(approved(), officer)
+    second.unmount()
+    failure.reject(new Error('gone'))
+    await expect(failure.promise).rejects.toThrow('gone')
+  })
+})

@@ -80,9 +80,10 @@ export default function SafetyCheckPanel(props: Props) {
         <div className="detail-decision">
           <h3 className="detail-clarify-title">Safety check</h3>
           <p className="detail-clarify-lede">
-            You approved this safety check. The Coordinator confirms the event once its venues and
-            equipment are all in place.
+            You approved this safety check. It stays Pending Safety Check until the Coordinator
+            confirms the event, once its venues and equipment are all in place.
           </p>
+          <CurrentApproval event={event} session={session} />
         </div>
       )
     }
@@ -137,6 +138,7 @@ function ConfirmEvent({ event, session, disabled, onUpdated, onError }: Props) {
   return (
     <div className="detail-decision">
       <h3 className="detail-clarify-title">Confirm event</h3>
+      <CurrentApproval event={event} session={session} />
       <p className="detail-clarify-lede" role="status">
         {readiness.state === 'loading' && 'Checking whether this event can be confirmed…'}
         {readiness.state === 'error' && 'Could not check whether this event can be confirmed.'}
@@ -161,6 +163,33 @@ function ConfirmEvent({ event, session, disabled, onUpdated, onError }: Props) {
       )}
     </div>
   )
+}
+
+/**
+ * US17.2 (reopened): the approval the event is waiting on, and who gave it when.
+ *
+ * An approval leaves the status where it is, so unlike a send-back it adds
+ * nothing to the event's history; this is where it stays attributable. Shown
+ * only while the event is approved, when the newest decision is the current
+ * stay's approval. It is context: if it cannot be loaded, nothing is shown.
+ */
+function CurrentApproval({ event, session }: Pick<Props, 'event' | 'session'>) {
+  const [approval, setApproval] = useState<SafetyDecisionRecord | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    listSafetyDecisions(event.id, session)
+      .then(([latest]) => {
+        if (!cancelled) setApproval(latest?.outcome === 'approved' ? latest : null)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [event.id, session])
+
+  if (approval === null) return null
+  return <DecisionSummary decision={approval} className="safety-approval" />
 }
 
 type Readiness =
@@ -417,8 +446,8 @@ function SafetyDecision({ event, session, disabled, onUpdated, onError }: Props)
     <div className="detail-decision">
       <h3 className="detail-clarify-title">Safety check decision</h3>
       <p className="detail-clarify-lede">
-        Approve to confirm this event, or send it back to Planning: request changes, or
-        reject it with your reason.
+        Approve it for its Coordinator to confirm once everything else is in place, or send it
+        back to Planning: request changes, or reject it with your reason.
       </p>
       {review.state === 'loading' && (
         <p className="detail-clarify-lede">Loading what you are deciding on…</p>
@@ -555,7 +584,8 @@ function DecisionSummary({
         <strong>{OUTCOME_LABELS[decision.outcome]}</strong> by{' '}
         {decision.decidedByName || 'the Safety Officer'} · {formatRecordedAt(decision.decidedAt)}
       </p>
-      <p className="safety-decision-note">{decision.note}</p>
+      {/* An approval needs no note, so it has nothing to show here. */}
+      {decision.note && <p className="safety-decision-note">{decision.note}</p>}
       {decision.flags.length > 0 && (
         <ul className="safety-flags" aria-label="Flagged for re-review">
           {decision.flags.map((flag) => (

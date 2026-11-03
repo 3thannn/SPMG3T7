@@ -564,6 +564,35 @@ it('shows the Safety Officer the outcome of their approval', async () => {
   expect(screen.queryByRole('heading', { name: 'Safety check decision' })).not.toBeInTheDocument()
   // US4.7: the event waits for its Coordinator now, and the page says so.
   expect(screen.getByText(/You approved this safety check/)).toBeInTheDocument()
+  // US17.2 (reopened): still Pending Safety Check, named as awaiting the Coordinator.
+  expect(screen.getByText('Safety approved, awaiting Coordinator confirmation')).toBeInTheDocument()
+})
+
+it('tells the Organiser an approved event still awaits its Coordinator (US17.2 reopened)', async () => {
+  getEventMock.mockResolvedValue({
+    ...submittedEvent,
+    status: 'Pending Safety Check',
+    safetyApproved: true,
+  })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  const stage = await screen.findByText('Safety approved, awaiting Coordinator confirmation')
+  expect(stage.closest('.status-badge')).toHaveTextContent(/^Status: Pending Safety Check/)
+  // The Organiser has no part in the check, and no panel for it.
+  expect(screen.queryByRole('heading', { name: 'Confirm event' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/You approved this safety check/)).not.toBeInTheDocument()
+})
+
+it('names no stage while the check still waits for the Safety Officer', async () => {
+  getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })
+
+  render(<EventDetailPage eventId="101" session={organiser} />)
+
+  expect(await screen.findByText('Pending Safety Check')).toBeInTheDocument()
+  expect(
+    screen.queryByText('Safety approved, awaiting Coordinator confirmation'),
+  ).not.toBeInTheDocument()
 })
 
 it('shows the Safety Officer why a decision was refused', async () => {

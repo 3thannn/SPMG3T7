@@ -2,15 +2,19 @@
 
 Three outcomes. Two move the event out of Pending Safety Check (US4.4):
 
-* Approve -> stays Pending Safety Check, now approved. US4.7: the assigned
-  Coordinator confirms it once every other approval is in too
-  (`app.event_confirmation`); the Safety Officer no longer does.
+* Approve -> recorded as approved on the current stay, and the event stays
+  Pending Safety Check ("Safety approved, awaiting Coordinator confirmation").
+  US17.2 was reopened in Sprint 5 because its first criterion, Approve ->
+  Confirmed, was wrong: the customer wants the assigned Coordinator to confirm
+  once every approval is in (US4.7, `app.event_confirmation`). `EventOut`'s
+  `safetyApproved` is what tells the pages an event is at that stage.
 * Request changes -> back to Planning, with a note saying what must change. The
   venue bookings and equipment lines the note is about are flagged for
   re-review, and the assigned Coordinator is told (US10.2).
-* Reject -> back to Planning, with the reason. The story records the
-  assumption that a rejection returns the event to Planning rather than ending
-  it, so the status alone cannot tell the two apart; the decision record does.
+* Reject -> back to Planning, with the reason. First a team assumption, now
+  confirmed by the customer: a rejection sends the event back rather than
+  ending it, so the status alone cannot tell the two apart; the decision
+  record does.
 
 Every decision is a `safety_reviews` row beside the US4.2 audit entry, so it is
 timestamped, attributable, and says which of the three it was.

@@ -197,3 +197,16 @@ it('shows organiser names for all events when viewing as Coordinator Lead', asyn
   expect(screen.getByText(/Organiser: Alice/)).toBeInTheDocument()
   expect(screen.getByText(/Organiser: Bob/)).toBeInTheDocument()
 })
+it('says an approved event in the list awaits its Coordinator (US17.2 reopened)', async () => {
+  listEventsMock.mockResolvedValue([
+    buildEvent({ status: 'Pending Safety Check', safetyApproved: true }),
+    buildEvent({ id: '102', title: 'Theirs', status: 'Pending Safety Check' }),
+  ])
+
+  render(<EventsPage session={organiser} />)
+
+  expect(await screen.findByText('Mine')).toBeInTheDocument()
+  expect(screen.getAllByText('Pending Safety Check')).toHaveLength(2)
+  // Only the approved one names the stage.
+  expect(screen.getAllByText('Safety approved, awaiting Coordinator confirmation')).toHaveLength(1)
+})

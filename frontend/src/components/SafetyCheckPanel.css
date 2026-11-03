@@ -20,6 +20,7 @@
 }
 
 .safety-feedback,
+.safety-approval,
 .safety-earlier-item {
   margin: 0.75rem 0;
   padding: 0.75rem 0.9rem;
@@ -31,6 +32,11 @@
 .safety-feedback {
   border-color: var(--danger-border);
   background: var(--danger-bg);
+}
+
+/* US17.2 (reopened): the approval the event is waiting on; one line, no note. */
+.safety-approval .safety-decision-head {
+  margin: 0;
 }
 
 .safety-decision-head,

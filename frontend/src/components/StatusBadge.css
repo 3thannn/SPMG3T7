@@ -66,6 +66,24 @@
   color: #9c2a5a;
 }
 
+/*
+ * US17.2 (reopened): Pending Safety Check, but approved and waiting for the
+ * Coordinator. Same colours, since the status is the same; the stage is named
+ * after it and may wrap, so the badge loses its pill shape when it does.
+ */
+.status-badge-staged {
+  flex-wrap: wrap;
+  white-space: normal;
+  line-height: 1.25;
+  border-radius: var(--radius-sm);
+}
+
+.status-badge-stage {
+  display: inline-flex;
+  gap: 0.45rem;
+  font-weight: 400;
+}
+
 /* Positive outcomes */
 .status-badge-approved {
   background: #eaf7ef;

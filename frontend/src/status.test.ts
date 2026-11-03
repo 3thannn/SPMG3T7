@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   EVENT_STATUSES,
   REQUESTABLE,
+  SAFETY_APPROVED_STAGE,
   canViewStatus,
   cancelRefusalMessage,
   changeRequestRefusalMessage,
@@ -13,6 +14,7 @@ import {
   checkClarification,
   statusNoteKind,
   statusNoteLabel,
+  statusStage,
   type ChangeRequestRefusal,
   type EventStatus,
   type StatusNoteKind,
@@ -225,6 +227,24 @@ describe('US4.4 — Pending Safety Check', () => {
     expect(statusNoteKind(change)).toBe('safety-return')
     expect(statusNoteLabel('safety-return')).toBe('Sent back by Safety Officer')
     expect(statusNoteKind({ ...change, notes: '' })).toBeNull()
+  })
+})
+
+describe('US17.2 (reopened) — an approval awaits the Coordinator', () => {
+  it('names the stage once the Safety Officer has approved', () => {
+    expect(statusStage('Pending Safety Check', true)).toBe(SAFETY_APPROVED_STAGE)
+    expect(SAFETY_APPROVED_STAGE).toBe('Safety approved, awaiting Coordinator confirmation')
+  })
+
+  it('names nothing while the check is still waiting for the Safety Officer', () => {
+    expect(statusStage('Pending Safety Check', false)).toBeNull()
+    expect(statusStage('Pending Safety Check')).toBeNull()
+  })
+
+  it('names nothing in any other status, approved or not', () => {
+    for (const status of EVENT_STATUSES.filter((item) => item !== 'Pending Safety Check')) {
+      expect(statusStage(status, true)).toBeNull()
+    }
   })
 })
 

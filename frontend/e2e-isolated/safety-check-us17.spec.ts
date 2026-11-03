@@ -12,11 +12,14 @@ import { signOut, TEST_USERS } from '../e2e/helpers'
  *     event's accessibility requirements.
  *   - Read-only. Safety Officer role only.
  *
- * US17.2 – Safety Officer records a decision
- *   - Approve -> Confirmed.
+ * US17.2 – Safety Officer records a decision (reopened in Sprint 5)
+ *   - Approve -> recorded as approved on the current stay; the event stays
+ *     Pending Safety Check ("Safety approved, awaiting Coordinator
+ *     confirmation") until the assigned Coordinator confirms it (US4.7).
  *   - Request changes -> Planning; note required; affected venue/equipment
  *     flagged for re-review; assigned Coordinator notified (US10.2).
- *   - Reject -> reason required; back to Planning with the reason.
+ *   - Reject -> reason required; back to Planning with the reason
+ *     (customer-confirmed).
  *   - Every decision is timestamped and attributable.
  *   - An event coming back into Pending Safety Check needs a fresh decision.
  *
@@ -37,7 +40,7 @@ import { signOut, TEST_USERS } from '../e2e/helpers'
  */
 const API = 'http://127.0.0.1:8001'
 
-type FlowRole = 'Safety Officer' | 'Event Coordinator'
+type FlowRole = 'Safety Officer' | 'Event Coordinator' | 'Event Organiser'
 
 /** Display names in the e2e_server seed (`fixture_users()` in tests/conftest.py). */
 const OFFICER = 'Alex'
@@ -50,6 +53,7 @@ const WORKSHOP = '51'
 const FLAGS_OPEN =
   'The Safety Officer flagged arrangements for re-review. Mark each one ' +
   're-reviewed before sending the event for its safety check again.'
+const AWAITING_COORDINATOR = 'Safety approved, awaiting Coordinator confirmation'
 const CHECK_MOVED_ON =
   'This event was sent back and submitted again since you opened it. ' +
   'Reload it and review the current submission.'
@@ -124,7 +128,7 @@ test.beforeEach(async ({ request }) => {
 })
 
 test.describe('US17.1 + US17.2: Operational Safety Check flow', () => {
-  test('review queue, request changes, re-review, reject, resubmit and approve', async ({ page, request }) => {
+  test('review queue, request changes, re-review, reject, resubmit, approve and confirm', async ({ page, request }) => {
     const coordinatorApi = await apiAs(request, 'Event Coordinator')
     const firstStay = (await (await apiAs(request, 'Safety Officer')).get(`/events/${GALA}/safety-review`))
       .waitingSince as string
@@ -285,17 +289,33 @@ test.describe('US17.1 + US17.2: Operational Safety Check flow', () => {
         'Sent for the safety check. The event is now Pending Safety Check.')
     })
 
-    await test.step('US17.2: approve moves the event to Confirmed', async () => {
+    await test.step('US17.2: approve records the decision; the event awaits its Coordinator', async () => {
       who = await actAs(page, who, 'Safety Officer', `/events/${GALA}`)
       const earlier = page.getByRole('region', { name: 'Earlier safety decisions' })
       await expect(earlier).toContainText(`Rejected by ${OFFICER}`)
       await expect(earlier).toContainText(`Changes requested by ${OFFICER}`)
-      await page.getByRole('button', { name: 'Approve safety check' }).click()
+      await expect(page.getByText(/Approve it for its Coordinator to confirm/)).toBeVisible()
+      const sent = await sentWith(page, GALA, 'approve',
+        () => page.getByRole('button', { name: 'Approve safety check' }).click())
 
-      await expect(status(page)).toHaveText('Approved. The event is now Confirmed.')
-      expect((await coordinatorApi.get(`/events/${GALA}`)).status).toBe('Confirmed')
+      await expect(status(page)).toHaveText(
+        'Approved. The Coordinator confirms the event once everything else is in place.')
+      expect(sent.checkStartedAt).toMatch(NAIVE_TIMESTAMP)
+      expect(sent.checkStartedAt).not.toBe(firstStay)
+      // Not Confirmed: still Pending Safety Check, and the page says what it waits for.
+      const badge = page.locator('.detail-head .status-badge')
+      await expect(badge).toContainText('Pending Safety Check')
+      await expect(badge).toContainText(AWAITING_COORDINATOR)
+      await expect(page.getByText(/You approved this safety check/)).toBeVisible()
+      await expect(page.locator('.safety-approval')).toContainText(`Approved by ${OFFICER} ·`)
+      await expect(page.getByRole('button', { name: 'Approve safety check' })).toHaveCount(0)
+
+      const event = await coordinatorApi.get(`/events/${GALA}`)
+      expect(event.status).toBe('Pending Safety Check')
+      expect(event.safetyApproved).toBe(true)
       const decisions = (await coordinatorApi.get(`/events/${GALA}/safety-decisions`)) as Decision[]
       expect(decisions.map((each) => each.outcome)).toEqual(['approved', 'rejected', 'changes-requested'])
+      expect(decisions[0].checkStartedAt).toBe(sent.checkStartedAt)
       for (const each of decisions) {
         expect(each.decidedByName).toBe(OFFICER)
         expect(each.decidedAt).toMatch(NAIVE_TIMESTAMP)
@@ -306,6 +326,29 @@ test.describe('US17.1 + US17.2: Operational Safety Check flow', () => {
       await page.getByRole('link', { name: 'Safety Review', exact: true }).click()
       const queue = page.getByRole('list', { name: 'Events pending safety check' })
       await expect(queue.getByRole('heading', { level: 2 })).toHaveText(['Youth Workshop'])
+    })
+
+    await test.step('US17.2: the Organiser sees it still pending, awaiting the Coordinator', async () => {
+      who = await actAs(page, who, 'Event Organiser', `/events/${GALA}`)
+      const badge = page.locator('.detail-head .status-badge')
+      await expect(badge).toContainText('Pending Safety Check')
+      await expect(badge).toContainText(AWAITING_COORDINATOR)
+    })
+
+    await test.step('US4.7: only the Coordinator confirming moves it to Confirmed', async () => {
+      who = await actAs(page, who, 'Event Coordinator', `/events/${GALA}`)
+      await expect(page.locator('.safety-approval')).toContainText(`Approved by ${OFFICER} ·`)
+      const confirm = page.getByRole('button', { name: 'Confirm event' })
+      await expect(confirm).toBeEnabled()
+      await confirm.click()
+
+      await expect(status(page)).toHaveText(
+        'Confirmed. The Organiser has been told the event is going ahead.')
+      const badge = page.locator('.detail-head .status-badge')
+      await expect(badge).toHaveText('Status: Confirmed')
+      const event = await coordinatorApi.get(`/events/${GALA}`)
+      expect(event.status).toBe('Confirmed')
+      expect(event.safetyApproved).toBe(false)
     })
   })
 

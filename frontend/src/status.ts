@@ -12,8 +12,8 @@ export const EVENT_STATUSES = [
   'Under Review',
   'Approved',
   'Planning',
-  // US4.4: between planning and preparation; only the Safety Officer's
-  // sign-off moves an event on to Confirmed.
+  // US4.4: between planning and preparation. US17.2 (reopened) / US4.7: the
+  // Safety Officer's approval keeps it here; the Coordinator confirms it.
   'Pending Safety Check',
   'Confirmed',
   'Completed',
@@ -22,6 +22,24 @@ export const EVENT_STATUSES = [
 ] as const
 
 export type EventStatus = (typeof EVENT_STATUSES)[number]
+
+/**
+ * US17.2 (reopened): an approved safety check no longer confirms the event. It
+ * stays Pending Safety Check until the assigned Coordinator confirms it (US4.7),
+ * and wherever its status is shown, this says what it is waiting for.
+ */
+export const SAFETY_APPROVED_STAGE = 'Safety approved, awaiting Coordinator confirmation'
+
+/**
+ * The stage within a status worth naming beside it, or null.
+ *
+ * Only Pending Safety Check has one: once the Safety Officer approves the
+ * current stay (`safetyApproved`, which the server only sets in that status),
+ * the event waits for its Coordinator rather than for them.
+ */
+export function statusStage(status: EventStatus, safetyApproved = false): string | null {
+  return status === 'Pending Safety Check' && safetyApproved ? SAFETY_APPROVED_STAGE : null
+}
 
 /**
  * Statuses Sprint 1 can actually produce. US4.2 limits transitions to

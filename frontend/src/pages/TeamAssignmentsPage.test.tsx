@@ -246,3 +246,14 @@ it('shows "All Coordinators" filter with correct count', async () => {
   expect(filterSelect).toHaveValue('all')
   expect(screen.getByRole('option', { name: /All Coordinators.*3/ })).toBeInTheDocument()
 })
+
+it('shows the Lead which events await their Coordinator to confirm (US17.2 reopened)', async () => {
+  listEventsMock.mockResolvedValue([
+    buildEvent({ status: 'Pending Safety Check', safetyApproved: true }),
+  ])
+
+  render(<TeamAssignmentsPage session={lead} />)
+
+  expect(await screen.findByText('Tech Conference')).toBeInTheDocument()
+  expect(screen.getByText('Safety approved, awaiting Coordinator confirmation')).toBeInTheDocument()
+})
