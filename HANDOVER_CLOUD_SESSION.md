@@ -1,241 +1,152 @@
 # Handover to Cloud Session - SPMG3T7
 
 **Date:** 2026-11-03
-**From:** Local Claude Code session
-**To:** Cloud Claude Code session
+**Branch:** `chore/playwright-test-reduction-handover`
+**Base:** `main`
+**Repository:** https://github.com/sjzdylan/SPMG3T7
 
-## Current State
+## Read this first: the branch currently fails CI
 
-### Repository
-- **Location:** `/Users/ethan/Documents/GitHub/SPMG3T7`
-- **Current Branch:** `chore/playwright-test-reduction-handover`
-- **Main Branch:** `main`
-- **Remote:** GitHub repo `SPMG3T7`
+The test-reduction work on this branch broke the backend build. Verified by running the backend suite on this branch:
 
-### Recent Work Completed
+| Check | Result | CI requires |
+| --- | --- | --- |
+| `pytest --collect-only` | 1,542 tests collected | — (the older "1,534" figure is stale) |
+| `pytest --cov` | 1,533 passed, 10 skipped, **1 failed** | all pass |
+| Coverage | **89.96%** line + branch | **100%** (`backend/pyproject.toml`, enforced by `ci.yml`) |
+| Failing test | `tests/test_change_review_us11_2.py::test_supabase_publishes_flags_and_report_through_one_guarded_rpc` | — |
 
-1. **Test Inventory Generated** ✅
-   - Created comprehensive CSV with all 1,568 tests
-   - 581 Unit tests (37.1%)
-   - 953 Integration tests (60.8%)
-   - 34 E2E tests (2.2%)
-   - Files: `test_inventory.csv` and `TEST_INVENTORY_SUMMARY.md`
-   - Copied to OneDrive: `OneDrive/.../IS212.../Project/Test_Inventory_SPMG3T7.csv`
+**Cause of the failure:** the test trimming removed `class FakeAdmin` from `backend/tests/test_change_requests.py` (it was at line 1365 on `main`). `test_change_review_us11_2.py` still imports it, so the test fails with `ImportError: cannot import name 'FakeAdmin'`.
 
-2. **Test Reduction Complete** ✅
-   - Reduced from ~2,504 to 1,534 backend tests
-   - Removed coverage scaffolding (59 tests)
-   - Trimmed infrastructure test classes (~300 tests)
-   - Reduced parameterized tests (~600 tests)
-   - Kept all critical unit tests for stores/repositories
+**Fix still needed before merge:**
+1. Restore `FakeAdmin` in `backend/tests/test_change_requests.py` (take it from `origin/main`), or move it to `conftest.py` if other files need it.
+2. Re-run `pytest --cov` and bring coverage back to 100%. The trimming removed tests that were covering `app/` code, so some of the gap may need the removed tests restored, not just the helper.
+3. Run `ruff check .` and `python -m compileall -q app`, which CI also runs.
 
-### Working Directory State
+Do not merge this branch until CI is green on the PR.
 
-```bash
-cd /Users/ethan/Documents/GitHub/SPMG3T7/backend
-git status
-# Branch: chore/playwright-test-reduction-handover
-# Status: Clean (after latest commit)
-```
+## What the branch changed
 
-### Key Files Modified/Created
+1. **Test inventory:** `test_inventory.csv` (1,569 rows), `TEST_INVENTORY_SUMMARY.md`, and the generator `backend/generate_test_inventory.py`. The CSV was generated before the later trimming, so its totals no longer match the live suite. Regenerate it with the script before quoting numbers.
+2. **Test reduction:** commits `bdac5d0`, `37076ef`, `77bdbff`, `c2edddc` (plus later doc commits). These removed coverage-scaffolding tests, infrastructure test classes, and some parameterized cases. The intent was to cut the suite from about 2,504 tests, but the result is now below the 100% coverage gate and has one broken import.
+3. **Docs:** `HANDOVER_CLOUD_SESSION.md` (this file) and `handover.md`.
 
-1. **New Files:**
-   - `backend/generate_test_inventory.py` - Script to generate CSV inventory
-   - `test_inventory.csv` - Full test inventory (1,569 rows)
-   - `TEST_INVENTORY_SUMMARY.md` - Human-readable summary
+## Setup
 
-2. **Modified Test Files (truncated):**
-   - 15+ test files reduced in size
-   - All syntax errors fixed
-   - 4 store test files restored (booking, venue, equipment, registration)
+### Backend (Python 3.12 in CI; 3.13 also works locally)
 
-3. **Git Commits Made:**
-   - `bdac5d0` - Remove coverage scaffolding
-   - `37076ef` - Remove infrastructure test classes
-   - `77bdbff` - Fix 27 syntax errors
-   - `c2edddc` - Restore unit tests
-   - (Pending) - Add test inventory
-
-## To Continue in Cloud Session
-
-### Step 1: Clone Repository
-
-```bash
-git clone https://github.com/YOUR_USERNAME/SPMG3T7.git
-cd SPMG3T7
-git checkout chore/playwright-test-reduction-handover
-git pull origin chore/playwright-test-reduction-handover
-```
-
-### Step 2: Environment Setup
-
-**Backend:**
 ```bash
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate  # or `.venv\Scripts\activate` on Windows
-pip install -r requirements.txt
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+cp .env.example .env             # then fill in the values
 ```
 
-**Frontend:**
+Use `requirements-dev.txt`, not `requirements.txt`. It includes the test, coverage, and lint tools that CI uses.
+
+Required `backend/.env` values (from `backend/.env.example`):
+
+```env
+SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
+SUPABASE_ANON_KEY=...            # used for sign-in, subject to RLS
+SUPABASE_SERVICE_ROLE_KEY=...    # FULL ADMIN, backend only, never prefix with VITE_
+```
+
+Optional:
+
+```env
+# SUPABASE_DB_URL=postgresql://...   # only for apply_equipment_migration.py
+# CORS_ORIGINS=http://localhost:5173
+# SESSION_IDLE_MINUTES=30
+```
+
+`backend/.env` is gitignored. Never commit it.
+
+### Database migrations
+
+`backend/SUPABASE_SETUP.sql` creates the base schema. Apply the other `SUPABASE_*.sql` scripts in dependency order using the Supabase SQL Editor. The table in the root `README.md` lists each script, what it enables, and what breaks if it is skipped. Every script is idempotent. Note the order-sensitive chains, such as `SUPABASE_ADD_VENUE_BOOKINGS.sql` → `SUPABASE_CANCEL_VENUE_BOOKINGS.sql` → `SUPABASE_ADD_BOOKING_NEEDS.sql` → `SUPABASE_ADD_VENUE_HOLDS.sql` → `SUPABASE_ADD_BOOKING_DECISIONS.sql` → `SUPABASE_ADD_BOOKING_CONFLICTS.sql`.
+
+### Frontend (Node 22+, npm 10+)
+
 ```bash
 cd frontend
 npm install
-npx playwright install
+cp .env.example .env.local       # set VITE_API_BASE_URL (default http://localhost:8000)
+npx playwright install           # only if running E2E
 ```
 
-### Step 3: Verify Test Count
+The frontend talks only to the API. It never talks to Supabase directly, so it needs only `VITE_API_BASE_URL`.
+
+## Commands
+
+### Backend
 
 ```bash
-cd backend
-source .venv/bin/activate
-pytest --collect-only -q | tail -3
-# Should show: 1534 tests collected
-
-cd ../frontend
-npx playwright test --list
-# Should show: 34 tests
+cd backend && source .venv/bin/activate
+ruff check .                     # lint (CI step)
+python -m compileall -q app      # build check (CI step)
+pytest                           # all tests
+pytest --cov                     # CI gate: must reach 100% line and branch coverage
+pytest -k us20_1                 # one user story
+pytest tests/test_venue_store.py # one file
 ```
 
-## Environment Variables Needed
+The database tests in `backend/integration/` read `TEST_POSTGRES_DSN`, which must point to a disposable Postgres database. CI runs them against a Postgres 16 service. Without the variable they skip.
 
-The cloud session will need these environment variables:
-
-**Backend (.env):**
-```env
-SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=your_service_key
-SUPABASE_ANON_KEY=your_anon_key
-JWT_SECRET=your_jwt_secret
-ENVIRONMENT=development
-```
-
-**Frontend (.env.local):**
-```env
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_anon_key
-VITE_API_URL=http://localhost:8000
-```
-
-## Current Tasks Status
-
-### ✅ Completed
-1. Test inventory CSV generated
-2. Test reduction from 2,504 → 1,534 tests
-3. All syntax errors fixed
-4. Unit tests restored (125 → keeping healthy mix)
-5. Summary document created
-
-### 🔄 Next Steps (if needed)
-1. **If test pyramid needs adjustment:** Add more unit tests (currently 37%, target 65-70%)
-2. **If further reduction needed:** Can trim integration tests (currently 953, target ~400)
-3. **Documentation:** Update project documentation with test inventory reference
-
-## Important Context
-
-### Test Classification Logic
-- **Unit tests:** Files with `_store.py`, `_repository.py`, or testing business logic in isolation
-- **Integration tests:** Files testing API routes with FastAPI TestClient
-- **E2E tests:** Playwright tests in `frontend/e2e/`
-
-### File Organization
-- Backend tests: `backend/tests/test_*.py`
-- Frontend tests: `frontend/e2e/*.spec.ts`
-- Test fixtures: `backend/tests/conftest.py`
-- User story pattern: `test_<feature>_us<X>_<Y>.py`
-
-### Running Tests
-
-**All backend tests:**
-```bash
-cd backend && source .venv/bin/activate && pytest
-```
-
-**All frontend tests:**
-```bash
-cd frontend && npx playwright test
-```
-
-**Specific test file:**
-```bash
-pytest tests/test_venue_store.py
-npx playwright test e2e/coordinator-lead-assignment.spec.ts
-```
-
-## Background Services (if running locally)
-
-Stop any running background services before switching:
+### Frontend
 
 ```bash
-# Kill backend servers
-lsof -ti:8000 | xargs kill -9 2>/dev/null
-
-# Kill frontend dev servers
-lsof -ti:5173 | xargs kill -9 2>/dev/null
-lsof -ti:3000 | xargs kill -9 2>/dev/null
+cd frontend
+npm run lint                     # oxlint
+npm test                         # vitest unit tests
+npm run build                    # tsc -b && vite build
+npm run test:e2e                 # Playwright (starts `npm run dev` on :5173)
+npm run test:e2e:isolated        # isolated Playwright config
 ```
 
-## Files to Share with Cloud Session
+The E2E suite was not run during this handover. Run it before relying on it.
 
-1. **This handover document:** `HANDOVER_CLOUD_SESSION.md`
-2. **Test inventory:** `test_inventory.csv`
-3. **Summary:** `TEST_INVENTORY_SUMMARY.md`
-4. **Generator script:** `backend/generate_test_inventory.py`
+## Repository layout
 
-All files are in the git repo after the pending commit.
+- `backend/app/`: FastAPI modules, one per feature (`events.py`, `venues.py`, `holds.py`, `safety_decisions.py`, `registrations.py`, and so on), with `*_store.py` modules for data access.
+- `backend/tests/`: `test_*.py` files, plus `test_cases_us*.md` specifications. Naming follows `test_<feature>_us<X>_<Y>.py`. Shared fixtures are in `conftest.py`, and fakes are in `fakes.py`.
+- `backend/integration/`: database-backed tests.
+- `frontend/src/`: React pages, components, and stores (`*Store.ts`).
+- `frontend/e2e/` and `frontend/e2e-isolated/`: Playwright specs.
+- `.github/workflows/ci.yml`: the CI pipeline (backend and frontend jobs run on every push and PR).
 
-## Context for New Session
+## Test classification (for the inventory)
 
-When starting the cloud session, provide this context:
+- **Unit:** files with `_store.py` or `_repository.py` in their name, or tests of business logic in isolation.
+- **Integration:** tests of API routes through FastAPI's `TestClient`.
+- **E2E:** Playwright specs in `frontend/e2e/`.
 
-```
-I'm continuing work on the SPMG3T7 Event Management System.
-I've just completed generating a comprehensive test inventory CSV
-with 1,568 tests (581 unit, 953 integration, 34 e2e) and reduced
-the test suite from ~2,504 to 1,534 backend tests.
+## Next steps, in priority order
 
-The work is on branch: chore/playwright-test-reduction-handover
+1. Fix the broken import and restore coverage to 100% (see "Read this first").
+2. Get `ruff check .`, `compileall`, and `pytest --cov` green locally, then on the PR.
+3. Regenerate `test_inventory.csv` and `TEST_INVENTORY_SUMMARY.md` from the fixed suite.
+4. Run the frontend `npm test` and `npm run test:e2e`, and record the results.
+5. Only then decide whether the pyramid needs more unit tests (currently about 37% unit, 61% integration, 2% E2E).
 
-Key files:
-- test_inventory.csv (full inventory)
-- TEST_INVENTORY_SUMMARY.md (human-readable summary)
-- backend/generate_test_inventory.py (generation script)
+## Background services
 
-Please help me with [YOUR NEXT TASK HERE].
-```
-
-## Additional Notes
-
-- **Testing pyramid:** Currently 37% unit / 61% integration / 2% e2e (slightly inverted but acceptable for API-heavy project)
-- **Test frameworks:** pytest (backend), Playwright (frontend)
-- **Database:** Supabase (PostgreSQL)
-- **Tech stack:** FastAPI + React + TypeScript
-- **OneDrive backup:** Test inventory CSV copied to OneDrive project folder
-
-## Quick Reference Commands
+If you started servers locally, stop them before switching branches:
 
 ```bash
-# Check test count
-cd backend && source .venv/bin/activate && pytest --collect-only -q | tail -1
-
-# Run specific user story tests
-pytest -k "us20_1"
-
-# Regenerate test inventory
-cd backend && source .venv/bin/activate && python3 generate_test_inventory.py
-
-# View test breakdown
-python3 << 'EOF'
-import csv
-from collections import Counter
-with open('test_inventory.csv') as f:
-    tests = list(csv.DictReader(f))
-    types = Counter(t['Test Type'] for t in tests)
-    print(f"Unit: {types['Unit']}, Integration: {types['Integration']}, E2E: {types['E2E']}")
-EOF
+lsof -ti:8000 | xargs kill 2>/dev/null   # backend
+lsof -ti:5173 | xargs kill 2>/dev/null   # frontend dev server
 ```
 
----
+## Context for the new session
 
-**Ready for cloud session handover.** All work committed to git. Pull the latest changes and continue from there.
+Paste this into the new session:
+
+```
+I'm continuing work on SPMG3T7 (FastAPI + Supabase backend, React + Vite frontend).
+Branch: chore/playwright-test-reduction-handover.
+Read HANDOVER_CLOUD_SESSION.md first. The backend currently has one failing test
+(missing FakeAdmin import in test_change_requests.py) and coverage is ~90%, below
+the 100% CI gate. Please help me fix that first. My next task: [YOUR TASK].
+```
