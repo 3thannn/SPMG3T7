@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventDetailPage from './EventDetailPage'
 import { MISSING_MESSAGES, NO_NEEDS, NOT_REQUIRED } from '../eventNeeds'
 import {
@@ -359,6 +359,57 @@ it('does not offer completion before the end time or to another Coordinator', as
   expect(screen.queryByRole('button', { name: 'Mark Completed' })).not.toBeInTheDocument()
 })
 
+// --- US5.3: a Confirmed event's details are locked -------------------------------
+
+describe('US5.3: a Confirmed event is locked', () => {
+  // The server gives Coordinators events:edit (US5.2); test/sessions.ts does not
+  // yet, so these tests add it.
+  const editor = { ...coordinator, permissions: [...coordinator.permissions, 'events:edit' as const] }
+  const confirmedEvent = {
+    ...submittedEvent,
+    status: 'Confirmed' as const,
+    coordinatorId: coordinator.id,
+    endsAt: '2099-01-01T17:00',
+  }
+
+  it('shows a Coordinator the details read-only, with no Save, and says why', async () => {
+    getEventMock.mockResolvedValue(confirmedEvent)
+
+    render(<EventDetailPage eventId="101" session={editor} />)
+
+    expect(
+      await screen.findByText(
+        'This event is confirmed. Changes need to go through a change request. The Organiser requests them, and you review them here.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/You are editing this event/)).not.toBeInTheDocument()
+  })
+
+  it('points the Organiser to a change request', async () => {
+    getEventMock.mockResolvedValue(confirmedEvent)
+
+    render(<EventDetailPage eventId="101" session={organiser} />)
+
+    expect(
+      await screen.findByText(
+        'This event is confirmed. Changes need to go through a change request. Request changes and the Coordinator will review them.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Request changes' })).toBeInTheDocument()
+  })
+
+  it('still lets a Coordinator edit a Planning event', async () => {
+    getEventMock.mockResolvedValue({ ...confirmedEvent, status: 'Planning' })
+
+    render(<EventDetailPage eventId="101" session={editor} />)
+
+    expect(await screen.findByLabelText('Title')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument()
+  })
+})
+
 // --- US2.1 (Sprint 3): the customer's mandatory event needs ----------------------
 
 const answeredDraft: EventRecord = {
@@ -517,6 +568,23 @@ it('shows the Safety Officer the decision, but not the bookings or equipment car
   expect(screen.queryByRole('heading', { name: 'Venue bookings' })).not.toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Equipment requests' })).not.toBeInTheDocument()
   expect(vi.mocked(listBookings)).not.toHaveBeenCalled()
+})
+
+it('US17.2 shows an approved safety check as awaiting the Coordinator', async () => {
+  getEventMock.mockResolvedValue({
+    ...submittedEvent,
+    status: 'Pending Safety Check',
+    safetyApproved: true,
+  })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+
+  expect(
+    await screen.findByText('Safety approved, awaiting Coordinator confirmation'),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText(/You approved this safety check\. The Coordinator confirms the event/),
+  ).toBeInTheDocument()
 })
 
 it('takes the Safety Officer back to their queue', async () => {

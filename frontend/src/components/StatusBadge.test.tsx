@@ -21,3 +21,21 @@ it('renders US4.4 Pending Safety Check as its own badge', () => {
   expect(screen.getByText('Pending Safety Check')).toBeInTheDocument()
   expect(container.firstElementChild).toHaveClass('status-badge-safety', 'status-badge-lg')
 })
+
+it('US17.2 shows an approved safety check as awaiting the Coordinator', () => {
+  const { container } = render(
+    <StatusBadge status="Pending Safety Check" size="lg" safetyApproved />,
+  )
+
+  expect(
+    screen.getByText('Safety approved, awaiting Coordinator confirmation'),
+  ).toBeInTheDocument()
+  expect(screen.queryByText('Pending Safety Check')).not.toBeInTheDocument()
+  expect(container.firstElementChild).toHaveClass('status-badge-approved', 'status-badge-lg')
+})
+
+it('US17.2 ignores the approval on any other status', () => {
+  render(<StatusBadge status="Confirmed" safetyApproved />)
+
+  expect(screen.getByText('Confirmed')).toBeInTheDocument()
+})

@@ -36,6 +36,7 @@ import {
 import { NEED_KEYS, NO_NEEDS, needsOf, type EventNeeds } from '../eventNeeds'
 import { navigate } from '../router'
 import {
+  CONFIRMED_LOCKED_MESSAGE,
   canViewStatus,
   changeRequestRefusalMessage,
   checkChangeRequest,
@@ -253,11 +254,14 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
     nowMs > Date.parse(`${event.endsAt}+08:00`)
   const writePending =
     busy || asking || deciding !== null || requesting || answering !== null || completing
+  // US5.3: a Confirmed event's details are locked; changes go through a change
+  // request (US11.1 -> US11.2 -> US11.3). The server refuses a direct edit too.
+  const locked = event.status === 'Confirmed'
   // US5.2: Coordinators can edit submitted events (not drafts), owners can edit their own drafts.
   // US11.1: an owner can also open the form on a submitted event, to propose changes.
   const editable =
     !closed &&
-    ((canEdit && event.status !== 'Draft' && !changeRequested) ||
+    ((canEdit && event.status !== 'Draft' && !changeRequested && !locked) ||
       (isOwner && event.status === 'Draft') ||
       (isOwner && proposing))
   const dirty =
@@ -657,7 +661,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               {' · Created '}{formatRecordedAt(event.createdAt)}
             </p>
           </div>
-          <StatusBadge status={event.status} size="lg" />
+          <StatusBadge status={event.status} size="lg" safetyApproved={event.safetyApproved} />
         </header>
 
         {banner && (
@@ -884,8 +888,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                   ? 'Edit the details above, then submit them for the Coordinator to review. ' +
                     'Your event keeps its current details until they approve.'
                   : changeCheck.allowed
-                    ? 'This event has been submitted, so it is no longer edited directly. ' +
-                      'Request changes and the Coordinator will review them.'
+                    ? locked
+                      ? `${CONFIRMED_LOCKED_MESSAGE} Request changes and the Coordinator will review them.`
+                      : 'This event has been submitted, so it is no longer edited directly. ' +
+                        'Request changes and the Coordinator will review them.'
                     : changeRequestRefusalMessage(changeCheck.reason)}
               </p>
             )}
@@ -896,9 +902,15 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               </p>
             )}
 
-            {!isOwner && canEdit && !cancelled && (
+            {!isOwner && canEdit && !cancelled && !locked && (
               <p className="detail-note">
                 You are editing this event as {session.role}. Changes are tracked and logged.
+              </p>
+            )}
+
+            {!isOwner && canEdit && locked && (
+              <p className="detail-note">
+                {CONFIRMED_LOCKED_MESSAGE} The Organiser requests them, and you review them here.
               </p>
             )}
           </section>
