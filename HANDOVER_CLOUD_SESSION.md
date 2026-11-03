@@ -5,29 +5,38 @@
 **Base:** `main`
 **Repository:** https://github.com/sjzdylan/SPMG3T7
 
-## Read this first: the branch currently fails CI
+## Read this first: state of the branch
 
-The test-reduction work on this branch broke the backend build. Verified by running the backend suite on this branch:
+Verified by running the suites on this branch, and on `main` for comparison.
+See `TEST_AUDIT.md` for the full audit.
 
-| Check | Result | CI requires |
+| Check | `main` | This branch |
 | --- | --- | --- |
-| `pytest --collect-only` | 1,542 tests collected | — (the older "1,534" figure is stale) |
-| `pytest --cov` | 1,533 passed, 10 skipped, **1 failed** | all pass |
-| Coverage | **89.96%** line + branch | **100%** (`backend/pyproject.toml`, enforced by `ci.yml`) |
-| Failing test | `tests/test_change_review_us11_2.py::test_supabase_publishes_flags_and_report_through_one_guarded_rpc` | — |
+| `pytest --cov` | 2,505 passed, 10 skipped, **100%** | 1,534 passed, 10 skipped, **90.05%** |
+| `ruff check .` | clean | clean (after this commit) |
+| `python -m compileall -q app` | ok | ok |
+| Frontend `npm test` / `npm run build` | 1,400 passed | 1,400 passed; build ok |
 
-**Cause of the failure:** the test trimming removed `class FakeAdmin` from `backend/tests/test_change_requests.py` (it was at line 1365 on `main`). `test_change_review_us11_2.py` still imports it, so the test fails with `ImportError: cannot import name 'FakeAdmin'`.
+**Still failing CI:** the 100% line and branch coverage gate in
+`backend/pyproject.toml`. The earlier test trimming removed about 971 backend
+tests, and about 485 production statements are no longer covered.
 
-**Fix still needed before merge:**
-1. Restore `FakeAdmin` in `backend/tests/test_change_requests.py` (take it from `origin/main`), or move it to `conftest.py` if other files need it.
-2. Re-run `pytest --cov` and bring coverage back to 100%. The trimming removed tests that were covering `app/` code, so some of the gap may need the removed tests restored, not just the helper.
-3. Run `ruff check .` and `python -m compileall -q app`, which CI also runs.
+**Already fixed on this branch:** the `FakeAdmin` import that broke
+`test_change_review_us11_2.py`, four tests whose assertions had been cut off, and
+the lint errors the trimming left behind.
 
-Do not merge this branch until CI is green on the PR.
+**Still open:**
+1. Restore coverage to 100%, or get the team to agree a new gate in writing.
+   Do not lower it silently.
+2. 161 test cases in `backend/tests/test_cases_*.md` cite tests that no longer
+   exist (`test_case_register.csv` lists them).
+3. Decide how to cut further. Options are in `TEST_AUDIT.md` section 4.
+
+Do not merge until CI is green on the PR.
 
 ## What the branch changed
 
-1. **Test inventory:** `test_inventory.csv` (1,569 rows), `TEST_INVENTORY_SUMMARY.md`, and the generator `backend/generate_test_inventory.py`. The CSV was generated before the later trimming, so its totals no longer match the live suite. Regenerate it with the script before quoting numbers.
+1. **Test inventory:** `test_inventory.csv` (one row per automated test, all layers) and `test_case_register.csv` (one row per documented test case), both made by `backend/generate_test_inventory.py`. Regenerate them with the script before quoting numbers. `TEST_INVENTORY_SUMMARY.md` is from the older version and is out of date.
 2. **Test reduction:** commits `bdac5d0`, `37076ef`, `77bdbff`, `c2edddc` (plus later doc commits). These removed coverage-scaffolding tests, infrastructure test classes, and some parameterized cases. The intent was to cut the suite from about 2,504 tests, but the result is now below the 100% coverage gate and has one broken import.
 3. **Docs:** `HANDOVER_CLOUD_SESSION.md` (this file) and `handover.md`.
 
