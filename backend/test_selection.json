@@ -1,0 +1,7024 @@
+{
+"keep": [
+{
+"file": "tests/test_access_enforcement.py",
+"owner": "",
+"func": "test_a_blocked_request_returns_none_of_the_data_it_guarded",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_access_enforcement.py",
+"owner": "",
+"func": "test_a_made_up_token_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_access_enforcement.py",
+"owner": "",
+"func": "test_a_malformed_authorization_header_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_access_enforcement.py",
+"owner": "",
+"func": "test_a_missing_token_asks_the_caller_to_sign_in",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_access_enforcement.py",
+"owner": "",
+"func": "test_an_allowed_role_gets_through",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_access_enforcement.py",
+"owner": "",
+"func": "test_an_out_of_role_request_is_blocked",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_access_enforcement.py",
+"owner": "",
+"func": "test_being_signed_out_and_being_out_of_role_are_different_answers",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_access_enforcement.py",
+"owner": "",
+"func": "test_the_denial_says_what_was_refused_and_who_may_do_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_access_enforcement.py",
+"owner": "TestPermissionCatalogue",
+"func": "test_every_permission_can_be_named_in_a_denial",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_access_enforcement.py",
+"owner": "TestUS14NewRoles",
+"func": "test_safety_officer_has_defined_permissions",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_attendee_notices_us10_4.py",
+"owner": "TestBestEffort",
+"func": "test_a_failed_notice_does_not_fail_the_approval",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_attendee_notices_us10_4.py",
+"owner": "TestBestEffort",
+"func": "test_an_unreadable_registration_list_does_not_fail_the_approval",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_attendee_notices_us10_4.py",
+"owner": "TestIsReplacement",
+"func": "test_anything_else_is_not",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_attendee_notices_us10_4.py",
+"owner": "TestNewTime",
+"func": "test_a_date_change_tells_only_the_two_registered",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_attendee_notices_us10_4.py",
+"owner": "TestNewVenue",
+"func": "test_a_confirmed_replacement_tells_the_registered",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_attendee_notices_us10_4.py",
+"owner": "TestTheAttendeesList",
+"func": "test_the_attendee_reads_it_and_marks_it_read",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_attendee_notices_us10_4.py",
+"owner": "TestWhatTheyRead",
+"func": "test_an_event_running_past_midnight_names_both_days",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_attendee_notices_us10_4.py",
+"owner": "TestWhatTheyRead",
+"func": "test_unreadable_times_are_shown_as_they_are",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_a_rejected_sign_in_issues_no_session",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_a_request_missing_a_field_is_a_validation_error_not_a_sign_in",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_a_wrong_password_is_rejected",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_an_expired_session_is_not_confused_with_a_bad_password",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_an_unknown_email_is_rejected_the_same_way_as_a_wrong_password",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_each_role_is_told_where_its_own_view_is",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_the_client_is_told_how_long_the_idle_window_is",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_the_email_is_matched_without_case_or_padding",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_the_password_is_matched_exactly",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_the_password_is_never_echoed_back",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_the_role_comes_from_the_account_and_is_not_chosen_at_sign_in",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_the_session_carries_the_permissions_the_role_holds",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_the_session_expires_after_the_inactivity_period",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_the_session_survives_normal_use",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_two_sign_ins_get_two_different_tokens",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_login.py",
+"owner": "",
+"func": "test_valid_credentials_return_a_session",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_logout.py",
+"owner": "",
+"func": "test_every_protected_route_refuses_the_ended_session",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_logout.py",
+"owner": "",
+"func": "test_logging_out_of_one_device_leaves_the_other_signed_in",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_logout.py",
+"owner": "",
+"func": "test_logging_out_twice_is_not_an_error",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_logout.py",
+"owner": "",
+"func": "test_logging_out_without_a_token_is_not_an_error",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_logout.py",
+"owner": "",
+"func": "test_logout_succeeds_for_a_signed_in_user",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_logout.py",
+"owner": "",
+"func": "test_signing_in_again_after_logout_works",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_logout.py",
+"owner": "",
+"func": "test_the_ended_session_is_released_rather_than_left_behind",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_logout.py",
+"owner": "",
+"func": "test_the_new_session_after_signing_back_in_is_a_different_one",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_auth_logout.py",
+"owner": "",
+"func": "test_the_token_stops_working_the_moment_the_session_ends",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestBlockedByAnotherBooking",
+"func": "test_tc_c10_a_slot_taken_between_the_check_and_the_write",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestBlockedByAnotherBooking",
+"func": "test_tc_c10c_an_event_that_moved_meanwhile_is_still_a_stale_request",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestBlockedByAnotherBooking",
+"func": "test_tc_c11_the_store_re_checks_under_its_lock",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestBlockedByUnavailability",
+"func": "test_tc_c13_setup_reaching_back_into_a_closed_day",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestBlockedByUnavailability",
+"func": "test_tc_c15_a_multi_day_period_is_named_by_both_dates",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestFlaggingOnChange",
+"func": "test_tc_f09_a_booking_with_unreadable_times_is_skipped",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestFlaggingOnChange",
+"func": "test_tc_f12_a_flagging_failure_does_not_fail_the_saved_change",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestHoldsAndApproval",
+"func": "test_tc_c25_a_hold_that_clashes_since_cannot_become_a_request",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestHoldsAndApproval",
+"func": "test_tc_c27_approval_is_blocked_by_an_unavailability_period",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestHoldsAndApproval",
+"func": "test_tc_c29_the_store_s_approval_counts_periods_too",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestHoldsAndApproval",
+"func": "test_tc_c30_approval_is_still_not_blocked_by_another_request",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestHoldsAndApproval",
+"func": "test_tc_c31_a_booking_whose_own_times_cannot_be_read_clashes_with_nothing",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheFlagClears",
+"func": "test_tc_f20b_rejecting_a_booking_whose_event_is_gone_still_clears",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheFlagClears",
+"func": "test_tc_f21_lowering_the_times_again_clears_them",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheFlagClears",
+"func": "test_tc_f25_a_venue_that_is_gone_has_nothing_to_resolve",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheFlagClears",
+"func": "test_tc_f27_a_clearing_failure_does_not_fail_the_cancellation",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheFlaggedList",
+"func": "test_tc_f13_venue_staff_see_every_flagged_booking_soonest_first",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheInMemoryStore",
+"func": "test_tc_f38_a_missing_booking_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheOccupiedWindow",
+"func": "test_tc_c02b_the_request_response_carries_the_window",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestThePhrasing",
+"func": "test_tc_f28_one_minute_is_singular",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheRefusalSaysWhatItClashesWith",
+"func": "test_tc_c18_another_coordinator_s_event_is_not_named",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheRefusalSaysWhatItClashesWith",
+"func": "test_tc_c19_venue_staff_placing_a_hold_see_the_other_event",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_c32_a_taken_slot_from_the_request_rpc_is_slot_taken",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_c33_a_stale_event_is_still_its_own_answer",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_f33_flagging_writes_when_and_why_and_nothing_else",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_f35_a_booking_that_is_gone_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_f36_the_flagged_list_reads_flagged_rows_soonest_first",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_f36b_no_rows_is_an_empty_list",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_conflicts.py",
+"owner": "TestTouchingWindows",
+"func": "test_tc_c24_touching_a_closed_day_at_midnight",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestApproving",
+"func": "test_tc_d15_a_clash_taken_between_the_check_and_the_write_is_shown",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestApproving",
+"func": "test_tc_d16_only_a_requested_booking_can_be_approved",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestApproving",
+"func": "test_tc_d17_approving_twice_at_once_is_decided_once",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestApproving",
+"func": "test_tc_d18_an_unknown_booking_is_not_found",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestOnlyThisBooking",
+"func": "test_tc_d27_other_bookings_and_the_event_are_unchanged",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestRejecting",
+"func": "test_tc_d19_rejecting_with_a_reason_and_a_suggestion",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestRejecting",
+"func": "test_tc_d21_a_reason_is_required",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestRejecting",
+"func": "test_tc_d22_the_reason_and_suggestion_have_a_limit",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestRejecting",
+"func": "test_tc_d24_after_a_rejection_the_slot_can_be_confirmed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestRejecting",
+"func": "test_tc_d26_rejecting_twice_at_once_is_decided_once",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestTheCoordinatorIsTold",
+"func": "test_tc_d31_a_blocked_approval_notifies_nobody",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestTheCoordinatorIsTold",
+"func": "test_tc_d32_a_failed_notice_does_not_undo_the_decision",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestThePlaceholderRule",
+"func": "test_tc_d39_without_a_venue_there_are_no_buffers",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestTheQueue",
+"func": "test_tc_d02_only_requested_bookings_are_listed",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_d41_approve_calls_the_locking_rpc",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_d42_each_rpc_refusal_is_its_own_error",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_d43_reject_writes_only_a_still_requested_row",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_d44_no_row_rejected_means_it_was_already_decided",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_d45_the_queue_reads_requested_oldest_first",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_decisions.py",
+"owner": "TestVenueStaffOnly",
+"func": "test_tc_d37_the_decision_records_who_and_when",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "",
+"func": "test_in_memory_counts_only_bookings_flagged_by_the_given_blackout",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "",
+"func": "test_supabase_counts_bookings_for_the_given_blackout",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "TestCancellationColumns",
+"func": "test_holds_venue_follows_the_status",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "TestInMemory",
+"func": "test_cancel_twice_is_stale_like_the_real_store",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "TestSupabaseCancel",
+"func": "test_it_writes_the_status_who_when_and_why",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "TestSupabaseCancel",
+"func": "test_no_row_updated_means_it_was_no_longer_requested",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "TestSupabaseCreate",
+"func": "test_it_inserts_one_requested_row",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "TestSupabaseCreateNeeds",
+"func": "test_no_layout_is_stored_as_null",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "TestSupabaseListing",
+"func": "test_it_reads_the_booking_table_for_one_event",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "TestSupabaseListing",
+"func": "test_no_rows_is_an_empty_list",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "TestToBooking",
+"func": "test_an_embedded_list_is_read_as_its_first_item",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_booking_store.py",
+"owner": "TestToBooking",
+"func": "test_an_unknown_status_is_refused_loudly",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestEndToEnd",
+"func": "test_from_draft_to_confirmed_then_cancelled",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestHistory",
+"func": "test_an_organisers_cancellation_names_them",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestHistory",
+"func": "test_the_move_is_logged_with_who_when_and_why",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestInMemoryStore",
+"func": "test_refuses_an_event_that_moved",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestNotifications",
+"func": "test_a_failed_read_of_what_was_released_does_not_undo_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestNotifications",
+"func": "test_a_notice_that_cannot_be_written_does_not_undo_the_cancellation",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestNotifications",
+"func": "test_everyone_affected_is_told_but_not_the_canceller",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestNotifications",
+"func": "test_nobody_else_is_told_when_nothing_was_released",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestNotifications",
+"func": "test_one_booking_and_one_line_read_in_the_singular",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestNotifications",
+"func": "test_the_coordinator_is_told_when_the_organiser_cancels",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestNotifications",
+"func": "test_venue_staff_read_the_notice",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestPermissions",
+"func": "test_organisers_and_coordinators_cancel",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReadOnly",
+"func": "test_a_cancelled_draft_cannot_be_submitted",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReadOnly",
+"func": "test_a_change_request_left_waiting_can_no_longer_be_answered",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReadOnly",
+"func": "test_its_details_cannot_be_saved",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReadOnly",
+"func": "test_no_equipment_can_be_requested",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReason",
+"func": "test_a_closed_event_is_refused_before_the_reason_is_read",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReason",
+"func": "test_a_missing_reason_field_is_the_same_sentence",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReason",
+"func": "test_a_reason_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReason",
+"func": "test_the_reason_has_a_limit",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestRegistrations",
+"func": "test_a_cancelled_registration_cannot_be_withdrawn",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestRegistrations",
+"func": "test_a_failed_read_of_the_registrations_does_not_undo_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestRegistrations",
+"func": "test_an_attendee_reads_it_on_their_notifications_page",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestRegistrations",
+"func": "test_an_event_nobody_registered_for_tells_no_attendee",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestRegistrations",
+"func": "test_each_attendee_is_told_once",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestRegistrations",
+"func": "test_every_registered_registration_is_marked_event_cancelled_and_nothing_else",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestRegistrations",
+"func": "test_registered_attendees_are_told_without_the_reason",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestRegistrations",
+"func": "test_registration_closes_and_keeps_its_capacity",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestRegistrations",
+"func": "test_the_attendee_sees_event_cancelled_on_my_registrations",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestRegistrations",
+"func": "test_the_organiser_still_sees_who_was_registered",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReleases",
+"func": "test_a_confirmed_booking_keeps_the_decision_that_confirmed_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReleases",
+"func": "test_a_flag_on_a_released_booking_is_cleared",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReleases",
+"func": "test_an_event_with_nothing_held_still_cancels",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReleases",
+"func": "test_every_active_booking_and_hold_is_cancelled_and_nothing_else",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReleases",
+"func": "test_every_equipment_line_is_released",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReleases",
+"func": "test_released_equipment_leaves_the_tech_support_queue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestReleases",
+"func": "test_the_freed_slot_can_be_requested_by_another_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestSupabaseStore",
+"func": "test_cancel_uses_the_atomic_rpc",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestSupabaseStore",
+"func": "test_null_from_the_rpc_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestTheRule",
+"func": "test_an_open_event_may_be_cancelled",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhichEvents",
+"func": "test_a_closed_event_is_refused_and_left_alone",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhichEvents",
+"func": "test_a_race_lost_in_the_store_is_reported_as_stale",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhichEvents",
+"func": "test_cancelling_twice_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhichEvents",
+"func": "test_every_open_status_can_be_cancelled",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhoMayCancel",
+"func": "test_another_organisers_event_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhoMayCancel",
+"func": "test_no_other_role_may_cancel",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhoMayCancel",
+"func": "test_signed_out_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhoMayCancel",
+"func": "test_the_assigned_coordinator_cancels",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhoMayCancel",
+"func": "test_the_organiser_can_cancel_their_own_draft",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhoMayCancel",
+"func": "test_the_owning_organiser_cancels",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_cancel_event_us4_6.py",
+"owner": "TestWhoMayCancel",
+"func": "test_unknown_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestApproving",
+"func": "test_approving_applies_the_proposed_values",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestCoordinatorSees",
+"func": "test_an_unassigned_coordinator_cannot_see_it",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestDirectEditsAreRefused",
+"func": "test_the_owner_cannot_save_a_submitted_event_directly",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestImportance",
+"func": "test_approved_changes_are_logged_as_important_or_routine",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestInMemoryStore",
+"func": "test_answering_after_the_event_moved_on_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestInMemoryStore",
+"func": "test_requesting_from_a_status_that_changed_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestProposalValidation",
+"func": "test_an_incomplete_or_invalid_proposal_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestProposing",
+"func": "test_the_organiser_sees_their_own_pending_request",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestRejecting",
+"func": "test_a_reason_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestRejecting",
+"func": "test_a_reason_over_the_limit_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestReviewBeforeDeciding",
+"func": "test_the_event_cannot_be_decided_while_a_request_is_pending",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestRules",
+"func": "test_a_change_request_entry_is_recognised_without_a_column",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestRules",
+"func": "test_applied_values_are_typed_as_the_event_holds_them",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestRules",
+"func": "test_clearing_an_end_date_is_a_change",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestRules",
+"func": "test_someone_else_is_told_it_is_not_theirs_first",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestRules",
+"func": "test_unparseable_dates_fall_back_to_comparing_text",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestSupabaseStore",
+"func": "test_a_request_is_one_rpc_carrying_every_change",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestSupabaseStore",
+"func": "test_an_approval_is_one_rpc_carrying_the_us11_3_reason",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestSupabaseStore",
+"func": "test_an_empty_list_reads_no_requests",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestWhenAProposalIsRefused",
+"func": "test_a_concurrent_request_is_reported_as_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestWhenAProposalIsRefused",
+"func": "test_a_draft_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestWhenAProposalIsRefused",
+"func": "test_a_note_over_the_limit_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestWhenAProposalIsRefused",
+"func": "test_a_request_that_changes_nothing_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestWhereRequestsAreStored",
+"func": "test_answering_one_request_leaves_earlier_and_other_requests_alone",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestWhoMayPropose",
+"func": "test_an_unknown_event_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestWhoMayReview",
+"func": "test_a_concurrent_answer_is_reported_as_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_requests.py",
+"owner": "TestWhoMayReview",
+"func": "test_an_unassigned_coordinator_cannot_answer",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "",
+"func": "test_listing_flags_rechecks_events_with_an_event_change_flag",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestEquipmentStock",
+"func": "test_a_line_that_is_not_reserved_has_no_reserved_stock",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestEquipmentStock",
+"func": "test_a_reservation_that_does_not_overlap_takes_nothing",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestEquipmentStock",
+"func": "test_no_answer_is_no_stock",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestEquipmentStock",
+"func": "test_the_database_answers_for_reserved_stock",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestNotices",
+"func": "test_a_later_clarification_survives_a_notice_that_cannot_be_written",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestRecheck",
+"func": "test_a_booking_that_cannot_be_checked_leaves_a_retry",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestRecheck",
+"func": "test_a_line_not_yet_reserved_is_not_checked",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestRecheck",
+"func": "test_a_slot_taken_by_another_event_is_flagged",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestRecheck",
+"func": "test_a_venue_gone_from_the_catalogue_is_flagged",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestRecheck",
+"func": "test_arrangements_that_cannot_be_loaded_leave_a_retry",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestRoutes",
+"func": "test_a_completed_event_cannot_be_edited",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestRoutes",
+"func": "test_a_coordinator_edit_that_lost_a_race_is_a_conflict",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestRoutes",
+"func": "test_answering_a_question_needs_a_revised_proposal",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestStores",
+"func": "test_a_review_refused_by_the_database_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestStores",
+"func": "test_a_review_whose_booking_moved_since_is_left_pending",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestStores",
+"func": "test_a_review_whose_equipment_moved_since_is_left_pending",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestStores",
+"func": "test_an_edit_over_a_newer_version_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_paths.py",
+"owner": "TestStores",
+"func": "test_committing_a_review_guards_on_the_version_it_reads",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_us11_2.py",
+"owner": "",
+"func": "test_cancelled_booking_clears_event_conflict_and_report",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_us11_2.py",
+"owner": "",
+"func": "test_direct_edit_and_accept_use_same_checks",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_us11_2.py",
+"owner": "",
+"func": "test_event_change_conflicts_and_incomplete_checks_block_safety",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_us11_2.py",
+"owner": "",
+"func": "test_older_recheck_cannot_overwrite_newer_flags_or_report",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_us11_2.py",
+"owner": "",
+"func": "test_partial_failure_is_visible_and_retryable",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_us11_2.py",
+"owner": "",
+"func": "test_request_question_revision_and_accept_preserve_status",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_us11_2.py",
+"owner": "",
+"func": "test_stock_boundary_excludes_own_reservation",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_us11_2.py",
+"owner": "",
+"func": "test_supabase_publishes_flags_and_report_through_one_guarded_rpc",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_change_review_us11_2.py",
+"owner": "",
+"func": "test_under_review_requires_question_and_field_amendment",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_config.py",
+"owner": "",
+"func": "test_a_nonsense_idle_window_falls_back_rather_than_never_expiring",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_config.py",
+"owner": "",
+"func": "test_defaults_to_local_frontend",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_config.py",
+"owner": "",
+"func": "test_session_idle_defaults_to_thirty_minutes",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_config.py",
+"owner": "",
+"func": "test_session_idle_is_configurable",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_config.py",
+"owner": "",
+"func": "test_splits_and_trims_configured_origins",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestConfirm",
+"func": "test_a_confirmation_that_lost_a_race_is_stale",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestConfirm",
+"func": "test_confirm_after_approval_confirms_it",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestConfirm",
+"func": "test_nobody_else_is_told",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestConfirm",
+"func": "test_readiness_says_when_it_can_be_confirmed",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestConfirm",
+"func": "test_the_confirmation_is_timestamped_and_attributable",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestConfirm",
+"func": "test_the_organiser_is_told",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRefusals",
+"func": "test_a_booking_flagged_for_a_conflict_is_refused",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRefusals",
+"func": "test_a_booking_needing_a_replacement_is_refused",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRefusals",
+"func": "test_a_booking_still_requested_is_refused",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRefusals",
+"func": "test_a_pending_change_request_is_refused",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRefusals",
+"func": "test_equipment_not_reserved_is_refused",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRefusals",
+"func": "test_no_approval_is_refused",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRules",
+"func": "test_a_recheck_still_running",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRules",
+"func": "test_a_venue_flagged_by_the_change_recheck",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRules",
+"func": "test_a_venue_still_held_is_named",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRules",
+"func": "test_equipment_flagged_for_review",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRules",
+"func": "test_everything_in_place_is_ready",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRules",
+"func": "test_no_confirmed_venue_at_all",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRules",
+"func": "test_only_an_approval_counts_as_one",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestRules",
+"func": "test_only_an_event_pending_safety_check",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestSafetyApproval",
+"func": "test_an_approval_no_longer_confirms_it",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestSafetyApproval",
+"func": "test_an_approval_of_an_earlier_stay_does_not_count",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestSafetyApproval",
+"func": "test_an_approved_event_leaves_the_safety_officer_queue",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestStores",
+"func": "test_in_memory_confirms_only_its_own_waiting_event",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestStores",
+"func": "test_supabase_confirms_through_one_rpc",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestWhoConfirms",
+"func": "test_a_coordinator_not_assigned_is_refused",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestWhoConfirms",
+"func": "test_the_lead_and_the_organiser_are_refused",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_confirm_event_us4_7.py",
+"owner": "TestWhoConfirms",
+"func": "test_the_safety_officer_cannot_confirm_either",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_coordinator_assignment.py",
+"owner": "TestAC1AutomaticAssignment",
+"func": "test_no_coordinators_exist_submission_succeeds",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_coordinator_assignment.py",
+"owner": "TestAC2RoundRobinAssignment",
+"func": "test_submissions_no_longer_auto_assign",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestAssignment",
+"func": "test_tc_cn01_assignment_notifies_the_coordinator",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestAssignment",
+"func": "test_tc_cn02_the_organiser_gets_their_own_notice_not_this_one",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestAssignment",
+"func": "test_tc_cn03_a_refused_assignment_does_not_notify",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestAssignment",
+"func": "test_tc_cn04_a_failed_notice_does_not_fail_the_assignment",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestBookingAndSafety",
+"func": "test_each_trigger_notifies_the_assigned_coordinator",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestBookingAndSafety",
+"func": "test_tc_cn13_an_unassigned_event_notifies_nobody",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestBookingAndSafety",
+"func": "test_tc_cn14_a_failed_write_is_logged_not_raised",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestBookingAndSafety",
+"func": "test_tc_cn15_an_untitled_event_still_reads_sensibly",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestReassignment",
+"func": "test_tc_cn05_reassignment_tells_both_coordinators",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestReassignment",
+"func": "test_tc_cn06_reassigning_to_the_same_coordinator_is_silent",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestReassignment",
+"func": "test_tc_cn07_a_first_assignment_through_reassign_only_notifies_the_new_one",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestTheCoordinatorsList",
+"func": "test_tc_cn16_a_coordinator_can_mark_a_notice_read_and_unread",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestTheCoordinatorsList",
+"func": "test_tc_cn17_unread_first_then_newest",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestTheCoordinatorsList",
+"func": "test_tc_cn18_a_coordinator_sees_only_their_own_notices",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestTheCoordinatorsList",
+"func": "test_tc_cn19_a_coordinator_cannot_toggle_someone_elses_notice",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_coordinator_notifications.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_cn20_create_notice_writes_a_coordinator_row",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_draft_store.py",
+"owner": "",
+"func": "test_a_partial_draft_writes_a_null_date_without_trimming_text",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_a_name_over_255_characters_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_a_removal_that_lost_a_race_to_the_event_leaving_planning_is_a_conflict",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_a_request_whose_event_is_gone_is_not_found",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_a_type_only_request_from_before_exact_items_still_protects_its_type",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_an_edit_that_lost_a_race_to_the_event_leaving_planning_is_a_conflict",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_an_edit_that_matched_no_row_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_an_id_that_cannot_name_an_item_is_not_found",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_an_unexpected_database_error_on_a_decision_is_raised",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_an_unexpected_database_error_on_a_request_is_raised_not_hidden",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_an_unexpected_database_error_on_delete_is_raised_not_hidden",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_an_unexpected_database_error_on_save_is_not_disguised_as_a_conflict",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_availability_for_a_missing_request_is_not_found",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_catalogue_delete_missing_and_role_boundaries",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_catalogue_happy_path_and_permissions",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_catalogue_invalid_values",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_coordinator_and_support_edit_only_their_fields",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_database_planning_race_has_clear_conflict_and_no_audit_entry",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_editing_a_missing_request_is_not_found",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_equipment_history_is_assignment_scoped",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_equipment_history_records_create_edit_and_remove",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_last_type_with_active_request_cannot_be_deleted_or_renamed",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_notification_failure_does_not_fail_request",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_read_request_notification_is_followed_by_edit_and_removal_notifications",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_recipient_lookup_failure_does_not_fail_stored_request",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_request_happy_path_and_notifications",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_request_invalid_inputs",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_request_requires_end_time_when_event_has_none",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_roles_status_and_stale_edits",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_times_that_are_not_times_are_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_unassigned_coordinator_cannot_see_or_change_requests",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment.py",
+"owner": "",
+"func": "test_updating_a_missing_item_is_not_found",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_reservations.py",
+"owner": "",
+"func": "test_catalogue_guard_and_release",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_reservations.py",
+"owner": "",
+"func": "test_exact_item_selection_and_no_substitution",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_reservations.py",
+"owner": "",
+"func": "test_legacy_request_requires_coordinator_selection",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_reservations.py",
+"owner": "",
+"func": "test_missing_notification_kind_returns_clear_error",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_reservations.py",
+"owner": "",
+"func": "test_negative_decisions",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_reservations.py",
+"owner": "",
+"func": "test_new_request_requires_valid_catalogue_item",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_reservations.py",
+"owner": "",
+"func": "test_ten_minus_two_minus_six",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_reservations.py",
+"owner": "",
+"func": "test_unavailable_reason_and_notification",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_reservations.py",
+"owner": "",
+"func": "test_unavailable_recovery_permissions_versions_and_rechecks",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestDatabaseRules",
+"func": "test_a_decision_is_passed_through_whole",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestDatabaseRules",
+"func": "test_availability_is_the_databases_answer",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestDatabaseRules",
+"func": "test_no_answer_is_no_stock",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestInMemoryRefusals",
+"func": "test_a_decision_on_an_event_with_no_coordinator_notifies_nobody",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestInMemoryRefusals",
+"func": "test_an_edit_at_a_stale_version_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestInMemoryRefusals",
+"func": "test_an_edit_that_leaves_enough_stock_for_its_reservations_is_allowed",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestInMemoryRefusals",
+"func": "test_an_unknown_request_has_no_availability",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestInMemoryRefusals",
+"func": "test_only_technical_support_may_decide",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestRequests",
+"func": "test_a_missing_request_is_none",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestRequests",
+"func": "test_a_new_line_is_inserted_and_read_back",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestRequests",
+"func": "test_an_edit_is_guarded_by_version_and_open_status",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestRequests",
+"func": "test_an_edit_that_matched_nothing_is_none",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestRequests",
+"func": "test_an_events_open_lines_leave_out_removed_ones_unless_asked",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestRequests",
+"func": "test_an_insert_that_returns_no_row_is_an_error",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestRequests",
+"func": "test_history_is_newest_first",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestRequests",
+"func": "test_removing_a_line_that_moved_on_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestRequests",
+"func": "test_removing_keeps_the_row_marked_removed",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestRequests",
+"func": "test_technical_supports_queue_is_every_requested_line",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestTheCatalogue",
+"func": "test_a_missing_item_is_none",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestTheCatalogue",
+"func": "test_a_new_item_is_inserted_and_read_back",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestTheCatalogue",
+"func": "test_a_save_that_returns_no_row_is_an_error_not_a_silent_success",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestTheCatalogue",
+"func": "test_an_existing_item_is_updated_in_place",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestTheCatalogue",
+"func": "test_deleting_targets_one_item",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_equipment_store.py",
+"owner": "TestTheCatalogue",
+"func": "test_items_are_listed_by_name",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestAsking",
+"func": "test_a_coordinator_can_attach_a_message",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestAsking",
+"func": "test_a_second_request_stays_under_review",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestAsking",
+"func": "test_asking_again_adds_a_second_request",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestAsking",
+"func": "test_surrounding_space_is_trimmed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestAsking",
+"func": "test_the_earlier_history_is_kept",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestAsking",
+"func": "test_the_message_is_kept_exactly_as_written",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestAsking",
+"func": "test_the_message_is_recorded_on_the_status_change",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestAsking",
+"func": "test_the_request_is_attributable_and_timestamped",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestAsking",
+"func": "test_the_status_moves_to_under_review",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheMessageIsRequired",
+"func": "test_a_message_of_only_spaces_is_no_message",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheMessageIsRequired",
+"func": "test_a_missing_message_field_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheMessageIsRequired",
+"func": "test_a_refused_message_does_not_move_the_status",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheMessageIsRequired",
+"func": "test_an_empty_message_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheMessageIsRequired",
+"func": "test_an_overlong_message_is_refused_with_a_sentence",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheOrganiserSeesIt",
+"func": "test_an_automatic_entry_carries_no_message",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheOrganiserSeesIt",
+"func": "test_the_event_stays_in_the_coordinators_list",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheOrganiserSeesIt",
+"func": "test_the_event_stays_in_the_organisers_list",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheOrganiserSeesIt",
+"func": "test_the_organiser_sees_the_new_status",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheOrganiserSeesIt",
+"func": "test_the_owning_organiser_can_read_the_message",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheRuleOnItsOwn",
+"func": "test_a_draft_reads_as_not_yet_submitted",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheRuleOnItsOwn",
+"func": "test_a_submitted_event_may_be_queried",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestTheRuleOnItsOwn",
+"func": "test_an_event_under_review_may_be_queried_again",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhenItIsRefused",
+"func": "test_a_concurrent_decision_cannot_be_undone_by_a_stale_clarification",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhenItIsRefused",
+"func": "test_a_decided_event_is_no_longer_under_review",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhenItIsRefused",
+"func": "test_a_draft_is_not_reviewable",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhenItIsRefused",
+"func": "test_a_rejected_event_is_refused_too",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhenItIsRefused",
+"func": "test_an_event_that_does_not_exist",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhenItIsRefused",
+"func": "test_an_id_that_is_not_a_number",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhoMayAsk",
+"func": "test_an_organiser_cannot_request_clarification",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhoMayAsk",
+"func": "test_any_coordinator_may_ask_not_only_an_assigned_one",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhoMayAsk",
+"func": "test_it_needs_a_session",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhoMayAsk",
+"func": "test_signing_out_is_enough_to_lose_the_ability",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_clarification.py",
+"owner": "TestWhoMayAsk",
+"func": "test_venue_staff_cannot_request_clarification",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_decisions.py",
+"owner": "TestAtomicDecisionStore",
+"func": "test_rpc_compare_and_set_failure_is_reported_as_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_decisions.py",
+"owner": "TestDecisionHappyPaths",
+"func": "test_assigned_coordinator_rejects_with_reason",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_decisions.py",
+"owner": "TestDecisionNegativeCases",
+"func": "test_draft_is_not_visible_to_a_coordinator",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_decisions.py",
+"owner": "TestDecisionNegativeCases",
+"func": "test_only_under_review_can_be_decided",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_decisions.py",
+"owner": "TestDecisionNegativeCases",
+"func": "test_rejection_reason_is_required",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_decisions.py",
+"owner": "TestRejectionReasonEdges",
+"func": "test_reason_over_limit_is_rejected",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_decisions.py",
+"owner": "TestTransitionRules",
+"func": "test_every_other_real_transition_is_blocked",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestAttendanceUpperBound",
+"func": "test_one_past_it_is_refused_with_a_sentence",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestCoordinator",
+"func": "test_a_coordinator_edit_saves_the_needs",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestDrafts",
+"func": "test_the_owner_saves_needs_on_a_draft",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestEventNeeds",
+"func": "test_an_unanswered_column_is_written_null",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestFixedLists",
+"func": "test_the_lists_use_the_venue_catalogue_s_words",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestFormatError",
+"func": "test_refused_answers",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestFrontendParity",
+"func": "test_the_browser_uses_the_same_answers_and_messages",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestListed",
+"func": "test_reads_the_joined_options",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestMissingError",
+"func": "test_not_required_counts_as_an_answer",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestSubmitting",
+"func": "test_none_not_required_answers_every_need",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestSupabaseStore",
+"func": "test_a_tracked_save_logs_each_changed_need",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_needs.py",
+"owner": "TestSupabaseStore",
+"func": "test_save_writes_the_needs",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "",
+"func": "test_an_audit_row_reads_its_author_whichever_shape_postgrest_sends",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestAssigning",
+"func": "test_a_coordinator_id_must_be_a_number",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestAssigning",
+"func": "test_a_draft_cannot_be_assigned",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestAssigning",
+"func": "test_an_assignment_that_lost_a_race_is_a_conflict",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestAssigning",
+"func": "test_assigning_a_missing_event_is_not_found",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestAssigning",
+"func": "test_reassigning_needs_a_numeric_coordinator_id_too",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestDates",
+"func": "test_a_draft_whose_dates_are_not_dates_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestDates",
+"func": "test_submission_rechecks_the_stored_end",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestDates",
+"func": "test_today_comes_from_the_clock_outside_the_suite",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestDeciding",
+"func": "test_a_decision_that_lost_a_race_is_a_conflict",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestEditing",
+"func": "test_someone_who_can_read_an_event_but_neither_owns_nor_coordinates_it_cannot_edit",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestStatusRules",
+"func": "test_an_end_time_with_a_timezone_cannot_be_compared",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestStatusRules",
+"func": "test_completing_an_event_that_has_not_ended_is_stale_in_the_store",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_route_guards.py",
+"owner": "TestStatusRules",
+"func": "test_only_the_owner_may_submit",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_store_queries.py",
+"owner": "",
+"func": "test_change_request_rows_are_read_for_the_whole_page_at_once",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_store_queries.py",
+"owner": "TestCoordinatorEditsAreTracked",
+"func": "test_an_edit_the_database_refused_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_store_queries.py",
+"owner": "TestListing",
+"func": "test_an_organiser_sees_only_their_own_events_and_no_drafts",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_store_queries.py",
+"owner": "TestListing",
+"func": "test_the_unassigned_queue_is_submitted_events_with_no_coordinator_oldest_first",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_store_queries.py",
+"owner": "TestStatusMoves",
+"func": "test_a_clarification_on_an_event_that_is_gone_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_store_queries.py",
+"owner": "TestStatusMoves",
+"func": "test_completing_an_event_the_database_refused_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_store_queries.py",
+"owner": "TestStatusMoves",
+"func": "test_planning_is_the_approved_to_planning_decision",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_event_store_queries.py",
+"owner": "TestStatusMoves",
+"func": "test_submitting_writes_the_status_and_its_audit_row",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCoordinatorEditing",
+"func": "test_coordinator_edit_tracks_important_change_to_date",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCreating",
+"func": "test_a_coordinator_cannot_create_an_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCreating",
+"func": "test_a_new_event_starts_as_a_draft",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCreating",
+"func": "test_a_purpose_longer_than_the_column_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCreating",
+"func": "test_a_title_longer_than_the_column_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCreating",
+"func": "test_a_zero_attendance_is_enough_content_for_a_draft",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCreating",
+"func": "test_an_end_time_before_the_start_time_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCreating",
+"func": "test_attendance_cannot_be_negative",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCreating",
+"func": "test_no_attendance_is_not_the_same_as_an_attendance_of_zero",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCreating",
+"func": "test_signing_in_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestCreating",
+"func": "test_the_organiser_is_taken_from_the_session_not_the_request",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSaving",
+"func": "test_a_coordinator_cannot_open_a_draft_to_edit_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSaving",
+"func": "test_non_owner_without_edit_permission_cannot_edit",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSaving",
+"func": "test_owner_can_edit_their_draft",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSaving",
+"func": "test_owner_cannot_edit_their_submitted_event_directly",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSaving",
+"func": "test_saving_edits_content_and_leaves_the_status_alone",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSaving",
+"func": "test_saving_writes_no_history_entry",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSprintOneReachableStatuses",
+"func": "test_only_draft_and_submitted_are_produced",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSubmitting",
+"func": "test_a_coordinator_cannot_submit",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSubmitting",
+"func": "test_an_organiser_submits_their_draft",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSubmitting",
+"func": "test_editing_an_event_rejects_an_end_not_after_the_start",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSubmitting",
+"func": "test_editing_an_event_rejects_equal_start_and_end_times",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSubmitting",
+"func": "test_submission_rejects_a_past_start_date",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSubmitting",
+"func": "test_submission_still_needs_a_date",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSubmitting",
+"func": "test_submission_still_needs_a_title",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSubmitting",
+"func": "test_submitting_twice_is_refused_with_a_reason",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSubmitting",
+"func": "test_the_history_opens_with_the_creation_entry",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestSubmitting",
+"func": "test_the_submission_is_recorded_with_who_and_when",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestVisibility",
+"func": "test_a_coordinator_can_open_a_submitted_event_and_see_every_field",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestVisibility",
+"func": "test_a_coordinator_cannot_open_a_draft_directly",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestVisibility",
+"func": "test_a_coordinator_sees_submitted_events_but_not_drafts",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestVisibility",
+"func": "test_an_event_that_is_not_yours_reads_as_missing_not_forbidden",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestVisibility",
+"func": "test_an_id_that_is_not_a_number_is_a_404_not_a_crash",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestVisibility",
+"func": "test_an_organiser_does_not_see_another_organisers_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestVisibility",
+"func": "test_an_organiser_sees_their_own_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_events.py",
+"owner": "TestVisibility",
+"func": "test_an_unknown_event_is_a_404",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_health.py",
+"owner": "",
+"func": "test_health_returns_ok",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_health.py",
+"owner": "",
+"func": "test_unknown_route_returns_404",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestAnExpiredHoldCannotBeCancelled",
+"func": "test_a_live_hold_can_still_be_released",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestAnExpiredHoldCannotBeCancelled",
+"func": "test_a_sweep_between_the_check_and_the_write_is_reported_as_expired",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestAnExpiredHoldCannotBeCancelled",
+"func": "test_there_is_nothing_to_cancel",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestAnExpiredHoldCannotBeRequested",
+"func": "test_a_sweep_between_the_check_and_the_write_is_reported_as_expired",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestAnExpiredHoldCannotBeRequested",
+"func": "test_requesting_it_is_refused_as_expired",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestCancellingTheEvent",
+"func": "test_an_expired_hold_is_left_as_history",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestExpiredHoldsStayInHistory",
+"func": "test_the_event_lists_it_as_expired",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestExpiredHoldsStayInHistory",
+"func": "test_the_venue_lists_it_among_its_holds",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestTheExpiredStatus",
+"func": "test_a_held_hold_past_its_expiry_reads_the_same_before_the_sweep",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestTheExpiredStatus",
+"func": "test_a_live_hold_is_unaffected",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestTheExpiredStatus",
+"func": "test_an_expired_hold_never_holds_its_venue",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestTheExpiredStatus",
+"func": "test_expired_is_a_status_and_reads_back_from_a_row",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestTheSchedule",
+"func": "test_the_job_runs_at_least_every_15_minutes",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestTheSchedule",
+"func": "test_the_job_runs_the_function_step_one_creates",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestTheSlotIsFree",
+"func": "test_it_does_not_stand_in_the_way_of_the_safety_check",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestTheSlotIsFree",
+"func": "test_it_is_never_flagged_as_a_conflict",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_hold_expiry_us14_4.py",
+"owner": "TestTheSlotIsFree",
+"func": "test_the_slot_can_be_requested",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestAssignedCoordinatorAccess",
+"func": "test_assigned_coordinator_can_view_event",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestAssignedCoordinatorAccess",
+"func": "test_non_assigned_coordinator_cannot_view",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestAssignmentValidation",
+"func": "test_cannot_assign_already_assigned_event",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestAssignmentValidation",
+"func": "test_cannot_assign_nonexistent_coordinator",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestAssignmentValidation",
+"func": "test_cannot_assign_to_non_coordinator_role",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestAssignmentValidation",
+"func": "test_missing_coordinator_id_is_rejected",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestLeadCanAssign",
+"func": "test_assigned_event_leaves_unassigned_queue",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestLeadCanAssign",
+"func": "test_assignment_is_recorded_in_event_history",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestLeadCanAssign",
+"func": "test_lead_can_assign_coordinator_to_unassigned_event",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestLeadCanAssign",
+"func": "test_only_lead_can_assign",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_assignment.py",
+"owner": "TestLeadCanAssign",
+"func": "test_organiser_cannot_assign",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestLeadCanReassign",
+"func": "test_event_can_be_reassigned_multiple_times",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestLeadCanReassign",
+"func": "test_lead_can_reassign_event_to_different_coordinator",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestLeadCanReassign",
+"func": "test_reassigned_event_is_visible_to_new_coordinator",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestLeadCanReassign",
+"func": "test_reassigned_event_not_visible_to_previous_coordinator",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestLeadCanReassign",
+"func": "test_reassignment_doesnt_change_event_status",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestLeadCanReassign",
+"func": "test_reassignment_is_recorded_in_history",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestReassignmentAuthorization",
+"func": "test_only_lead_can_reassign",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestReassignmentAuthorization",
+"func": "test_organiser_cannot_reassign",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestReassignmentValidation",
+"func": "test_cannot_reassign_nonexistent_event",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestReassignmentValidation",
+"func": "test_cannot_reassign_to_non_coordinator_role",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestReassignmentValidation",
+"func": "test_cannot_reassign_to_nonexistent_coordinator",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestReassignmentValidation",
+"func": "test_cannot_reassign_unassigned_event",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestReassignmentValidation",
+"func": "test_missing_coordinator_id_is_rejected",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_reassignment.py",
+"owner": "TestReassignmentValidation",
+"func": "test_reassign_to_same_coordinator_is_idempotent",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_rls.py",
+"owner": "TestLeadCanViewAll",
+"func": "test_lead_can_view_all_events_including_unassigned",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_rls.py",
+"owner": "TestLeadCanViewAll",
+"func": "test_lead_can_view_events_assigned_to_others",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_rls.py",
+"owner": "TestLeadCanViewAll",
+"func": "test_regular_coordinator_cannot_view_events_assigned_to_others",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lead_rls.py",
+"owner": "TestLeadCanViewAll",
+"func": "test_regular_coordinator_cannot_view_unassigned_events",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_lifecycle_us4_5.py",
+"owner": "",
+"func": "test_completion_refusals_leave_event_unchanged",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_lifecycle_us4_5.py",
+"owner": "",
+"func": "test_completion_time_boundary",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_lifecycle_us4_5.py",
+"owner": "",
+"func": "test_only_assigned_coordinator_completes_ended_confirmed_event",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_lifecycle_us4_5.py",
+"owner": "",
+"func": "test_other_coordinator_cannot_complete",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_lifecycle_us4_5.py",
+"owner": "",
+"func": "test_real_store_pairs_last_review_note_with_that_request",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_lifecycle_us4_5.py",
+"owner": "",
+"func": "test_real_store_uses_atomic_assignment_rpc",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_lifecycle_us4_5.py",
+"owner": "",
+"func": "test_real_store_uses_atomic_booking_and_completion_rpcs",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_lock_confirmed_us5_3.py",
+"owner": "TestBeforeConfirmed",
+"func": "test_every_earlier_status_still_edits",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_lock_confirmed_us5_3.py",
+"owner": "TestConfirmedIsLocked",
+"func": "test_direct_edit_on_confirmed_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_lock_confirmed_us5_3.py",
+"owner": "TestTheChangeProcess",
+"func": "test_the_organiser_can_still_request_a_change",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_new_role_auth.py",
+"owner": "TestUS14AccessEnforcement",
+"func": "test_safety_officer_blocked_from_coordinator_routes",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_new_role_auth.py",
+"owner": "TestUS14LoginRouting",
+"func": "test_safety_officer_home_route_is_safety_review",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_notification_store.py",
+"owner": "TestReading",
+"func": "test_a_missing_notice_is_none",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_notification_store.py",
+"owner": "TestReading",
+"func": "test_a_recipient_sees_only_their_own_unread_first_then_newest",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_notification_store.py",
+"owner": "TestWriting",
+"func": "test_a_status_notice_records_the_status_it_reports",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_notification_store.py",
+"owner": "TestWriting",
+"func": "test_an_equipment_notice_points_at_its_request_and_has_no_status",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_notification_store.py",
+"owner": "TestWriting",
+"func": "test_reading_a_notice_stamps_when",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_notifications.py",
+"owner": "TestAccess",
+"func": "test_tc_n14_unknown_ids_are_404",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_notifications.py",
+"owner": "TestAccess",
+"func": "test_tc_n15_other_roles_are_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_notifications.py",
+"owner": "TestListAndReadState",
+"func": "test_tc_n12_a_read_notice_drops_below_unread_ones",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_notifications.py",
+"owner": "TestNotificationIsCreated",
+"func": "test_tc_n07_a_failed_notice_does_not_fail_the_decision",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_notifications.py",
+"owner": "TestUnits",
+"func": "test_tc_n19_row_mapping",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_notifications_us10_3.py",
+"owner": "TestSubmission",
+"func": "test_a_failed_notice_does_not_fail_the_submission",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_notifications_us10_3.py",
+"owner": "TestSubmission",
+"func": "test_an_unreadable_directory_does_not_fail_the_submission",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_notifications_us10_3.py",
+"owner": "TestTheLeadsList",
+"func": "test_the_lead_reads_it_and_marks_it_read",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestAccess",
+"func": "test_the_old_coordinator_loses_the_event_and_the_new_one_gains_it",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestActiveEvents",
+"func": "test_a_finished_event_is_refused",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestActiveEvents",
+"func": "test_an_event_changed_since_it_was_read_is_refused",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestActiveEvents",
+"func": "test_any_active_event_can_be_reassigned",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestActiveEvents",
+"func": "test_the_same_coordinator_changes_nothing",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestNotices",
+"func": "test_both_coordinators_are_told_and_nobody_else",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestNotices",
+"func": "test_the_new_coordinator_hears_of_bookings_that_need_replacing",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestTheInMemoryStore",
+"func": "test_an_event_that_is_gone_is_stale",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestTheInMemoryStore",
+"func": "test_first_assignment_no_longer_reassigns",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestTheInMemoryStore",
+"func": "test_it_refuses_what_the_database_refuses",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestTheLog",
+"func": "test_a_coordinator_without_a_name_is_given_by_id",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestTheLog",
+"func": "test_only_a_reassignment_entry_is_labelled_so",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestTheLog",
+"func": "test_who_when_and_the_previous_coordinator",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestTheRealStore",
+"func": "test_a_refusal_is_stale",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reassignment_us8_4.py",
+"owner": "TestTheRealStore",
+"func": "test_it_reassigns_through_the_database_function",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestArrangements",
+"func": "test_a_booking_that_no_longer_fits_is_flagged_not_cancelled",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestArrangements",
+"func": "test_a_booking_that_still_fits_keeps_its_status",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestArrangements",
+"func": "test_a_flagged_booking_holds_back_the_safety_check",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestBackToPlanning",
+"func": "test_a_rejected_change_leaves_it_confirmed",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestBackToPlanning",
+"func": "test_accepted_attendance_change_moves_it_to_planning",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestBackToPlanning",
+"func": "test_every_important_field_does_it",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestBackToPlanning",
+"func": "test_the_move_is_recorded_with_who_when_and_why",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestFreshSafetyCheck",
+"func": "test_confirming_again_takes_the_new_approval",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestFreshSafetyCheck",
+"func": "test_resending_needs_a_new_decision_not_the_earlier_one",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestFreshSafetyCheck",
+"func": "test_the_safety_officer_cannot_confirm_it_from_planning",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestNotices",
+"func": "test_organiser_and_coordinator_are_told_why",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestNotices",
+"func": "test_the_organiser_still_hears_the_change_was_accepted",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestRegistrations",
+"func": "test_registrations_are_kept_and_new_ones_pause",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestRoutineChange",
+"func": "test_accepted_title_only_change_stays_confirmed",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestRules",
+"func": "test_confirmed_to_planning_is_allowed",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestRules",
+"func": "test_no_important_field_means_no_reason",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestRules",
+"func": "test_only_an_important_change_to_a_confirmed_event_reopens",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestRules",
+"func": "test_planning_still_cannot_jump_to_confirmed",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_reconfirm_us11_3.py",
+"owner": "TestRules",
+"func": "test_the_reason_names_every_important_field_in_form_order",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestAnAttendeesRegistrations",
+"func": "test_it_reads_their_rows_newest_first_with_the_event",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestAnAttendeesRegistrations",
+"func": "test_the_embedded_event_is_read_whether_object_or_list",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestAnEventsRegistrations",
+"func": "test_it_reads_the_events_rows_in_the_order_they_were_made",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestOpenEvents",
+"func": "test_an_attendees_own_registrations",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestOpenEvents",
+"func": "test_an_event_not_open_is_none",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestOpenEvents",
+"func": "test_it_asks_for_confirmed_events_taking_registrations_soonest_first",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestOpenEvents",
+"func": "test_nothing_open_asks_nothing_more",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestOpenEvents",
+"func": "test_one_open_event_is_the_same_query_for_one_id",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestReadingTheSettings",
+"func": "test_an_event_never_opened_reads_as_off_with_no_capacity",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestRegistering",
+"func": "test_an_answer_the_route_should_have_prevented_is_a_bug",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestRegistering",
+"func": "test_each_refusal_is_an_outcome_not_an_error",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestRegistering",
+"func": "test_it_calls_the_function_and_reads_the_registration_back",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestSavingTheSettings",
+"func": "test_anything_but_saved_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestSavingTheSettings",
+"func": "test_below_the_places_taken_says_how_many",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestSavingTheSettings",
+"func": "test_it_calls_the_function_with_every_argument",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestWithdrawing",
+"func": "test_an_answer_it_does_not_know_is_a_bug",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestWithdrawing",
+"func": "test_each_refusal_is_an_outcome_not_an_error",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_store.py",
+"owner": "TestWithdrawing",
+"func": "test_it_calls_the_function_and_reads_the_registration_back",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestCapacityIsEnforced",
+"func": "test_closing_between_the_check_and_the_write_is_not_open",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestCapacityIsEnforced",
+"func": "test_raising_the_capacity_takes_registrations_again",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestCapacityIsEnforced",
+"func": "test_the_last_place_is_taken_and_the_next_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestCapacityIsEnforced",
+"func": "test_turning_registration_off_stops_new_ones_and_keeps_the_old",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestCapacityIsEnforced",
+"func": "test_two_at_once_for_the_last_place_only_one_gets_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestEndToEnd",
+"func": "test_opened_in_planning_listed_once_confirmed_then_filled",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestFullNotice",
+"func": "test_a_failed_read_for_the_notice_does_not_undo_it_either",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestFullNotice",
+"func": "test_a_notice_that_cannot_be_written_never_undoes_the_registration",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestFullNotice",
+"func": "test_a_refused_registration_says_nothing_new",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestFullNotice",
+"func": "test_both_are_told_once_when_the_last_place_is_taken",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestFullNotice",
+"func": "test_both_read_it_on_their_notifications_page",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestFullNotice",
+"func": "test_filling_again_after_more_places_tells_them_again",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestFullNotice",
+"func": "test_one_place_reads_in_the_singular",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestFullNotice",
+"func": "test_with_no_coordinator_the_organiser_is_still_told",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestOnePerAttendee",
+"func": "test_already_registered_is_said_before_full",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestOnePerAttendee",
+"func": "test_registering_twice_is_refused_with_the_reason",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestRegistering",
+"func": "test_a_name_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestRegistering",
+"func": "test_an_attendee_registers_with_a_name_and_an_email",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestRegistering",
+"func": "test_an_email_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestRegistering",
+"func": "test_an_email_that_cannot_be_one_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestRegistering",
+"func": "test_an_unknown_event_is_not_open",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestRegistering",
+"func": "test_missing_fields_are_the_same_sentences",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestRegistering",
+"func": "test_the_name_is_checked_before_the_email",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestRegistering",
+"func": "test_what_was_typed_is_trimmed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTheAttendeeRole",
+"func": "test_an_attendee_signs_in_and_lands_on_the_open_events",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTheAttendeeRole",
+"func": "test_each_permission_belongs_to_one_role",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTheCapacity",
+"func": "test_an_empty_box_is_no_capacity_so_the_attendance_is_used",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTheCapacity",
+"func": "test_anything_but_a_whole_number_of_at_least_one_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTheCapacity",
+"func": "test_exactly_the_places_taken_is_allowed_and_leaves_none",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTheCapacity",
+"func": "test_it_cannot_go_below_the_places_taken",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTheCapacity",
+"func": "test_one_more_than_the_column_holds_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTheCapacity",
+"func": "test_whole_numbers_are_taken_however_they_are_sent",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTheCapacity",
+"func": "test_with_no_attendance_a_capacity_must_be_given",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTheRule",
+"func": "test_not_before_approval",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTurningRegistrationOn",
+"func": "test_anyone_who_can_open_the_event_reads_the_settings",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTurningRegistrationOn",
+"func": "test_it_can_be_opened_before_the_event_is_confirmed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTurningRegistrationOn",
+"func": "test_the_assigned_coordinator_turns_it_on_with_a_capacity",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTurningRegistrationOn",
+"func": "test_the_capacity_defaults_to_the_expected_attendance",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestTurningRegistrationOn",
+"func": "test_turning_it_off_keeps_the_capacity_for_next_time",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_a_confirmed_event_never_opened_is_not_listed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_a_confirmed_event_taking_registrations_is_listed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_an_attendee_reaches_none_of_the_internal_routes",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_an_unknown_event_is_not_open",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_anything_else_is_not_listed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_nothing_of_the_planning_is_shown",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_only_attendees_use_the_attendee_routes",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_places_left_count_down_and_a_full_event_stays_listed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_signed_out_is_asked_to_sign_in",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_soonest_first",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhatAttendeesSee",
+"func": "test_the_venues_are_its_confirmed_bookings_once_each",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhichEvents",
+"func": "test_a_cancelled_event_is_read_only",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhichEvents",
+"func": "test_a_draft_is_not_found_by_a_coordinator",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhichEvents",
+"func": "test_an_unknown_event_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhichEvents",
+"func": "test_not_before_approval",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhichEvents",
+"func": "test_not_once_it_is_over",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhoMaySetIt",
+"func": "test_a_coordinator_not_assigned_to_the_event_gets_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhoMaySetIt",
+"func": "test_no_other_role_may_change_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhoMaySetIt",
+"func": "test_signed_out_is_asked_to_sign_in",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_1.py",
+"owner": "TestWhoMaySetIt",
+"func": "test_the_denial_names_who_may",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestEndToEnd",
+"func": "test_register_withdraw_and_register_again",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestMyRegistrations",
+"func": "test_a_withdrawn_registration_is_listed_as_withdrawn",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestMyRegistrations",
+"func": "test_an_attendee_sees_their_registration",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestMyRegistrations",
+"func": "test_none_is_an_empty_list",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestMyRegistrations",
+"func": "test_nothing_of_the_planning_is_shown",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestMyRegistrations",
+"func": "test_one_entry_per_event_where_they_stand_now",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestMyRegistrations",
+"func": "test_only_attendees_have_registrations_to_see",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestMyRegistrations",
+"func": "test_only_your_own",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestMyRegistrations",
+"func": "test_signed_out_is_asked_to_sign_in",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestMyRegistrations",
+"func": "test_the_event_details_are_the_current_ones",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestRegisteringAgain",
+"func": "test_a_withdrawn_attendee_registers_again",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestRegisteringAgain",
+"func": "test_not_once_registration_is_turned_off",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestRegisteringAgain",
+"func": "test_not_once_the_places_have_gone",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestRegisteringAgain",
+"func": "test_taking_the_last_place_again_tells_them_it_is_full",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestTheRule",
+"func": "test_an_event_with_no_start_recorded_has_not_started",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestTheRule",
+"func": "test_not_for_an_event_that_is_gone",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestTheRule",
+"func": "test_one_the_events_cancellation_ended_is_closed_not_withdrawn",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_an_attendee_withdraws_before_the_event_starts",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_an_event_no_longer_going_ahead_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_an_unknown_registration_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_once_the_event_has_started_it_is_too_late",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_registration_turned_off_still_lets_you_withdraw",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_someone_elses_registration_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_the_freed_place_can_be_taken_by_someone_else",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_the_places_left_go_up_by_one",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_the_registration_is_kept_as_history",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_up_to_the_minute_before_it_starts",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_2.py",
+"owner": "TestWithdrawing",
+"func": "test_withdrawing_twice_is_refused_with_the_reason",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestAttendeesSeeOnlyTheirOwn",
+"func": "test_an_attendee_cannot_open_an_events_list",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestAttendeesSeeOnlyTheirOwn",
+"func": "test_registering_answers_with_your_own_registration_only",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestAttendeesSeeOnlyTheirOwn",
+"func": "test_someone_elses_registration_cannot_be_withdrawn",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestAttendeesSeeOnlyTheirOwn",
+"func": "test_the_open_events_carry_no_one_elses_details",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestAttendeesSeeOnlyTheirOwn",
+"func": "test_their_own_list_has_only_their_registrations",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhatTheListShows",
+"func": "test_a_full_event_has_no_places_left",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhatTheListShows",
+"func": "test_a_withdrawn_registration_is_listed_and_not_counted",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhatTheListShows",
+"func": "test_an_event_never_opened_has_no_capacity_and_nobody",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhatTheListShows",
+"func": "test_each_person_with_the_count_against_the_capacity",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhatTheListShows",
+"func": "test_in_the_order_they_registered",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhatTheListShows",
+"func": "test_only_these_fields_for_each_person",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhatTheListShows",
+"func": "test_registrations_for_other_events_are_not_listed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhatTheListShows",
+"func": "test_someone_who_registered_again_is_listed_once",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhatTheListShows",
+"func": "test_turning_registration_off_keeps_the_list",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhoMaySeeTheList",
+"func": "test_a_coordinator_cannot_see_a_draft",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhoMaySeeTheList",
+"func": "test_a_coordinator_not_assigned_is_told_it_does_not_exist",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhoMaySeeTheList",
+"func": "test_an_unknown_event_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhoMaySeeTheList",
+"func": "test_another_organiser_is_told_it_does_not_exist",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhoMaySeeTheList",
+"func": "test_no_other_role_sees_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhoMaySeeTheList",
+"func": "test_signed_out_is_asked_to_sign_in",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhoMaySeeTheList",
+"func": "test_the_denial_names_who_may",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhoMaySeeTheList",
+"func": "test_the_organiser_sees_their_own_draft_with_nobody_on_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_registration_us20_3.py",
+"owner": "TestWhoMaySeeTheList",
+"func": "test_the_owning_organiser_and_the_assigned_coordinator_see_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "",
+"func": "test_a_custom_unavailability_reason_is_only_for_other",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "",
+"func": "test_a_guarded_booking_for_an_event_that_is_gone_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "",
+"func": "test_a_zero_length_booking_needs_no_open_window",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestDenials",
+"func": "test_a_permission_no_role_holds_says_so",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestNotices",
+"func": "test_a_cancellation_still_completes_when_the_directory_cannot_be_read",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestNotices",
+"func": "test_a_status_with_no_notice_writes_nothing",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestNotices",
+"func": "test_an_attendee_who_cancelled_the_event_is_not_told_about_it",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestRegistration",
+"func": "test_a_name_or_email_over_255_characters_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestRegistration",
+"func": "test_a_registration_whose_event_is_gone_carries_no_event",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestRegistration",
+"func": "test_no_full_notice_for_an_event_that_is_gone",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestRegistration",
+"func": "test_settings_for_an_event_that_is_gone_are_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestRegistration",
+"func": "test_settings_that_lost_a_race_are_a_conflict",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestReplacementVenues",
+"func": "test_a_replacement_reads_back_the_booking_the_database_created",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestReplacementVenues",
+"func": "test_a_replacement_that_cannot_be_read_back_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestReplacementVenues",
+"func": "test_replacing_a_booking_id_that_is_not_a_number_is_not_found",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestReplacementVenues",
+"func": "test_searching_from_a_booking_id_that_is_not_a_number_is_not_found",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestReplacementVenues",
+"func": "test_the_stand_in_refuses_an_unknown_booking_too",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestSessions",
+"func": "test_a_session_whose_account_was_removed_is_void",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestVenueWrites",
+"func": "test_adding_a_venue_with_a_taken_name_is_a_duplicate",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_remaining_guards.py",
+"owner": "TestVenueWrites",
+"func": "test_any_other_write_failure_is_raised_as_it_is",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_replacement_venue_us14_5.py",
+"owner": "",
+"func": "test_bad_filters_are_rejected",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_replacement_venue_us14_5.py",
+"owner": "",
+"func": "test_commit_race_returns_rule_error_without_partial_booking",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_replacement_venue_us14_5.py",
+"owner": "",
+"func": "test_conflicts_and_blackouts_excluded",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_replacement_venue_us14_5.py",
+"owner": "",
+"func": "test_filters_combine_with_same_time_availability",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_replacement_venue_us14_5.py",
+"owner": "",
+"func": "test_invalid_or_original_venue_cannot_replace",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_replacement_venue_us14_5.py",
+"owner": "",
+"func": "test_replacement_copies_needs_and_preserves_history_and_other_bookings",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_replacement_venue_us14_5.py",
+"owner": "",
+"func": "test_supabase_atomic_rpc_errors",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_replacement_venue_us14_5.py",
+"owner": "",
+"func": "test_unassigned_coordinator_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestHistoryKind",
+"func": "test_only_a_return_from_the_safety_check_is_labelled",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestInMemoryStore",
+"func": "test_decide_refuses_an_event_no_longer_pending",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestInMemoryStore",
+"func": "test_send_refuses_an_event_that_moved_or_is_not_theirs",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestOnlyWayToConfirmed",
+"func": "test_end_to_end_from_draft_to_confirmed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestOnlyWayToConfirmed",
+"func": "test_planning_no_longer_skips_to_confirmed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestPermissions",
+"func": "test_coordinators_send_and_safety_officers_decide",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestReadinessRule",
+"func": "test_a_confirmed_booking_flagged_for_conflict_blocks_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestReadinessRule",
+"func": "test_a_live_hold_blocks_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestReadinessRule",
+"func": "test_a_pending_change_request_blocks_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestReadinessRule",
+"func": "test_an_equipment_line_still_requested_blocks_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestReadinessRule",
+"func": "test_cancelled_rejected_and_expired_bookings_are_ignored",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestReadinessRule",
+"func": "test_inactive_bookings_do_not_count_as_a_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestReadinessRule",
+"func": "test_no_bookings_at_all_is_not_ready",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestReadinessRule",
+"func": "test_venues_are_checked_before_equipment",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSafetyOfficerDecision",
+"func": "test_a_check_decided_twice_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSafetyOfficerDecision",
+"func": "test_a_returned_event_can_be_sent_again_and_needs_a_fresh_decision",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSafetyOfficerDecision",
+"func": "test_an_event_not_pending_cannot_be_decided",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSafetyOfficerDecision",
+"func": "test_only_the_safety_officer_decides",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSafetyOfficerDecision",
+"func": "test_sending_back_needs_a_note",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSafetyOfficerDecision",
+"func": "test_sending_back_returns_it_to_planning_with_the_note",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSafetyOfficerDecision",
+"func": "test_the_note_has_a_limit",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSafetyOfficerQueue",
+"func": "test_the_queue_is_the_safety_officers",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSafetyOfficerQueue",
+"func": "test_the_safety_officer_has_no_events_list",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSafetyOfficerQueue",
+"func": "test_the_safety_officer_sees_nothing_else",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSendForSafetyCheck",
+"func": "test_a_race_lost_in_the_store_is_reported_as_stale",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSendForSafetyCheck",
+"func": "test_a_refused_send_names_the_reason_and_changes_nothing",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSendForSafetyCheck",
+"func": "test_another_coordinators_event_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSendForSafetyCheck",
+"func": "test_only_a_coordinator_may_send",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSendForSafetyCheck",
+"func": "test_only_planning_moves_to_pending_safety_check",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSendForSafetyCheck",
+"func": "test_readiness_says_ready",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSendForSafetyCheck",
+"func": "test_readiness_says_what_is_outstanding",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSendForSafetyCheck",
+"func": "test_sending_twice_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSendForSafetyCheck",
+"func": "test_the_assigned_coordinator_sends_a_ready_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSendForSafetyCheck",
+"func": "test_unknown_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestStatusLabel",
+"func": "test_the_status_round_trips_through_the_api",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSupabaseStore",
+"func": "test_decide_uses_the_atomic_rpc",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_check_us4_4.py",
+"owner": "TestSupabaseStore",
+"func": "test_send_uses_the_atomic_rpc",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestApprove",
+"func": "test_an_approval_flags_nothing",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestDecisionRecord",
+"func": "test_a_flagged_arrangement_that_has_gone_is_still_described",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestDecisionRecord",
+"func": "test_another_coordinator_cannot_read_them",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestDecisionRecord",
+"func": "test_decisions_come_newest_first_with_their_flags",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestDecisionRecord",
+"func": "test_nobody_else_reads_them",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestFreshDecision",
+"func": "test_a_check_time_that_is_not_a_time_is_a_bad_request",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestFreshDecision",
+"func": "test_a_returned_event_comes_back_undecided",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestInMemoryStore",
+"func": "test_refuses_a_later_stay",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestInMemoryStore",
+"func": "test_refuses_a_missing_or_undecidable_event",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestNotices",
+"func": "test_no_flags_says_nothing_about_flags",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestReReview",
+"func": "test_a_flag_is_resolved_once",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestReReview",
+"func": "test_a_race_lost_in_the_store_is_reported",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestReReview",
+"func": "test_an_unknown_flag",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestReReview",
+"func": "test_only_while_planning",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestReReview",
+"func": "test_open_flags_keep_the_event_from_being_sent_again",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestReject",
+"func": "test_a_reason_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestReject",
+"func": "test_a_rejection_flags_nothing",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestReject",
+"func": "test_back_to_planning_with_the_reason",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestRequestChanges",
+"func": "test_a_booking_not_in_the_review_cannot_be_flagged",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestRequestChanges",
+"func": "test_a_note_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestRequestChanges",
+"func": "test_back_to_planning_with_the_note",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestRequestChanges",
+"func": "test_equipment_not_in_the_review_cannot_be_flagged",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestRequestChanges",
+"func": "test_the_affected_arrangements_are_flagged",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestRequestChanges",
+"func": "test_the_assigned_coordinator_is_told",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestRequestChanges",
+"func": "test_the_note_has_a_limit",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestRequestChanges",
+"func": "test_us4_4s_return_route_is_the_same_move",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestRules",
+"func": "test_the_note_has_a_limit_whatever_the_outcome",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestSupabaseStore",
+"func": "test_a_joined_name_may_come_as_a_list_or_not_at_all",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestSupabaseStore",
+"func": "test_a_refused_record_is_stale",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestSupabaseStore",
+"func": "test_get_flag",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestSupabaseStore",
+"func": "test_list_is_newest_first",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestSupabaseStore",
+"func": "test_record_is_one_rpc",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestSupabaseStore",
+"func": "test_resolve_only_an_open_flag_on_its_event",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestWhoDecides",
+"func": "test_a_check_decided_twice_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestWhoDecides",
+"func": "test_a_race_lost_in_the_store_is_reported",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestWhoDecides",
+"func": "test_an_unknown_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestWhoDecides",
+"func": "test_only_the_safety_officer",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_decision_us17_2.py",
+"owner": "TestWhoDecides",
+"func": "test_only_while_pending",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestBuildReview",
+"func": "test_a_closure_ending_today_still_restricts",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestBuildReview",
+"func": "test_a_venue_record_that_has_gone_still_shows_the_booking",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestBuildReview",
+"func": "test_equipment_is_passed_through_in_order",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestBuildReview",
+"func": "test_over_capacity_boundary",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestDetailView",
+"func": "test_each_booked_venue_with_capacity_layout_and_accessibility",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestDetailView",
+"func": "test_known_restrictions_include_closures_not_yet_over",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestDetailView",
+"func": "test_no_equipment_and_no_venues_are_answered_as_empty",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestDetailView",
+"func": "test_only_reserved_equipment_is_listed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestDetailView",
+"func": "test_several_venues_and_only_the_ones_actually_booked",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestDetailView",
+"func": "test_the_event_and_its_accessibility_requirements",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestQueue",
+"func": "test_an_empty_queue",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestQueue",
+"func": "test_only_pending_events_oldest_first",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestQueue",
+"func": "test_ties_keep_a_stable_order",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestQueue",
+"func": "test_waiting_time_counts_from_the_latest_send",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestQueue",
+"func": "test_without_a_recorded_move_it_falls_back_to_the_last_change",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestReadOnly",
+"func": "test_reading_the_review_changes_nothing",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestReadOnly",
+"func": "test_the_review_accepts_no_writes",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestReservedEquipmentStore",
+"func": "test_in_memory_keeps_reserved_lines_for_the_event_oldest_first",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestReservedEquipmentStore",
+"func": "test_supabase_answers_nothing_as_an_empty_list",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestReservedEquipmentStore",
+"func": "test_supabase_reads_reserved_lines_for_one_event",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestSafetyOfficerOnly",
+"func": "test_an_unknown_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestSafetyOfficerOnly",
+"func": "test_every_other_role_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestSafetyOfficerOnly",
+"func": "test_only_while_the_event_waits_for_them",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_safety_review_us17_1.py",
+"owner": "TestSafetyOfficerOnly",
+"func": "test_signed_out_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_security.py",
+"owner": "",
+"func": "test_a_token_is_url_safe_so_it_survives_a_header_and_a_query_string",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_security.py",
+"owner": "",
+"func": "test_tokens_are_unique_and_long_enough_to_be_unguessable",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_seed_equipment.py",
+"owner": "",
+"func": "test_seed_creates_ten_varied_items_and_skips_existing",
+"why": "only test kept for its file"
+},
+{
+"file": "tests/test_sessions.py",
+"owner": "",
+"func": "test_a_session_expires_once_the_idle_window_passes",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_sessions.py",
+"owner": "",
+"func": "test_a_session_survives_inactivity_shorter_than_the_timeout",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_sessions.py",
+"owner": "",
+"func": "test_active_count_ignores_sessions_that_have_timed_out",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_sessions.py",
+"owner": "",
+"func": "test_an_expired_session_is_reported_once_then_forgotten",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_sessions.py",
+"owner": "",
+"func": "test_an_unknown_token_is_unknown_rather_than_expired",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_sessions.py",
+"owner": "",
+"func": "test_each_session_gets_its_own_token",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_sessions.py",
+"owner": "",
+"func": "test_revoke_all_ends_every_session_for_one_user_only",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_sessions.py",
+"owner": "",
+"func": "test_revoking_ends_the_session_immediately",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_sessions.py",
+"owner": "",
+"func": "test_revoking_one_session_leaves_the_users_other_sessions_alone",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_sessions.py",
+"owner": "",
+"func": "test_use_slides_the_window_so_an_active_session_stays_alive",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestCapacity",
+"func": "test_far_over_capacity_says_both_numbers",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestEveryReasonAtOnce",
+"func": "test_all_four_conditions_are_reported_in_the_storys_order",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestFacilitiesAndAccessibility",
+"func": "test_each_missing_facility_is_its_own_reason",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestLayout",
+"func": "test_a_layout_is_matched_whole_not_as_part_of_another",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestLayout",
+"func": "test_layouts_compare_without_case_or_extra_spaces",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestListedItems",
+"func": "test_a_quoted_element_may_hold_a_comma_or_an_escaped_quote",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestListedItems",
+"func": "test_array_literal_venues_are_assessed_like_any_other",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestOperatingHours",
+"func": "test_exactly_the_hours_is_suitable",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestOperatingHours",
+"func": "test_hours_not_recorded_are_not_held_against_the_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestOperatingHours",
+"func": "test_hours_that_cannot_be_read_are_noted_not_held_against_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestOperatingHours",
+"func": "test_running_overnight_is_not_suitable_and_says_how_to_book_it",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestParseHours",
+"func": "test_23_59_closes_at_midnight",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestParseHours",
+"func": "test_one_window_every_day",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestParseHours",
+"func": "test_what_cannot_be_read_is_none",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestTheStorysTestCases",
+"func": "test_headcount_equal_to_capacity_is_suitable",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestTheStorysTestCases",
+"func": "test_headcount_one_over_capacity_is_not_suitable",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_suitability.py",
+"owner": "TestWithinHours",
+"func": "test_a_two_day_booking_at_an_all_day_venue",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_supabase_config.py",
+"owner": "",
+"func": "test_a_blank_credential_counts_as_missing",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_supabase_config.py",
+"owner": "",
+"func": "test_a_missing_credential_names_itself_and_says_where_to_put_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_supabase_config.py",
+"owner": "",
+"func": "test_a_trailing_slash_on_the_url_is_dropped",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_supabase_config.py",
+"owner": "",
+"func": "test_a_user_client_carries_the_callers_token",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_supabase_config.py",
+"owner": "",
+"func": "test_configured_reports_rather_than_raises",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_supabase_config.py",
+"owner": "",
+"func": "test_each_anonymous_client_is_its_own",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_supabase_config.py",
+"owner": "",
+"func": "test_the_admin_client_is_cached_and_droppable",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_supabase_config.py",
+"owner": "",
+"func": "test_the_database_url_is_optional",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_unassigned_queue.py",
+"owner": "TestUnassignedQueueAccess",
+"func": "test_lead_can_list_unassigned_events",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_unassigned_queue.py",
+"owner": "TestUnassignedQueueAccess",
+"func": "test_organiser_cannot_access_unassigned_queue",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_unassigned_queue.py",
+"owner": "TestUnassignedQueueAccess",
+"func": "test_regular_coordinator_cannot_access_unassigned_queue",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_unassigned_queue.py",
+"owner": "TestUnassignedQueueFiltering",
+"func": "test_assigned_events_not_in_unassigned_queue",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_unassigned_queue.py",
+"owner": "TestUnassignedQueueFiltering",
+"func": "test_unassigned_queue_oldest_first",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_unassigned_queue.py",
+"owner": "TestUnassignedQueueFiltering",
+"func": "test_unassigned_queue_only_shows_submitted_status",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_user_store.py",
+"owner": "TestLookups",
+"func": "test_a_user_is_found_by_id",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_user_store.py",
+"owner": "TestLookups",
+"func": "test_the_directory_is_ordered_by_role_then_name_and_skips_unmodelled_roles",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_user_store.py",
+"owner": "TestLookups",
+"func": "test_the_module_reads_through_whichever_store_is_installed",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_user_store.py",
+"owner": "TestSigningIn",
+"func": "test_a_proven_identity_is_looked_up_by_the_address_auth_returns",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_user_store.py",
+"owner": "TestSigningIn",
+"func": "test_an_answer_with_no_user_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_user_store.py",
+"owner": "TestSigningIn",
+"func": "test_every_auth_refusal_is_the_same_none",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_users.py",
+"owner": "TestAuthenticating",
+"func": "test_a_credential_with_no_profile_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_users.py",
+"owner": "TestAuthenticating",
+"func": "test_a_wrong_password_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_users.py",
+"owner": "TestAuthenticating",
+"func": "test_an_address_with_no_credential_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_users.py",
+"owner": "TestAuthenticating",
+"func": "test_the_address_is_matched_case_insensitively",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_users.py",
+"owner": "TestAuthenticating",
+"func": "test_the_right_password_returns_the_profile",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_users.py",
+"owner": "TestReadingARow",
+"func": "test_a_modelled_role_becomes_a_user",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_users.py",
+"owner": "TestReadingARow",
+"func": "test_an_unmodelled_role_is_skipped_not_raised",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_users.py",
+"owner": "TestReadingARow",
+"func": "test_attendee_became_a_modelled_role_with_us20_1",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_users.py",
+"owner": "TestReadingARow",
+"func": "test_one_unusable_row_does_not_take_the_directory_with_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_users.py",
+"owner": "TestReadingARow",
+"func": "test_venue_staff_became_a_modelled_role_with_us9_1",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestPickingTheRange",
+"func": "test_a_range_that_cannot_be_used_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestPickingTheRange",
+"func": "test_to_alone_runs_the_14_days_before_it",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheDefaultRange",
+"func": "test_it_is_the_next_14_days_today_included",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheOccupiedWindow",
+"func": "test_a_booking_spans_setup_to_turnaround",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheRange",
+"func": "test_one_whose_turnaround_ends_at_midnight_on_the_first_day_is_not",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheRange",
+"func": "test_setup_alone_can_bring_a_booking_into_the_range",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheRoute",
+"func": "test_a_booking_entry_carries_both_windows",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheRoute",
+"func": "test_a_chosen_range_is_used",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheRoute",
+"func": "test_a_coordinator_sees_only_their_own_events_titles",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheRoute",
+"func": "test_a_hold_says_when_it_expires",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheRoute",
+"func": "test_a_role_without_the_catalogue_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheRoute",
+"func": "test_an_unknown_venue_is_404",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheRoute",
+"func": "test_venue_staff_see_every_events_title",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestTheRoute",
+"func": "test_with_no_range_it_shows_the_next_14_days",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestWhatIsListed",
+"func": "test_a_booking_whose_times_cannot_be_read_is_left_out",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestWhatIsListed",
+"func": "test_a_hold_past_its_expiry_is_hidden_before_the_sweep_marks_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestWhatIsListed",
+"func": "test_another_venues_records_are_not_listed",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_availability_us12_3.py",
+"owner": "TestWhatIsListed",
+"func": "test_what_does_not_hold_the_venue_is_hidden",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestCancellingOneBooking",
+"func": "test_everything_but_the_status_and_cancellation_is_as_it_was",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestCancellingOneBooking",
+"func": "test_the_assigned_coordinator_cancels_a_booking",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestCancellingOneBooking",
+"func": "test_the_cancellation_is_stored",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestCancellingOneBooking",
+"func": "test_the_cancelled_booking_stays_on_the_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestCancellingOneBooking",
+"func": "test_the_owning_organiser_sees_who_cancelled_and_why",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestCancellingOneBooking",
+"func": "test_who_when_and_why_are_kept_on_the_booking",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestCancellingTwice",
+"func": "test_a_second_cancel_is_refused_with_the_reason",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestCancellingTwice",
+"func": "test_losing_a_race_to_another_cancel_is_refused_not_crashed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestCancellingTwice",
+"func": "test_the_first_cancellation_is_kept",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestCancellingTwice",
+"func": "test_the_status_is_checked_before_the_reason",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestOtherBookingsAreUnchanged",
+"func": "test_bookings_on_other_events_are_untouched",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestOtherBookingsAreUnchanged",
+"func": "test_only_the_cancelled_booking_changes",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestRefusals",
+"func": "test_a_blank_reason_is_no_reason",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestRefusals",
+"func": "test_a_booking_on_another_event_is_not_found_through_this_one",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestRefusals",
+"func": "test_a_booking_that_is_not_there_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestRefusals",
+"func": "test_a_missing_event_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestRefusals",
+"func": "test_a_non_numeric_booking_id_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestRefusals",
+"func": "test_a_reason_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestRefusals",
+"func": "test_an_overlong_reason_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestTheEventIsUnchanged",
+"func": "test_cancelling_the_last_booking_still_leaves_the_event_alone",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestTheEventIsUnchanged",
+"func": "test_the_event_status_is_unchanged",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestTheVenueIsFreed",
+"func": "test_a_cancelled_booking_does_not",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestTheVenueIsFreed",
+"func": "test_a_requested_booking_holds_the_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestTheVenueIsFreed",
+"func": "test_only_requested_held_and_confirmed_can_hold_a_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestTheVenueIsFreed",
+"func": "test_the_same_venue_and_slot_can_be_requested_again",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestWhoMayCancel",
+"func": "test_a_booking_on_a_closed_event_can_still_be_cancelled",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestWhoMayCancel",
+"func": "test_a_cancelled_event_is_read_only",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestWhoMayCancel",
+"func": "test_a_coordinator_no_longer_assigned_cannot_cancel",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestWhoMayCancel",
+"func": "test_a_signed_out_caller_is_asked_to_sign_in",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestWhoMayCancel",
+"func": "test_the_owning_organiser_cannot_cancel",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_booking_cancellation.py",
+"owner": "TestWhoMayCancel",
+"func": "test_venue_staff_cannot_cancel",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "",
+"func": "test_a_booking_starting_today_is_accepted",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "",
+"func": "test_the_whole_journey_through_the_routes",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookedVenuesStayInTheCatalogue",
+"func": "test_a_booked_venue_cannot_be_deleted",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookedVenuesStayInTheCatalogue",
+"func": "test_an_unbooked_venue_still_deletes",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookingsShowOnTheEvent",
+"func": "test_a_coordinator_not_assigned_to_the_event_does_not_see_them",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookingsShowOnTheEvent",
+"func": "test_a_missing_event_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookingsShowOnTheEvent",
+"func": "test_a_non_numeric_event_id_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookingsShowOnTheEvent",
+"func": "test_a_stored_booking_reads_back",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookingsShowOnTheEvent",
+"func": "test_another_organisers_event_is_not_found",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookingsShowOnTheEvent",
+"func": "test_bookings_come_back_soonest_first",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookingsShowOnTheEvent",
+"func": "test_no_bookings_is_an_empty_list",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookingsShowOnTheEvent",
+"func": "test_the_owning_organiser_sees_the_bookings",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestBookingsShowOnTheEvent",
+"func": "test_venue_staff_cannot_read_an_events_bookings",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestEventStatus",
+"func": "test_a_closed_event_is_refused_with_the_reason",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestEventStatus",
+"func": "test_a_closed_event_still_shows_the_bookings_it_had",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestEventStatus",
+"func": "test_a_draft_is_not_found_by_a_coordinator",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestEventStatus",
+"func": "test_an_open_event_takes_requests",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestEventStatus",
+"func": "test_the_rule_on_its_own",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestEventStatus",
+"func": "test_the_status_is_checked_before_the_body",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestEventStatus",
+"func": "test_visibility_is_checked_before_the_status",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestManyBookingsForOneEvent",
+"func": "test_a_refused_booking_does_not_block_the_others",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestManyBookingsForOneEvent",
+"func": "test_a_refused_booking_leaves_an_earlier_one_untouched",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestManyBookingsForOneEvent",
+"func": "test_an_event_can_have_several_venues",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestManyBookingsForOneEvent",
+"func": "test_the_same_venue_can_be_booked_twice_for_one_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestOnlyTheAssignedCoordinatorRequests",
+"func": "test_a_coordinator_not_assigned_to_the_event_cannot_request",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestOnlyTheAssignedCoordinatorRequests",
+"func": "test_a_signed_out_caller_is_asked_to_sign_in",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestOnlyTheAssignedCoordinatorRequests",
+"func": "test_an_unassigned_event_cannot_have_venues_requested",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestOnlyTheAssignedCoordinatorRequests",
+"func": "test_only_the_coordinator_role_holds_the_permission",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestOnlyTheAssignedCoordinatorRequests",
+"func": "test_the_owning_organiser_cannot_request",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestOnlyTheAssignedCoordinatorRequests",
+"func": "test_venue_staff_cannot_request",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_a_blank_venue_is_no_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_a_start_in_another_format_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_a_start_in_the_past_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_a_start_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_a_venue_id_that_is_not_an_id_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_a_venue_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_a_venue_not_in_the_catalogue_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_an_end_before_the_start_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_an_end_equal_to_the_start_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_an_end_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_an_impossible_date_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_an_impossible_time_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRefusals",
+"func": "test_the_venue_is_named_first",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRequestingABooking",
+"func": "test_a_new_booking_is_requested_and_waits_for_venue_staff",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRequestingABooking",
+"func": "test_a_venue_id_sent_as_a_number_is_accepted",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRequestingABooking",
+"func": "test_the_assigned_coordinator_requests_a_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRequestingABooking",
+"func": "test_the_booking_is_stored_against_the_event_and_the_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRequestingABooking",
+"func": "test_the_record_keeps_who_requested_it",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRequestingABooking",
+"func": "test_times_with_seconds_are_accepted",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_bookings.py",
+"owner": "TestRequestingABooking",
+"func": "test_values_are_trimmed_before_they_are_read",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_delete_us9_5.py",
+"owner": "",
+"func": "test_a_booking_that_lands_after_the_check_is_still_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_delete_us9_5.py",
+"owner": "TestAwaitingReplacementAt",
+"func": "test_a_flagged_booking_that_has_ended_does_not",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_delete_us9_5.py",
+"owner": "TestBookingsWaitingForAReplacement",
+"func": "test_a_future_flagged_booking_blocks_the_delete",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_delete_us9_5.py",
+"owner": "TestDeletingAVenueWithFutureBookings",
+"func": "test_the_message_says_to_mark_it_unavailable",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_delete_us9_5.py",
+"owner": "TestDeletingAVenueWithNoFutureBookings",
+"func": "test_a_venue_with_only_past_bookings_deletes",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_delete_us9_5.py",
+"owner": "TestUpcomingAt",
+"func": "test_an_end_that_cannot_be_read_counts",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestExpiry",
+"func": "test_tc_h11_expiry_is_required",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestExpiry",
+"func": "test_tc_h13_expiry_must_be_a_date_and_time",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestExpiry",
+"func": "test_tc_h14_expiry_must_be_a_real_date",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestExpiry",
+"func": "test_tc_h15_expiry_in_the_past_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestExpiry",
+"func": "test_tc_h18_expiry_after_the_booking_starts_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestExpiry",
+"func": "test_tc_h20_a_hold_cannot_start_in_the_past",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestNeverConfirmed",
+"func": "test_tc_h43_a_requested_hold_is_requested_not_confirmed",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestPlacingAHold",
+"func": "test_tc_h01_venue_staff_place_a_hold",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestPlacingAHold",
+"func": "test_tc_h02_it_is_stored_as_a_booking_nobody_has_requested_yet",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestPlacingAHold",
+"func": "test_tc_h03_the_events_coordinator_sees_it_on_the_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestPlacingAHold",
+"func": "test_tc_h04_placing_a_hold_does_not_move_the_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestPlacingAHold",
+"func": "test_tc_h05_a_hold_can_be_placed_for_a_planning_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestPlacingAHold",
+"func": "test_tc_h06_only_venue_staff_place_holds",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestPlacingAHold",
+"func": "test_tc_h07_an_event_with_no_coordinator_cannot_be_held_for",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestPlacingAHold",
+"func": "test_tc_h08_only_an_event_that_can_take_bookings_can_be_held_for",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestPlacingAHold",
+"func": "test_tc_h09_a_bad_hold_is_refused_with_a_sentence",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestPlacingAHold",
+"func": "test_tc_h10_a_draft_event_is_not_offered",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestRacesAndBadData",
+"func": "test_tc_h52_an_unreadable_expiry_counts_as_expired",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestRacesAndBadData",
+"func": "test_tc_h53_a_hold_released_during_the_request_says_so",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestRacesAndBadData",
+"func": "test_tc_h54_an_event_that_moves_during_the_request_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestRacesAndBadData",
+"func": "test_tc_h55_the_store_rechecks_the_hold_itself",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestReleasingAHold",
+"func": "test_tc_h44_the_coordinator_can_release_a_hold",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTheSlotIsTaken",
+"func": "test_tc_h25_an_expired_hold_clashes_with_nothing",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_h49_place_hold_writes_a_held_row_with_its_expiry",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_h50_request_hold_calls_the_rpc_with_the_expected_status",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTheSupabaseStore",
+"func": "test_tc_h51_each_rpc_refusal_becomes_its_own_error",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTurningAHoldIntoARequest",
+"func": "test_tc_h27_the_coordinator_requests_a_held_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTurningAHoldIntoARequest",
+"func": "test_tc_h28_the_first_request_moves_an_approved_event_to_planning",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTurningAHoldIntoARequest",
+"func": "test_tc_h29_a_planning_event_stays_planning",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTurningAHoldIntoARequest",
+"func": "test_tc_h30_an_expired_hold_cannot_be_requested",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTurningAHoldIntoARequest",
+"func": "test_tc_h32_a_hold_is_requested_only_once",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTurningAHoldIntoARequest",
+"func": "test_tc_h33_a_released_hold_cannot_be_requested",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTurningAHoldIntoARequest",
+"func": "test_tc_h35_another_coordinator_cannot_see_it",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTurningAHoldIntoARequest",
+"func": "test_tc_h38_an_unknown_booking_is_not_found",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTurningAHoldIntoARequest",
+"func": "test_tc_h39_a_closed_event_cannot_take_the_request",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestTurningAHoldIntoARequest",
+"func": "test_tc_h40_expiring_between_the_check_and_the_write_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestWhatVenueStaffSee",
+"func": "test_tc_h45_only_events_that_can_take_a_hold_are_offered",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestWhatVenueStaffSee",
+"func": "test_tc_h46_the_venue_lists_its_holds_and_flags_expired_ones",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_holds.py",
+"owner": "TestWhatVenueStaffSee",
+"func": "test_tc_h47_the_venue_id_must_be_a_number",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestNotices",
+"func": "test_nobody_hears_when_it_was_not_confirmed",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestNotices",
+"func": "test_the_organiser_is_told_and_why",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestRequestingAReplacement",
+"func": "test_a_refused_replacement_leaves_it_confirmed",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestRequestingAReplacement",
+"func": "test_a_replacement_moves_it_to_planning",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestRequestingAReplacement",
+"func": "test_an_event_not_yet_confirmed_keeps_its_status",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestRequestingAReplacement",
+"func": "test_the_move_is_recorded_with_who_when_and_why",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestRequestingAReplacement",
+"func": "test_the_other_bookings_are_untouched",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestTheFlagAlone",
+"func": "test_the_event_stays_confirmed",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestTheFullPath",
+"func": "test_back_to_confirmed_through_every_approval",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestTheFullPath",
+"func": "test_the_earlier_safety_approval_does_not_count",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestTheReason",
+"func": "test_it_names_both_venues_and_why",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_problem_us12_4.py",
+"owner": "TestTheReason",
+"func": "test_without_a_reason_or_a_venue_name",
+"why": "customer-changed rule"
+},
+{
+"file": "tests/test_venue_search_filters.py",
+"owner": "",
+"func": "test_each_new_filter_counts_as_applied",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_search_filters.py",
+"owner": "TestFacilities",
+"func": "test_a_filter_too_long_to_be_real_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_search_filters.py",
+"owner": "TestFacilities",
+"func": "test_every_listed_facility_must_be_there",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_search_filters.py",
+"owner": "TestLayout",
+"func": "test_only_venues_that_take_the_layout",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_search_filters.py",
+"owner": "TestTheDatabaseQuery",
+"func": "test_layout_and_each_facility_are_separate_conditions",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_search_filters.py",
+"owner": "TestTime",
+"func": "test_a_time_it_cannot_read_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_search_filters.py",
+"owner": "TestTime",
+"func": "test_a_venue_booked_then_is_left_out",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestDeletingABookedVenue",
+"func": "test_any_other_failure_is_re_raised_as_it_was",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestDeletingABookedVenue",
+"func": "test_the_trigger_refusal_becomes_a_named_error",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestDuplicateNames",
+"func": "test_a_unique_violation_reported_in_the_args_is_recognised",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestDuplicateNames",
+"func": "test_an_error_with_no_code_at_all_is_left_alone",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestFilteringHappensInThePostgresQuery",
+"func": "test_a_filter_is_trimmed_before_it_is_sent",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestFilteringHappensInThePostgresQuery",
+"func": "test_all_three_are_sent_together",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestFilteringHappensInThePostgresQuery",
+"func": "test_excluded_venues_become_a_not_in_on_id",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestFilteringHappensInThePostgresQuery",
+"func": "test_exclusions_count_as_a_filter",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestFilteringHappensInThePostgresQuery",
+"func": "test_underscores_are_escaped_too",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestFilteringHappensInThePostgresQuery",
+"func": "test_wildcards_are_escaped_rather_than_passed_through",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestReadingTheCatalogue",
+"func": "test_it_selects_every_column_the_pages_render",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestWritingARecord",
+"func": "test_creating_sends_the_writable_columns",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestWritingARecord",
+"func": "test_deleting_is_a_delete_of_that_row",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestWritingARecord",
+"func": "test_updating_never_sends_the_system_generated_fields",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_store.py",
+"owner": "TestWritingARecord",
+"func": "test_updating_stamps_updated_at_itself",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestANotSuitableVenueCannotBeRequested",
+"func": "test_an_unsuitable_venue_does_not_block_another",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestANotSuitableVenueCannotBeRequested",
+"func": "test_exactly_at_capacity_is_requested",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestANotSuitableVenueCannotBeRequested",
+"func": "test_one_over_capacity_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestANotSuitableVenueCannotBeRequested",
+"func": "test_outside_its_hours_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestANotSuitableVenueCannotBeRequested",
+"func": "test_the_refusal_gives_the_same_reasons_the_check_showed",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestEachBookingHasItsOwnHeadcount",
+"func": "test_a_booking_can_give_its_own",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestEachBookingHasItsOwnHeadcount",
+"func": "test_a_breakout_room_is_not_checked_against_the_whole_event",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestEachBookingHasItsOwnHeadcount",
+"func": "test_a_headcount_that_is_not_a_count_of_people",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestEachBookingHasItsOwnHeadcount",
+"func": "test_an_event_with_no_attendance_needs_a_headcount_given",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestEachBookingHasItsOwnHeadcount",
+"func": "test_left_out_it_is_the_events_attendance",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestEachBookingHasItsOwnHeadcount",
+"func": "test_the_check_uses_the_same_default",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestShownWhenAVenueIsPicked",
+"func": "test_a_layout_it_does_not_support",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestShownWhenAVenueIsPicked",
+"func": "test_a_missing_facility_and_accessibility_need",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestShownWhenAVenueIsPicked",
+"func": "test_a_suitable_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestShownWhenAVenueIsPicked",
+"func": "test_a_time_outside_its_hours",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestShownWhenAVenueIsPicked",
+"func": "test_a_venue_that_is_not_suitable_says_why",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestShownWhenAVenueIsPicked",
+"func": "test_checking_stores_nothing",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestShownWhenAVenueIsPicked",
+"func": "test_headcount_equal_to_capacity_is_suitable",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestShownWhenAVenueIsPicked",
+"func": "test_headcount_one_over_capacity_is_not_suitable",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestShownWhenAVenueIsPicked",
+"func": "test_what_could_not_be_checked_is_noted",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestTheCheckIsRefusedLikeARequest",
+"func": "test_a_coordinator_not_assigned_cannot_check",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestWhatABookingNeedsIsKept",
+"func": "test_a_comma_separated_string_is_read_as_a_list",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestWhatABookingNeedsIsKept",
+"func": "test_an_overlong_layout_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestWhatABookingNeedsIsKept",
+"func": "test_an_overlong_need_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_suitability.py",
+"owner": "TestWhatABookingNeedsIsKept",
+"func": "test_too_many_needs_are_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestBookingStoreListForVenue",
+"func": "test_supabase_reads_an_empty_answer_as_none",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestBookingStoreListForVenue",
+"func": "test_supabase_reads_one_venue_s_bookings_soonest_first",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestCoordinatorsSeeThem",
+"func": "test_in_the_catalogue",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestCreating",
+"func": "test_accepted_values",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestCreating",
+"func": "test_refused_values_name_the_field",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestEditing",
+"func": "test_a_refused_edit_changes_nothing",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestFindConflicts",
+"func": "test_every_clashing_pair_in_time_order",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestOccupiedWindow",
+"func": "test_zero_buffers_occupy_exactly_the_booking",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestParseMinutes",
+"func": "test_refuses_anything_that_is_not_a_whole_number",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestRecheck",
+"func": "test_identifies_what_the_change_made_clash_and_what_already_did",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestRecheckOnChange",
+"func": "test_problem_bookings_are_identified_not_removed",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_turnaround.py",
+"owner": "TestVenueStore",
+"func": "test_create_writes_both_columns",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestEndNotBeforeStart",
+"func": "test_an_end_one_day_before_the_start_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestMalformedDates",
+"func": "test_a_missing_date_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestNoConflictChecks",
+"func": "test_a_range_over_an_existing_event_date_is_recorded",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestPlanningAroundBlackouts",
+"func": "test_a_malformed_date_is_refused_naming_its_box",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestPlanningAroundBlackouts",
+"func": "test_an_end_before_the_start_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestPlanningAroundBlackouts",
+"func": "test_either_date_alone_means_that_one_day",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestRecordingARange",
+"func": "test_a_stored_range_reads_back",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestTheReason",
+"func": "test_custom_reason_one_over_the_limit_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestTheReason",
+"func": "test_invalid_reason_type_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestTheReason",
+"func": "test_missing_reason_type_is_refused",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestTheReason",
+"func": "test_other_reason_type_requires_custom_text",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestUnknownVenue",
+"func": "test_recording_against_a_missing_venue_is_404",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestUnknownVenue",
+"func": "test_viewing_a_missing_venue_is_404",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestViewingRanges",
+"func": "test_identical_ranges_keep_the_order_they_were_recorded_in",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability.py",
+"owner": "TestWhoMayDoWhat",
+"func": "test_an_organiser_cannot_view_ranges",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_unavailability_store.py",
+"owner": "TestInMemoryStore",
+"func": "test_overlap_is_inclusive_at_both_ends",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_unavailability_store.py",
+"owner": "TestReadingARow",
+"func": "test_dates_already_parsed_are_accepted",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venue_unavailability_store.py",
+"owner": "TestSupabaseCreating",
+"func": "test_it_inserts_into_the_blackout_table",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability_store.py",
+"owner": "TestSupabaseListing",
+"func": "test_it_reads_the_blackout_table_for_one_venue",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability_store.py",
+"owner": "TestSupabaseListing",
+"func": "test_no_rows_is_an_empty_list",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability_store.py",
+"owner": "TestSupabaseOverlap",
+"func": "test_it_asks_for_ranges_overlapping_the_window_inclusively",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability_store.py",
+"owner": "TestSupabaseOverlap",
+"func": "test_nothing_overlapping_is_an_empty_set",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venue_unavailability_store.py",
+"owner": "TestSwappingTheStore",
+"func": "test_use_repository_returns_the_previous_store",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestBadFilters",
+"func": "test_a_capacity_that_is_not_a_number",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestBadFilters",
+"func": "test_a_refused_role_wins_over_a_malformed_filter",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestBadFilters",
+"func": "test_an_overlong_text_filter",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_a_capacity_beyond_what_postgres_can_store_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_a_capacity_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_a_capacity_must_be_positive",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_a_capacity_that_is_not_a_whole_number_is_refused",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_a_created_venue_appears_in_the_catalogue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_a_duplicate_name_is_a_conflict_not_a_crash",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_a_location_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_a_location_of_only_spaces_is_no_location",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_a_name_is_required",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_a_name_of_only_spaces_is_no_name",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_an_id_in_the_request_is_ignored",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_an_overlong_location_is_refused_with_a_sentence",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_an_overlong_name_is_refused_with_a_sentence",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_surrounding_space_is_trimmed_from_the_fields",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_the_new_venue_carries_its_own_id_and_timestamps",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_the_optional_details_are_kept_when_given",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_the_optional_details_are_optional",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestCreating",
+"func": "test_venue_staff_can_add_a_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestDeleting",
+"func": "test_a_deleted_venue_cannot_be_opened",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestDeleting",
+"func": "test_a_deleted_venue_leaves_the_catalogue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestDeleting",
+"func": "test_deleting_a_venue_that_is_not_there",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestDeleting",
+"func": "test_deleting_one_venue_leaves_the_others_alone",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestDeleting",
+"func": "test_deleting_twice_says_so_the_second_time",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestDeleting",
+"func": "test_it_is_a_hard_delete_not_a_flag",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestDeleting",
+"func": "test_venue_staff_can_remove_a_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_a_venue_with_nothing_recorded_never_matches_accessibility",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_a_whitespace_filter_is_not_a_filter",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_accessibility_matches_part_of_the_features",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_all_three_filters_at_once",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_an_empty_filter_is_not_a_filter",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_an_organiser_cannot_filter_what_they_cannot_read",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_criteria_that_nothing_satisfies_is_an_empty_list",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_filtering_still_comes_back_ordered_by_name",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_filters_combine_with_and_not_or",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_location_ignores_case",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_location_matches_part_of_the_location",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_minimum_capacity_is_inclusive",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_minimum_capacity_keeps_the_venues_big_enough",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_no_filters_still_returns_the_whole_catalogue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_surrounding_space_is_trimmed_rather_than_searched_for",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestFiltering",
+"func": "test_wildcards_in_a_filter_are_matched_literally",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestListing",
+"func": "test_a_coordinator_sees_the_catalogue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestListing",
+"func": "test_a_venue_carries_the_details_a_coordinator_needs",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestListing",
+"func": "test_an_empty_catalogue_is_an_empty_list_not_an_error",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestListing",
+"func": "test_the_catalogue_is_ordered_by_name",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestListing",
+"func": "test_unrecorded_details_come_back_empty_rather_than_null",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestOpeningOne",
+"func": "test_a_coordinator_can_open_any_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestOpeningOne",
+"func": "test_a_venue_that_does_not_exist_is_a_404",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestOpeningOne",
+"func": "test_an_id_that_is_not_a_number_is_a_404_not_a_500",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestTheSessionPayload",
+"func": "test_a_coordinator_holds_venues_read",
+"why": "representative of its test class"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestUpdating",
+"func": "test_an_id_that_is_not_a_number_is_a_404",
+"why": "needed for coverage"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestUpdating",
+"func": "test_an_optional_field_can_be_cleared",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestUpdating",
+"func": "test_created_at_cannot_be_edited",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestUpdating",
+"func": "test_every_editable_field_actually_changes",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestUpdating",
+"func": "test_keeping_its_own_name_is_not_a_clash",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestUpdating",
+"func": "test_taking_the_name_of_another_venue_is_a_conflict",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestUpdating",
+"func": "test_the_id_cannot_be_edited",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestUpdating",
+"func": "test_updating_a_venue_that_is_not_there",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestUpdating",
+"func": "test_venue_staff_can_change_a_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayLook",
+"func": "test_a_venue_needs_a_session",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayLook",
+"func": "test_an_organiser_cannot_open_a_venue_either",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayLook",
+"func": "test_an_organiser_cannot_see_the_catalogue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayLook",
+"func": "test_signing_out_is_enough_to_lose_access",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayLook",
+"func": "test_the_catalogue_needs_a_session",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayWrite",
+"func": "test_a_coordinator_cannot_create_a_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayWrite",
+"func": "test_a_coordinator_cannot_delete_a_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayWrite",
+"func": "test_a_coordinator_cannot_update_a_venue",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayWrite",
+"func": "test_an_organiser_cannot_write_either",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayWrite",
+"func": "test_venue_staff_cannot_reach_the_events_list",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayWrite",
+"func": "test_venue_staff_cannot_read_the_user_directory",
+"why": "cited by a test case"
+},
+{
+"file": "tests/test_venues.py",
+"owner": "TestWhoMayWrite",
+"func": "test_writing_needs_a_session_at_all",
+"why": "cited by a test case"
+}
+]
+}

@@ -57,6 +57,17 @@ def norm(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
+def load_reasons() -> dict[tuple[str, str], str]:
+    """(file, test function) -> why the test was kept, from test_selection.json."""
+    path = BACKEND / "test_selection.json"
+    if not path.exists():
+        return {}
+    reasons: dict[tuple[str, str], str] = {}
+    for item in json.loads(path.read_text())["keep"]:
+        reasons.setdefault(("backend/" + item["file"], item["func"]), item["why"])
+    return reasons
+
+
 def story_from(text: str) -> str:
     match = re.search(r"us[_ .]?(\d+)[_.](\d+)", text, re.IGNORECASE)
     return f"US{match.group(1)}.{match.group(2)}" if match else ""
@@ -343,6 +354,7 @@ def main() -> None:
         for title in case["fe_refs"]:
             by_fe.setdefault(title, case)
 
+    reasons = load_reasons()
     info = backend_function_info()
     tests = collect_backend(info) + collect_vitest() + collect_playwright()
 
@@ -387,6 +399,8 @@ def main() -> None:
                 "Test Case Category": case["category"] if case else "",
                 "Acceptance Criteria": case["acs"] if case else "",
                 "Test Case Document": case["doc"] if case else "",
+                "Why Kept": reasons.get((test["file"], test["func"]), "")
+                or ("cited by a test case" if case else ""),
                 "Linked To A Test Case": "Yes" if case else "No",
                 "Audit Flag": audit_flag(
                     test, case, cases_in.get((test["file"], test["func"], test["suite"]), 1)
