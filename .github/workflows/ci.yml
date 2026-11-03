@@ -61,6 +61,7 @@ jobs:
         run: >-
           pytest integration/test_unavailability_db.py integration/test_change_review_db.py
           integration/test_us12_4_db.py integration/test_us8_4_db.py
+          integration/test_safety_check_changes_db.py
 
   frontend:
     runs-on: ubuntu-24.04
