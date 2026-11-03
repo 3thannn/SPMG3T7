@@ -58,6 +58,8 @@ export type EventRecord = {
     changes?: { changed_field?: string; old_value?: string; new_value?: string;
       field?: string; oldValue?: string; newValue?: string }[] }[]
   arrangementReviewPending?: boolean
+  /** US4.7: Pending Safety Check and approved, so the Coordinator's to confirm. */
+  safetyApproved?: boolean
   arrangementReview?: { kind: string; id: string; label: string; reason: string; error: boolean }[]
   changeRequested?: boolean
   changeRequestNote?: string
@@ -291,6 +293,27 @@ export async function getSafetyReadiness(id: string, session: Session): Promise<
 export async function sendForSafetyCheck(id: string, session: Session): Promise<EventRecord> {
   try {
     const response = await authorizedFetch(`/events/${id}/safety-check`, session.token, {
+      method: 'POST',
+    })
+    return (await response.json()) as EventRecord
+  } catch (error) {
+    return asRuleError(error)
+  }
+}
+
+/** US4.7: whether the event can be confirmed now, and if not, what is missing. */
+export async function getConfirmReadiness(
+  id: string,
+  session: Session,
+): Promise<SafetyReadiness> {
+  const response = await authorizedFetch(`/events/${id}/confirmation`, session.token)
+  return (await response.json()) as SafetyReadiness
+}
+
+/** US4.7: Pending Safety Check -> Confirmed, by the assigned Coordinator. */
+export async function confirmEvent(id: string, session: Session): Promise<EventRecord> {
+  try {
+    const response = await authorizedFetch(`/events/${id}/confirm`, session.token, {
       method: 'POST',
     })
     return (await response.json()) as EventRecord

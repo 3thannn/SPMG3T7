@@ -12,7 +12,9 @@ import {
   cancelBooking,
   checkSuitability,
   completeEvent,
+  confirmEvent,
   formatBookingTimes,
+  getConfirmReadiness,
   listBookings,
   recheckArrangements,
   rejectEvent,
@@ -164,5 +166,33 @@ describe('the booking form helpers', () => {
     expect(formatBookingTimes('2027-11-02T09:00+08:00', '2027-11-02Tlate')).toBe(
       `${start} – 2027-11-02Tlate`,
     )
+  })
+})
+
+describe('US4.7: confirming the event', () => {
+  it('asks whether it can be confirmed', async () => {
+    const spy = stubFetch(ok({ ready: false, reason: 'safety-not-approved', message: 'Not yet.' }))
+
+    const readiness = await getConfirmReadiness('7', coordinator)
+
+    expect(readiness.reason).toBe('safety-not-approved')
+    expect(sent(spy)).toMatchObject({ path: '/events/7/confirmation', method: 'GET' })
+  })
+
+  it('confirms it, and a refusal is a sentence', async () => {
+    const spy = stubFetch(ok({ id: '7', status: 'Confirmed' }))
+    expect((await confirmEvent('7', coordinator)).status).toBe('Confirmed')
+    expect(sent(spy)).toMatchObject({ path: '/events/7/confirm', method: 'POST' })
+
+    stubFetch(failure(409, 'Breakout Room B is still awaiting Venue Staff approval.'))
+    await expect(confirmEvent('7', coordinator)).rejects.toEqual(
+      new EventRuleError('Breakout Room B is still awaiting Venue Staff approval.'),
+    )
+  })
+
+  it('any other failure stays an API error', async () => {
+    stubFetch(failure(500))
+
+    await expect(confirmEvent('7', coordinator)).rejects.toBeInstanceOf(ApiError)
   })
 })

@@ -3,7 +3,9 @@ import './SafetyCheckPanel.css'
 import {
   EventRuleError,
   approveSafetyCheck,
+  confirmEvent,
   formatBookingTimes,
+  getConfirmReadiness,
   getSafetyReadiness,
   getSafetyReview,
   listSafetyDecisions,
@@ -60,20 +62,105 @@ export default function SafetyCheckPanel(props: Props) {
   const assigned = can(session, 'safety:submit') && event.coordinatorId === session.id
   if (assigned && event.status === 'Planning') return <SendForSafetyCheck {...props} />
   if (assigned && event.status === 'Pending Safety Check') {
+    // US4.7: once the Safety Officer approves, confirming is the Coordinator's move.
+    if (event.safetyApproved && can(session, 'events:confirm')) return <ConfirmEvent {...props} />
     return (
       <div className="detail-decision">
         <h3 className="detail-clarify-title">Safety check</h3>
         <p className="detail-clarify-lede">
-          Waiting for the Safety Officer. They will confirm the event, or send it back to
-          Planning with what needs to change or why it was rejected.
+          Waiting for the Safety Officer. Once they approve it, you confirm the event here. They
+          may instead send it back to Planning with what needs to change or why it was rejected.
         </p>
       </div>
     )
   }
   if (can(session, 'safety:review') && event.status === 'Pending Safety Check') {
+    if (event.safetyApproved) {
+      return (
+        <div className="detail-decision">
+          <h3 className="detail-clarify-title">Safety check</h3>
+          <p className="detail-clarify-lede">
+            You approved this safety check. The Coordinator confirms the event once its venues and
+            equipment are all in place.
+          </p>
+        </div>
+      )
+    }
     return <SafetyDecision {...props} />
   }
   return null
+}
+
+/**
+ * US4.7: the assigned Coordinator confirms an approved event, once the server
+ * says every other approval is in too. Until then it names what is missing.
+ */
+function ConfirmEvent({ event, session, disabled, onUpdated, onError }: Props) {
+  const [readiness, setReadiness] = useState<Readiness>({ state: 'loading' })
+  const [confirming, setConfirming] = useState(false)
+
+  const load = useCallback(() => {
+    let cancelled = false
+    getConfirmReadiness(event.id, session)
+      .then((found) => {
+        if (!cancelled) setReadiness({ state: 'loaded', readiness: found })
+      })
+      .catch(() => {
+        if (!cancelled) setReadiness({ state: 'error' })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [event.id, session])
+
+  useEffect(load, [load, event.updatedAt])
+
+  function check() {
+    setReadiness({ state: 'loading' })
+    load()
+  }
+
+  async function handleConfirm() {
+    setConfirming(true)
+    try {
+      const updated = await confirmEvent(event.id, session)
+      onUpdated(updated, 'Confirmed. The Organiser has been told the event is going ahead.')
+    } catch (error) {
+      onError(failureText(error, 'confirm the event'))
+      check()
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  const ready = readiness.state === 'loaded' && readiness.readiness.ready
+  return (
+    <div className="detail-decision">
+      <h3 className="detail-clarify-title">Confirm event</h3>
+      <p className="detail-clarify-lede" role="status">
+        {readiness.state === 'loading' && 'Checking whether this event can be confirmed…'}
+        {readiness.state === 'error' && 'Could not check whether this event can be confirmed.'}
+        {readiness.state === 'loaded' &&
+          (readiness.readiness.ready
+            ? 'The Safety Officer approved it, and every venue and equipment line is in place. ' +
+              'Confirm it to tell the Organiser it is going ahead.'
+            : readiness.readiness.message)}
+      </p>
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        disabled={disabled || confirming || !ready}
+        onClick={handleConfirm}
+      >
+        {confirming ? 'Confirming…' : 'Confirm event'}
+      </button>
+      {!ready && readiness.state !== 'loading' && (
+        <button type="button" className="btn btn-secondary btn-sm" onClick={check}>
+          Check again
+        </button>
+      )}
+    </div>
+  )
 }
 
 type Readiness =
@@ -286,7 +373,7 @@ function SafetyDecision({ event, session, disabled, onUpdated, onError }: Props)
     return decide(
       'approved',
       () => approveSafetyCheck(event.id, startedAt, session),
-      'Approved. The event is now Confirmed.',
+      'Approved. The Coordinator confirms the event once everything else is in place.',
       'approve the safety check',
     )
   }

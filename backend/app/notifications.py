@@ -48,8 +48,9 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 #: The transitions that notify the Organiser, per the US10.1 acceptance
 #: criteria. Draft -> Submitted is the Organiser's own action and does not.
+#: US4.7/US10.3: and when the Coordinator confirms it.
 NOTIFYING_STATUSES: frozenset[EventStatus] = frozenset(
-    {EventStatus.UNDER_REVIEW, EventStatus.APPROVED, EventStatus.REJECTED}
+    {EventStatus.UNDER_REVIEW, EventStatus.APPROVED, EventStatus.REJECTED, EventStatus.CONFIRMED}
 )
 
 
@@ -58,6 +59,8 @@ def message_for(event: Event, to_status: EventStatus, notes: str = "") -> str:
     title = event.title.strip() or "Your event"
     if to_status is EventStatus.APPROVED:
         return f'"{title}" was approved.'
+    if to_status is EventStatus.CONFIRMED:
+        return f'"{title}" is confirmed and ready to go ahead.'
     if to_status is EventStatus.REJECTED:
         return f'"{title}" was rejected. Reason: {notes}' if notes else f'"{title}" was rejected.'
     if notes:
@@ -251,6 +254,8 @@ class CoordinatorNotice(StrEnum):
     #: US11.3: an accepted change sent a Confirmed event back to Planning. The
     #: Organiser is told too.
     BACK_IN_PLANNING = "back-in-planning"
+    #: US4.7: the Safety Officer approved, so confirming is now the Coordinator's move.
+    SAFETY_APPROVED = "safety-approved"
 
 
 def _event_title(event: Event) -> str:
@@ -363,6 +368,17 @@ def notify_safety_changes(event: Event, notes: str = "", flagged: int = 0) -> No
         noun = "arrangement" if flagged == 1 else "arrangements"
         message += f" {flagged} {noun} flagged for re-review."
     _notify_coordinator(event.coordinator_id, event, CoordinatorNotice.SAFETY_CHANGES, message)
+
+
+def notify_safety_approved(event: Event) -> None:
+    """US4.7: the Safety Officer approved. The event waits for the Coordinator now."""
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.SAFETY_APPROVED,
+        f'The Safety Officer approved the safety check for "{_event_title(event)}". '
+        "Confirm the event once its venues and equipment are all in place.",
+    )
 
 
 def notify_safety_rejected(event: Event, reason: str) -> None:

@@ -5,6 +5,8 @@ import SafetyCheckPanel, { SAFETY_NOTE_MAX } from './SafetyCheckPanel'
 import {
   EventRuleError,
   approveSafetyCheck,
+  confirmEvent,
+  getConfirmReadiness,
   getSafetyReadiness,
   getSafetyReview,
   listSafetyDecisions,
@@ -32,6 +34,8 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   getSafetyReview: vi.fn(),
   listSafetyDecisions: vi.fn(),
   resolveSafetyFlag: vi.fn(),
+  getConfirmReadiness: vi.fn(),
+  confirmEvent: vi.fn(),
 }))
 
 const readinessMock = vi.mocked(getSafetyReadiness)
@@ -42,6 +46,8 @@ const rejectMock = vi.mocked(rejectSafetyCheck)
 const reviewMock = vi.mocked(getSafetyReview)
 const decisionsMock = vi.mocked(listSafetyDecisions)
 const resolveMock = vi.mocked(resolveSafetyFlag)
+const confirmReadinessMock = vi.mocked(getConfirmReadiness)
+const confirmMock = vi.mocked(confirmEvent)
 
 const coordinator = buildSession({ role: 'Event Coordinator', id: '2', name: 'Priya' })
 const officer = buildSession({ role: 'Safety Officer', id: '5', name: 'Alex' })
@@ -603,14 +609,18 @@ describe('US17.2: the Safety Officer decides a Pending Safety Check event', () =
 
   it('approves the submission it was shown', async () => {
     const user = userEvent.setup()
-    const confirmed = eventAt('Confirmed')
-    approveMock.mockResolvedValue(confirmed)
+    // US4.7: still Pending Safety Check, now approved, for the Coordinator to confirm.
+    const approved = { ...eventAt('Pending Safety Check'), safetyApproved: true }
+    approveMock.mockResolvedValue(approved)
     const { onUpdated } = await renderForOfficer()
 
     await user.click(screen.getByRole('button', { name: 'Approve safety check' }))
 
     expect(approveMock).toHaveBeenCalledWith('101', STARTED, officer)
-    expect(onUpdated).toHaveBeenCalledWith(confirmed, 'Approved. The event is now Confirmed.')
+    expect(onUpdated).toHaveBeenCalledWith(
+      approved,
+      'Approved. The Coordinator confirms the event once everything else is in place.',
+    )
   })
 
   it('shows progress on the button being used and locks the rest', async () => {
@@ -876,6 +886,129 @@ describe('US17.2: the Safety Officer decides a Pending Safety Check event', () =
     const failure = deferred<SafetyReview>()
     reviewMock.mockReturnValue(failure.promise)
     const second = renderPanel(eventAt('Pending Safety Check'), officer)
+    second.unmount()
+    failure.reject(new Error('gone'))
+    await expect(failure.promise).rejects.toThrow('gone')
+  })
+})
+
+// --- US4.7: the Coordinator confirms the event ----------------------------------
+
+describe('US4.7: the Coordinator confirms the event once every approval is in', () => {
+  const approved = () => eventAt('Pending Safety Check', { safetyApproved: true })
+  const MISSING: SafetyReadiness = {
+    ready: false,
+    reason: 'venue-not-confirmed',
+    message: 'Breakout Room B is still awaiting Venue Staff approval.',
+  }
+
+  it('waits for the Safety Officer before there is anything to confirm', () => {
+    renderPanel(eventAt('Pending Safety Check'), coordinator)
+
+    expect(screen.getByText(/Once they approve it, you confirm the event here/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Confirm event' })).not.toBeInTheDocument()
+  })
+
+  it('offers Confirm event once approved and ready, and confirms it', async () => {
+    const user = userEvent.setup()
+    const confirmed = eventAt('Confirmed')
+    confirmReadinessMock.mockResolvedValue(READY)
+    confirmMock.mockResolvedValue(confirmed)
+    const { onUpdated } = renderPanel(approved(), coordinator)
+
+    const button = await screen.findByRole('button', { name: 'Confirm event' })
+    await waitFor(() => expect(button).toBeEnabled())
+    expect(screen.getByRole('status')).toHaveTextContent(/Confirm it to tell the Organiser/)
+    await user.click(button)
+
+    expect(confirmMock).toHaveBeenCalledWith('101', coordinator)
+    expect(onUpdated).toHaveBeenCalledWith(
+      confirmed,
+      'Confirmed. The Organiser has been told the event is going ahead.',
+    )
+  })
+
+  it('names what is missing and keeps the button off', async () => {
+    const user = userEvent.setup()
+    confirmReadinessMock.mockResolvedValue(MISSING)
+    renderPanel(approved(), coordinator)
+
+    expect(await screen.findByText(MISSING.message)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirm event' })).toBeDisabled()
+
+    confirmReadinessMock.mockResolvedValue(READY)
+    await user.click(screen.getByRole('button', { name: 'Check again' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm event' })).toBeEnabled())
+  })
+
+  it('says when it could not check', async () => {
+    confirmReadinessMock.mockRejectedValue(new Error('offline'))
+    renderPanel(approved(), coordinator)
+
+    expect(
+      await screen.findByText('Could not check whether this event can be confirmed.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows a refusal and checks again', async () => {
+    const user = userEvent.setup()
+    confirmReadinessMock.mockResolvedValue(READY)
+    confirmMock.mockRejectedValue(new EventRuleError(MISSING.message))
+    const { onError } = renderPanel(approved(), coordinator)
+
+    const button = await screen.findByRole('button', { name: 'Confirm event' })
+    await waitFor(() => expect(button).toBeEnabled())
+    confirmReadinessMock.mockResolvedValue(MISSING)
+    await user.click(button)
+
+    expect(onError).toHaveBeenCalledWith(MISSING.message)
+    expect(await screen.findByText(MISSING.message)).toBeInTheDocument()
+  })
+
+  it('labels the button while it confirms', async () => {
+    const user = userEvent.setup()
+    const reply = deferred<EventRecord>()
+    confirmReadinessMock.mockResolvedValue(READY)
+    confirmMock.mockReturnValue(reply.promise)
+    renderPanel(approved(), coordinator)
+
+    const button = await screen.findByRole('button', { name: 'Confirm event' })
+    await waitFor(() => expect(button).toBeEnabled())
+    await user.click(button)
+
+    expect(screen.getByRole('button', { name: 'Confirming…' })).toBeDisabled()
+    reply.resolve(eventAt('Confirmed'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm event' })).toBeInTheDocument())
+  })
+
+  it('a Coordinator without the permission only sees the wait', () => {
+    const limited = {
+      ...coordinator,
+      permissions: coordinator.permissions.filter((each) => each !== 'events:confirm'),
+    }
+    renderPanel(approved(), limited)
+
+    expect(screen.getByText(/Waiting for the Safety Officer/)).toBeInTheDocument()
+  })
+
+  it('tells the Safety Officer the approval is in and the Coordinator confirms', () => {
+    renderPanel(approved(), officer)
+
+    expect(screen.getByText(/You approved this safety check/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve safety check' })).not.toBeInTheDocument()
+  })
+
+  it('stops loading readiness once the panel has gone', async () => {
+    const reply = deferred<SafetyReadiness>()
+    confirmReadinessMock.mockReturnValue(reply.promise)
+    const { unmount } = renderPanel(approved(), coordinator)
+    unmount()
+    reply.resolve(READY)
+
+    const failure = deferred<SafetyReadiness>()
+    confirmReadinessMock.mockReturnValue(failure.promise)
+    const second = renderPanel(approved(), coordinator)
     second.unmount()
     failure.reject(new Error('gone'))
     await expect(failure.promise).rejects.toThrow('gone')

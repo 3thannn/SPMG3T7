@@ -32,6 +32,7 @@ from app import (
     conflict_flags,
     equipment_store,
     event_cancellation,
+    event_confirmation,
     event_needs,
     event_store,
     safety_check,
@@ -73,6 +74,7 @@ from app.notifications import (
     notify_change_decision,
     notify_change_submitted,
     notify_clarification,
+    notify_safety_approved,
     notify_safety_changes,
     notify_safety_rejected,
     notify_status_change,
@@ -195,6 +197,9 @@ class EventOut(BaseModel):
     accessibility_needs: str = Field(default="", serialization_alias="accessibilityNeeds")
     equipment_needs: str = Field(default="", serialization_alias="equipmentNeeds")
     registration_needs: str = Field(default="", serialization_alias="registrationNeeds")
+    #: US4.7: Pending Safety Check and approved by the Safety Officer, so the
+    #: Coordinator's to confirm. Always false in any other status.
+    safety_approved: bool = Field(default=False, serialization_alias="safetyApproved")
 
 
 class EventDraft(BaseModel):
@@ -302,7 +307,21 @@ def _to_out(event: Event) -> EventOut:
             else None
         ),
         **event.needs.as_attrs(),
+        safety_approved=_safety_approved(event),
     )
+
+
+def _safety_approved(event: Event) -> bool:
+    """US4.7: the Safety Officer approved the stay the event is in now.
+
+    Read only for an event Pending Safety Check, so a list of events looks up
+    decisions for the few waiting there rather than for every one.
+    """
+    if event.status is not EventStatus.PENDING_SAFETY_CHECK:
+        return False
+    decisions = safety_decision_store.repository().list_for_event(event.id)
+    entered = safety_review.entered_safety_check(event)
+    return event_confirmation.current_approval(decisions, entered) is not None
 
 
 def _invalid(message: str) -> HTTPException:
@@ -639,12 +658,14 @@ def list_pending_safety_check(
 
     The order is by when each event entered Pending Safety Check, so an event
     sent back and sent again joins the end of the queue rather than jumping it.
-    US17.1 builds the full review queue on this.
+    US17.1 builds the full review queue on this. US4.7: an event the Safety
+    Officer has approved waits for its Coordinator now, not for them, so it
+    leaves the queue.
     """
     events = [
         event
         for event in event_store.repository().list_events(organiser_id=None, include_drafts=False)
-        if event.status is EventStatus.PENDING_SAFETY_CHECK
+        if event.status is EventStatus.PENDING_SAFETY_CHECK and not _safety_approved(event)
     ]
     return [
         _to_out(event)
@@ -1130,6 +1151,69 @@ def send_for_safety_check(event_id: str, user: SafetySender) -> EventOut:
     return _to_out(sent)
 
 
+# -- US4.7: the Coordinator confirms the event -----------------------------------
+
+EventConfirmer = Annotated[User, Depends(require_permission(Permission.EVENTS_CONFIRM))]
+
+
+class ConfirmReadinessOut(BaseModel):
+    """Whether the assigned Coordinator can confirm the event now, and if not, why."""
+
+    ready: bool
+    #: A `ConfirmRefusal` value, or empty when ready.
+    reason: str = ""
+    message: str = ""
+
+
+def _confirm_refusal(event: Event) -> event_confirmation.Refused | None:
+    return event_confirmation.check_ready_to_confirm(
+        status=event.status,
+        approved=_safety_approved(event),
+        change_requested=event.change_requested,
+        bookings=booking_store.repository().list_for_event(event.id),
+        equipment=equipment_store.repository().list_for_event(event.id),
+        arrangement_review_pending=event.arrangement_review_pending,
+    )
+
+
+@router.get("/{event_id}/confirmation", response_model=ConfirmReadinessOut)
+def confirmation_readiness(event_id: str, user: EventConfirmer) -> ConfirmReadinessOut:
+    """US4.7: say whether the event can be confirmed, and if not, what is missing."""
+    refused = _confirm_refusal(_readable(_as_id(event_id), user))
+    if refused is None:
+        return ConfirmReadinessOut(ready=True)
+    return ConfirmReadinessOut(ready=False, reason=str(refused.reason), message=refused.message)
+
+
+@router.post("/{event_id}/confirm", response_model=EventOut)
+def confirm_event(event_id: str, user: EventConfirmer) -> EventOut:
+    """US4.7: Pending Safety Check -> Confirmed, by the assigned Coordinator only.
+
+    The permission keeps out every other role with US1.3's message; `_readable`
+    keeps out a Coordinator the event is not assigned to, with the same 404 as
+    anywhere else (US8.6). Then every approval has to be in, and the first that
+    is not is named. The move is timestamped and attributable like any other
+    (US4.2), and the Organiser is told (US10.3).
+    """
+    event = _readable(_as_id(event_id), user)
+    refused = _confirm_refusal(event)
+    if refused is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": EventError.REFUSED,
+                "message": refused.message,
+                "reason": str(refused.reason),
+            },
+        )
+    try:
+        confirmed = event_store.repository().confirm_event(event.id, actor_id=user.id)
+    except StaleEventStatus:
+        raise _stale_request() from None
+    notify_status_change(confirmed, EventStatus.CONFIRMED)
+    return _to_out(confirmed)
+
+
 # -- US17.1: what the Safety Officer reviews ------------------------------------
 
 
@@ -1446,10 +1530,12 @@ def _record_safety_decision(
 def approve_safety_check(
     event_id: str, user: SafetyOfficer, payload: SafetyDecisionIn | None = None
 ) -> EventOut:
-    """US4.4/US17.2: the Safety Officer signs the event off. -> Confirmed."""
+    """US4.4/US17.2: the Safety Officer signs the event off. US4.7: it stays
+    Pending Safety Check, approved, and the Coordinator confirms it."""
     decided, _ = _record_safety_decision(
         event_id, user, SafetyOutcome.APPROVED, payload or SafetyDecisionIn()
     )
+    notify_safety_approved(decided)
     return _to_out(decided)
 
 

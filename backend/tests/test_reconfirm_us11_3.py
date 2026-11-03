@@ -7,9 +7,9 @@ Acceptance criteria, and the tests that hold each one:
 * A change to routine fields only leaves it Confirmed -> `TestRoutineChange`.
 * Arrangements are re-checked as in US11.2; a failure is flagged, nothing is
   cancelled, and what still passes keeps its status -> `TestArrangements`.
-* The earlier safety approval no longer counts: the event is sent again and
-  needs a fresh decision -> `TestFreshSafetyCheck`. Confirming by the
-  Coordinator (US4.7) is not built yet, so the fresh approval confirms it.
+* The earlier safety approval no longer counts: the event is sent again, needs
+  a fresh decision, and the Coordinator confirms it (US4.7) ->
+  `TestFreshSafetyCheck`.
 * The Organiser and the assigned Coordinator are told, and why -> `TestNotices`.
 * Registrations are kept; new ones pause until it is Confirmed again ->
   `TestRegistrations`.
@@ -288,9 +288,12 @@ class TestFreshSafetyCheck:
         )
 
         assert approved.status_code == 200, approved.text
-        assert approved.json()["status"] == "Confirmed"
+        assert approved.json()["status"] == "Pending Safety Check"
         assert review["waitingSince"] != FIRST_CHECK
-        assert [(e["from"], e["to"]) for e in approved.json()["history"][-3:]] == [
+        # US4.7: and then the Coordinator confirms it, on the new approval.
+        confirmed = client.post(f"/events/{EVENT_ID}/confirm", headers=auth_headers(COORDINATOR))
+        assert confirmed.status_code == 200, confirmed.text
+        assert [(e["from"], e["to"]) for e in confirmed.json()["history"][-3:]] == [
             ("Confirmed", "Planning"),
             ("Planning", "Pending Safety Check"),
             ("Pending Safety Check", "Confirmed"),

@@ -176,7 +176,8 @@ def coordinator_notices(notification_repository):
 
 class TestRules:
     def test_each_outcome_goes_where_the_story_says(self):
-        assert to_status(SafetyOutcome.APPROVED) is EventStatus.CONFIRMED
+        # US4.7: an approval leaves the event for its Coordinator to confirm.
+        assert to_status(SafetyOutcome.APPROVED) is EventStatus.PENDING_SAFETY_CHECK
         assert to_status(SafetyOutcome.CHANGES_REQUESTED) is EventStatus.PLANNING
         assert to_status(SafetyOutcome.REJECTED) is EventStatus.PLANNING
 
@@ -251,14 +252,16 @@ class TestRules:
 
 
 class TestApprove:
-    def test_approval_confirms_the_event(self, client, officer, world):
+    def test_approval_leaves_it_for_the_coordinator_to_confirm(self, client, officer, world):
+        """US4.7: the Safety Officer approves; the Coordinator confirms."""
         response = decide(client, officer, "approve", {"checkStartedAt": ENTERED})
         assert response.status_code == 200, response.text
-        assert response.json()["status"] == "Confirmed"
-        assert world.events.get_event(EVENT_ID).status is EventStatus.CONFIRMED
+        assert response.json()["status"] == "Pending Safety Check"
+        assert response.json()["safetyApproved"] is True
+        assert world.events.get_event(EVENT_ID).status is PSC
 
     def test_an_approval_without_a_body_still_works(self, client, officer, world):
-        assert decide(client, officer, "approve").json()["status"] == "Confirmed"
+        assert decide(client, officer, "approve").json()["safetyApproved"] is True
 
     def test_an_approval_flags_nothing(self, client, officer, world):
         response = decide(
@@ -268,9 +271,17 @@ class TestApprove:
         assert response.json()["detail"]["message"] == FLAGS_ONLY_ON_CHANGES
         assert world.events.get_event(EVENT_ID).status is PSC
 
-    def test_an_approval_tells_nobody(self, client, officer, world, notification_repository):
+    def test_an_approval_tells_the_coordinator_it_is_theirs_to_confirm(
+        self, client, officer, world, notification_repository
+    ):
+        """US4.7: confirming is the Coordinator's move now, so they hear."""
         decide(client, officer, "approve")
-        assert coordinator_notices(notification_repository) == []
+        (notice,) = coordinator_notices(notification_repository)
+        assert notice.kind == CoordinatorNotice.SAFETY_APPROVED
+        assert notice.message == (
+            'The Safety Officer approved the safety check for "Open House". '
+            "Confirm the event once its venues and equipment are all in place."
+        )
 
 
 # -- AC2: Request changes -------------------------------------------------------
@@ -427,8 +438,10 @@ class TestWhoDecides:
 
     def test_a_check_decided_twice_is_refused(self, client, officer, world):
         assert decide(client, officer, "approve").status_code == 200
-        # The event is Confirmed now, so the Safety Officer cannot even see it.
-        assert decide(client, officer, "reject", {"note": "Too late"}).status_code == 404
+        # US4.7: still Pending Safety Check, but this stay has its decision.
+        second = decide(client, officer, "reject", {"note": "Too late"})
+        assert second.status_code == 409
+        assert world.events.get_event(EVENT_ID).status is PSC
 
     def test_a_race_lost_in_the_store_is_reported(
         self, client, officer, world, safety_decision_repository, monkeypatch
@@ -462,12 +475,24 @@ class TestDecisionRecord:
         assert record["checkStartedAt"] == ENTERED
 
     def test_the_audit_trail_records_it_too(self, client, officer, world):
-        history = decide(client, officer, "approve").json()["history"]
+        history = decide(client, officer, "reject", {"note": "No fire plan."}).json()["history"]
         last = history[-1]
-        assert (last["from"], last["to"]) == ("Pending Safety Check", "Confirmed")
+        assert (last["from"], last["to"]) == ("Pending Safety Check", "Planning")
         assert last["byId"] == str(SAFETY_OFFICER_ID)
         assert last["byName"] == "Alex"
         assert last["at"]
+
+    def test_an_approval_is_recorded_on_the_decision_not_as_a_move(
+        self, client, officer, world, safety_decision_repository
+    ):
+        """US4.7: the status does not change, so the trail has nothing new; the
+        decision itself is timestamped and attributable."""
+        history = decide(client, officer, "approve").json()["history"]
+        assert history[-1]["to"] == "Pending Safety Check"
+        (decision,) = safety_decision_repository.list_for_event(EVENT_ID)
+        assert decision.outcome is SafetyOutcome.APPROVED
+        assert (decision.decided_by_id, decision.decided_by_name) == (SAFETY_OFFICER_ID, "Alex")
+        assert decision.decided_at
 
     def test_decisions_come_newest_first_with_their_flags(
         self, client, officer, coordinator, world, safety_decision_repository
@@ -660,7 +685,7 @@ class TestFreshDecision:
         self.resend(client, officer, coordinator)
         review = client.get(f"/events/{EVENT_ID}/safety-review", headers=officer).json()
         approved = decide(client, officer, "approve", {"checkStartedAt": review["waitingSince"]})
-        assert approved.json()["status"] == "Confirmed"
+        assert approved.json()["safetyApproved"] is True
         newest, earlier = safety_decision_repository.list_for_event(EVENT_ID)
         assert newest.outcome is SafetyOutcome.APPROVED
         assert newest.check_started_at == review["waitingSince"]

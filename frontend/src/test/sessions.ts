@@ -35,6 +35,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'equipment:request',
     // US4.4: send a ready event for its safety check.
     'safety:submit',
+    // US4.7: confirm it once every approval is in.
+    'events:confirm',
     // US10.2: told about assignments and booking or safety problems.
     'notifications:read',
     // US20.1: registration on the events assigned to them.

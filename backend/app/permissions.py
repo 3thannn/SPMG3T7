@@ -81,6 +81,7 @@ class Permission(StrEnum):
     EVENTS_COMPLETE = "events:complete"
     EVENTS_CANCEL = "events:cancel"  # US4.6: owning Organiser or assigned Coordinator
     EVENTS_EDIT = "events:edit"
+    EVENTS_CONFIRM = "events:confirm"  # US4.7: assigned Coordinator, once approved
     USERS_READ = "users:read"
     VENUES_READ = "venues:read"
     VENUES_CREATE = "venues:create"
@@ -114,6 +115,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.EVENTS_COMPLETE: "complete confirmed events",
     Permission.EVENTS_CANCEL: "cancel events",
     Permission.EVENTS_EDIT: "edit events",
+    Permission.EVENTS_CONFIRM: "confirm events",
     Permission.USERS_READ: "view the user directory",
     Permission.VENUES_READ: "view the venue catalogue",
     Permission.VENUES_CREATE: "add a venue to the catalogue",
@@ -168,6 +170,9 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             # US4.4: Planning -> Pending Safety Check, on the events assigned
             # to them (US8.6, checked per event).
             Permission.SAFETY_SUBMIT,
+            # US4.7: Pending Safety Check -> Confirmed, once every approval is
+            # in, on the events assigned to them (US8.6, checked per event).
+            Permission.EVENTS_CONFIRM,
             # US10.2: told about assignments and booking or safety problems.
             Permission.NOTIFICATIONS_READ,
             # US20.1: registration on the events assigned to them (US8.6).

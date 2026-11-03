@@ -1013,9 +1013,10 @@ class TestEndToEnd:
             f"/booking-requests/{requested['id']}/approve", headers=auth_headers("Venue Staff")
         )
         client.post(f"/events/{event_id}/safety-check", headers=coordinator)
-        confirmed = client.post(
+        client.post(
             f"/events/{event_id}/safety-check/approve", headers=auth_headers("Safety Officer")
         )
+        confirmed = client.post(f"/events/{event_id}/confirm", headers=coordinator)  # US4.7
         assert confirmed.json()["status"] == "Confirmed"
 
         cancelled = cancel(client, coordinator, event_id=event_id)

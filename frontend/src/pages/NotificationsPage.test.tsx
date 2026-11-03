@@ -238,6 +238,14 @@ it('labels the back-in-planning notice (US11.3)', async () => {
   ).toBeInTheDocument()
 })
 
+it('labels the safety-approved notice (US4.7)', async () => {
+  listMock.mockResolvedValue([
+    notice({ id: '1', status: null, kind: 'safety-approved', message: 'Approved. Confirm it.' }),
+  ])
+  render(<NotificationsPage session={coordinator} />)
+  expect(await screen.findByText('Safety approved')).toBeInTheDocument()
+})
+
 /* ---------- US4.6: cancelled events ---------- */
 
 const venueStaff = buildSession({ role: 'Venue Staff', id: '4' })
