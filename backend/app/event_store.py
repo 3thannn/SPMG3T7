@@ -965,6 +965,35 @@ class InMemoryEvents:
         self.events = [event if item.id == event.id else item for item in self.events]
         return event
 
+    def reopen_for_replacement(self, event_id: int, *, actor_id: int, reason: str) -> None:
+        """US12.4: what us12_4_request_replacement does to the event in the real store.
+
+        Called by `InMemoryBookings.request_replacement` once the booking is
+        replaced, as the real function does it in the same transaction.
+        """
+        existing = self.get_event(event_id)
+        if existing is None or existing.status is not EventStatus.CONFIRMED:
+            return
+        at = _now()
+        self._replace(
+            replace(
+                existing,
+                status=EventStatus.PLANNING,
+                updated_at=at,
+                history=(
+                    *existing.history,
+                    StatusChange(
+                        from_status=EventStatus.CONFIRMED,
+                        to_status=EventStatus.PLANNING,
+                        at=at,
+                        by_id=actor_id,
+                        by_name=self.names.get(actor_id, ""),
+                        notes=reason,
+                    ),
+                ),
+            )
+        )
+
     def list_events(self, *, organiser_id: int | None, include_drafts: bool) -> list[Event]:
         visible = [
             event

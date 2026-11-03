@@ -440,7 +440,9 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
         setReplacementSearch(null)
         setSelectedReplacementVenue('')
         setNotice(
-          `Requested ${newBooking.venueName} as a replacement. It is waiting for Venue Staff to approve it.`,
+          `Requested ${newBooking.venueName} as a replacement. It is waiting for Venue Staff to approve it.` +
+            // US12.4: the server moved a Confirmed event back to Planning.
+            (event.status === 'Confirmed' ? ' The event is back in Planning.' : ''),
         )
         onBookingRequested?.()
       })
@@ -720,6 +722,14 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
           These venues are available for the same time slot. Select one to request it as a
           replacement.
         </p>
+        {/* US12.4: say what the request does to a Confirmed event before it is made. */}
+        {event.status === 'Confirmed' && (
+          <p className="booking-replacement-hint" role="note">
+            This event is Confirmed. Requesting a replacement moves it back to Planning: the new
+            venue needs Venue Staff&apos;s approval and a new safety check, and you confirm the
+            event again. Its other bookings are kept.
+          </p>
+        )}
         {replacementError && (
           <p className="form-error" role="alert">
             {replacementError}

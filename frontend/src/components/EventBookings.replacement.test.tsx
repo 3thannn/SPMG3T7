@@ -100,10 +100,10 @@ beforeEach(() => {
   searchMock.mockResolvedValue(FREE)
 })
 
-async function openSearch(onBookingRequested?: () => void) {
+async function openSearch(onBookingRequested?: () => void, event: EventRecord = EVENT) {
   const user = userEvent.setup()
   render(
-    <EventBookings event={EVENT} session={coordinator} onBookingRequested={onBookingRequested} />,
+    <EventBookings event={event} session={coordinator} onBookingRequested={onBookingRequested} />,
   )
   await user.click(
     await screen.findByRole('button', { name: 'Find a replacement venue for Great Hall' }),
@@ -142,6 +142,32 @@ it('requests the chosen venue and keeps the old booking as Replaced history', as
   const oldRow = screen.getByText('Great Hall').closest('li')!
   expect(within(oldRow).getByText('Replaced')).toBeTruthy()
   expect(screen.getByText('Seminar Room 4')).toBeTruthy()
+  expect(onBookingRequested).toHaveBeenCalledTimes(1)
+  // US12.4: not Confirmed, so nothing about going back to Planning.
+  expect(screen.queryByText(/moves it back to Planning/)).toBeNull()
+})
+
+it('US12.4 warns that a Confirmed event goes back to Planning, and says it did', async () => {
+  const onBookingRequested = vi.fn()
+  requestMock.mockResolvedValue(
+    booking({ id: '102', venueId: '3', venueName: 'Seminar Room 4', status: 'Requested' }),
+  )
+  const user = await openSearch(onBookingRequested, { ...EVENT, status: 'Confirmed' })
+
+  expect(
+    await screen.findByText(
+      "This event is Confirmed. Requesting a replacement moves it back to Planning: the new venue needs Venue Staff's approval and a new safety check, and you confirm the event again. Its other bookings are kept.",
+    ),
+  ).toBeTruthy()
+  await user.selectOptions(await screen.findByLabelText('Choose a replacement venue'), '3')
+  await user.click(screen.getByRole('button', { name: 'Request replacement' }))
+
+  expect(
+    await screen.findByText(
+      'Requested Seminar Room 4 as a replacement. It is waiting for Venue Staff to approve it. The event is back in Planning.',
+    ),
+  ).toBeTruthy()
+  // The page reloads the event, which now reads Planning.
   expect(onBookingRequested).toHaveBeenCalledTimes(1)
 })
 

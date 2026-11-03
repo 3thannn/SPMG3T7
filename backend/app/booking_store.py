@@ -382,18 +382,34 @@ class Repository(Protocol):
 
     def count_flagged_by_unavailability(self, unavailability_id: int) -> int: ...
 
-    def request_replacement(self, booking_id: int, *, venue_id: int, actor_id: int) -> Booking: ...
+    def request_replacement(
+        self, booking_id: int, *, venue_id: int, actor_id: int, reason: str = ""
+    ) -> Booking: ...
 
 
 class SupabaseBookings:
     """The real store. Goes through the service role client, like the others."""
 
-    def request_replacement(self, booking_id: int, *, venue_id: int, actor_id: int) -> Booking:
+    def request_replacement(
+        self, booking_id: int, *, venue_id: int, actor_id: int, reason: str = ""
+    ) -> Booking:
+        """US14.5, and US12.4: on a Confirmed event, the move back to Planning.
+
+        us12_4_request_replacement calls request_replacement_venue as it stands
+        and, once the booking is Replaced, moves a Confirmed event to Planning
+        with `reason` in its history, in the same transaction. It answers what
+        request_replacement_venue answers.
+        """
         result = (
             supabase_client.admin()
             .rpc(
-                "request_replacement_venue",
-                {"p_booking_id": booking_id, "p_venue_id": venue_id, "p_actor_id": actor_id},
+                "us12_4_request_replacement",
+                {
+                    "p_booking_id": booking_id,
+                    "p_venue_id": venue_id,
+                    "p_actor_id": actor_id,
+                    "p_reason": reason,
+                },
             )
             .execute()
         )
@@ -756,7 +772,9 @@ class InMemoryBookings:
     #: Well clear of anything a fixture might use, so a created row is obvious.
     next_id: int = 100
 
-    def request_replacement(self, booking_id: int, *, venue_id: int, actor_id: int) -> Booking:
+    def request_replacement(
+        self, booking_id: int, *, venue_id: int, actor_id: int, reason: str = ""
+    ) -> Booking:
         with self.replacement_lock:
             old = self.get_booking(booking_id)
             event = event_store.repository().get_event(old.event_id) if old else None
@@ -792,6 +810,10 @@ class InMemoryBookings:
                 replace(booking, status=BookingStatus.REPLACED) if booking.id == old.id else booking
                 for booking in self.bookings
             ] + [created]
+            # US12.4: what us12_4_request_replacement does to a Confirmed event.
+            event_store.repository().reopen_for_replacement(
+                event.id, actor_id=actor_id, reason=reason
+            )
             return created
 
     def _set_event_conflict(self, booking_id: int, reason: str) -> None:

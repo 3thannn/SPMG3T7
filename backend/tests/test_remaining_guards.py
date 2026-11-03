@@ -234,7 +234,7 @@ class TestReplacementVenues:
         assert response.status_code == 404
 
     def test_a_replacement_reads_back_the_booking_the_database_created(self, fake):
-        fake.rpc_answers = {"request_replacement_venue": 55}
+        fake.rpc_answers = {"us12_4_request_replacement": 55}
         fake.rows = {BOOKINGS_TABLE: [dict(BOOKING_ROW, id=55)]}
 
         booking = SupabaseBookings().request_replacement(7, venue_id=2, actor_id=COORDINATOR_ID)
@@ -242,7 +242,7 @@ class TestReplacementVenues:
         assert booking.id == 55
 
     def test_a_replacement_that_cannot_be_read_back_is_stale(self, fake):
-        fake.rpc_answers = {"request_replacement_venue": 55}
+        fake.rpc_answers = {"us12_4_request_replacement": 55}
 
         with pytest.raises(StaleBookingStatus):
             SupabaseBookings().request_replacement(7, venue_id=2, actor_id=COORDINATOR_ID)

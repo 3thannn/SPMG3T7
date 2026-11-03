@@ -84,6 +84,8 @@ VALID_TRANSITIONS: frozenset[tuple[EventStatus, EventStatus]] = frozenset(
         # event back to Planning, to be re-checked and signed off again. It is
         # the Coordinator's approval of the change that moves it
         # (`change_requests.reopens_planning`), never a request of its own.
+        # US12.4: so does requesting a replacement for a venue that fell
+        # through (`replacement_venues`), never the flag on the booking itself.
         (EventStatus.CONFIRMED, EventStatus.PLANNING),
         # US4.6: the owning Organiser or the assigned Coordinator cancels
         # (`app.event_cancellation`). Cancelled is final, like the other two.

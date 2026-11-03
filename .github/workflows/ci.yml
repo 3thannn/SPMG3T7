@@ -58,7 +58,9 @@ jobs:
       - name: Test database migrations and review RPCs
         env:
           TEST_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/postgres
-        run: pytest integration/test_unavailability_db.py integration/test_change_review_db.py
+        run: >-
+          pytest integration/test_unavailability_db.py integration/test_change_review_db.py
+          integration/test_us12_4_db.py
 
   frontend:
     runs-on: ubuntu-24.04
