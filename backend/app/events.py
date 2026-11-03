@@ -833,6 +833,10 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
         )
     if saved.arrangement_review_pending:
         saved = arrangement_review.recheck(saved)
+    # D1: an important edit during the safety check sent it back to Planning.
+    # The Coordinator made the edit, so only the Organiser needs telling.
+    if event.status is not saved.status and saved.status is EventStatus.PLANNING:
+        notify_back_in_planning(saved, saved.history[-1].notes, actor_id=user.id)
     return _to_out(saved)
 
 
@@ -1782,8 +1786,11 @@ def _resolve_change(
     if resolved.arrangement_review_pending:
         resolved = arrangement_review.recheck(resolved)
     notify_change_decision(resolved, approved=approve, reason=note)
-    # US11.3: the store moved it, if anything did; the route only tells people.
-    if event.status is EventStatus.CONFIRMED and resolved.status is EventStatus.PLANNING:
+    # US11.3 and D1: the store moved it, if anything did; the route only tells people.
+    if (
+        event.status in change_requests.REOPENING_STATUSES
+        and resolved.status is EventStatus.PLANNING
+    ):
         notify_back_in_planning(resolved, change_requests.reopen_reason(event.pending_changes))
     # US10.4: registered Attendees hear the new date and time, and nothing else.
     if approve and change_requests.moves_when(event.pending_changes):

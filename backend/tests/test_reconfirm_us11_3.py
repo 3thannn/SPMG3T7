@@ -374,11 +374,14 @@ class TestRules:
         [
             (EventStatus.CONFIRMED, True, True),
             (EventStatus.CONFIRMED, False, False),
-            (EventStatus.PENDING_SAFETY_CHECK, True, False),
+            # Was False: an important change during the safety check left any
+            # approval standing for different numbers (CODE_AUDIT.md D1).
+            (EventStatus.PENDING_SAFETY_CHECK, True, True),
+            (EventStatus.PENDING_SAFETY_CHECK, False, False),
             (EventStatus.PLANNING, True, False),
         ],
     )
-    def test_only_an_important_change_to_a_confirmed_event_reopens(
+    def test_only_an_important_change_once_the_safety_check_starts_reopens(
         self, status, important, reopens
     ):
         change = FieldChange("expected_attendance", "30", "35", important=important)

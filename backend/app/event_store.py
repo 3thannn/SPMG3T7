@@ -31,6 +31,7 @@ from app.change_requests import (
     applied_values,
     change_type,
     diff,
+    edit_reopen_reason,
     ordered,
     reopen_reason,
     reopens_planning,
@@ -608,6 +609,9 @@ class SupabaseEvents:
                         }
                         for c in changes
                     ],
+                    # D1: the database decides whether the edit reopens Planning;
+                    # this is only the words its history entry carries.
+                    "p_reason": edit_reopen_reason(changes),
                 },
             )
             .execute()
@@ -1166,9 +1170,31 @@ class InMemoryEvents:
             expected_attendance=expected_attendance,
             needs=needs,
         )
-        return self._replace(
-            replace(saved, arrangement_review_pending=pending or current.arrangement_review_pending)
+        saved = replace(
+            saved, arrangement_review_pending=pending or current.arrangement_review_pending
         )
+        # D1: what us11_edit does in the real store. An important edit during the
+        # safety check sends the event back to Planning, so no decision made
+        # about the old details can confirm it.
+        if reopens_planning(status=current.status, changes=changes):
+            at = _now()
+            saved = replace(
+                saved,
+                status=EventStatus.PLANNING,
+                updated_at=at,
+                history=(
+                    *saved.history,
+                    StatusChange(
+                        from_status=current.status,
+                        to_status=EventStatus.PLANNING,
+                        at=at,
+                        by_id=editor_id,
+                        by_name=self.names.get(editor_id, ""),
+                        notes=edit_reopen_reason(changes),
+                    ),
+                ),
+            )
+        return self._replace(saved)
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
         """US8.2: Moving to Submitted leaves coordinator_id as NULL (auto-assignment OFF)."""
@@ -1422,7 +1448,7 @@ class InMemoryEvents:
             history = (
                 *history,
                 StatusChange(
-                    from_status=EventStatus.CONFIRMED,
+                    from_status=existing.status,
                     to_status=EventStatus.PLANNING,
                     at=at,
                     by_id=actor_id,
