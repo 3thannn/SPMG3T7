@@ -102,117 +102,122 @@ export default function TeamAssignmentsPage({ session }: TeamAssignmentsPageProp
   }))
 
   return (
-    <div className="shell page-container">
-      <header className="page-header">
-        <h1 className="page-title">Team Assignments</h1>
-        <p className="page-subtitle">
-          All active events and their assigned coordinators · {allEvents.length} active{' '}
-          {allEvents.length === 1 ? 'event' : 'events'}
-        </p>
-      </header>
-
-      {error && (
-        <div className="notice notice-error">
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="page-loading">Loading assignments...</div>
-      ) : (
-        <>
-          {/* US8.5: Coordinator Statistics */}
-          {coordinatorStats.length > 0 && (
-            <div className="assignments-stats">
-              <h2 className="assignments-stats-title">Workload Distribution</h2>
-              <div className="assignments-stats-grid">
-                {coordinatorStats.map((stat) => (
-                  <div key={stat.coordinatorId || 'unassigned'} className="stat-card">
-                    <div className="stat-name">{stat.coordinatorName}</div>
-                    <div className="stat-count">
-                      {stat.eventCount} {stat.eventCount === 1 ? 'event' : 'events'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* US8.5: Filter by Coordinator */}
-          <div className="assignments-filters">
-            <label htmlFor="coordinator-filter" className="filter-label">
-              Filter by Coordinator:
-            </label>
-            <select
-              id="coordinator-filter"
-              className="filter-select"
-              value={selectedCoordinator}
-              onChange={(e) => setSelectedCoordinator(e.target.value)}
-            >
-              <option value="all">All Coordinators ({allEvents.length})</option>
-              {coordinatorOptions.map((option) => {
-                const count = coordinatorStats.find(
-                  (s) => (s.coordinatorId || 'unassigned') === option.id
-                )?.eventCount || 0
-                return (
-                  <option key={option.id} value={option.id}>
-                    {option.name} ({count})
-                  </option>
-                )
-              })}
-            </select>
+    // The same page frame as the other pages, so it sits as far below the bar.
+    <div className="page">
+      <div className="shell">
+        <header className="page-head">
+          <div>
+            <h1 className="page-title">Team Assignments</h1>
+            <p className="page-subtitle">
+              All active events and their assigned coordinators · {allEvents.length} active{' '}
+              {allEvents.length === 1 ? 'event' : 'events'}
+            </p>
           </div>
+        </header>
 
-          {/* US8.5: Events List */}
-          {filteredEvents.length === 0 ? (
-            <div className="empty-state">
-              <p className="empty-state-message">
-                {selectedCoordinator === 'all'
-                  ? 'No active events to display.'
-                  : 'No events match the selected filter.'}
-              </p>
-            </div>
-          ) : (
-            <div className="assignments-table-container">
-              <table className="assignments-table">
-                <thead>
-                  <tr>
-                    <th>Event</th>
-                    <th>Status</th>
-                    <th>Assigned Coordinator</th>
-                    <th>Start Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredEvents.map((event) => (
-                    <tr
-                      key={event.id}
-                      className="assignments-table-row"
-                      onClick={() => navigate(`/events/${event.id}`)}
-                    >
-                      <td className="event-title-cell">
-                        <div className="event-title">{event.title || 'Untitled Event'}</div>
-                        {event.purpose && <div className="event-purpose">{event.purpose}</div>}
-                      </td>
-                      <td>
-                        <StatusBadge status={event.status} size="sm" />
-                      </td>
-                      <td className="coordinator-cell">
-                        {event.coordinatorName ? (
-                          <span className="coordinator-name">{event.coordinatorName}</span>
-                        ) : (
-                          <span className="coordinator-unassigned">Unassigned</span>
-                        )}
-                      </td>
-                      <td className="date-cell">{formatTimestamp(event.startsAt)}</td>
-                    </tr>
+        {error && (
+          <div className="notice notice-error">
+            <strong>Error:</strong> {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="page-loading">Loading assignments...</div>
+        ) : (
+          <>
+            {/* US8.5: Coordinator Statistics */}
+            {coordinatorStats.length > 0 && (
+              <div className="assignments-stats">
+                <h2 className="assignments-stats-title">Workload Distribution</h2>
+                <div className="assignments-stats-grid">
+                  {coordinatorStats.map((stat) => (
+                    <div key={stat.coordinatorId || 'unassigned'} className="stat-card">
+                      <div className="stat-name">{stat.coordinatorName}</div>
+                      <div className="stat-count">
+                        {stat.eventCount} {stat.eventCount === 1 ? 'event' : 'events'}
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </div>
+            )}
+
+            {/* US8.5: Filter by Coordinator */}
+            <div className="assignments-filters">
+              <label htmlFor="coordinator-filter" className="filter-label">
+                Filter by Coordinator:
+              </label>
+              <select
+                id="coordinator-filter"
+                className="filter-select"
+                value={selectedCoordinator}
+                onChange={(e) => setSelectedCoordinator(e.target.value)}
+              >
+                <option value="all">All Coordinators ({allEvents.length})</option>
+                {coordinatorOptions.map((option) => {
+                  const count = coordinatorStats.find(
+                    (s) => (s.coordinatorId || 'unassigned') === option.id
+                  )?.eventCount || 0
+                  return (
+                    <option key={option.id} value={option.id}>
+                      {option.name} ({count})
+                    </option>
+                  )
+                })}
+              </select>
             </div>
-          )}
-        </>
-      )}
+
+            {/* US8.5: Events List */}
+            {filteredEvents.length === 0 ? (
+              <div className="empty-state">
+                <p className="empty-state-message">
+                  {selectedCoordinator === 'all'
+                    ? 'No active events to display.'
+                    : 'No events match the selected filter.'}
+                </p>
+              </div>
+            ) : (
+              <div className="assignments-table-container">
+                <table className="assignments-table">
+                  <thead>
+                    <tr>
+                      <th>Event</th>
+                      <th>Status</th>
+                      <th>Assigned Coordinator</th>
+                      <th>Start Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEvents.map((event) => (
+                      <tr
+                        key={event.id}
+                        className="assignments-table-row"
+                        onClick={() => navigate(`/events/${event.id}`)}
+                      >
+                        <td className="event-title-cell">
+                          <div className="event-title">{event.title || 'Untitled Event'}</div>
+                          {event.purpose && <div className="event-purpose">{event.purpose}</div>}
+                        </td>
+                        <td>
+                          <StatusBadge status={event.status} size="sm" />
+                        </td>
+                        <td className="coordinator-cell">
+                          {event.coordinatorName ? (
+                            <span className="coordinator-name">{event.coordinatorName}</span>
+                          ) : (
+                            <span className="coordinator-unassigned">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="date-cell">{formatTimestamp(event.startsAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
