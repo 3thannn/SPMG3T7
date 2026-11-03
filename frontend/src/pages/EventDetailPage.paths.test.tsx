@@ -185,6 +185,30 @@ describe('US8.4 — the Lead reassigns an event', () => {
     expect(screen.getByText('Select a coordinator to reassign this event to:')).toBeTruthy()
   })
 
+  it('shows the server’s reason when a reassignment is refused', async () => {
+    const user = await openModal()
+    reassignMock.mockRejectedValue(
+      new EventRuleError('This event was changed since you opened it. Reload and try again.'),
+    )
+
+    await user.click(await screen.findByRole('button', { name: /Sam Tan/ }))
+
+    expect(
+      await screen.findByText('This event was changed since you opened it. Reload and try again.'),
+    ).toBeTruthy()
+  })
+
+  it.each(['Completed', 'Cancelled', 'Rejected'] as const)(
+    'does not offer to reassign a %s event',
+    async (status) => {
+      getEventMock.mockResolvedValue({ ...ASSIGNED, status })
+      render(<EventDetailPage eventId="101" session={lead} />)
+
+      await screen.findByText(ASSIGNED.title)
+      expect(screen.queryByRole('button', { name: 'Reassign Coordinator' })).toBeNull()
+    },
+  )
+
   it('does not open when the coordinators cannot be loaded', async () => {
     const user = userEvent.setup()
     getEventMock.mockResolvedValue(ASSIGNED)

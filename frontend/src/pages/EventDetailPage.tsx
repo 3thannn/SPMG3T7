@@ -582,7 +582,13 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
       }
       setShowReassignModal(false)
     } catch (error) {
-      setBanner({ kind: 'error', text: unexpectedFailureMessage(error, 'reassign coordinator') })
+      setBanner({
+        kind: 'error',
+        text:
+          error instanceof EventRuleError
+            ? error.message
+            : unexpectedFailureMessage(error, 'reassign coordinator'),
+      })
     } finally {
       setReassigning(false)
     }
@@ -903,7 +909,9 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
             <StatusTimeline history={event.history} />
 
             {/* US8.4: Reassignment UI for Coordinator Lead */}
-            {can(session, 'coordinators:assign') && event.coordinatorId && event.status !== 'Draft' && (
+            {/* US8.4: only an active event; a finished one keeps its Coordinator. */}
+            {can(session, 'coordinators:assign') && event.coordinatorId && event.status !== 'Draft' &&
+              !['Completed', 'Cancelled', 'Rejected'].includes(event.status) && (
               <div className="detail-clarify">
                 <h3 className="detail-clarify-title">Coordinator assignment</h3>
                 <div style={{

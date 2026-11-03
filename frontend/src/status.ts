@@ -171,6 +171,8 @@ export type StatusNoteKind =
   | 'change-request'
   | 'safety-return'
   | 'cancellation'
+  /** US8.4: a Lead moved the event to a different Coordinator. */
+  | 'reassignment'
 /**
  * US14.1: the statuses an event may have venues requested for.
  *
@@ -279,6 +281,8 @@ export function statusNoteLabel(kind: StatusNoteKind): string {
       return 'Sent back by Safety Officer'
     case 'cancellation':
       return 'Cancellation reason'
+    case 'reassignment':
+      return 'Coordinator reassigned by Lead'
   }
 }
 

@@ -7,6 +7,8 @@ import {
   listUnassignedEvents,
   reassignCoordinator,
 } from './unassignedQueueStore'
+import { ApiError } from './api'
+import { EventRuleError } from './eventsStore'
 import { failure, ok, sent, stubFetch } from './test/fetch'
 import { buildSession } from './test/sessions'
 
@@ -69,11 +71,29 @@ describe('when a call fails, the error says what could not be done', () => {
   it.each([
     ['load unassigned events', () => listUnassignedEvents(lead)],
     ['assign coordinator', () => assignCoordinator(lead, '7', '2')],
-    ['reassign coordinator', () => reassignCoordinator(lead, '7', '9')],
     ['load coordinators', () => listCoordinators(lead)],
   ])('could not %s', async (doing, call) => {
     stubFetch(failure(500))
 
     await expect(call()).rejects.toThrow(`Could not ${doing}. The API answered HTTP 500`)
+  })
+})
+
+describe('US8.4: a reassignment that fails', () => {
+  it.each([400, 409])('passes on the server’s reason for a %s refusal', async (status) => {
+    stubFetch(failure(status, 'This event is Cancelled, so it can no longer be reassigned.'))
+
+    const refused = reassignCoordinator(lead, '7', '9')
+
+    await expect(refused).rejects.toBeInstanceOf(EventRuleError)
+    await expect(refused).rejects.toThrow(
+      'This event is Cancelled, so it can no longer be reassigned.',
+    )
+  })
+
+  it('leaves any other failure for the page to describe', async () => {
+    stubFetch(failure(500))
+
+    await expect(reassignCoordinator(lead, '7', '9')).rejects.toBeInstanceOf(ApiError)
   })
 })
