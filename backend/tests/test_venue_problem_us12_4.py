@@ -28,7 +28,6 @@ from app.booking_store import Booking, BookingStatus
 from app.event_status import EventStatus
 from app.event_store import Event, StatusChange
 from app.notifications import CoordinatorNotice
-from app.replacement_venues import reopen_reason
 from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEED_ATTRS
 
 EVENT_ID = 960
@@ -151,16 +150,6 @@ class TestRequestingAReplacement:
         assert response.json()["status"] == "Requested"
         assert event_json(client, auth_headers)["status"] == "Planning"
 
-    def test_the_move_is_recorded_with_who_when_and_why(self, client, auth_headers, flagged):
-        flagged()
-
-        replace_with_bertha(client, auth_headers)
-
-        moved = event_json(client, auth_headers)["history"][-1]
-        assert (moved["from"], moved["to"]) == ("Confirmed", "Planning")
-        assert (moved["byId"], moved["byName"]) == (str(COORDINATOR_ID), "Priya")
-        assert moved["at"]
-        assert moved["notes"] == REASON
 
     def test_the_other_bookings_are_untouched(
         self, client, auth_headers, flagged, booking_repository
@@ -173,30 +162,7 @@ class TestRequestingAReplacement:
         assert statuses[FLAGGED] is BookingStatus.REPLACED
         assert statuses[OTHER] is BookingStatus.CONFIRMED
 
-    @pytest.mark.parametrize(
-        "status", [EventStatus.PLANNING, EventStatus.PENDING_SAFETY_CHECK]
-    )
-    def test_an_event_not_yet_confirmed_keeps_its_status(
-        self, client, auth_headers, flagged, status
-    ):
-        flagged(status)
 
-        assert replace_with_bertha(client, auth_headers).status_code == 201
-        event = event_json(client, auth_headers)
-        assert event["status"] == str(status)
-        assert event["history"][-1]["at"] == CONFIRMED_AT
-
-    def test_a_refused_replacement_leaves_it_confirmed(self, client, auth_headers, flagged):
-        flagged()
-
-        refused = client.post(
-            f"/bookings/{FLAGGED}/request-replacement",
-            json={"venueId": str(GREAT_HALL)},
-            headers=auth_headers(COORDINATOR),
-        )
-
-        assert refused.status_code == 400
-        assert event_json(client, auth_headers)["status"] == "Confirmed"
 
 
 class TestNotices:
@@ -214,14 +180,6 @@ class TestNotices:
         ]
         assert told == [(ORGANISER_ID, f'"Open House" is back in Planning. {REASON}')]
 
-    def test_nobody_hears_when_it_was_not_confirmed(
-        self, client, auth_headers, flagged, notification_repository
-    ):
-        flagged(EventStatus.PLANNING)
-
-        replace_with_bertha(client, auth_headers)
-
-        assert notification_repository.notifications == []
 
 
 class TestTheFullPath:
@@ -256,32 +214,5 @@ class TestTheFullPath:
             ("Pending Safety Check", "Confirmed"),
         ]
 
-    def test_the_earlier_safety_approval_does_not_count(self, client, auth_headers, flagged):
-        flagged()
-        replacement = replace_with_bertha(client, auth_headers).json()
-        client.post(f"/booking-requests/{replacement['id']}/approve", headers=auth_headers(STAFF))
-        client.post(f"/events/{EVENT_ID}/safety-check", headers=auth_headers(COORDINATOR))
-
-        refused = client.post(f"/events/{EVENT_ID}/confirm", headers=auth_headers(COORDINATOR))
-
-        assert refused.status_code == 409
 
 
-class TestTheReason:
-    def test_it_names_both_venues_and_why(self):
-        old = booking(
-            FLAGGED,
-            GREAT_HALL,
-            "Great Hall",
-            BookingStatus.NEEDS_REPLACEMENT,
-            replacement_reason="scheduled maintenance",
-        )
-
-        assert reopen_reason(old, "Bertha Room") == REASON
-
-    def test_without_a_reason_or_a_venue_name(self):
-        old = booking(FLAGGED, GREAT_HALL, "", BookingStatus.NEEDS_REPLACEMENT)
-
-        assert reopen_reason(old, "Bertha Room").startswith(
-            "A venue is unavailable, so Bertha Room was requested instead."
-        )

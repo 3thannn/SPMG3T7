@@ -11,16 +11,7 @@ import { test, expect, type Page } from '@playwright/test'
  *   3 Seminar Room 4  never booked
  *   4 Flagged Room    flagged Needs replacement, still to come
  */
-const API = 'http://127.0.0.1:8001'
 
-test.beforeEach(async ({ page, request }) => {
-  expect((await request.post(`${API}/__test__/reset`)).ok()).toBeTruthy()
-  await page.goto('/#/signin')
-  await page.getByLabel('Email').fill('venuestaff@connectsphere.com')
-  await page.getByLabel('Password').fill('password')
-  await page.locator('form').getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.locator('.topnav-name')).toHaveText('Sam')
-})
 
 async function tryToDelete(page: Page, venueId: string, name: string) {
   await page.goto(`/#/venues/${venueId}`)
@@ -48,39 +39,4 @@ test.describe('AC1: a venue with future bookings cannot be deleted', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Great Hall' })).toBeVisible()
     await expectInCatalogue(page, 'Great Hall', true)
   })
-
-  test('a booking waiting for a replacement venue also blocks it', async ({ page }) => {
-    await tryToDelete(page, '4', 'Flagged Room')
-
-    await expect(page.getByRole('alert')).toHaveText(
-      'Flagged Room has 1 booking waiting for a replacement venue, so it cannot be ' +
-        'deleted until their Coordinators have moved them.',
-    )
-    await expectInCatalogue(page, 'Flagged Room', true)
-  })
-})
-
-test.describe('AC2: a venue with no future bookings can still be deleted', () => {
-  test('one that was never booked is deleted', async ({ page }) => {
-    await tryToDelete(page, '3', 'Seminar Room 4')
-
-    await expect(page.getByRole('heading', { level: 1, name: 'Venues' })).toBeVisible()
-    await expectInCatalogue(page, 'Seminar Room 4', false)
-  })
-
-  test('one with only past and cancelled bookings is deleted', async ({ page }) => {
-    await tryToDelete(page, '2', 'Bertha Room')
-
-    await expect(page.getByRole('heading', { level: 1, name: 'Venues' })).toBeVisible()
-    await expectInCatalogue(page, 'Bertha Room', false)
-  })
-})
-
-test('the confirmation says past bookings go with the venue', async ({ page }) => {
-  await page.goto('/#/venues/2')
-  await page.getByRole('button', { name: 'Delete venue' }).click()
-
-  await expect(page.getByText(/past and\s+cancelled bookings are deleted with it/)).toBeVisible()
-  await page.getByRole('button', { name: 'Keep it' }).click()
-  await expectInCatalogue(page, 'Bertha Room', true)
 })

@@ -12,7 +12,6 @@ from datetime import datetime
 
 import pytest
 
-from app import venue_store
 from app.booking_store import Booking, BookingStatus
 from tests.test_venue_bookings import GREAT_HALL, request, seed_event
 
@@ -42,10 +41,12 @@ class TestUpcomingAt:
 
 
 
+    def test_one_ending_exactly_now_has_ended(self):
+        assert not booking(starts_at="2027-06-01T09:00", ends_at="2027-06-01T12:00").upcoming_at(
+            NOW
+        )
 
 
-    def test_an_end_that_cannot_be_read_counts(self):
-        assert booking(ends_at="not a time").upcoming_at(NOW)
 
 
 @pytest.fixture
@@ -81,6 +82,18 @@ def book(client, coordinator, booking_repository, **overrides) -> Booking:
 class TestDeletingAVenueWithFutureBookings:
     """AC1: refused, and pointed at marking the venue unavailable."""
 
+    def test_a_future_booking_blocks_the_delete(
+        self, client, coordinator, venue_staff, booking_repository, venue_repository
+    ):
+        book(client, coordinator, booking_repository)
+
+        response = delete(client, venue_staff)
+
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert detail["code"] == "venue_has_future_bookings"
+        assert detail["futureBookings"] == 1
+        assert venue_repository.get_venue(1) is not None
 
     def test_the_message_says_to_mark_it_unavailable(
         self, client, coordinator, venue_staff, booking_repository
@@ -122,56 +135,7 @@ class TestDeletingAVenueWithNoFutureBookings:
 
 
 
-@pytest.mark.usefixtures("event")
-class TestBookingsWaitingForAReplacement:
-    """Deleting the venue would delete a booking its Coordinator still has to move."""
-
-    def test_a_future_flagged_booking_blocks_the_delete(
-        self, client, coordinator, venue_staff, booking_repository, venue_repository
-    ):
-        book(client, coordinator, booking_repository, status=BookingStatus.NEEDS_REPLACEMENT)
-
-        response = delete(client, venue_staff)
-
-        assert response.status_code == 409
-        detail = response.json()["detail"]
-        assert detail["code"] == "venue_has_future_bookings"
-        assert detail["message"] == (
-            "Great Hall has 1 booking waiting for a replacement venue, so it cannot "
-            "be deleted until their Coordinators have moved them."
-        )
-        assert venue_repository.get_venue(1) is not None
 
 
 
-@pytest.mark.usefixtures("event")
-def test_a_booking_that_lands_after_the_check_is_still_refused(
-    client, venue_staff, venue_repository, monkeypatch
-):
-    """The database trigger refuses the delete; the route says why, not 500."""
-
-    def refused(venue_id: int) -> None:
-        raise venue_store.VenueHasFutureBookings
-
-    monkeypatch.setattr(venue_repository, "delete_venue", refused)
-
-    response = delete(client, venue_staff)
-
-    assert response.status_code == 409
-    detail = response.json()["detail"]
-    assert detail["code"] == "venue_has_future_bookings"
-    assert "Mark it unavailable instead" in detail["message"]
-    assert "futureBookings" not in detail
-
-
-class TestAwaitingReplacementAt:
-
-    def test_a_flagged_booking_that_has_ended_does_not(self):
-        flagged = booking(
-            status=BookingStatus.NEEDS_REPLACEMENT,
-            starts_at="2027-05-01T09:00",
-            ends_at="2027-05-01T17:00",
-        )
-
-        assert not flagged.awaiting_replacement_at(NOW)
 

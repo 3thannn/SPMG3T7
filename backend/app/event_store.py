@@ -625,15 +625,18 @@ class SupabaseEvents:
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
         """Move the event and write the audit entry US4.2 requires.
 
-        US8.2: Auto-assignment is now OFF. Events remain unassigned on submit."""
+        US8.2: Auto-assignment is now OFF. Events remain unassigned on submit.
+        D2: a resubmitted Rejected event returns to the unassigned queue, so its
+        earlier Coordinator is cleared and the Lead assigns it again."""
         at = _now()
-        supabase_client.admin().table(EVENTS_TABLE).update(
-            {
-                "status": str(EventStatus.SUBMITTED),
-                "submitted_at": at,
-                "updated_at": at,
-            }
-        ).eq("id", event_id).execute()
+        values = {
+            "status": str(EventStatus.SUBMITTED),
+            "submitted_at": at,
+            "updated_at": at,
+        }
+        if from_status is EventStatus.REJECTED:
+            values["coordinator_id"] = None
+        supabase_client.admin().table(EVENTS_TABLE).update(values).eq("id", event_id).execute()
         supabase_client.admin().table(CHANGES_TABLE).insert(
             {
                 "event_id": event_id,
@@ -1215,6 +1218,10 @@ class InMemoryEvents:
                 status=EventStatus.SUBMITTED,
                 updated_at=at,
                 history=(*existing.history, entry),
+                # D2: a resubmitted Rejected event goes back to the Lead's queue.
+                coordinator_id=(
+                    None if from_status is EventStatus.REJECTED else existing.coordinator_id
+                ),
             )
         )
 

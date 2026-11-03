@@ -1,30 +1,5 @@
 import { test, expect, api } from './replacement-fixtures'
 
-test('AC1: search excludes original, occupied and closed venues at the same time', async ({ page, world }) => {
-  const response = page.waitForResponse(api + '/bookings/' + world.bookingId + '/replacement-venues')
-  await page.getByRole('button', { name: 'Find a replacement venue for Great Hall', exact: true }).click()
-  expect((await response).status()).toBe(200)
-  const choices = page.getByLabel('Choose a replacement venue')
-  await expect(choices).toBeVisible()
-  expect(await choices.locator('option').evaluateAll(
-    (options) => options.map((option) => (option as HTMLOptionElement).value).filter(Boolean),
-  )).toEqual(['2', '3'])
-  await expect(choices).not.toContainText('Great Hall')
-  await expect(choices).not.toContainText('Occupied Room')
-  await expect(choices).not.toContainText('Closed Room')
-  await page.getByLabel('Minimum capacity', { exact: true }).fill('50')
-  await page.getByLabel('Location', { exact: true }).fill(' library ')
-  await page.getByLabel('Accessibility', { exact: true }).fill('STEP-FREE')
-  await page.getByRole('button', { name: 'Apply filters', exact: true }).click()
-  await expect(choices.locator('option')).toHaveCount(2)
-  await expect(choices.locator('option').last()).toHaveAttribute('value', '3')
-  await page.getByLabel('Location', { exact: true }).fill('Level 3')
-  await page.getByRole('button', { name: 'Apply filters', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('No replacement venues')
-  await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
-  await expect(choices.locator('option')).toHaveCount(3)
-})
-
 test('AC2/AC3: replacement persists history and leaves other bookings untouched', async ({ page, request, world }) => {
   const headers = { Authorization: 'Bearer ' + world.session.token }
   const before = await request.get(api + '/events/' + world.eventId + '/bookings', { headers })

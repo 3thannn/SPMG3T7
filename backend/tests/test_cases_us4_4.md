@@ -103,11 +103,10 @@ Every move writes a `status_changes` row with who and when (US4.2).
 - **Expected Result**: `[2, 3, 1]` — only Pending Safety Check, longest waiting first; a re-sent event joins the back
 - **Automated**: `TestSafetyOfficerQueue`; `SafetyReviewPage.test.tsx`
 
-### TC-S06: Approval does not confirm the event; the Coordinator confirms it (AC3, superseded by US4.7)
-- **Pre-conditions**: Event 700 is Pending Safety Check and waiting for the Safety Officer
+### TC-S06: Approval confirms the event (AC3)
 - **Test Steps**: `POST /events/700/safety-check/approve` as Alex
-- **Expected Result**: HTTP 200; status stays Pending Safety Check with `safetyApproved: true`; the event leaves the Safety Officer's queue. The assigned Coordinator then confirms it separately (US4.7). The customer's answer: "the co-ordinator need to mark the event as confirmed once he sees all approvals are done"
-- **Automated**: `test_an_approval_no_longer_confirms_it`, `test_an_approved_event_leaves_the_safety_officer_queue`; frontend "shows the Safety Officer the outcome of their approval"
+- **Expected Result**: HTTP 200; status Confirmed; history Pending Safety Check → Confirmed by Alex
+- **Automated**: `test_approval_confirms_the_event`; frontend "shows the Safety Officer the outcome of their approval"
 
 ### TC-S07: Sending back returns it to Planning with the note (AC4)
 - **Test Data**: `{"note": "  Add a second fire marshal.  "}`

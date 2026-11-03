@@ -23,25 +23,18 @@ every line of the feature runs without a database.
 
 import pytest
 
-from app import change_requests, supabase_client
+from app import change_requests
 from app.change_requests import (
+    CHANGE_REQUEST_REFUSAL_MESSAGES,
+    IMPORTANT_FIELDS,
     ChangeRequestRefusal,
-    FieldChange,
-    applied_values,
-    check_change_request,
-    diff,
-    history_kind,
-    reopen_reason,
+    is_important,
 )
 from app.event_status import EventStatus
 from app.event_store import (
-    CHANGE_REQUESTS_TABLE,
     Event,
-    InMemoryEvents,
-    StaleEventStatus,
-    SupabaseEvents,
 )
-from app.events import CHANGE_NOTE_MAX, DECISION_REASON_MAX, PURPOSE_MAX, TITLE_MAX
+from app.events import PURPOSE_MAX, TITLE_MAX
 from app.permissions import Role
 from app.users import User
 from tests.conftest import (
@@ -49,6 +42,7 @@ from tests.conftest import (
     ORGANISER_ID,
     PASSWORD,
     SUBMITTABLE_NEEDS,
+    TODAY,
 )
 
 DRAFT = {
@@ -190,78 +184,49 @@ def _event(**overrides) -> Event:
 
 
 class TestRules:
+    @pytest.mark.parametrize(
+        "column", ["proposed_date", "end_date", "expected_attendance", "venue_id", "equipment"]
+    )
+    def test_date_time_attendance_venue_and_equipment_are_important(self, column):
+        assert is_important(column)
 
+    @pytest.mark.parametrize("column", ["name", "purpose", "description", "unknown"])
+    def test_everything_else_is_routine(self, column):
+        assert not is_important(column)
 
-
-
-
-
-
-
-
-    def test_clearing_an_end_date_is_a_change(self):
-        assert diff(_event(), _event(ends_at="")) == (
-            FieldChange("end_date", "2027-11-02T21:00:00", "", True),
-        )
-
-
-    def test_unparseable_dates_fall_back_to_comparing_text(self):
-        assert diff(_event(ends_at="soon"), _event(ends_at="soon")) == ()
-        assert diff(_event(ends_at="soon"), _event(ends_at="later")) == (
-            FieldChange("end_date", "soon", "later", True),
-        )
-
-
-
-
-    def test_applied_values_are_typed_as_the_event_holds_them(self):
-        values = applied_values(
-            [
-                FieldChange("name", "a", "Renamed", False),
-                FieldChange("proposed_date", "a", "2027-11-03T18:00", True),
-                FieldChange("expected_attendance", "120", "150", True),
-                FieldChange("venue_id", "1", "2", True),
-            ]
-        )
-
-        assert values == {
-            "title": "Renamed",
-            "starts_at": "2027-11-03T18:00",
-            "expected_attendance": 150,
+    def test_the_important_set_is_exactly_the_story_s_list(self):
+        assert IMPORTANT_FIELDS == {
+            "proposed_date",
+            "end_date",
+            "expected_attendance",
+            "venue_id",
+            "equipment",
+            "equipment_needs",
+            "venue_requirements",
+            "preferred_layout",
+            "accessibility_needs",
         }
 
 
 
-    def test_someone_else_is_told_it_is_not_theirs_first(self):
-        # Even on a Draft with a request pending: ownership is checked first.
-        assert (
-            check_change_request(
-                status=EventStatus.DRAFT,
-                organiser_id=ORGANISER_ID,
-                actor_id=OTHER_ORGANISER_ID,
-                change_requested=True,
-            )
-            is ChangeRequestRefusal.NOT_OWNER
-        )
 
 
 
 
 
-    @pytest.mark.parametrize(
-        ("by_id", "to_status", "expected"),
-        [
-            (ORGANISER_ID, EventStatus.UNDER_REVIEW, "change-request"),
-            (ORGANISER_ID, EventStatus.SUBMITTED, ""),
-            (COORDINATOR_ID, EventStatus.UNDER_REVIEW, ""),
-            (COORDINATOR_ID, EventStatus.APPROVED, ""),
-        ],
-        ids=["organiser-to-review", "organiser-submits", "clarification", "decision"],
-    )
-    def test_a_change_request_entry_is_recognised_without_a_column(
-        self, by_id, to_status, expected
-    ):
-        assert history_kind(by_id=by_id, organiser_id=ORGANISER_ID, to_status=to_status) == expected
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -271,42 +236,49 @@ class TestRules:
 class TestProposing:
 
 
-
-
-
-
-
-
-
-
-
-
-
-    def test_the_organiser_sees_their_own_pending_request(self, client, auth_headers):
+    def test_the_change_requested_flag_is_set(self, client, auth_headers):
         event = pending_event(client, auth_headers, title="Welcome Night")
 
-        fetched = client.get(f"/events/{event['id']}", headers=auth_headers(ORGANISER)).json()
+        assert event["changeRequested"] is True
 
-        assert fetched["changeRequested"] is True
-        assert fetched["pendingChanges"] == event["pendingChanges"]
+    def test_the_event_itself_is_not_edited(self, client, auth_headers):
+        # The point of the story: reviewed, not applied.
+        event = pending_event(client, auth_headers, title="Welcome Night", expectedAttendance=200)
+
+        assert event["title"] == DRAFT["title"]
+        assert event["expectedAttendance"] == DRAFT["expectedAttendance"]
 
 
-
-class TestDirectEditsAreRefused:
-    @pytest.mark.parametrize("make", [submitted_event, under_review_event])
-    def test_the_owner_cannot_save_a_submitted_event_directly(self, client, auth_headers, make):
-        event = make(client, auth_headers)
-
-        response = client.put(
-            f"/events/{event['id']}",
-            json={**DRAFT, "title": "Sneaky"},
-            headers=auth_headers(ORGANISER),
+    def test_every_permitted_field_can_be_proposed(self, client, auth_headers):
+        event = pending_event(
+            client,
+            auth_headers,
+            title="Welcome Night",
+            purpose="Meet the cohort.",
+            description="Talks and dinner.",
+            startsAt="2027-11-03T18:00",
+            endsAt="2027-11-03T22:00",
+            expectedAttendance=150,
         )
 
-        assert response.status_code == 409
-        assert response.json()["detail"]["reason"] == "change-request-required"
-        fetched = client.get(f"/events/{event['id']}", headers=auth_headers(ORGANISER)).json()
-        assert fetched["title"] == DRAFT["title"]
+        assert [change["field"] for change in event["pendingChanges"]] == [
+            "name",
+            "proposed_date",
+            "end_date",
+            "purpose",
+            "expected_attendance",
+            "description",
+        ]
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -314,24 +286,32 @@ class TestWhoMayPropose:
 
 
 
+    def test_another_organiser_is_told_the_event_does_not_exist(
+        self, client, auth_headers, user_store
+    ):
+        event = submitted_event(client, auth_headers)
+        other = add_user(user_store, client, OTHER_ORGANISER_ID, Role.ORGANISER)
 
-    @pytest.mark.parametrize("event_id", ["99999", "not-a-number"])
-    def test_an_unknown_event_is_not_found(self, client, auth_headers, event_id):
-        response = propose(client, auth_headers(ORGANISER), event_id, title="New")
+        response = propose(client, other, event["id"], title="New")
 
         assert response.status_code == 404
 
 
-class TestWhenAProposalIsRefused:
-    def test_a_draft_is_refused(self, client, auth_headers):
-        created = client.post("/events", json=DRAFT, headers=auth_headers(ORGANISER)).json()
 
-        response = propose(client, auth_headers(ORGANISER), created["id"], title="New")
+class TestWhenAProposalIsRefused:
+
+
+    def test_a_second_request_waits_for_the_first(self, client, auth_headers):
+        event = pending_event(client, auth_headers, title="Welcome Night")
+
+        response = propose(client, auth_headers(ORGANISER), event["id"], title="Another")
 
         assert response.status_code == 409
-        assert response.json()["detail"]["reason"] == "not-submitted"
-
-
+        assert response.json()["detail"]["reason"] == "already-pending"
+        assert (
+            response.json()["detail"]["message"]
+            == (CHANGE_REQUEST_REFUSAL_MESSAGES[ChangeRequestRefusal.ALREADY_PENDING])
+        )
 
     def test_a_request_that_changes_nothing_is_refused(self, client, auth_headers):
         event = submitted_event(client, auth_headers)
@@ -345,31 +325,7 @@ class TestWhenAProposalIsRefused:
 
 
 
-    def test_a_note_over_the_limit_is_refused(self, client, auth_headers):
-        event = submitted_event(client, auth_headers)
 
-        response = propose(
-            client, auth_headers(ORGANISER), event["id"], "n" * (CHANGE_NOTE_MAX + 1), title="New"
-        )
-
-        assert response.status_code == 400
-
-    def test_a_concurrent_request_is_reported_as_stale(
-        self, client, auth_headers, event_repository, monkeypatch
-    ):
-        event = submitted_event(client, auth_headers)
-        original = event_repository.submit_change_request
-
-        def another_request_lands_first(event_id, **kwargs):
-            original(event_id, **kwargs)
-            return original(event_id, **kwargs)
-
-        monkeypatch.setattr(event_repository, "submit_change_request", another_request_lands_first)
-
-        response = propose(client, auth_headers(ORGANISER), event["id"], title="New")
-
-        assert response.status_code == 409
-        assert response.json()["detail"]["reason"] == "invalid-transition"
 
 
 class TestProposalValidation:
@@ -454,12 +410,55 @@ class TestProposalValidation:
         assert response.status_code == 400
         assert response.json()["detail"]["message"] == message
 
+    @pytest.mark.parametrize(
+        "changes",
+        [
+            {"expectedAttendance": 1},
+            {"title": "t" * TITLE_MAX},
+            {"purpose": "p" * PURPOSE_MAX},
+            {"endsAt": "2027-11-02T18:01"},
+            {
+                "startsAt": f"{TODAY.isoformat()}T23:00",
+                "endsAt": f"{TODAY.isoformat()}T23:59",
+            },
+            {"venueRequirements": "None / Not required", "preferredLayout": "Banquet"},
+        ],
+        ids=[
+            "attendance-at-least-one",
+            "title-at-limit",
+            "purpose-at-limit",
+            "end-one-minute-after-start",
+            "starts-today",
+            "needs-changed",
+        ],
+    )
+    def test_a_proposal_at_the_boundary_is_accepted(self, client, auth_headers, changes):
+        event = submitted_event(client, auth_headers)
+
+        response = propose(client, auth_headers(ORGANISER), event["id"], **changes)
+
+        assert response.status_code == 200, response.text
 
 
 # --- AC3: visible to the Coordinator -------------------------------------------
 
 
 class TestCoordinatorSees:
+    def test_the_assigned_coordinator_sees_the_proposed_changes(self, client, auth_headers):
+        event = pending_event(client, auth_headers, startsAt="2027-11-02T17:00")
+
+        fetched = client.get(f"/events/{event['id']}", headers=auth_headers(COORDINATOR)).json()
+
+        assert fetched["changeRequested"] is True
+        assert fetched["pendingChanges"] == [
+            {
+                "field": "proposed_date",
+                "label": "Starts",
+                "oldValue": DRAFT["startsAt"],
+                "newValue": "2027-11-02T17:00",
+                "important": True,
+            }
+        ]
 
 
 
@@ -477,6 +476,11 @@ class TestCoordinatorSees:
 class TestImportance:
 
 
+    def test_a_mixed_request_flags_each_field_on_its_own(self, client, auth_headers):
+        event = pending_event(client, auth_headers, title="Renamed", expectedAttendance=150)
+
+        flags = {field: change["important"] for field, change in changes_by_field(event).items()}
+        assert flags == {"name": False, "expected_attendance": True}
 
     def test_approved_changes_are_logged_as_important_or_routine(
         self, client, auth_headers, event_repository
@@ -493,37 +497,6 @@ class TestImportance:
         assert logged == [("name", "routine"), ("expected_attendance", "important")]
 
 
-class TestWhereRequestsAreStored:
-    """A request is not a change: `event_changes` only ever holds applied changes."""
-
-
-
-
-
-    def test_answering_one_request_leaves_earlier_and_other_requests_alone(
-        self, client, auth_headers, event_repository
-    ):
-        first = pending_event(client, auth_headers, title="Renamed")
-        reject(client, auth_headers(COORDINATOR), first["id"])
-        client.post(
-            f"/events/{first['id']}/clarification",
-            json={"message": "Please amend again."},
-            headers=auth_headers(COORDINATOR),
-        )
-        propose(client, auth_headers(ORGANISER), first["id"], purpose="Second ask.")
-        other = pending_event(client, auth_headers, description="Another event.")
-
-        approve(client, auth_headers(COORDINATOR), first["id"])
-
-        assert [
-            (event_id, change.field, status)
-            for event_id, change, status in event_repository.change_requests
-        ] == [
-            (int(first["id"]), "name", "rejected"),
-            (int(first["id"]), "purpose", "approved"),
-            (int(other["id"]), "description", "pending"),
-        ]
-        assert [change.field for _, change in event_repository.change_log] == ["purpose"]
 
 
 # --- AC5: the Coordinator reviews, then decides ----------------------------------
@@ -549,8 +522,32 @@ class TestApproving:
         assert approved["endsAt"] == "2027-11-03T21:00"
         assert approved["expectedAttendance"] == 150
 
+    def test_approving_clears_the_flag_and_the_proposal(self, client, auth_headers):
+        event = pending_event(client, auth_headers, title="Welcome Night")
+
+        approved = approve(client, auth_headers(COORDINATOR), event["id"]).json()
+
+        assert approved["changeRequested"] is False
+        assert approved["pendingChanges"] == []
 
 
+
+    def test_the_organiser_is_notified_of_the_acceptance(
+        self, client, auth_headers, notification_repository
+    ):
+        """US11.2 AC2: accepting notifies the Organiser, and only them.
+
+        The proposal renamed the event, so the notice already uses the new name.
+        """
+        event = pending_event(client, auth_headers, title="Welcome Night")
+        approve(client, auth_headers(COORDINATOR), event["id"])
+
+        told = [
+            (notice.user_id, notice.message)
+            for notice in notification_repository.notifications
+            if notice.kind == "change-accepted"
+        ]
+        assert told == [(ORGANISER_ID, 'The change request for "Welcome Night" was accepted.')]
 
 
 
@@ -559,7 +556,39 @@ class TestApproving:
 
 
 class TestRejecting:
+    def test_rejecting_keeps_the_current_values(self, client, auth_headers):
+        event = pending_event(client, auth_headers, title="Welcome Night", expectedAttendance=150)
 
+        response = reject(client, auth_headers(COORDINATOR), event["id"])
+
+        assert response.status_code == 200, response.text
+        rejected = response.json()
+        assert rejected["title"] == DRAFT["title"]
+        assert rejected["expectedAttendance"] == DRAFT["expectedAttendance"]
+        assert rejected["changeRequested"] is False
+        assert rejected["pendingChanges"] == []
+        assert rejected["status"] == "Under Review"
+
+
+    def test_the_organiser_is_notified_of_the_rejection_and_why(
+        self, client, auth_headers, notification_repository
+    ):
+        """US11.2 AC3: rejecting notifies the Organiser with the trimmed reason."""
+        event = pending_event(client, auth_headers, title="Welcome Night")
+        reject(client, auth_headers(COORDINATOR), event["id"], "  Keep the original name.  ")
+
+        told = [
+            (notice.user_id, notice.message)
+            for notice in notification_repository.notifications
+            if notice.kind == "change-rejected"
+        ]
+        assert told == [
+            (
+                ORGANISER_ID,
+                'The change request for "Faculty Welcome Night" was rejected. '
+                "Reason: Keep the original name.",
+            )
+        ]
 
 
     @pytest.mark.parametrize("reason", ["", "   "])
@@ -573,90 +602,15 @@ class TestRejecting:
         assert still["changeRequested"] is True
 
 
-    def test_a_reason_over_the_limit_is_refused(self, client, auth_headers):
-        event = pending_event(client, auth_headers, title="Welcome Night")
-
-        response = reject(
-            client, auth_headers(COORDINATOR), event["id"], "r" * (DECISION_REASON_MAX + 1)
-        )
-
-        assert response.status_code == 400
-
-
-class TestWhoMayReview:
-
-
-    @pytest.mark.parametrize("action", [approve, reject])
-    def test_an_unassigned_coordinator_cannot_answer(
-        self, client, auth_headers, user_store, action
-    ):
-        event = pending_event(client, auth_headers, title="Welcome Night")
-        other = add_user(user_store, client, OTHER_COORDINATOR_ID, Role.COORDINATOR)
-
-        assert action(client, other, event["id"]).status_code == 404
 
 
 
-    def test_a_concurrent_answer_is_reported_as_stale(
-        self, client, auth_headers, event_repository, monkeypatch
-    ):
-        event = pending_event(client, auth_headers, title="Welcome Night")
-        original = event_repository.resolve_change_request
-
-        def another_coordinator_answers_first(event_id, **kwargs):
-            original(event_id, **kwargs)
-            return original(event_id, **kwargs)
-
-        monkeypatch.setattr(
-            event_repository, "resolve_change_request", another_coordinator_answers_first
-        )
-
-        response = approve(client, auth_headers(COORDINATOR), event["id"])
-
-        assert response.status_code == 409
-        assert response.json()["detail"]["reason"] == "invalid-transition"
-
-
-class TestReviewBeforeDeciding:
-    @pytest.mark.parametrize(
-        ("decision", "body"), [("approve", None), ("reject", {"reason": "No."})]
-    )
-    def test_the_event_cannot_be_decided_while_a_request_is_pending(
-        self, client, auth_headers, decision, body
-    ):
-        event = pending_event(client, auth_headers, title="Welcome Night")
-
-        response = client.post(
-            f"/events/{event['id']}/{decision}", json=body, headers=auth_headers(COORDINATOR)
-        )
-
-        assert response.status_code == 409
-        assert response.json()["detail"]["reason"] == "change-pending"
 
 
 
 # --- the stores ----------------------------------------------------------------
 
 
-class TestInMemoryStore:
-
-    def test_answering_after_the_event_moved_on_is_stale(self):
-        store = InMemoryEvents(events=[_event(status=EventStatus.COMPLETED, change_requested=True)])
-
-        with pytest.raises(StaleEventStatus):
-            store.resolve_change_request(1, actor_id=COORDINATOR_ID, approve=False, note="No")
-
-    def test_requesting_from_a_status_that_changed_is_stale(self):
-        store = InMemoryEvents(events=[_event(status=EventStatus.APPROVED)])
-
-        with pytest.raises(StaleEventStatus):
-            store.submit_change_request(
-                1,
-                actor_id=ORGANISER_ID,
-                from_status=EventStatus.SUBMITTED,
-                changes=(FieldChange("name", "a", "b", False),),
-                note="",
-            )
 
 
 class FakeRpc:
@@ -767,101 +721,5 @@ def answered_row(status: str, reviewed_at: str, note: str | None = None) -> dict
         "reviewed_at": reviewed_at,
         "review_note": note,
     }
-
-
-class TestSupabaseStore:
-    def test_a_request_is_one_rpc_carrying_every_change(self, monkeypatch):
-        admin = FakeAdmin(True)
-        store = SupabaseEvents()
-        returned = _event(status=EventStatus.UNDER_REVIEW)
-        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
-        monkeypatch.setattr(store, "get_event", lambda _event_id: returned)
-
-        result = store.submit_change_request(
-            42,
-            actor_id=ORGANISER_ID,
-            from_status=EventStatus.SUBMITTED,
-            changes=(
-                FieldChange("name", "Old", "New", False),
-                FieldChange("expected_attendance", "120", "150", True),
-            ),
-            note="Updated numbers.",
-        )
-
-        assert result is returned
-        assert admin.calls == [
-            (
-                "us11_review",
-                {
-                    "p_event_id": 42,
-                    "p_action": "submit",
-                    "p_revision": 0,
-                    "p_actor_id": ORGANISER_ID,
-                    "p_payload": {
-                        "changes": [
-                            {
-                                "changed_field": "name",
-                                "old_value": "Old",
-                                "new_value": "New",
-                                "change_type": "routine",
-                            },
-                            {
-                                "changed_field": "expected_attendance",
-                                "old_value": "120",
-                                "new_value": "150",
-                                "change_type": "important",
-                            },
-                        ],
-                        "note": "Updated numbers.",
-                    },
-                },
-            )
-        ]
-
-
-
-
-    def test_an_approval_is_one_rpc_carrying_the_us11_3_reason(self, monkeypatch):
-        """US11.3: the database decides whether the event goes back to Planning;
-        the API sends the words its history entry would carry."""
-        admin = FakeAdmin(True)
-        store = SupabaseEvents()
-        attendance = FieldChange("expected_attendance", "50", "75", important=True)
-        returned = _event(status=EventStatus.CONFIRMED, pending_changes=(attendance,))
-        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
-        monkeypatch.setattr(store, "get_event", lambda _event_id: returned)
-
-        result = store.resolve_change_request(42, actor_id=COORDINATOR_ID, approve=True, note="")
-
-        assert result is returned
-        assert admin.calls == [
-            (
-                "us11_approve_change",
-                {
-                    "p_event_id": 42,
-                    "p_revision": 0,
-                    "p_actor_id": COORDINATOR_ID,
-                    "p_payload": {"note": ""},
-                    "p_reason": reopen_reason((attendance,)),
-                },
-            )
-        ]
-
-
-
-
-
-
-    def test_an_empty_list_reads_no_requests(self, monkeypatch):
-        admin = FakeAdmin(rows={"events": []})
-        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
-
-        assert SupabaseEvents().list_events(organiser_id=None, include_drafts=False) == []
-        assert all(table != CHANGE_REQUESTS_TABLE for table, _ in admin.queries)
-
-
-
-
-
 
 

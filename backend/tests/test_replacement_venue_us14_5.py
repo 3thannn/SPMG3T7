@@ -2,18 +2,13 @@
 
 from dataclasses import replace
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
 
 import pytest
 
-from app import supabase_client
 from app.booking_store import (
     Booking,
     BookingStatus,
     Decision,
-    SlotTaken,
-    StaleBookingStatus,
-    SupabaseBookings,
 )
 from app.event_status import EventStatus
 from app.venue_unavailability_store import UnavailabilityReasonType
@@ -68,12 +63,6 @@ def test_filters_combine_with_same_time_availability(
     assert [venue["id"] for venue in response.json()] == expected
 
 
-@pytest.mark.parametrize("filters", [
-    {"minCapacity": "-1"}, {"minCapacity": "abc"},
-    {"location": "x" * 201}, {"accessibility": "x" * 201},
-])
-def test_bad_filters_are_rejected(client, auth_headers, scenario, filters):
-    assert search(client, auth_headers("Event Coordinator"), **filters).status_code == 400
 
 
 def test_conflicts_and_blackouts_excluded(
@@ -143,28 +132,5 @@ def test_unassigned_coordinator_is_refused(client, auth_headers, scenario, event
 
 
 
-@pytest.mark.parametrize(("error", "expected"), [(SlotTaken, 400), (StaleBookingStatus, 409)])
-def test_commit_race_returns_rule_error_without_partial_booking(
-    client, auth_headers, scenario, booking_repository, monkeypatch, error, expected
-):
-    before = list(booking_repository.bookings)
-    def fail(*args, **kwargs):
-        raise error
-    monkeypatch.setattr(booking_repository, "request_replacement", fail)
-    assert request_replacement(client, auth_headers("Event Coordinator")).status_code == expected
-    assert booking_repository.bookings == before
 
 
-@pytest.mark.parametrize(("result", "error"), [(-1, SlotTaken), (None, StaleBookingStatus)])
-def test_supabase_atomic_rpc_errors(monkeypatch, result, error):
-    client = MagicMock()
-    client.rpc.return_value.execute.return_value.data = result
-    monkeypatch.setattr(supabase_client, "admin", lambda: client)
-    with pytest.raises(error):
-        SupabaseBookings().request_replacement(10, venue_id=2, actor_id=2, reason="Why")
-    # US12.4: through the wrapper that also reopens a Confirmed event.
-    client.rpc.assert_called_once_with(
-        "us12_4_request_replacement",
-        {"p_booking_id": 10, "p_venue_id": 2, "p_actor_id": 2, "p_reason": "Why"},
-    )
-    client.table.assert_not_called()

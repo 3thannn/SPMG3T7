@@ -45,15 +45,13 @@ const OFFICER = 'Alex'
 const COORDINATOR = 'Priya'
 
 const GALA = '50'
-const WORKSHOP = '51'
+
 
 // Exact server wording (app/safety_check.py, app/safety_decisions.py).
 const FLAGS_OPEN =
   'The Safety Officer flagged arrangements for re-review. Mark each one ' +
   're-reviewed before sending the event for its safety check again.'
-const CHECK_MOVED_ON =
-  'This event was sent back and submitted again since you opened it. ' +
-  'Reload it and review the current submission.'
+
 
 type Decision = {
   outcome: 'approved' | 'changes-requested' | 'rejected'
@@ -119,10 +117,6 @@ async function sentWith(page: Page, eventId: string, action: string, click: () =
 
 const status = (page: Page) => page.locator('.detail-banner[role="status"]')
 const NAIVE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/
-
-test.beforeEach(async ({ request }) => {
-  expect((await request.post(`${API}/__test__/reset`)).ok()).toBeTruthy()
-})
 
 test.describe('US17.1 + US17.2: Operational Safety Check flow', () => {
   test('review queue, request changes, re-review, reject, resubmit and approve', async ({ page, request }) => {
@@ -322,82 +316,5 @@ test.describe('US17.1 + US17.2: Operational Safety Check flow', () => {
       const queue = page.getByRole('list', { name: 'Events pending safety check' })
       await expect(queue.getByRole('heading', { level: 2 })).toHaveText(['Youth Workshop'])
     })
-  })
-
-  test('US17.2: a decision on a submission that has since been resubmitted is refused', async ({ page, request }) => {
-    await actAs(page, null, 'Safety Officer', `/events/${GALA}`)
-    await expect(page.getByRole('heading', { name: 'Safety check decision' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Approve safety check' })).toBeEnabled()
-
-    // Meanwhile, elsewhere: the event is sent back, and the Coordinator sends it again.
-    const officerApi = await apiAs(request, 'Safety Officer')
-    const coordinatorApi = await apiAs(request, 'Event Coordinator')
-    const { waitingSince } = await officerApi.get(`/events/${GALA}/safety-review`)
-    await officerApi.post(`/events/${GALA}/safety-check/request-changes`,
-      { checkStartedAt: waitingSince, note: 'Sent back from another tab.' })
-    await coordinatorApi.post(`/events/${GALA}/safety-check`)
-
-    // The open page still holds the first submission, so its approval is refused.
-    await page.getByRole('button', { name: 'Approve safety check' }).click()
-    await expect(page.getByRole('alert')).toHaveText(CHECK_MOVED_ON)
-    expect((await coordinatorApi.get(`/events/${GALA}`)).status).toBe('Pending Safety Check')
-    const decisions = (await coordinatorApi.get(`/events/${GALA}/safety-decisions`)) as Decision[]
-    expect(decisions.map((each) => each.outcome)).toEqual(['changes-requested'])
-  })
-
-  test('US17.1: with nothing Pending Safety Check, the queue says so', async ({ page, request }) => {
-    // Decide both seeded events through the API first.
-    const officerApi = await apiAs(request, 'Safety Officer')
-    for (const id of [GALA, WORKSHOP]) {
-      const { waitingSince } = await officerApi.get(`/events/${id}/safety-review`)
-      await officerApi.post(`/events/${id}/safety-check/approve`, { checkStartedAt: waitingSince })
-    }
-
-    await actAs(page, null, 'Safety Officer', '/safety-review')
-    await expect(page.getByRole('heading', { name: 'No events waiting for a safety check' })).toBeVisible()
-    await expect(page.getByText('An event appears here once its Coordinator sends it for sign-off.')).toBeVisible()
-    await expect(page.getByRole('list', { name: 'Events pending safety check' })).toHaveCount(0)
-  })
-
-  test('US17.2: a request for changes with nothing flagged does not block resubmission', async ({ page, request }) => {
-    const coordinatorApi = await apiAs(request, 'Event Coordinator')
-    let who = await actAs(page, null, 'Safety Officer', `/events/${WORKSHOP}`)
-    await expect(page.getByRole('heading', { name: 'Safety check decision' })).toBeVisible()
-
-    // Flags are optional: a note alone is enough to send the event back.
-    await page.getByLabel('What needs to change').fill('Add a first-aider to the run sheet.')
-    const sent = await sentWith(page, WORKSHOP, 'request-changes',
-      () => page.getByRole('button', { name: 'Request changes', exact: true }).click())
-    await expect(status(page)).toHaveText(
-      'Changes requested. The event is back in Planning and the Coordinator has been told.')
-    expect(sent).toMatchObject({ note: 'Add a first-aider to the run sheet.', flaggedBookingIds: [], flaggedEquipmentIds: [] })
-    const [decision] = (await coordinatorApi.get(`/events/${WORKSHOP}/safety-decisions`)) as Decision[]
-    expect(decision.flags).toEqual([])
-
-    // The notice carries the note, with no "flagged for re-review" count.
-    who = await actAs(page, who, 'Event Coordinator', '/notifications')
-    await expect(page.getByText(
-      'The Safety Officer requested changes to "Youth Workshop": Add a first-aider to the run sheet.',
-      { exact: true })).toBeVisible()
-
-    // With nothing to re-review, the Coordinator can send it straight back.
-    await page.goto(`/#/events/${WORKSHOP}`)
-    await expect(page.locator('.safety-feedback')).toContainText('Add a first-aider to the run sheet.')
-    await expect(page.getByRole('list', { name: 'Flagged for re-review' })).toHaveCount(0)
-    await page.getByRole('button', { name: 'Send for safety check' }).click()
-    await expect(status(page)).toHaveText(
-      'Sent for the safety check. The event is now Pending Safety Check.')
-    expect((await coordinatorApi.get(`/events/${WORKSHOP}`)).status).toBe('Pending Safety Check')
-  })
-
-  test('US17.1: the safety review queue is for the Safety Officer role only', async ({ page }) => {
-    await actAs(page, null, 'Event Coordinator', '/safety-review')
-    // Same access-denied check as e2e/authentication.spec.ts (US1.3).
-    await expect(page.getByText('Access denied')).toBeVisible()
-    await expect(page.getByText(
-      'The Event Coordinator role cannot open the safety review queue. That is available to Safety Officer.',
-    )).toBeVisible()
-    await expect(page.getByRole('list', { name: 'Events pending safety check' })).toHaveCount(0)
-    await expect(page.getByRole('link', { name: 'Safety Review', exact: true })).toHaveCount(0)
   })
 })

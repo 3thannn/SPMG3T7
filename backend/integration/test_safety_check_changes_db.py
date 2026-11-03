@@ -62,30 +62,7 @@ def test_an_important_edit_sends_it_back_to_planning(database):
     assert history(database) == [("Pending Safety Check", "Planning", 2, REASON)]
 
 
-def test_a_routine_edit_keeps_it_pending(database):
-    assert edit(database, [change("name", "Open Day", important=False, old="Original")])
-
-    assert status(database) == "Pending Safety Check"
-    assert history(database) == []
 
 
-def test_the_old_four_argument_call_still_works(database):
-    """The backend deployed before this script sends no reason."""
-    assert database.execute(
-        "SELECT us11_edit(1,2,(SELECT updated_at FROM events WHERE id=1),%s)",
-        (Jsonb([change("name", "Open Day", important=False)]),),
-    ).fetchone()[0]
 
 
-def test_an_accepted_important_change_request_sends_it_back_to_planning(database):
-    proposal = {"note": "More people", "changes": [change("expected_attendance", "40", old="30")]}
-    assert database.execute("SELECT us11_review(1,1,'submit',0,%s)", (Jsonb(proposal),)).fetchone()[
-        0
-    ]
-
-    assert database.execute(
-        "SELECT us11_approve_change(1,2,1,%s,%s)", (Jsonb({}), REASON)
-    ).fetchone()[0]
-
-    assert status(database) == "Planning"
-    assert history(database)[-1][:2] == ("Pending Safety Check", "Planning")

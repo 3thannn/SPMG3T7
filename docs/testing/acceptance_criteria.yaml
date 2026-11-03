@@ -1,0 +1,1353 @@
+# Acceptance criteria for every Jira story in SPMG3T7, as they stand now.
+# Source: the Jira project (65 stories), curated on 2026-11-03.
+# kind: behaviour = needs a test case; superseded = replaced by a later story or the
+# customer (the note says which); evidence = proven by an artefact, not a test;
+# note = scope note or assumption; not built = story not delivered in Release 1.
+- story: US1.1
+  jira: SPMG3T7-22
+  title: Login
+  core_feature: User Authorisation and Authentication
+  acceptance_criteria:
+  - id: US1.1-AC1
+    text: Valid credentials grant access and redirect to a role-appropriate view
+    kind: behaviour
+  - id: US1.1-AC2
+    text: Invalid credentials show a clear error and do not grant access
+    kind: behaviour
+  - id: US1.1-AC3
+    text: Session remains active for the duration of normal use and expires after a defined period of
+      inactivity (e.g. 30 minutes)
+    kind: behaviour
+- story: US1.2
+  jira: SPMG3T7-23
+  title: Logout
+  core_feature: User Authorisation and Authentication
+  acceptance_criteria:
+  - id: US1.2-AC1
+    text: Logout ends the session immediately
+    kind: behaviour
+  - id: US1.2-AC2
+    text: Subsequent requests require re-authentication
+    kind: behaviour
+- story: US1.3
+  jira: SPMG3T7-24
+  title: Baseline access enforcement
+  core_feature: User Authorisation and Authentication
+  acceptance_criteria:
+  - id: US1.3-AC1
+    text: Any attempt to access an out-of-role action or page is blocked
+    kind: behaviour
+  - id: US1.3-AC2
+    text: A clear message explains the request was denied (not a silent failure or generic error)
+    kind: behaviour
+- story: US2.1
+  jira: SPMG3T7-25
+  title: Create and submit an event request
+  core_feature: Event Request Creation
+  acceptance_criteria:
+  - id: US2.1-AC1
+    text: 'On Submit, these are required: name, description, purpose, date, start/end time, expected attendance,
+      venue requirements, preferred layout, accessibility needs, equipment needs, registration needs.'
+    kind: behaviour
+  - id: US2.1-AC2
+    text: Layout, facilities and accessibility use fixed lists that match the venue catalogue (US9.1a).
+    kind: behaviour
+  - id: US2.1-AC3
+    text: Fields that may not apply have a 'None / Not required' option.
+    kind: behaviour
+  - id: US2.1-AC4
+    text: Missing fields show a clear error and block submit.
+    kind: behaviour
+  - id: US2.1-AC5
+    text: Drafts still save without these checks (US2.2).
+    kind: behaviour
+- story: US2.2
+  jira: SPMG3T7-26
+  title: Save and resume a draft
+  core_feature: Draft Event Requests
+  acceptance_criteria:
+  - id: US2.2-AC1
+    text: Draft is saved with status "draft," distinct from "submitted," and is not visible to Event Coordinators
+    kind: behaviour
+  - id: US2.2-AC2
+    text: Partial/incomplete data is accepted while in draft (no full-form validation)
+    kind: behaviour
+  - id: US2.2-AC3
+    text: Organiser can reopen and continue editing any of their own drafts
+    kind: behaviour
+  - id: US2.2-AC4
+    text: Submitting a resumed draft follows the same submit rule defined in US2.1 (full validation, then
+      status becomes "submitted")
+    kind: behaviour
+- story: US3.1
+  jira: SPMG3T7-27
+  title: View my events
+  core_feature: Event Information Management
+  acceptance_criteria:
+  - id: US3.1-AC1
+    text: List shows only requests belonging to the logged-in Organiser (no other Organiser's events are
+      visible)
+    kind: behaviour
+  - id: US3.1-AC2
+    text: Each list entry shows event name and current status
+    kind: behaviour
+  - id: US3.1-AC3
+    text: Selecting an entry opens the event detail view, showing the latest saved information and current
+      status. Drafts remain editable by the owning Organiser, while submitted requests are read-only.
+    kind: behaviour
+- story: US4.1
+  jira: SPMG3T7-28
+  title: View event status
+  core_feature: Event Status Management
+  acceptance_criteria:
+  - id: US4.1-AC1
+    text: 'Status is displayed wherever the event appears, using a fixed label set: Draft, Submitted,
+      Under Review, Approved, Planning, Confirmed, Completed, Cancelled, Rejected'
+    kind: behaviour
+  - id: US4.1-AC2
+    text: 'Visible to: the Organiser who owns the event, and any Event Coordinator (Sprint 1 — will narrow
+      to only the assigned Coordinator once Coordinator Assignment exists in Sprint 2)'
+    kind: superseded
+    note: 'Superseded by US8.6: only the assigned Coordinator sees the event (Week 7 #5, Week 9).'
+  - id: US4.1-AC3
+    text: Venue Staff, Technical Support Staff, and Attendee visibility is out of scope for Sprint 1 —
+      added when their respective features (Venue Booking, Equipment, Registration) are built
+    kind: note
+    note: Sprint 1 scope note; later stories add each role's visibility.
+- story: US4.2
+  jira: SPMG3T7-29
+  title: Status transitions
+  core_feature: Event Status Management
+  acceptance_criteria:
+  - id: US4.2-AC1
+    text: Draft stays Draft on save. Submitting changes status to Submitted exactly once — a second submit
+      attempt on an already-submitted event is rejected
+    kind: behaviour
+  - id: US4.2-AC2
+    text: Every status change is timestamped and attributable (who/when) for audit
+    kind: behaviour
+  - id: US4.2-AC3
+    text: Transitions beyond Draft→Submitted are out of scope until Review/Booking epics exist
+    kind: note
+    note: Sprint 1 scope note; US4.3, US4.4, US4.5 and US4.7 add the later transitions.
+- story: US6.1
+  jira: SPMG3T7-31
+  title: Project setup, repo, and CI pipeline
+  core_feature: Technical Enablers
+  acceptance_criteria:
+  - id: US6.1-AC1
+    text: Git repository created with instructor access granted
+    kind: evidence
+    note: 'Evidence: the GitHub repository, with instructor access granted.'
+  - id: US6.1-AC2
+    text: CI pipeline runs on push/PR (build + tests at minimum)
+    kind: evidence
+    note: 'Evidence: .github/workflows/ci.yml runs lint, build, tests and the database tests on every
+      push and pull request.'
+  - id: US6.1-AC3
+    text: Local/dev environment instructions documented in README
+    kind: evidence
+    note: 'Evidence: README.md ''First-time setup'' and the backend and frontend READMEs.'
+- story: US6.2
+  jira: SPMG3T7-32
+  title: Core database schema
+  core_feature: Technical Enablers
+  acceptance_criteria:
+  - id: US6.2-AC1
+    text: Schema covers entities and relationships needed by all Sprint 1 stories
+    kind: evidence
+    note: 'Evidence: backend/SUPABASE_SETUP.sql and the ordered migrations listed in README.md.'
+  - id: US6.2-AC2
+    text: Migrations/setup scripts are runnable by any team member
+    kind: evidence
+    note: 'Evidence: README.md ''Required SQL migrations'', each script idempotent.'
+  - id: US6.2-AC3
+    text: Schema is documented (e.g., in the repo or as part of the C4 model working notes)
+    kind: evidence
+    note: 'Evidence: README.md and backend/README.md document the schema.'
+- story: US5.1
+  jira: SPMG3T7-33
+  title: Coordinator views event information
+  core_feature: Event Information Management
+  acceptance_criteria:
+  - id: US5.1-AC1
+    text: 'Coordinator can open any submitted event (Sprint 1: any Coordinator, no formal assignment yet
+      — that''s a Sprint 2 feature) and see all captured fields, read-only.'
+    kind: behaviour
+    note: The 'any Coordinator' part is superseded by US8.6; only the assigned Coordinator.
+- story: US5.2
+  jira: SPMG3T7-34
+  title: Coordinator edits event information
+  core_feature: Event Information Management
+  acceptance_criteria:
+  - id: US5.2-AC1
+    text: Coordinator can edit general event fields (name, purpose, date/time, attendance, venue/accessibility/equipment/registration
+      requirements) — per customer clarification, Coordinator has general edit rights; Venue/Technical
+      Support Staff edit only their own domain's prep info (out of scope until Sprint 2/3).
+    kind: behaviour
+    note: Since US5.3, a Confirmed event cannot be edited directly. Since the D1 fix, an important edit
+      during the safety check sends the event back to Planning.
+  - id: US5.2-AC2
+    text: Edits to date, time, expected attendance, venue requirements, or equipment requirements are
+      logged as important changes; other edits logged as routine.
+    kind: behaviour
+  - id: US5.2-AC3
+    text: Test with any Coordinator account — formal assignment is a Sprint 2 feature.
+    kind: superseded
+    note: 'Superseded by US8.6: only the assigned Coordinator edits.'
+- story: US7.1
+  jira: SPMG3T7-35
+  title: Coordinator makes a review decision (approve/reject)
+  core_feature: Event Review and Approval
+  acceptance_criteria:
+  - id: US7.1-AC1
+    text: Only events in Under Review status can be decided.
+    kind: behaviour
+  - id: US7.1-AC2
+    text: Approve → status Approved.
+    kind: behaviour
+  - id: US7.1-AC3
+    text: Reject → status Rejected, requires a non-empty reason, reason visible to the Organiser.
+    kind: behaviour
+  - id: US7.1-AC4
+    text: Decision is timestamped and attributable (who/when), reusing US4.2's audit pattern.
+    kind: behaviour
+- story: US7.3
+  jira: SPMG3T7-36
+  title: Coordinator requests clarification/amendment
+  core_feature: Event Review and Approval
+  acceptance_criteria:
+  - id: US7.3-AC1
+    text: Coordinator can attach a message to the event requesting info/changes.
+    kind: behaviour
+  - id: US7.3-AC2
+    text: Status → Under Review.
+    kind: behaviour
+  - id: US7.3-AC3
+    text: Message is visible to the Organiser.
+    kind: behaviour
+  - id: US7.3-AC4
+    text: Organiser's response is handled by US11.1.
+    kind: note
+    note: Cross-reference; the Organiser's reply is tested under US11.1.
+- story: US8.1
+  jira: SPMG3T7-37
+  title: Automatically assign a Coordinator on submission
+  core_feature: Coordinator Assignment
+  acceptance_criteria:
+  - id: US8.1-AC1
+    text: On an event's status changing to Submitted, the system assigns one available Event Coordinator
+      automatically.
+    kind: superseded
+    note: 'Superseded by US8.2 AC1: no auto-assignment; the Lead assigns (Week 7 #5, Week 9).'
+  - id: US8.1-AC2
+    text: 'Assignment logic: round-robin across all Coordinator accounts (assumption — simplest fair-distribution
+      rule, not customer-confirmed).'
+    kind: superseded
+    note: 'Superseded with AC1: no round-robin.'
+  - id: US8.1-AC3
+    text: Assigned Coordinator is shown on the event.
+    kind: superseded
+    note: Now tested as US8.3 AC2 (the assigned Coordinator is shown).
+  - id: US8.1-AC4
+    text: US4.1/US5.1/US5.2 visibility narrows to the assigned Coordinator only once set.
+    kind: superseded
+    note: Now tested as US8.6.
+  - id: US8.1-AC5
+    text: 'Migration note: Sprint 1''s already-submitted test events need a one-time backfill run to get
+      an assigned Coordinator when this ships.'
+    kind: note
+    note: One-time data migration note.
+- story: US4.3
+  jira: SPMG3T7-38
+  title: 'Status transitions: Submitted → Under Review → Approved/Rejected'
+  core_feature: Event Status Management
+  acceptance_criteria:
+  - id: US4.3-AC1
+    text: 'Valid transitions only: Submitted→Under Review, Under Review→Approved, Under Review→Rejected.'
+    kind: behaviour
+  - id: US4.3-AC2
+    text: Any other transition attempt is blocked with a clear error.
+    kind: behaviour
+  - id: US4.3-AC3
+    text: Extends US4.2's existing trigger function rather than replacing it.
+    kind: note
+    note: Implementation note; the transitions themselves are tested.
+- story: US9.1a
+  jira: SPMG3T7-39
+  title: Create a venue record
+  core_feature: Venue Catalogue
+  acceptance_criteria:
+  - id: US9.1a-AC1
+    text: Restricted to Venue Staff.
+    kind: behaviour
+  - id: US9.1a-AC2
+    text: 'Required: name, capacity (positive integer), location.'
+    kind: behaviour
+  - id: US9.1a-AC3
+    text: 'Optional: facilities, accessibility flags, supported layouts, operating hours.'
+    kind: behaviour
+- story: US9.1b
+  jira: SPMG3T7-40
+  title: Update a venue record
+  core_feature: Venue Catalogue
+  acceptance_criteria:
+  - id: US9.1b-AC1
+    text: Any field editable except system-generated ones (id, created_at).
+    kind: behaviour
+  - id: US9.1b-AC2
+    text: Restricted to Venue Staff.
+    kind: behaviour
+- story: US9.1c
+  jira: SPMG3T7-41
+  title: Delete a venue record
+  core_feature: Venue Catalogue
+  acceptance_criteria:
+  - id: US9.1c-AC1
+    text: Hard delete for Sprint 2 — no referential check needed yet since no bookings exist (that check
+      becomes required once Sprint 3's booking feature exists).
+    kind: superseded
+    note: 'Superseded by US9.5: delete is refused while future bookings exist; without them it still deletes
+      (US9.5 AC2).'
+  - id: US9.1c-AC2
+    text: Restricted to Venue Staff.
+    kind: behaviour
+- story: US9.2
+  jira: SPMG3T7-42
+  title: View venue catalogue
+  core_feature: Venue Catalogue
+  acceptance_criteria:
+  - id: US9.2-AC1
+    text: Coordinators can list and open any venue record, read-only.
+    kind: behaviour
+  - id: US9.2-AC2
+    text: No search/filter yet — that's US9.3.
+    kind: note
+    note: Scope note; search is US9.3.
+- story: US9.3
+  jira: SPMG3T7-43
+  title: Basic venue search/filter
+  core_feature: Venue Search and Filtering
+  acceptance_criteria:
+  - id: US9.3-AC1
+    text: Filters combine with AND logic.
+    kind: behaviour
+  - id: US9.3-AC2
+    text: Returns only venues meeting all applied criteria.
+    kind: behaviour
+  - id: US9.3-AC3
+    text: Builds on US9.1/US9.2 — no new table, just query params.
+    kind: note
+    note: Implementation note.
+- story: US10.1
+  jira: SPMG3T7-44
+  title: Receive and manage notifications
+  core_feature: Notification System
+  acceptance_criteria:
+  - id: US10.1-AC1
+    text: Notification record created on Approved/Rejected/Under Review transitions.
+    kind: behaviour
+  - id: US10.1-AC2
+    text: Organiser sees an unread/read list, defaults to showing unread first, can toggle read state.
+    kind: behaviour
+  - id: US10.1-AC3
+    text: No email/push yet.
+    kind: note
+    note: 'Constraint: in-app notices only.'
+- story: US11.1
+  jira: SPMG3T7-45
+  title: Organiser submits a change request on a submitted event
+  core_feature: Event Change Requests
+  acceptance_criteria:
+  - id: US11.1-AC1
+    text: Submitting a change sets a "change requested" flag.
+    kind: behaviour
+  - id: US11.1-AC2
+    text: Event Organisers can open the existing event edit form to propose changes to their submitted
+      event.
+    kind: behaviour
+  - id: US11.1-AC3
+    text: Event Organisers can edit the permitted event details and submit the proposed changes for Coordinator
+      review.
+    kind: behaviour
+  - id: US11.1-AC4
+    text: The proposed changes are visible to the Event Coordinator for review.
+    kind: behaviour
+  - id: US11.1-AC5
+    text: Changes to date/time/attendance/venue/equipment fields are flagged important, same as US5.2's
+      logging rule.
+    kind: behaviour
+- story: US12.1
+  jira: SPMG3T7-46
+  title: Venue Staff mark venue unavailability
+  core_feature: Venue Availability Calendar
+  acceptance_criteria:
+  - id: US12.1-AC1
+    text: Venue Staff can record an unavailable date range for a venue by specifying a start date and
+      end date.
+    kind: behaviour
+  - id: US12.1-AC2
+    text: The system validates that the end date is not earlier than the start date.
+    kind: behaviour
+  - id: US12.1-AC3
+    text: The system stores the unavailable date range for the selected venue.
+    kind: behaviour
+  - id: US12.1-AC4
+    text: Coordinators can view a venue’s unavailable date ranges when viewing the venue.
+    kind: behaviour
+  - id: US12.1-AC5
+    text: The system only records and displays blackout periods; booking-conflict checks are not required
+      in this sprint because venue bookings are not implemented until Sprint 3
+    kind: superseded
+    note: Superseded by US12.2 and US15.1, which act on overlapping bookings.
+- story: US9.0
+  jira: SPMG3T7-48
+  title: Seed sample venue data
+  core_feature: Venue Catalogue
+  acceptance_criteria:
+  - id: US9.0-AC1
+    text: At least 5-10 venues created via US9.1a's create functionality, with varied capacity, location,
+      and accessibility attributes so US9.3's filters have something meaningful to test.
+    kind: evidence
+    note: 'Evidence: backend/SUPABASE_SEED_VENUES.sql (seed data).'
+  - id: US9.0-AC2
+    text: Can be done manually or with a small seed script — team's choice.
+    kind: note
+    note: Team's choice of method.
+  - id: US9.0-AC3
+    text: Should be done early in the sprint (right after US9.1a is working) so US9.2/US9.3 aren't blocked
+      waiting for data.
+    kind: note
+    note: Sprint timing note.
+- story: US1.4
+  jira: SPMG3T7-49
+  title: Add Coordinator Lead and Safety Officer roles
+  core_feature: User Authorisation and Authentication
+  acceptance_criteria:
+  - id: US1.4-AC1
+    text: Both roles exist and can be given to test accounts.
+    kind: behaviour
+  - id: US1.4-AC2
+    text: Login sends each role to its own landing view (Lead → unassigned queue in US8.2, Safety Officer
+      → safety review queue in US17.1).
+    kind: behaviour
+  - id: US1.4-AC3
+    text: 'US1.3''s baseline access rule applies to both: out-of-role pages are blocked with a clear message.'
+    kind: behaviour
+  - id: US1.4-AC4
+    text: Fine-grained 'who sees which event' rules sit on US8.6 / US17.1, not here.
+    kind: note
+    note: Cross-reference to US8.6 and US17.1.
+- story: US8.2
+  jira: SPMG3T7-50
+  title: Lead views the unassigned queue
+  core_feature: Coordinator Assignment
+  acceptance_criteria:
+  - id: US8.2-AC1
+    text: 'US8.1''s auto-assignment is switched off: a newly Submitted event has no Coordinator.'
+    kind: behaviour
+  - id: US8.2-AC2
+    text: Queue lists all Submitted events with no assigned Coordinator, oldest first, showing event name,
+      proposed date, expected attendance, Organiser and submitted time.
+    kind: behaviour
+  - id: US8.2-AC3
+    text: Lead can open an event and see its basic info, read-only.
+    kind: behaviour
+  - id: US8.2-AC4
+    text: Only the Lead role can see the queue.
+    kind: behaviour
+  - id: US8.2-AC5
+    text: Events auto-assigned before this change keep their Coordinator (assumption, check with customer).
+    kind: note
+    note: Assumption about events assigned before the change; data, not behaviour.
+- story: US8.3
+  jira: SPMG3T7-51
+  title: Lead assigns a Coordinator
+  core_feature: Coordinator Assignment
+  acceptance_criteria:
+  - id: US8.3-AC1
+    text: Lead picks a Coordinator from the list of Coordinator accounts.
+    kind: behaviour
+  - id: US8.3-AC2
+    text: Once assigned, the event leaves the unassigned queue and shows the assigned Coordinator.
+    kind: behaviour
+  - id: US8.3-AC3
+    text: Assignment is timestamped and attributable (who/when), reusing US4.2's audit pattern.
+    kind: behaviour
+  - id: US8.3-AC4
+    text: Assigned Coordinator gets a notification (US10.2).
+    kind: behaviour
+  - id: US8.3-AC5
+    text: Only the Lead can assign.
+    kind: behaviour
+- story: US8.6
+  jira: SPMG3T7-52
+  title: Coordinators only manage events assigned to them
+  core_feature: Coordinator Assignment
+  acceptance_criteria:
+  - id: US8.6-AC1
+    text: Coordinators can view (US5.1), edit (US5.2), see status of (US4.1), decide on (US7.1) and request
+      clarification on (US7.3) only events assigned to them.
+    kind: behaviour
+  - id: US8.6-AC2
+    text: Unassigned events are not visible to regular Coordinators.
+    kind: behaviour
+  - id: US8.6-AC3
+    text: Trying to act on someone else's event is blocked with a clear message (US1.3 pattern).
+    kind: behaviour
+  - id: US8.6-AC4
+    text: The Lead can still view all events.
+    kind: behaviour
+  - id: US8.6-AC5
+    text: Enforced in the database (RLS), not just hidden in the UI.
+    kind: note
+    note: 'Deviation to record: the API enforces this (`_readable`); the backend uses the service-role
+      key, so Row Level Security does not apply to API calls.'
+  - id: US8.6-AC6
+    text: 'Regression: rerun US4.1/5.1/5.2/7.1/7.3 tests with an assigned and a non-assigned Coordinator
+      account.'
+    kind: note
+    note: Regression instruction; met by the US4.1, US5.1, US5.2, US7.1 and US7.3 tests using an unassigned
+      Coordinator.
+- story: US10.2
+  jira: SPMG3T7-53
+  title: Coordinator notifications
+  core_feature: Notification System
+  acceptance_criteria:
+  - id: US10.2-AC1
+    text: A notification is created for the relevant Coordinator when:; an event is assigned or reassigned
+      to/away from them (US8.3, US8.4); a tentative hold is about to expire or has expired (US14.4); a
+      booking is hit by venue unavailability or a setup/turnaround change (US12.2, US15.2); the Safety
+      Officer requests changes (US17.2)
+    kind: behaviour
+  - id: US10.2-AC2
+    text: Same unread/read list and toggle as US10.1, reusing the notifications table with a recipient
+      field.
+    kind: behaviour
+  - id: US10.2-AC3
+    text: In-app only, no email/push.
+    kind: note
+    note: 'Constraint: in-app notices only.'
+- story: US9.4
+  jira: SPMG3T7-54
+  title: Set venue setup and turnaround time
+  core_feature: Venue Catalogue
+  acceptance_criteria:
+  - id: US9.4-AC1
+    text: 'Two fields per venue: setup time and turnaround time, in minutes, whole number ≥ 0, default
+      0.'
+    kind: behaviour
+  - id: US9.4-AC2
+    text: Settable on create and edit, Venue Staff only.
+    kind: behaviour
+  - id: US9.4-AC3
+    text: Shown on the venue detail view for Coordinators (US9.2).
+    kind: behaviour
+  - id: US9.4-AC4
+    text: Changing either value kicks off the re-check in US15.2.
+    kind: behaviour
+- story: US14.1
+  jira: SPMG3T7-55
+  title: Request one or more venue bookings for an event
+  core_feature: Venue Booking Request
+  acceptance_criteria:
+  - id: US14.1-AC1
+    text: Each venue booking is its own record linked to the event (venue, start, end, status). One event
+      can have many.
+    kind: behaviour
+  - id: US14.1-AC2
+    text: 'Schema: new venue_bookings table. If US6.2''s schema has a single venue column on events, migrate
+      it.'
+    kind: note
+    note: Schema note; the venue_bookings table exists.
+  - id: US14.1-AC3
+    text: Each booking is checked on its own for suitability and availability/conflicts (US15.1). One
+      venue failing doesn't block the others.
+    kind: behaviour
+  - id: US14.1-AC4
+    text: All bookings for the event show together on the event detail view.
+    kind: behaviour
+  - id: US14.1-AC5
+    text: New booking starts as Requested, waiting for Venue Staff approval (Venue Booking Approval epic).
+    kind: behaviour
+  - id: US14.1-AC6
+    text: Only the assigned Coordinator can request (US8.6).
+    kind: behaviour
+- story: US15.1
+  jira: SPMG3T7-56
+  title: Conflict check includes setup and turnaround time
+  core_feature: Booking Conflict Detection
+  acceptance_criteria:
+  - id: US15.1-AC1
+    text: Effective occupied window = (start − venue setup time) to (end + venue turnaround time).
+    kind: behaviour
+  - id: US15.1-AC2
+    text: 'Test case from customer: event 10:00–12:00, setup 30 min, turnaround 45 min → occupies 9:30–12:45.'
+    kind: note
+    note: Customer's worked example; used as the boundary test case of AC1.
+  - id: US15.1-AC3
+    text: Request is blocked if its window overlaps another active booking's window at the same venue.
+      Held, Requested and Confirmed count. Expired, Cancelled and Replaced don't.
+    kind: behaviour
+  - id: US15.1-AC4
+    text: Also blocked if it overlaps a venue unavailability period (US12.1).
+    kind: behaviour
+  - id: US15.1-AC5
+    text: Blocked request says which booking or period it clashes with.
+    kind: behaviour
+  - id: US15.1-AC6
+    text: Windows that only touch (one ends 12:45, next starts 12:45) are allowed.
+    kind: behaviour
+- story: US15.2
+  jira: SPMG3T7-57
+  title: Flag bookings that clash after a setup/turnaround change
+  core_feature: Booking Conflict Detection
+  acceptance_criteria:
+  - id: US15.2-AC1
+    text: When a venue's setup or turnaround time changes, all its future active bookings are re-checked
+      with US15.1's rule.
+    kind: behaviour
+  - id: US15.2-AC2
+    text: Newly clashing bookings are marked 'Conflict – review needed'. Never deleted or cancelled automatically.
+    kind: behaviour
+  - id: US15.2-AC3
+    text: Venue Staff see a list of flagged bookings; the assigned Coordinator is notified (US10.2).
+    kind: behaviour
+  - id: US15.2-AC4
+    text: Flag clears once the clash is resolved (booking moved, cancelled or replaced).
+    kind: behaviour
+- story: US14.2
+  jira: SPMG3T7-58
+  title: Cancel one venue booking
+  core_feature: Venue Booking Request
+  acceptance_criteria:
+  - id: US14.2-AC1
+    text: 'Coordinator can cancel a single booking: status → Cancelled, reason required, who/when logged.'
+    kind: behaviour
+  - id: US14.2-AC2
+    text: Other venue bookings on the same event are unchanged.
+    kind: behaviour
+  - id: US14.2-AC3
+    text: Event status is unchanged.
+    kind: behaviour
+  - id: US14.2-AC4
+    text: Cancelled booking frees the venue for that slot (no longer counted in US15.1).
+    kind: behaviour
+- story: US14.3
+  jira: SPMG3T7-59
+  title: Place a tentative hold with an expiry
+  core_feature: Venue Booking Request
+  acceptance_criteria:
+  - id: US14.3-AC1
+    text: A hold is a venue booking with status Held, linked to an event and its Coordinator.
+    kind: behaviour
+  - id: US14.3-AC2
+    text: Expiry date/time is required and must be in the future.
+    kind: behaviour
+  - id: US14.3-AC3
+    text: While Held and not expired, the slot counts as taken in US15.1.
+    kind: behaviour
+  - id: US14.3-AC4
+    text: Coordinator can turn the hold into a booking request before it expires (status → Requested).
+    kind: behaviour
+  - id: US14.3-AC5
+    text: A Held booking is never shown or counted as Confirmed.
+    kind: behaviour
+  - id: US14.3-AC6
+    text: 'Assumption: Venue Staff place holds (customer to confirm if Coordinators can too).'
+    kind: note
+    note: Assumption; Week 9 confirmed Venue Staff set the hold (see US14.6 for updating it).
+- story: US4.5
+  jira: SPMG3T7-60
+  title: Missing lifecycle transitions
+  core_feature: Event Status Management
+  acceptance_criteria:
+  - id: US4.5-AC1
+    text: Submitted → Under Review automatically when the Lead assigns a Coordinator (US8.3). Needed as
+      US7.1 can only decide events that are Under Review, and nothing else moves a complete request there.
+    kind: behaviour
+  - id: US4.5-AC2
+    text: Approved → Planning automatically when the Coordinator submits the first venue booking request
+      for the event (US14.1).
+    kind: behaviour
+  - id: US4.5-AC3
+    text: 'Confirmed → Completed: the assigned Coordinator can mark the event Completed, but only after
+      its end date/time has passed.'
+    kind: behaviour
+  - id: US4.5-AC4
+    text: Under Review is only ever set from Submitted. A change request on an Approved or Planning event
+      keeps the current status and uses the 'change requested' flag instead (US11.1 / US11.2).
+    kind: behaviour
+  - id: US4.5-AC5
+    text: Every transition is timestamped and attributable (US4.2 pattern). Any other transition is blocked
+      with a clear error (US4.3 pattern).
+    kind: behaviour
+- story: US18.1
+  jira: SPMG3T7-61
+  title: Venue suitability check per booking
+  core_feature: Venue Suitability Checking
+  acceptance_criteria:
+  - id: US18.1-AC1
+    text: 'Each venue booking has its own expected headcount, defaulting to the event''s expected attendance.
+      This is so breakout rooms in a multi-venue event (Week 7 #3) are not checked against the whole event''s
+      attendance.'
+    kind: behaviour
+  - id: US18.1-AC2
+    text: When the Coordinator picks a venue for a booking (US14.1), the system shows Suitable or Not
+      suitable with the reasons.
+    kind: behaviour
+  - id: US18.1-AC3
+    text: 'Not suitable if any of these is true: headcount is more than the venue capacity; the required
+      layout is not one the venue supports; a required facility or accessibility need is missing; the
+      booking time is outside the venue''s operating hours.'
+    kind: behaviour
+  - id: US18.1-AC4
+    text: A not suitable venue can't be requested.
+    kind: behaviour
+  - id: US18.1-AC5
+    text: 'Test cases: headcount = capacity → Suitable; headcount = capacity + 1 → Not suitable.'
+    kind: note
+    note: Boundary examples; used as test cases of AC3.
+- story: US16.1
+  jira: SPMG3T7-62
+  title: Venue Staff approve or reject a booking request
+  core_feature: Venue Booking Approval
+  acceptance_criteria:
+  - id: US16.1-AC1
+    text: Venue Staff see all Requested bookings, oldest first, showing event name, venue, booking time,
+      the full occupied window including setup/turnaround (US15.1), headcount and layout.
+    kind: behaviour
+  - id: US16.1-AC2
+    text: Approve → booking status Confirmed. The conflict check (US15.1) runs again at approval. If the
+      booking now clashes, approval is blocked and the clash is shown, so two requests for the same slot
+      can't both be approved.
+    kind: behaviour
+  - id: US16.1-AC3
+    text: Reject → reason required; Venue Staff can optionally suggest an alternative venue or time (free
+      text). Booking status Rejected and the slot is freed.
+    kind: behaviour
+  - id: US16.1-AC4
+    text: Approving or rejecting one booking doesn't change the event's other bookings.
+    kind: behaviour
+  - id: US16.1-AC5
+    text: The assigned Coordinator is notified of the decision and reason (US10.2).
+    kind: behaviour
+  - id: US16.1-AC6
+    text: Venue Staff only. Decision logged with who/when.
+    kind: behaviour
+- story: US19.1
+  jira: SPMG3T7-63
+  title: Equipment catalogue
+  core_feature: Equipment Availability Checking
+  acceptance_criteria:
+  - id: US19.1-AC1
+    text: 'Tech Support can create and edit equipment items: name, type, description, location, total
+      quantity (whole number ≥ 0).'
+    kind: behaviour
+  - id: US19.1-AC2
+    text: Each item records how many units are out of service (damaged or under maintenance) and the reason.
+      Out-of-service units are never counted as available.
+    kind: behaviour
+  - id: US19.1-AC3
+    text: Coordinators can view the catalogue, read-only.
+    kind: behaviour
+  - id: US19.1-AC4
+    text: Only Tech Support can create or edit.
+    kind: behaviour
+- story: US19.0
+  jira: SPMG3T7-64
+  title: Seed sample equipment data
+  core_feature: Equipment Availability Checking
+  acceptance_criteria:
+  - id: US19.0-AC1
+    text: At least 8-10 equipment items created via US19.1's create functionality (e.g. projectors, microphones,
+      speakers, laptops, screens), with varied total quantities and locations.
+    kind: evidence
+    note: 'Evidence: backend/seed_equipment.py.'
+  - id: US19.0-AC2
+    text: Some items must have units marked out of service (damaged/maintenance) so US19.3's availability
+      maths can be tested.
+    kind: behaviour
+  - id: US19.0-AC3
+    text: Can be done manually or with a small seed script.
+    kind: note
+    note: Team's choice of method.
+  - id: US19.0-AC4
+    text: Should be done right after US19.1 works so US19.2/US19.3 aren't blocked.
+    kind: note
+    note: Sprint timing note.
+- story: US19.2
+  jira: SPMG3T7-65
+  title: Coordinator requests equipment for an event
+  core_feature: Equipment Request Management
+  acceptance_criteria:
+  - id: US19.2-AC1
+    text: 'The assigned Coordinator can add one or more equipment lines to an event: equipment type (from
+      the catalogue), quantity (whole number ≥ 1), and technical notes. The time needed defaults to the
+      event''s start and end time.'
+    kind: behaviour
+  - id: US19.2-AC2
+    text: New lines start as Requested. The Coordinator can edit or remove a line while it is still Requested.
+    kind: behaviour
+  - id: US19.2-AC3
+    text: Tech Support see all Requested lines in a queue, oldest first, and can add notes or update the
+      line as arrangements are made.
+    kind: behaviour
+  - id: US19.2-AC4
+    text: Tech Support are notified of new requests (US10.2).
+    kind: behaviour
+- story: US9.5
+  jira: SPMG3T7-68
+  title: Block deleting a venue that has future bookings
+  core_feature: Venue Catalogue
+  acceptance_criteria:
+  - id: US9.5-AC1
+    text: Delete is blocked if the venue has any future active booking. Message tells staff to mark it
+      unavailable instead (US12.2).
+    kind: behaviour
+  - id: US9.5-AC2
+    text: Venues with no future bookings can still be deleted as in US9.1c.
+    kind: behaviour
+  - id: US9.5-AC3
+    text: This is the follow-up US9.1c flagged for when bookings exist.
+    kind: note
+    note: Cross-reference to US9.1c.
+- story: US14.4
+  jira: SPMG3T7-69
+  title: Holds expire automatically
+  core_feature: Venue Booking Request
+  acceptance_criteria:
+  - id: US14.4-AC1
+    text: A scheduled job checks holds at least every 15 minutes (team-chosen).
+    kind: evidence
+    note: 'Evidence: backend/SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql schedules the sweep.'
+  - id: US14.4-AC2
+    text: Holds past their expiry → Expired, and the slot is freed for other requests.
+    kind: behaviour
+  - id: US14.4-AC3
+    text: Coordinator is notified 24h before expiry (assumption, customer to confirm) and again when it
+      expires (US10.2).
+    kind: behaviour
+    note: The 24-hour warning is a team assumption the customer accepted as 'before or when the hold expires'
+      (Week 9).
+  - id: US14.4-AC4
+    text: Expired holds stay in history and can't be turned into a booking request.
+    kind: behaviour
+  - id: US14.4-AC5
+    text: First time using a scheduler (e.g. Supabase pg_cron), so sized up for uncertainty.
+    kind: note
+    note: Estimation note.
+- story: US12.2
+  jira: SPMG3T7-70
+  title: Flag bookings hit by venue unavailability
+  core_feature: Venue Availability Calendar
+  acceptance_criteria:
+  - id: US12.2-AC1
+    text: When Venue Staff mark a venue unavailable (US12.1), they must pick a reason (maintenance, equipment
+      failure, renovation, safety concern, or other, where 'other' needs free text), and the reason is
+      saved.
+    kind: behaviour
+  - id: US12.2-AC2
+    text: Every active booking (Requested, Held or Confirmed) at that venue whose effective window (US15.1,
+      including setup and turnaround) overlaps the period is set to 'Needs replacement'. Expired, Cancelled,
+      Rejected and Replaced bookings, and bookings at other venues, are ignored.
+    kind: behaviour
+  - id: US12.2-AC3
+    text: The event, its status and its details are not changed or cancelled, and other bookings on the
+      same event are untouched.
+    kind: behaviour
+  - id: US12.2-AC4
+    text: Each affected event's assigned Coordinator is notified once per event (US10.2) with the venue,
+      dates and reason, even if several of its bookings are flagged.
+    kind: behaviour
+  - id: US12.2-AC5
+    text: The flagged booking shows on the event detail view with its label, reason and dates, and stays
+      flagged until it is replaced (US14.5) or cancelled (US14.2).
+    kind: behaviour
+  - id: US12.2-AC6
+    text: After saving, Venue Staff see how many bookings were flagged (including 0).
+    kind: behaviour
+  story_test_hints:
+  - 'A venue is unavailable 10-12 Nov with a Confirmed booking on 11 Nov, a Cancelled booking on 11 Nov,
+    and a Confirmed booking on 20 Nov: only the first is flagged and its Coordinator is notified.'
+- story: US14.5
+  jira: SPMG3T7-71
+  title: Request a replacement venue
+  core_feature: Venue Booking Request
+  acceptance_criteria:
+  - id: US14.5-AC1
+    text: From a 'Needs replacement' booking, Coordinator can search venues (US9.3 filters), only showing
+      venues free for the same time (US15.1).
+    kind: behaviour
+  - id: US14.5-AC2
+    text: Requesting a replacement creates a new booking request on the same event. Old booking is marked
+      Replaced and kept for history.
+    kind: behaviour
+  - id: US14.5-AC3
+    text: Other bookings on the event are untouched.
+    kind: behaviour
+- story: US8.4
+  jira: SPMG3T7-72
+  title: Lead reassigns an event
+  core_feature: Coordinator Assignment
+  acceptance_criteria:
+  - id: US8.4-AC1
+    text: Lead can change the assigned Coordinator on any active event.
+    kind: behaviour
+  - id: US8.4-AC2
+    text: Old and new Coordinator are both notified (US10.2).
+    kind: behaviour
+  - id: US8.4-AC3
+    text: Old Coordinator loses access once reassigned (US8.6).
+    kind: behaviour
+  - id: US8.4-AC4
+    text: Reassignment logged with who/when and the previous Coordinator. (Update by the log window)
+    kind: behaviour
+  - id: US8.4-AC5
+    text: (Sprint 5) Covered by an integration test that runs against the real SQL function in CI, not
+      only the in-memory store.
+    kind: evidence
+    note: 'Evidence: backend/integration/test_us8_4_db.py runs in CI against PostgreSQL.'
+  - id: US8.4-AC6
+    text: (Sprint 5) The reassignment SQL function (`reassign_event_coordinator`, currently only in an
+      untracked repair script) is committed as a proper migration, so a fresh database setup matches production.
+    kind: evidence
+    note: 'Evidence: backend/SUPABASE_US8_4_REASSIGN_COORDINATOR.sql.'
+- story: US8.5
+  jira: SPMG3T7-73
+  title: Lead sees all assignments
+  core_feature: Coordinator Assignment
+  acceptance_criteria:
+  - id: US8.5-AC1
+    text: Lists all active events (not Draft, Completed, Cancelled or Rejected) with assigned Coordinator
+      (or 'Unassigned') and status.
+    kind: behaviour
+  - id: US8.5-AC2
+    text: Can filter by Coordinator.
+    kind: behaviour
+  - id: US8.5-AC3
+    text: Shows a count of active events per Coordinator.
+    kind: behaviour
+  - id: US8.5-AC4
+    text: Read-only. Changes go through US8.3 / US8.4.
+    kind: note
+    note: Read-only; there is no write route on this view.
+- story: US4.4
+  jira: SPMG3T7-74
+  title: Pending Safety Check status and transitions
+  core_feature: Event Status Management
+  acceptance_criteria:
+  - id: US4.4-AC1
+    text: New status label 'Pending Safety Check' added to US4.1's set.
+    kind: behaviour
+  - id: US4.4-AC2
+    text: New valid transitions:; Planning → Pending Safety Check (once all active venue bookings are
+      Confirmed and equipment is reserved); Pending Safety Check → Confirmed (Safety Officer approves);
+      Pending Safety Check → Planning (Safety Officer requests changes or rejects, see US17.2)
+    kind: behaviour
+    note: 'Part ''Pending Safety Check -> Confirmed (Safety Officer approves)'' is superseded by US4.7:
+      the Coordinator confirms.'
+  - id: US4.4-AC3
+    text: Event can't reach Confirmed any other way.
+    kind: behaviour
+  - id: US4.4-AC4
+    text: Extends US4.3's trigger rather than replacing it.
+    kind: note
+    note: Implementation note.
+  - id: US4.4-AC5
+    text: 'Assumption: ''preparation'' in the customer brief = our Confirmed status.'
+    kind: note
+    note: 'Assumption: ''preparation'' means Confirmed.'
+- story: US17.1
+  jira: SPMG3T7-75
+  title: Safety Officer review queue
+  core_feature: Operational Safety Check
+  acceptance_criteria:
+  - id: US17.1-AC1
+    text: List shows events in Pending Safety Check, oldest first.
+    kind: behaviour
+  - id: US17.1-AC2
+    text: Detail view shows expected attendance, each booked venue's capacity, layout, accessibility and
+      known restrictions, reserved equipment, and the event's accessibility requirements.
+    kind: behaviour
+  - id: US17.1-AC3
+    text: Read-only.
+    kind: note
+    note: Read-only; the decisions are US17.2.
+  - id: US17.1-AC4
+    text: Safety Officer role only.
+    kind: behaviour
+- story: US17.2
+  jira: SPMG3T7-76
+  title: Safety Officer records a decision
+  core_feature: Operational Safety Check
+  acceptance_criteria:
+  - id: US17.2-AC1
+    text: Approve → the decision is recorded as approved on the current Pending Safety Check stay. The
+      event stays in Pending Safety Check (shown as "Safety approved, awaiting Coordinator confirmation")
+      until the assigned Coordinator confirms it (US4.7).
+    kind: behaviour
+  - id: US17.2-AC2
+    text: Request changes → back to Planning; note required; affected venue/equipment arrangements flagged
+      for re-review; assigned Coordinator notified (US10.2).
+    kind: behaviour
+  - id: US17.2-AC3
+    text: Reject → reason required; back to Planning with the reason (customer-confirmed).
+    kind: behaviour
+  - id: US17.2-AC4
+    text: Every decision is timestamped and attributable (US4.2 audit pattern).
+    kind: behaviour
+  - id: US17.2-AC5
+    text: An event coming back into Pending Safety Check needs a fresh decision.
+    kind: behaviour
+- story: US19.3
+  jira: SPMG3T7-77
+  title: Check equipment availability and reserve it
+  core_feature: Equipment Reservation
+  acceptance_criteria:
+  - id: US19.3-AC1
+    text: 'For a Requested equipment, the system shows the available quantity for that time: total − out
+      of service − quantity already reserved for events whose times overlap.'
+    kind: behaviour
+  - id: US19.3-AC2
+    text: Reserve is only allowed if the available quantity is at least the requested quantity. Otherwise
+      it is blocked and the shortfall is shown. Tech Support can instead mark the line Unavailable with
+      a reason.
+    kind: behaviour
+  - id: US19.3-AC3
+    text: A reservation stays linked to its event and reduces the available quantity for overlapping events.
+    kind: behaviour
+  - id: US19.3-AC4
+    text: The Coordinator is notified when a equipment is Reserved or Unavailable (US10.2).
+    kind: behaviour
+  - id: US19.3-AC5
+    text: 'Test case: 10 projectors, 2 out of service, 6 reserved for an overlapping event → at most 2
+      can be reserved.'
+    kind: note
+    note: Customer's worked example; used as the test case of AC1.
+  - id: US19.3-AC6
+    text: 'Assumption: equipment overlap uses the equipment request’s needed-from/until time, which is
+      defaulted to the event’s start/end time.'
+    kind: note
+    note: Assumption about the overlap window.
+- story: US11.2
+  jira: SPMG3T7-78
+  title: Coordinator processes a change request
+  core_feature: Event Change Requests
+  acceptance_criteria:
+  - id: US11.2-AC1
+    text: The assigned Coordinator sees the change requests Organisers submitted (US11.1), with proposed
+      values next to current values and important fields (date, time, attendance, venue, equipment) highlighted.
+    kind: behaviour
+  - id: US11.2-AC2
+    text: Accept applies the proposed values, logs them as important or routine (same rule as US5.2),
+      clears the "change requested" flag and notifies the Organiser.
+    kind: behaviour
+  - id: US11.2-AC3
+    text: Reject needs a reason, keeps the current values and notifies the Organiser.
+    kind: behaviour
+  - id: US11.2-AC4
+    text: If an accepted change or a direct Coordinator edit changes the date, time or attendance, the
+      system re-checks each venue booking for clashes (US15.1) and suitability (US18.1), and each equipment
+      reservation for availability (US19.3).
+    kind: behaviour
+  - id: US11.2-AC5
+    text: Anything that now fails is marked 'Conflict – review needed' (same flag as US15.2). Nothing
+      is cancelled automatically, and the Coordinator is notified of what was flagged (US10.2).
+    kind: behaviour
+- story: US20.1
+  jira: SPMG3T7-79
+  title: Attendee registers for an event
+  core_feature: Attendee Registration
+  acceptance_criteria:
+  - id: US20.1-AC1
+    text: The assigned Coordinator can turn registration on for an event and set a registration capacity
+      (whole number ≥ 1, defaults to expected attendance).
+    kind: behaviour
+  - id: US20.1-AC2
+    text: 'Attendees see Confirmed events with registration turned on: name, date/time, venue(s) and places
+      left. Internal planning info (bookings, equipment, notes) is never shown to Attendees.'
+    kind: behaviour
+  - id: US20.1-AC3
+    text: An Attendee registers with name and email (both required). Only one active registration per
+      Attendee per event.
+    kind: behaviour
+  - id: US20.1-AC4
+    text: Once registrations reach capacity, registering is blocked with an 'Event is full' message. If
+      two Attendees try for the last place at the same time, only one succeeds (enforced in the database).
+    kind: behaviour
+  - id: US20.1-AC5
+    text: The Coordinator and Organiser are notified when the event becomes full (US10.2).
+    kind: behaviour
+- story: US20.2
+  jira: SPMG3T7-80
+  title: Attendee views registration and withdraws
+  core_feature: Attendee Registration
+  acceptance_criteria:
+  - id: US20.2-AC1
+    text: An Attendee sees their registrations with status (Registered or Withdrawn) and the event's current
+      date, time and venue.
+    kind: behaviour
+  - id: US20.2-AC2
+    text: An Attendee can withdraw before the event starts. Avaiable places left goes up by 1.
+    kind: behaviour
+  - id: US20.2-AC3
+    text: A withdrawn Attendee can register again if places are still available.
+    kind: behaviour
+- story: US20.3
+  jira: SPMG3T7-81
+  title: Organiser and Coordinator view registrations
+  core_feature: Attendee Registration
+  acceptance_criteria:
+  - id: US20.3-AC1
+    text: 'The owning Organiser and the assigned Coordinator can see the registration list: name, email,
+      registration time, status, and registered count vs capacity.'
+    kind: behaviour
+  - id: US20.3-AC2
+    text: Other Organisers and non-assigned Coordinators are blocked (US3.1 / US8.6 rules). Attendees
+      can't see other Attendees' registrations.
+    kind: behaviour
+- story: US12.3
+  jira: SPMG3T7-82
+  title: Venue availability view
+  core_feature: Venue Availability Calendar
+  acceptance_criteria:
+  - id: US12.3-AC1
+    text: 'From a venue''s page, pick a date range (default: next 14 days).'
+    kind: behaviour
+  - id: US12.3-AC2
+    text: Shows a chronological list of Confirmed bookings, Requested bookings, tentative holds (with
+      expiry time) and unavailability periods, each labelled by type.
+    kind: behaviour
+  - id: US12.3-AC3
+    text: Booking entries show the full occupied window including setup and turnaround (US15.1).
+    kind: behaviour
+  - id: US12.3-AC4
+    text: Expired, Cancelled and Rejected entries are hidden.
+    kind: behaviour
+  - id: US12.3-AC5
+    text: 'Team decision: a list view is enough for Release 1; a calendar grid can come later. (Do list
+      first, if not too difficult then do a calendar grid)'
+    kind: note
+    note: 'Team decision: a list view.'
+- story: US4.6
+  jira: SPMG3T7-83
+  title: Cancel an event
+  core_feature: Event Status Management
+  acceptance_criteria:
+  - id: US4.6-AC1
+    text: The owning Organiser or the assigned Coordinator can cancel any event that isn't Completed,
+      Cancelled or Rejected. Reason required.
+    kind: behaviour
+  - id: US4.6-AC2
+    text: Status → Cancelled, logged with who/when. The cancelled event becomes read-only.
+    kind: behaviour
+  - id: US4.6-AC3
+    text: All its active venue bookings and holds → Cancelled, and all equipment reservations are released,
+      so the slots and quantities free up.
+    kind: behaviour
+  - id: US4.6-AC4
+    text: Registrations are marked Event Cancelled.
+    kind: behaviour
+  - id: US4.6-AC5
+    text: The Coordinator, Organiser, affected Venue Staff, Tech Support and registered Attendees are
+      notified.
+    kind: behaviour
+  - id: US4.6-AC6
+    text: 'Note: cancellation is not one of the 20 Release 1 core features, so this is the first story
+      to drop if Sprint 4 runs short.'
+    kind: note
+    note: Scope note.
+- story: US4.7
+  jira: SPMG3T7-84
+  title: Coordinator confirms the event
+  core_feature: Event Status Management
+  acceptance_criteria:
+  - id: US4.7-AC1
+    text: The assigned Coordinator can confirm an event in Pending Safety Check only when all of these
+      are true:; the current stay has a Safety Officer approval (US17.2); every active venue booking is
+      Confirmed and none is "Needs replacement" or "Conflict – review needed"; every equipment line is
+      Reserved; no change request is pending
+    kind: behaviour
+  - id: US4.7-AC2
+    text: If anything is missing, confirming is blocked with a message that names it (e.g. "Breakout Room
+      B is still awaiting Venue Staff approval").
+    kind: behaviour
+  - id: US4.7-AC3
+    text: Pending Safety Check → Confirmed happens only through this action. The database guard and `decide_safety_check`
+      no longer set Confirmed.
+    kind: behaviour
+  - id: US4.7-AC4
+    text: Only the assigned Coordinator can confirm (US8.6). Anyone else is blocked with a clear message
+      (US1.3 pattern).
+    kind: behaviour
+  - id: US4.7-AC5
+    text: The Organiser is notified that the event is confirmed (US10.3).
+    kind: behaviour
+  - id: US4.7-AC6
+    text: The confirmation is timestamped and attributable (US4.2 pattern).
+    kind: behaviour
+  story_test_hints:
+  - confirm after approval → Confirmed
+  - confirm with no approval → refused
+  - confirm with a booking still Requested → refused
+  - non-assigned Coordinator → refused
+  - Lead / Organiser → refused
+- story: US5.3
+  jira: SPMG3T7-85
+  title: Lock event details once Confirmed
+  core_feature: Event Information Management
+  acceptance_criteria:
+  - id: US5.3-AC1
+    text: Once an event is Confirmed, nobody can edit its details directly. The attempt is refused with
+      "This event is confirmed. Changes need to go through a change request." (409)
+    kind: behaviour
+  - id: US5.3-AC2
+    text: Before Confirmed, US5.2's editing rules are unchanged.
+    kind: behaviour
+  - id: US5.3-AC3
+    text: On a Confirmed event, the event page hides the Edit button and points to the change request
+      flow instead.
+    kind: behaviour
+  - id: US5.3-AC4
+    text: Changes to a Confirmed event go through US11.1 → US11.2 → US11.3.
+    kind: note
+    note: Cross-reference; tested under US11.1, US11.2 and US11.3.
+- story: US11.3
+  jira: SPMG3T7-86
+  title: Important change on a Confirmed event goes back through approval
+  core_feature: Event Change Requests
+  acceptance_criteria:
+  - id: US11.3-AC1
+    text: When the Coordinator accepts a change request (US11.2) on a Confirmed event, and it changes
+      an important field (date, time, expected attendance, venue requirements or equipment requirements,
+      using US5.2's rule), the event moves Confirmed → Planning, with the reason recorded.
+    kind: behaviour
+  - id: US11.3-AC2
+    text: A change to routine fields only leaves the event Confirmed.
+    kind: behaviour
+  - id: US11.3-AC3
+    text: Venue bookings and equipment reservations are re-checked as in US11.2. Anything that now fails
+      is flagged. Nothing is cancelled automatically; arrangements that still pass keep their status.
+    kind: behaviour
+  - id: US11.3-AC4
+    text: The earlier Safety approval no longer counts. The event has to be sent for the safety check
+      again, get a fresh decision (US17.2), and be confirmed by the Coordinator (US4.7).
+    kind: behaviour
+  - id: US11.3-AC5
+    text: The Organiser and the assigned Coordinator are notified that the event is back in planning,
+      and why.
+    kind: behaviour
+  - id: US11.3-AC6
+    text: Existing attendee registrations are kept. New registrations pause while the event isn't Confirmed
+      (team decision, consistent with US20.1).
+    kind: behaviour
+  - id: US11.3-AC7
+    text: Confirmed → Planning is added to the allowed transitions (US4.3 pattern) and the database guard.
+      It is timestamped and attributable.
+    kind: behaviour
+  story_test_hints:
+  - accepted attendance change on Confirmed → Planning, with arrangements re-checked
+  - accepted title-only change → stays Confirmed
+  - re-sending for the safety check requires a new decision
+  - confirming again requires the new approval
+- story: US12.4
+  jira: SPMG3T7-87
+  title: Venue problem on a Confirmed event reopens planning
+  core_feature: Venue Booking Request
+  acceptance_criteria:
+  - id: US12.4-AC1
+    text: When a booking on a Confirmed event is flagged "Needs replacement" (US12.2), the event status
+      does not change automatically. The Coordinator acts, because the customer said the system should
+      not update this on its own.
+    kind: behaviour
+  - id: US12.4-AC2
+    text: Besides the Coordinator, the Organiser is also notified that a venue on their event is affected.
+    kind: behaviour
+  - id: US12.4-AC3
+    text: Requesting a replacement venue (US14.5) on a Confirmed event moves it Confirmed → Planning,
+      with the reason recorded. The event's other bookings are untouched.
+    kind: behaviour
+  - id: US12.4-AC4
+    text: The replacement has to be approved by Venue Staff. The event then goes through the safety check
+      again and is confirmed by the Coordinator (US4.7).
+    kind: behaviour
+  - id: US12.4-AC5
+    text: A Confirmed event can't be re-confirmed while any booking is "Needs replacement" (enforced by
+      US4.7).
+    kind: behaviour
+  story_test_hints:
+  - unavailability on a Confirmed event → booking flagged, event still Confirmed, Organiser and Coordinator
+    notified
+  - request a replacement → Planning
+  - full path back to Confirmed
+- story: US10.3
+  jira: SPMG3T7-88
+  title: Notify Leads of new submissions and Organisers of confirmation
+  core_feature: Notification System
+  acceptance_criteria:
+  - id: US10.3-AC1
+    text: 'Submitting an event notifies every Lead account: "New event waiting for assignment: <name>".'
+    kind: behaviour
+  - id: US10.3-AC2
+    text: When the Coordinator confirms an event (US4.7), the Organiser is notified.
+    kind: behaviour
+  - id: US10.3-AC3
+    text: When an event goes back to planning (US11.3, US12.4), the Organiser is notified.
+    kind: behaviour
+  - id: US10.3-AC4
+    text: Uses US10.1's list and read/unread toggle. In-app only.
+    kind: note
+    note: 'Constraint: in-app notices only.'
+- story: US14.6
+  jira: SPMG3T7-89
+  title: Venue Staff update or release a hold
+  core_feature: Venue Booking Request
+  acceptance_criteria:
+  - id: US14.6-AC1
+    text: Venue Staff can change the expiry of a Held booking. The new expiry must be in the future, and
+      no later than the booking start (US14.3 rule).
+    kind: not built
+    note: Story is To Do in Jira; not built for Release 1, so it has no tests.
+  - id: US14.6-AC2
+    text: Venue Staff can release a hold early. Its status becomes Cancelled and the slot is freed (no
+      longer counted in US15.1).
+    kind: not built
+    note: Story is To Do in Jira; not built for Release 1, so it has no tests.
+  - id: US14.6-AC3
+    text: The assigned Coordinator is notified of either change (US10.2).
+    kind: not built
+    note: Story is To Do in Jira; not built for Release 1, so it has no tests.
+  - id: US14.6-AC4
+    text: Each change is timestamped and attributable (US4.2 pattern).
+    kind: not built
+    note: Story is To Do in Jira; not built for Release 1, so it has no tests.
+  - id: US14.6-AC5
+    text: Venue Staff only.
+    kind: not built
+    note: Story is To Do in Jira; not built for Release 1, so it has no tests.
+  status: Story is To Do in Jira; not built for Release 1, so it has no tests.
+- story: US10.4
+  jira: SPMG3T7-90
+  title: Notify registered Attendees when their event's date, time or venue changes
+  core_feature: Notification System
+  acceptance_criteria:
+  - id: US10.4-AC1
+    text: When an accepted change (US11.2 / US11.3) changes the date or time of an event with registrations,
+      every Attendee with an active registration is notified with the new date and time.
+    kind: behaviour
+  - id: US10.4-AC2
+    text: When a replacement venue (US14.5 / US12.4) on a registered event is confirmed by Venue Staff,
+      registered Attendees are notified of the new venue.
+    kind: behaviour
+  - id: US10.4-AC3
+    text: The notice only shows Attendee-safe details (event name, new date/time/venue). No internal planning
+      notes or reasons (US20.1 rule).
+    kind: behaviour
+  - id: US10.4-AC4
+    text: Withdrawn registrations are not notified.
+    kind: behaviour
+  - id: US10.4-AC5
+    text: Uses US10.1's list and read/unread toggle. In-app only.
+    kind: note
+    note: 'Constraint: in-app notices only.'

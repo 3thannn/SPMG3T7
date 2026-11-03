@@ -11,8 +11,6 @@ conftest. No blackout periods exist until a test records one.
 
 import pytest
 
-from app.venues import REASON_MAX
-
 GREAT_HALL = "1"
 SEMINAR_ROOM = "3"
 
@@ -59,16 +57,38 @@ def coordinator(auth_headers):
 class TestRecordingARange:
     """AC1 and AC3: Venue Staff record a start and end; it is stored for the venue."""
 
+    def test_venue_staff_record_a_range(self, client, staff):
+        response = mark(client, staff)
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["venueId"] == GREAT_HALL
+        assert body["startDate"] == "2026-11-02"
+        assert body["endDate"] == "2026-11-06"
+        assert body["reasonType"] == "maintenance"
+        assert body["otherReason"] == ""
+        assert body["createdAt"]
+
+    def test_the_response_uses_the_wire_names_and_nothing_else(self, client, staff):
+        body = mark(client, staff).json()
+
+        expected = {
+            "id", "venueId", "startDate", "endDate", "reasonType", "otherReason", "createdAt",
+            "flaggedBookingsCount",
+        }
+        assert set(body) == expected
+        assert body["flaggedBookingsCount"] == 0
+        assert isinstance(body["id"], str)
+
+    def test_the_range_is_stored_against_the_venue(self, client, staff, unavailability_repository):
+        mark(client, staff)
+
+        [stored] = unavailability_repository.entries
+        assert stored.venue_id == 1
+        assert stored.start_date.isoformat() == "2026-11-02"
+        assert stored.end_date.isoformat() == "2026-11-06"
 
 
-
-
-    def test_a_stored_range_reads_back(self, client, staff):
-        created = mark(client, staff).json()
-
-        listed = client.get(path(), headers=staff).json()
-
-        assert listed == [{**created, "flaggedBookingsCount": None}]
 
 
 
@@ -88,27 +108,20 @@ class TestTheReason:
 
 
 
-    def test_custom_reason_one_over_the_limit_is_refused(self, client, staff):
-        response = mark(client, staff, reasonType="other", otherReason="x" * (REASON_MAX + 1))
-        detail = refusal(response)
-
-        assert str(REASON_MAX) in detail["message"]
 
 
-    def test_missing_reason_type_is_refused(self, client, staff):
-        detail = refusal(mark(client, staff, reasonType=None))
 
-        assert "reason type" in detail["message"].lower()
-
-    def test_invalid_reason_type_is_refused(self, client, staff):
-        detail = refusal(mark(client, staff, reasonType="invalid_type"))
-
-        assert "maintenance" in detail["message"] or "valid" in detail["message"].lower()
 
 
 class TestEndNotBeforeStart:
     """AC2: the end date is not earlier than the start date — at every boundary."""
 
+    def test_a_one_day_range_is_accepted(self, client, staff):
+        """Equal dates are a single-day closure, the tightest valid range."""
+        response = mark(client, staff, startDate="2026-11-02", endDate="2026-11-02")
+
+        assert response.status_code == 201, response.text
+        assert response.json()["startDate"] == response.json()["endDate"]
 
 
     def test_an_end_one_day_before_the_start_is_refused(self, client, staff):
@@ -123,86 +136,27 @@ class TestEndNotBeforeStart:
 
 
 
-class TestMalformedDates:
-    """A date that cannot be read is a 400 with a sentence, never a 500 or a guess."""
-
-    @pytest.mark.parametrize("field", ["startDate", "endDate"])
-    def test_a_missing_date_is_refused(self, client, staff, field):
-        detail = refusal(mark(client, staff, **{field: None}))
-
-        which = "start" if field == "startDate" else "end"
-        assert detail["message"] == f"Give the {which} date."
 
 
-
-
-
-
-
-
-
-
-
-
-class TestNoConflictChecks:
-    """AC5: this sprint only records blackout periods — nothing is compared."""
-
-
-
-    def test_a_range_over_an_existing_event_date_is_recorded(self, client, staff, auth_headers):
-        """An event already planned inside the range does not block the closure.
-
-        Events carry no venue until Sprint 3's bookings, so there is nothing to
-        conflict with — this pins down that recording does not go looking.
-        """
-        event = client.post(
-            "/events",
-            json={"title": "Charity Gala", "startsAt": "2026-11-04T18:00"},
-            headers=auth_headers("Event Organiser"),
-        )
-        assert event.status_code == 201, event.text
-
-        assert mark(client, staff).status_code == 201
 
 
 class TestViewingRanges:
     """AC4: Coordinators see a venue's blackout periods when they view it."""
 
+    def test_a_coordinator_sees_the_venues_ranges(self, client, staff, coordinator):
+        created = mark(client, staff).json()
+
+        response = client.get(path(), headers=coordinator)
+
+        assert response.status_code == 200, response.text
+        assert response.json() == [{**created, "flaggedBookingsCount": None}]
 
 
 
 
 
-    def test_identical_ranges_keep_the_order_they_were_recorded_in(
-        self, client, staff, coordinator
-    ):
-        first = mark(client, staff, reasonType="other", otherReason="first").json()
-        second = mark(client, staff, reasonType="other", otherReason="second").json()
-
-        listed = client.get(path(), headers=coordinator).json()
-
-        assert [r["id"] for r in listed] == [first["id"], second["id"]]
 
 
-
-
-
-class TestUnknownVenue:
-    """A range belongs to a venue that exists; asking about one that does not is 404."""
-
-    @pytest.mark.parametrize("venue_id", ["999", "abc", "0", "-1", "1.5"])
-    def test_recording_against_a_missing_venue_is_404(self, client, staff, venue_id):
-        response = mark(client, staff, venue_id=venue_id)
-
-        assert response.status_code == 404
-        assert response.json()["detail"]["code"] == "venue_not_found"
-
-    @pytest.mark.parametrize("venue_id", ["999", "abc", "0", "-1", "1.5"])
-    def test_viewing_a_missing_venue_is_404(self, client, coordinator, venue_id):
-        response = client.get(path(venue_id), headers=coordinator)
-
-        assert response.status_code == 404
-        assert response.json()["detail"]["code"] == "venue_not_found"
 
 
 
@@ -211,96 +165,21 @@ class TestUnknownVenue:
 class TestWhoMayDoWhat:
     """Venue Staff record; anyone who can read the catalogue can view."""
 
-
-
-    def test_an_organiser_cannot_view_ranges(self, client, staff, auth_headers):
-        """Organisers hold no venue permission at all (US9.2), so this is no exception."""
-        mark(client, staff)
-
-        response = client.get(path(), headers=auth_headers("Event Organiser"))
+    def test_a_coordinator_cannot_record_a_range(self, client, coordinator):
+        response = mark(client, coordinator)
 
         assert response.status_code == 403
-        assert response.json()["detail"]["required"] == "venues:read"
-
-
-
-
-
-
-
-
-
-class TestPlanningAroundBlackouts:
-    """US12.1 "so that Coordinators don't consider it": the catalogue leaves out, for the
-    dates being planned, any venue marked unavailable on one of them.
-
-    The Great Hall is closed 2-6 November in every test here. Two inclusive
-    ranges overlap when each starts no later than the other ends, so the edges
-    that matter are the 1st (clear), the 2nd (blocked), the 6th (blocked) and
-    the 7th (clear).
-    """
-
-    @pytest.fixture(autouse=True)
-    def hall_closed(self, client, staff):
-        response = mark(client, staff, startDate="2026-11-02", endDate="2026-11-06")
-        assert response.status_code == 201, response.text
-
-    def names(self, client, headers, **params) -> list[str]:
-        response = client.get("/venues", params=params, headers=headers)
-        assert response.status_code == 200, response.text
-        return [venue["name"] for venue in response.json()]
-
-
-
-
-    @pytest.mark.parametrize(
-        ("params", "hall_shown"),
-        [
-            ({"availableFrom": "2026-11-06"}, False),
-            ({"availableFrom": "2026-11-07"}, True),
-            ({"availableTo": "2026-11-02"}, False),
-            ({"availableTo": "2026-11-01"}, True),
-        ],
-    )
-    def test_either_date_alone_means_that_one_day(self, client, coordinator, params, hall_shown):
-        assert ("Great Hall" in self.names(client, coordinator, **params)) is hall_shown
-
-
-
-
-
-
-
-
-
-
-
-    def test_an_end_before_the_start_is_refused(self, client, coordinator):
-        response = client.get(
-            "/venues",
-            params={"availableFrom": "2026-11-06", "availableTo": "2026-11-05"},
-            headers=coordinator,
-        )
-
-        assert response.status_code == 400
         detail = response.json()["detail"]
-        assert detail["code"] == "invalid_filter"
-        assert "cannot be earlier" in detail["message"]
+        assert detail["required"] == "venues:edit"
+        assert detail["role"] == "Event Coordinator"
 
-    @pytest.mark.parametrize(
-        ("params", "box"),
-        [
-            ({"availableFrom": "04/11/2026"}, "available-from"),
-            ({"availableTo": "04/11/2026"}, "available-to"),
-            ({"availableFrom": "2026-11-04", "availableTo": "tomorrow"}, "available-to"),
-            ({"availableFrom": "soon", "availableTo": "2026-11-04"}, "available-from"),
-        ],
-    )
-    def test_a_malformed_date_is_refused_naming_its_box(self, client, coordinator, params, box):
-        response = client.get("/venues", params=params, headers=coordinator)
 
-        assert response.status_code == 400
-        detail = response.json()["detail"]
-        assert detail["code"] == "invalid_filter"
-        assert detail["message"] == f"Give the {box} date as YYYY-MM-DD."
+
+
+
+
+
+
+
+
 

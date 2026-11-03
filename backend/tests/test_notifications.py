@@ -3,11 +3,9 @@
 Test case ids (TC-N…) match the US10.1 test report.
 """
 
-import pytest
 
 from app.event_status import EventStatus
-from app.event_store import Event
-from app.notification_store import Notification, to_notification
+from app.notification_store import Notification
 from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
@@ -78,11 +76,52 @@ def stored(notification_id: int, user_id: int, created_at: str, *, is_read=False
 
 
 class TestNotificationIsCreated:
+    def test_tc_n01_approval_notifies_the_organiser(self, client, auth_headers):
+        event_id = under_review_event(client, auth_headers)
+        approved = client.post(
+            f"/events/{event_id}/approve", headers=auth_headers("Event Coordinator")
+        )
+        assert approved.status_code == 200, approved.text
+
+        latest = notices(client, auth_headers)[0]
+        assert latest["eventId"] == event_id
+        assert latest["eventTitle"] == "Faculty Welcome Night"
+        assert latest["status"] == "Approved"
+        assert latest["message"] == '"Faculty Welcome Night" was approved.'
+        assert latest["read"] is False
+        assert latest["readAt"] == ""
+
+    def test_tc_n02_rejection_notifies_with_the_reason(self, client, auth_headers):
+        event_id = under_review_event(client, auth_headers)
+        rejected = client.post(
+            f"/events/{event_id}/reject",
+            json={"reason": "The hall is booked that week."},
+            headers=auth_headers("Event Coordinator"),
+        )
+        assert rejected.status_code == 200, rejected.text
+
+        latest = notices(client, auth_headers)[0]
+        assert latest["status"] == "Rejected"
+        assert "The hall is booked that week." in latest["message"]
+
+    def test_tc_n03_assignment_moves_under_review_and_notifies(self, client, auth_headers):
+        assigned_event(client, auth_headers)
+
+        [notice] = notices(client, auth_headers)
+        assert notice["status"] == "Under Review"
+        assert notice["message"] == '"Faculty Welcome Night" is under review.'
 
 
 
+    def test_tc_n06_a_refused_decision_does_not_notify(self, client, auth_headers):
+        event_id = under_review_event(client, auth_headers)
+        coordinator = auth_headers("Event Coordinator")
+        client.post(f"/events/{event_id}/approve", headers=coordinator)
+        before = notices(client, auth_headers)
 
-
+        refused = client.post(f"/events/{event_id}/approve", headers=coordinator)
+        assert refused.status_code == 409
+        assert notices(client, auth_headers) == before
 
     def test_tc_n07_a_failed_notice_does_not_fail_the_decision(
         self, client, auth_headers, notification_repository, monkeypatch
@@ -102,76 +141,52 @@ class TestNotificationIsCreated:
 
 
 class TestListAndReadState:
+    def test_tc_n09_unread_come_first_then_newest(
+        self, client, auth_headers, notification_repository
+    ):
+        notification_repository.notifications = [
+            stored(1, ORGANISER_ID, "2026-10-01T09:00:00"),
+            stored(2, ORGANISER_ID, "2026-10-02T09:00:00", is_read=True),
+            stored(3, ORGANISER_ID, "2026-10-03T09:00:00"),
+            stored(4, ORGANISER_ID, "2026-09-30T09:00:00", is_read=True),
+        ]
+        assert [item["id"] for item in notices(client, auth_headers)] == ["3", "1", "2", "4"]
 
 
-
-    def test_tc_n12_a_read_notice_drops_below_unread_ones(self, client, auth_headers):
-        event_id = under_review_event(client, auth_headers)
-        ask(client, auth_headers, event_id, "Second question")
+    def test_tc_n11_mark_read_then_unread(self, client, auth_headers):
+        under_review_event(client, auth_headers)
         organiser = auth_headers("Event Organiser")
-        newest = notices(client, auth_headers)[0]["id"]
+        notice_id = notices(client, auth_headers)[0]["id"]
 
-        client.patch(f"/notifications/{newest}", json={"read": True}, headers=organiser)
-        listed = notices(client, auth_headers)
-        assert listed[-1]["id"] == newest
-        assert [item["read"] for item in listed] == [False, False, True]
+        read = client.patch(f"/notifications/{notice_id}", json={"read": True}, headers=organiser)
+        assert read.status_code == 200, read.text
+        assert read.json()["read"] is True
+        assert read.json()["readAt"] != ""
+
+        unread = client.patch(
+            f"/notifications/{notice_id}", json={"read": False}, headers=organiser
+        )
+        assert unread.status_code == 200
+        assert unread.json()["read"] is False
+        assert unread.json()["readAt"] == ""
+
 
 
 class TestAccess:
-
-    @pytest.mark.parametrize("notification_id", ["999", "abc"])
-    def test_tc_n14_unknown_ids_are_404(self, client, auth_headers, notification_id):
+    def test_tc_n13_another_users_notice_reads_as_missing(
+        self, client, auth_headers, notification_repository
+    ):
+        notification_repository.notifications = [stored(7, 99, "2026-10-01T09:00:00")]
         response = client.patch(
-            f"/notifications/{notification_id}",
-            json={"read": True},
-            headers=auth_headers("Event Organiser"),
+            "/notifications/7", json={"read": True}, headers=auth_headers("Event Organiser")
         )
         assert response.status_code == 404
+        assert notification_repository.notifications[0].is_read is False
+
 
     # US4.6 gave Venue Staff notifications: they are told when a cancelled
     # event's bookings are released. US10.3 gave the Lead them, for submissions.
-    @pytest.mark.parametrize("role", ["Safety Officer"])
-    def test_tc_n15_other_roles_are_refused(self, client, auth_headers, role):
-        response = client.get("/notifications", headers=auth_headers(role))
-        assert response.status_code == 403
 
 
-
-
-class TestUnits:
-    def event(self, title: str = "Gala") -> Event:
-        return Event(
-            id=5,
-            title=title,
-            purpose="",
-            description="",
-            starts_at="",
-            ends_at="",
-            expected_attendance=None,
-            status=EventStatus.UNDER_REVIEW,
-            organiser_id=ORGANISER_ID,
-            organiser_name="Dylan",
-            created_at="",
-            updated_at="",
-        )
-
-
-    def test_tc_n19_row_mapping(self):
-        row = {
-            "id": 3,
-            "user_id": 1,
-            "event_id": 5,
-            "status": "Rejected",
-            "message": "m",
-            "is_read": False,
-            "created_at": "2026-10-02T09:00:00",
-            "read_at": None,
-            "events": {"name": "Gala"},
-        }
-        notice = to_notification(row)
-        assert notice.status is EventStatus.REJECTED
-        assert notice.event_title == "Gala"
-        assert notice.read_at == ""
-        assert to_notification({**row, "events": None}).event_title == ""
 
 

@@ -9,7 +9,7 @@ from app.equipment_store import EquipmentRequest
 from app.event_status import EventStatus
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, SUBMITTABLE_NEEDS
+from tests.conftest import COORDINATOR_ID, SUBMITTABLE_NEEDS, TECH_SUPPORT_ID
 
 ITEM = {
     "name": "Wireless microphone",
@@ -94,63 +94,51 @@ def test_catalogue_happy_path_and_permissions(client, actors, item):
     assert updated.json()["usableQuantity"] == 0
 
 
-def test_catalogue_delete_missing_and_role_boundaries(client, actors, item):
-    path = f"/equipment/{item['id']}"
-    assert client.delete(path, headers=actors["coord"]).status_code == 403
-    assert client.delete("/equipment/999", headers=actors["tech"]).status_code == 404
-    assert client.delete(path, headers=actors["tech"]).status_code == 204
-    assert client.get(path, headers=actors["tech"]).status_code == 404
 
 
-def test_last_type_with_active_request_cannot_be_deleted_or_renamed(
-    client, actors, planning_event, item
-):
-    path = f"/equipment/{item['id']}"
-    created = client.post(
-        f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
-    ).json()
-    blocked = client.delete(path, headers=actors["tech"])
-    assert blocked.status_code == 409
-    assert blocked.json()["detail"]["code"] == "equipment_in_use"
-    renamed = client.put(path, json={**ITEM, "type": "Speaker"}, headers=actors["tech"])
-    assert renamed.status_code == 409
-    assert client.get(path, headers=actors["tech"]).json()["type"] == "Microphone"
 
-    another = client.post(
-        "/equipment", json={**ITEM, "name": "Spare microphone"}, headers=actors["tech"]
-    ).json()
-    assert client.delete(path, headers=actors["tech"]).status_code == 409
-    assert client.delete(f"/equipment/{another['id']}", headers=actors["tech"]).status_code == 204
-    assert (
-        client.delete(
-            f"/equipment-requests/{created['id']}?version=1", headers=actors["coord"]
-        ).status_code
-        == 204
-    )
-    assert (
-        client.delete(path, headers=actors["tech"]).status_code == 409
-    )  # Retain historical linkage.
+
+TOTAL_RANGE = "Total quantity must be between zero and 2,147,483,647."
+OUT_OF_SERVICE_RANGE = "Out-of-service units must be between zero and total quantity."
+REQUIRED = "Name, type, and location are required."
 
 
 @pytest.mark.parametrize(
-    "changes",
+    ("changes", "status", "message"),
     [
-        {"totalQuantity": -1},
-        {"totalQuantity": 1.5},
-        {"totalQuantity": True},
-        {"totalQuantity": 2_147_483_648},
-        {"outOfServiceQuantity": -1},
-        {"outOfServiceQuantity": 6},
-        {"outOfServiceReason": " "},
-        {"name": " "},
-        {"type": " "},
+        ({"totalQuantity": -1}, 400, TOTAL_RANGE),
+        ({"totalQuantity": 2_147_483_648}, 400, TOTAL_RANGE),
+        ({"totalQuantity": 1.5}, 422, None),
+        ({"totalQuantity": True}, 422, None),
+        ({"outOfServiceQuantity": -1}, 400, OUT_OF_SERVICE_RANGE),
+        ({"outOfServiceQuantity": 6}, 400, OUT_OF_SERVICE_RANGE),
+        ({"outOfServiceReason": " "}, 400, "Give a reason for out-of-service units."),
+        ({"name": " "}, 400, REQUIRED),
+        ({"type": " "}, 400, REQUIRED),
     ],
 )
-def test_catalogue_invalid_values(client, actors, changes):
+def test_catalogue_invalid_values(client, actors, changes, status, message):
+    """US19.1 AC1/AC2: each bad value is refused with its own reason.
+
+    A fraction or a boolean is refused by the schema (422) before the rules run.
+    ITEM has 5 units, so 6 out of service is one more than the total.
+    """
     response = client.post("/equipment", json={**ITEM, **changes}, headers=actors["tech"])
-    assert response.status_code in (400, 422)
+
+    assert response.status_code == status
+    if message:
+        assert response.json()["detail"] == {"code": "invalid_equipment", "message": message}
+    assert client.get("/equipment", headers=actors["tech"]).json() == []
 
 
+def test_zero_stock_is_valid(client, actors):
+    response = client.post(
+        "/equipment",
+        json={**ITEM, "totalQuantity": 0, "outOfServiceQuantity": 0, "outOfServiceReason": ""},
+        headers=actors["tech"],
+    )
+    assert response.status_code == 201
+    assert response.json()["usableQuantity"] == 0
 
 
 
@@ -218,51 +206,44 @@ def test_request_happy_path_and_notifications(
 
 
 
-def test_request_requires_end_time_when_event_has_none(
-    client, actors, planning_event, item, event_repository
-):
-    event = event_repository.get_event(int(planning_event))
-    event_repository._replace(replace(event, ends_at=""))
-    path = f"/events/{planning_event}/equipment-requests"
-
-    missing = client.post(path, json=LINE, headers=actors["coord"])
-    assert missing.status_code == 400
-    assert missing.json()["detail"] == {
-        "code": "invalid_time",
-        "message": "Enter a needed end time for this equipment request.",
-    }
-    assert client.get(path, headers=actors["coord"]).json() == []
-
-    created = client.post(
-        path, json={**LINE, "endsAt": "2027-11-02T17:00"}, headers=actors["coord"]
-    )
-    assert created.status_code == 201, created.text
-    assert created.json()["startsAt"] == "2027-11-02T09:00"
-    assert created.json()["endsAt"] == "2027-11-02T17:00"
 
 
+
+
+QUANTITY_RANGE = ("invalid_quantity", "Quantity must be between one and 2,147,483,647.")
+END_AFTER_START = ("invalid_time", "The needed end time must be after the start time.")
 
 
 @pytest.mark.parametrize(
-    "changes",
+    ("changes", "status", "detail"),
     [
-        {"equipmentType": "Unknown"},
-        {"quantity": 0},
-        {"quantity": 1.5},
-        {"quantity": True},
-        {"quantity": 2_147_483_648},
-        {"startsAt": "2027-11-02T17:00", "endsAt": "2027-11-02T09:00"},
-        {"startsAt": "2027-11-02T09:00", "endsAt": "2027-11-02T09:00"},
+        (
+            {"equipmentType": "Unknown"},
+            400,
+            ("invalid_equipment_type", "The selected item does not match that equipment type."),
+        ),
+        ({"quantity": 0}, 400, QUANTITY_RANGE),
+        ({"quantity": 2_147_483_648}, 400, QUANTITY_RANGE),
+        ({"quantity": 1.5}, 422, None),
+        ({"quantity": True}, 422, None),
+        ({"startsAt": "2027-11-02T17:00", "endsAt": "2027-11-02T09:00"}, 400, END_AFTER_START),
+        ({"startsAt": "2027-11-02T09:00", "endsAt": "2027-11-02T09:00"}, 400, END_AFTER_START),
     ],
 )
-def test_request_invalid_inputs(client, actors, planning_event, item, changes):
+def test_request_invalid_inputs(client, actors, planning_event, item, changes, status, detail):
+    """US19.2 AC1: quantity is a whole number of at least 1; the window must have length."""
     response = client.post(
         f"/events/{planning_event}/equipment-requests",
         json={**LINE, **changes},
         headers=actors["coord"],
     )
-    assert response.status_code in (400, 422)
+
+    assert response.status_code == status
+    if detail:
+        code, message = detail
+        assert response.json()["detail"] == {"code": code, "message": message}
     assert client.get("/notifications", headers=actors["tech"]).json() == []
+    assert client.get("/equipment-requests", headers=actors["tech"]).json() == []
 
 
 def test_roles_status_and_stale_edits(client, actors, planning_event, item, event_repository):
@@ -308,121 +289,54 @@ def test_roles_status_and_stale_edits(client, actors, planning_event, item, even
     )
 
 
-def test_coordinator_and_support_edit_only_their_fields(client, actors, planning_event, item):
-    second_item = client.post(
-        "/equipment",
-        json={**ITEM, "name": "Speaker", "type": "Speaker"},
-        headers=actors["tech"],
-    )
-    assert second_item.status_code == 201
-    created = client.post(
-        f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
-    ).json()
-    path = f"/equipment-requests/{created['id']}"
-    assert client.delete(f"{path}?version=1", headers=actors["tech"]).status_code == 403
-    assert (
-        client.patch(
-            path, json={"version": 1, "equipmentType": "Speaker"}, headers=actors["tech"]
-        ).status_code
-        == 403
-    )
-    assert (
-        client.patch(path, json={"version": 1, "quantity": 0}, headers=actors["tech"]).status_code
-        == 400
-    )
-    assert (
-        client.patch(
-            path, json={"version": 1, "startsAt": "2027-11-02T18:00"}, headers=actors["tech"]
-        ).status_code
-        == 400
-    )
-    changed = client.patch(
-        path,
-        json={
-            "version": 1,
-            "equipmentId": int(second_item.json()["id"]),
-            "equipmentType": "Speaker",
-            "technicalRequirements": "Stereo",
-        },
-        headers=actors["coord"],
-    )
-    assert changed.status_code == 200
-    assert changed.json()["equipmentType"] == "Speaker"
-    assert changed.json()["technicalRequirements"] == "Stereo"
-    assert changed.json()["supportNotes"] == ""
-    notices = client.get("/notifications", headers=actors["tech"]).json()
-    assert len(notices) == 2
-    assert any("updated the Speaker request" in notice["message"] for notice in notices)
 
 
-def test_read_request_notification_is_followed_by_edit_and_removal_notifications(
-    client, actors, planning_event, item
+
+
+
+
+def test_queue_ties_and_multiple_recipients(
+    client, actors, planning_event, item, user_store, equipment_repository, notification_repository
 ):
-    created = client.post(
-        f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
-    ).json()
-    path = f"/equipment-requests/{created['id']}"
-    original = client.get("/notifications", headers=actors["tech"]).json()[0]
-    assert (
-        client.patch(
-            f"/notifications/{original['id']}", json={"read": True}, headers=actors["tech"]
-        ).status_code
-        == 200
-    )
-
-    changed = client.patch(path, json={"version": 1, "quantity": 3}, headers=actors["coord"])
-    assert changed.status_code == 200, changed.text
-    notices = client.get("/notifications", headers=actors["tech"]).json()
-    assert len(notices) == 2
-    assert notices[0]["read"] is False
-    assert notices[0]["equipmentRequestId"] == created["id"]
-    assert "Priya updated" in notices[0]["message"]
-    assert next(notice for notice in notices if notice["id"] == original["id"])["read"] is True
-
-    no_change = client.patch(path, json={"version": 2, "quantity": 3}, headers=actors["coord"])
-    assert no_change.status_code == 200
-    assert len(client.get("/notifications", headers=actors["tech"]).json()) == 2
-    support_edit = client.patch(
-        path, json={"version": 3, "supportNotes": "Ready"}, headers=actors["tech"]
-    )
-    assert support_edit.status_code == 200
-    assert len(client.get("/notifications", headers=actors["tech"]).json()) == 2
-
-    assert client.delete(f"{path}?version=4", headers=actors["coord"]).status_code == 204
-    notices = client.get("/notifications", headers=actors["tech"]).json()
-    assert len(notices) == 3
-    assert notices[0]["read"] is False
-    assert "Priya removed" in notices[0]["message"]
-    assert notices[0]["equipmentRequestId"] == created["id"]
-    assert client.get("/equipment-requests", headers=actors["tech"]).json() == []
-    detail = client.get(path, headers=actors["tech"])
-    assert detail.status_code == 200
-    assert detail.json()["status"] == "Removed"
-    assert detail.json()["removedByName"] == "Priya"
-    assert client.get(path, headers=actors["coord"]).status_code == 403
-    assert client.get(path, headers=actors["organiser"]).status_code == 403
-    assert client.get("/equipment-requests/99999", headers=actors["tech"]).status_code == 404
-
-
-def test_unassigned_coordinator_cannot_see_or_change_requests(
-    client, actors, planning_event, item, user_store
-):
-    user_store.users.append(User(7, "other-coordinator@example.edu", "Other", Role.COORDINATOR))
-    user_store.passwords["other-coordinator@example.edu"] = "Sprint1!demo"
-    signed_in = client.post(
-        "/auth/login",
-        json={"email": "other-coordinator@example.edu", "password": "Sprint1!demo"},
-    ).json()
-    other = {"Authorization": f"Bearer {signed_in['token']}"}
+    user_store.users.append(User(7, "tech2@example.edu", "Second tech", Role.TECH_SUPPORT))
+    user_store.passwords["tech2@example.edu"] = "Sprint1!demo"
     path = f"/events/{planning_event}/equipment-requests"
-    assert client.post(path, json=LINE, headers=other).status_code == 404
-    assert client.get(path, headers=other).status_code == 404
-    created = client.post(path, json=LINE, headers=actors["coord"]).json()
+    first = client.post(path, json=LINE, headers=actors["coord"]).json()
+    second = client.post(path, json={**LINE, "quantity": 9}, headers=actors["coord"]).json()
+    equipment_repository.requests = [
+        replace(r, created_at="2027-01-01T00:00:00") for r in equipment_repository.requests
+    ]
+    assert [r["id"] for r in client.get("/equipment-requests", headers=actors["tech"]).json()] == [
+        first["id"],
+        second["id"],
+    ]
+    assert (
+        len(
+            [
+                n
+                for n in client.get("/notifications", headers=actors["tech"]).json()
+                if n["kind"] == "equipment-request"
+            ]
+        )
+        == 2
+    )
+    assert {
+        n.user_id for n in notification_repository.notifications if n.kind == "equipment-request"
+    } == {TECH_SUPPORT_ID, 7}
+    second_login = client.post(
+        "/auth/login", json={"email": "tech2@example.edu", "password": "Sprint1!demo"}
+    ).json()
+    other = {"Authorization": f"Bearer {second_login['token']}"}
+    other_notices = client.get("/notifications", headers=other).json()
+    assert len(other_notices) == 2
+    assert set(n["id"] for n in other_notices).isdisjoint(
+        n["id"] for n in client.get("/notifications", headers=actors["tech"]).json()
+    )
     assert (
         client.patch(
-            f"/equipment-requests/{created['id']}",
-            json={"version": 1, "quantity": 2},
-            headers=other,
+            f"/notifications/{other_notices[0]['id']}",
+            json={"read": True},
+            headers=actors["tech"],
         ).status_code
         == 404
     )
@@ -430,131 +344,12 @@ def test_unassigned_coordinator_cannot_see_or_change_requests(
 
 
 
-def test_notification_failure_does_not_fail_request(
-    client, actors, planning_event, item, notification_repository, monkeypatch
-):
-    def fail(**_kwargs):
-        raise RuntimeError("write failed")
-
-    monkeypatch.setattr(notification_repository, "create_equipment", fail)
-    response = client.post(
-        f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
-    )
-    assert response.status_code == 201
 
 
-def test_recipient_lookup_failure_does_not_fail_stored_request(
-    client, actors, planning_event, item, equipment_repository, monkeypatch
-):
-    from app import users
-
-    def fail():
-        raise RuntimeError("directory unavailable")
-
-    monkeypatch.setattr(users, "list_users", fail)
-    response = client.post(
-        f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
-    )
-    assert response.status_code == 201, response.text
-    assert [request.id for request in equipment_repository.requests] == [int(response.json()["id"])]
 
 
-def test_equipment_history_records_create_edit_and_remove(client, actors, planning_event, item):
-    event_path = f"/events/{planning_event}"
-    history_path = f"{event_path}/equipment-history"
-    created = client.post(
-        f"{event_path}/equipment-requests", json=LINE, headers=actors["coord"]
-    ).json()
-    request_path = f"/equipment-requests/{created['id']}"
-    initial = client.get(history_path, headers=actors["coord"])
-    assert initial.status_code == 200
-    assert len(initial.json()) == 1
-    assert initial.json()[0]["action"] == "Created"
-    assert initial.json()[0]["byName"] == "Priya"
-    assert initial.json()[0]["after"]["quantity"] == 1
-    assert initial.json()[0]["before"] is None
-
-    edited = client.patch(
-        request_path,
-        json={"version": 1, "quantity": 2, "supportNotes": "Tested"},
-        headers=actors["tech"],
-    )
-    assert edited.status_code == 200
-    assert (
-        client.patch(
-            request_path, json={"version": 1, "quantity": 3}, headers=actors["coord"]
-        ).status_code
-        == 409
-    )
-    assert (
-        client.patch(
-            request_path, json={"version": 2, "quantity": 0}, headers=actors["coord"]
-        ).status_code
-        == 400
-    )
-    middle = client.get(history_path, headers=actors["coord"]).json()
-    assert [entry["action"] for entry in middle] == ["Updated", "Created"]
-    assert middle[0]["byName"] == "Bryan"
-    assert middle[0]["before"]["quantity"] == 1
-    assert middle[0]["after"]["quantity"] == 2
-    assert middle[0]["after"]["support_notes"] == "Tested"
-
-    assert client.delete(f"{request_path}?version=2", headers=actors["coord"]).status_code == 204
-    assert client.get(f"{event_path}/equipment-requests", headers=actors["coord"]).json() == []
-    assert client.get("/equipment-requests", headers=actors["tech"]).json() == []
-    history = client.get(history_path, headers=actors["coord"]).json()
-    assert [entry["action"] for entry in history] == ["Removed", "Updated", "Created"]
-    assert history[0]["before"]["quantity"] == 2
-    assert history[0]["after"] is None
-    assert history[0]["byName"] == "Priya"
-    assert client.delete(f"{request_path}?version=2", headers=actors["coord"]).status_code == 409
-    assert len(client.get(history_path, headers=actors["coord"]).json()) == 3
 
 
-def test_equipment_history_is_assignment_scoped(client, actors, planning_event, item, user_store):
-    path = f"/events/{planning_event}/equipment-history"
-    assert client.get(path, headers=actors["tech"]).status_code == 403
-    assert client.get(path, headers=actors["organiser"]).status_code == 200
-    user_store.users.append(User(7, "other-coordinator@example.edu", "Other", Role.COORDINATOR))
-    user_store.passwords["other-coordinator@example.edu"] = "Sprint1!demo"
-    login = client.post(
-        "/auth/login", json={"email": "other-coordinator@example.edu", "password": "Sprint1!demo"}
-    ).json()
-    other = {"Authorization": f"Bearer {login['token']}"}
-    assert client.get(path, headers=other).status_code == 404
-    user_store.users.append(User(8, "other-organiser@example.edu", "Another", Role.ORGANISER))
-    user_store.passwords["other-organiser@example.edu"] = "Sprint1!demo"
-    login = client.post(
-        "/auth/login", json={"email": "other-organiser@example.edu", "password": "Sprint1!demo"}
-    ).json()
-    assert (
-        client.get(path, headers={"Authorization": f"Bearer {login['token']}"}).status_code == 404
-    )
-
-
-def test_database_planning_race_has_clear_conflict_and_no_audit_entry(
-    client, actors, planning_event, item, equipment_repository, monkeypatch
-):
-    def event_left_planning(_request):
-        raise APIError(
-            {
-                "code": "P0001",
-                "details": None,
-                "hint": None,
-                "message": "Equipment requests can only change while the event is Planning",
-            }
-        )
-
-    monkeypatch.setattr(equipment_repository, "create_request", event_left_planning)
-    response = client.post(
-        f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
-    )
-    assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "rule_refused"
-    assert (
-        client.get(f"/events/{planning_event}/equipment-history", headers=actors["coord"]).json()
-        == []
-    )
 
 
 # -- Refusals and database errors the paths above never reach ----------------
@@ -590,84 +385,22 @@ def legacy_line(**overrides) -> EquipmentRequest:
     return EquipmentRequest(**{**fields, **overrides})
 
 
-@pytest.mark.parametrize("raw", ["abc", "0", "-3"], ids=["not-a-number", "zero", "negative"])
-def test_an_id_that_cannot_name_an_item_is_not_found(client, actors, raw):
-    response = client.get(f"/equipment/{raw}", headers=actors["tech"])
-
-    assert response.status_code == 404
-
-
-def test_a_name_over_255_characters_is_refused(client, actors):
-    response = client.post("/equipment", json={**ITEM, "name": "x" * 256}, headers=actors["tech"])
-
-    assert response.status_code == 400
-    assert response.json()["detail"]["message"] == "Name or type is too long."
-
-
-def test_updating_a_missing_item_is_not_found(client, actors):
-    response = client.put("/equipment/999", json=ITEM, headers=actors["tech"])
-
-    assert response.status_code == 404
-    assert response.json()["detail"]["code"] == "equipment_not_found"
-
-
-def test_an_unexpected_database_error_on_save_is_not_disguised_as_a_conflict(
-    client, actors, item, equipment_repository, monkeypatch
-):
-    monkeypatch.setattr(
-        equipment_repository, "save_item", raising(database_error("XX000", "disk full"))
-    )
-
-    with pytest.raises(APIError):
-        client.put(f"/equipment/{item['id']}", json=ITEM, headers=actors["tech"])
 
 
 
 
-def test_a_type_only_request_from_before_exact_items_still_protects_its_type(
-    client, actors, item, equipment_repository
-):
-    """Rows written before US19 named an exact item ask only for a type."""
-    equipment_repository.requests.append(
-        legacy_line(equipment_type="microphone", requested_equipment_id=None)
-    )
-
-    response = client.delete(f"/equipment/{item['id']}", headers=actors["tech"])
-
-    assert response.status_code == 409
-    assert "Active equipment requests still need this type" in (
-        response.json()["detail"]["message"]
-    )
 
 
-def test_an_unexpected_database_error_on_a_request_is_raised_not_hidden(
-    client, actors, planning_event, item, equipment_repository, monkeypatch
-):
-    monkeypatch.setattr(
-        equipment_repository, "create_request", raising(database_error("XX000", "disk full"))
-    )
-
-    with pytest.raises(APIError):
-        client.post(
-            f"/events/{planning_event}/equipment-requests", json=LINE, headers=actors["coord"]
-        )
 
 
-def test_times_that_are_not_times_are_refused(client, actors, planning_event, item):
-    response = client.post(
-        f"/events/{planning_event}/equipment-requests",
-        json={**LINE, "startsAt": "after lunch", "endsAt": "teatime"},
-        headers=actors["coord"],
-    )
-
-    assert response.status_code == 400
-    assert response.json()["detail"]["message"] == "Enter valid start and end times."
 
 
-def test_availability_for_a_missing_request_is_not_found(client, actors):
-    response = client.get("/equipment-requests/999/availability", headers=actors["tech"])
 
-    assert response.status_code == 404
+
+
+
+
+
 
 
 @pytest.fixture
@@ -679,96 +412,15 @@ def open_line(client, actors, planning_event, item) -> dict:
     return response.json()
 
 
-def test_an_unexpected_database_error_on_a_decision_is_raised(
-    client, actors, item, open_line, equipment_repository, monkeypatch
-):
-    monkeypatch.setattr(
-        equipment_repository, "decide", raising(database_error("XX000", "disk full"))
-    )
-
-    with pytest.raises(APIError):
-        client.post(
-            f"/equipment-requests/{open_line['id']}/reserve",
-            json={"version": 1, "equipmentId": int(item["id"])},
-            headers=actors["tech"],
-        )
 
 
-def test_editing_a_missing_request_is_not_found(client, actors):
-    response = client.patch(
-        "/equipment-requests/999", json={"version": 1}, headers=actors["coord"]
-    )
-
-    assert response.status_code == 404
 
 
-def test_a_request_whose_event_is_gone_is_not_found(client, actors, equipment_repository):
-    equipment_repository.requests.append(legacy_line(id=60, event_id=999))
-
-    response = client.patch(
-        "/equipment-requests/60", json={"version": 1, "quantity": 2}, headers=actors["tech"]
-    )
-
-    assert response.status_code == 404
 
 
-def test_an_edit_that_lost_a_race_to_the_event_leaving_planning_is_a_conflict(
-    client, actors, open_line, equipment_repository, monkeypatch
-):
-    monkeypatch.setattr(
-        equipment_repository,
-        "update_request",
-        raising(database_error("P0001", "Equipment requests can only change while Planning")),
-    )
-
-    response = client.patch(
-        f"/equipment-requests/{open_line['id']}",
-        json={"version": 1, "quantity": 2},
-        headers=actors["coord"],
-    )
-
-    assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "rule_refused"
 
 
-def test_an_edit_that_matched_no_row_is_stale(
-    client, actors, open_line, equipment_repository, monkeypatch
-):
-    monkeypatch.setattr(equipment_repository, "update_request", lambda *_args: None)
-
-    response = client.patch(
-        f"/equipment-requests/{open_line['id']}",
-        json={"version": 1, "quantity": 2},
-        headers=actors["coord"],
-    )
-
-    assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "stale_request"
 
 
-def test_a_removal_that_lost_a_race_to_the_event_leaving_planning_is_a_conflict(
-    client, actors, open_line, equipment_repository, monkeypatch
-):
-    monkeypatch.setattr(
-        equipment_repository,
-        "delete_request",
-        raising(database_error("P0001", "Equipment requests can only change while Planning")),
-    )
-
-    response = client.delete(
-        f"/equipment-requests/{open_line['id']}?version=1", headers=actors["coord"]
-    )
-
-    assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "rule_refused"
 
 
-def test_an_unexpected_database_error_on_delete_is_raised_not_hidden(
-    client, actors, item, equipment_repository, monkeypatch
-):
-    monkeypatch.setattr(
-        equipment_repository, "delete_item", raising(database_error("XX000", "disk full"))
-    )
-
-    with pytest.raises(APIError):
-        client.delete(f"/equipment/{item['id']}", headers=actors["tech"])

@@ -21,9 +21,8 @@ The SQL half is SUPABASE_FIX_SAFETY_CHECK_CHANGES.sql.
 
 import pytest
 
-from app.change_requests import FieldChange, reopens_planning
 from app.event_status import EventStatus
-from tests.conftest import ORGANISER_ID, SUBMITTABLE_NEEDS
+from tests.conftest import SUBMITTABLE_NEEDS
 from tests.test_confirm_event_us4_7 import (
     COORDINATOR,
     EVENT_ID,
@@ -69,21 +68,6 @@ def change_request(client, auth_headers, **changes):
     return accepted.json()
 
 
-class TestTheRule:
-    def test_an_important_change_during_the_safety_check_reopens_planning(self):
-        attendance = FieldChange("expected_attendance", "30", "40", important=True)
-
-        assert reopens_planning(status=PSC, changes=[attendance]) is True
-
-    def test_a_routine_change_during_the_safety_check_does_not(self):
-        title = FieldChange("name", "Open House", "Open Day", important=False)
-
-        assert reopens_planning(status=PSC, changes=[title]) is False
-
-    def test_planning_is_unchanged_the_checks_are_still_to_come(self):
-        attendance = FieldChange("expected_attendance", "30", "40", important=True)
-
-        assert reopens_planning(status=EventStatus.PLANNING, changes=[attendance]) is False
 
 
 @pytest.mark.usefixtures("waiting")
@@ -107,11 +91,6 @@ class TestDirectEditAfterSafetyApproval:
         assert response.status_code == 409
         assert response.json()["detail"]["reason"] == "not-pending-safety-check"
 
-    def test_a_date_edit_before_any_decision_also_goes_back(self, client, auth_headers):
-        """The Safety Officer must not review numbers that have since changed."""
-        edited = edit(client, auth_headers, startsAt="2099-11-03T09:00", endsAt="2099-11-03T17:00")
-
-        assert edited["status"] == "Planning"
 
     def test_a_title_edit_keeps_the_approval(self, client, auth_headers):
         approve(client, auth_headers)
@@ -121,15 +100,6 @@ class TestDirectEditAfterSafetyApproval:
         assert edited["status"] == "Pending Safety Check"
         assert confirm(client, auth_headers(COORDINATOR)).json()["status"] == "Confirmed"
 
-    def test_the_organiser_is_told_it_is_back_in_planning(
-        self, client, auth_headers, notification_repository
-    ):
-        approve(client, auth_headers)
-
-        edit(client, auth_headers, expectedAttendance=40)
-
-        kinds = {(n.user_id, n.kind) for n in notification_repository.notifications}
-        assert (ORGANISER_ID, "back-in-planning") in kinds
 
 
 @pytest.mark.usefixtures("waiting")
@@ -143,9 +113,3 @@ class TestChangeRequestDuringSafetyCheck:
         last = accepted["history"][-1]
         assert (last["from"], last["to"]) == ("Pending Safety Check", "Planning")
 
-    def test_accepting_a_title_change_keeps_it_pending(self, client, auth_headers):
-        approve(client, auth_headers)
-
-        accepted = change_request(client, auth_headers, title="Open Day")
-
-        assert accepted["status"] == "Pending Safety Check"

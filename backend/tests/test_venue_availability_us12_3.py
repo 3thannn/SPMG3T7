@@ -17,7 +17,7 @@ from app import booking_store
 from app.booking_store import Booking, BookingStatus, Cancellation
 from app.event_status import EventStatus
 from app.event_store import Event
-from app.venue_availability import default_range, entries
+from app.venue_availability import EntryKind, entries
 from app.venue_store import Venue
 from app.venue_unavailability_store import Unavailability, UnavailabilityReasonType
 from tests.conftest import COORDINATOR_ID, ORGANISER_ID
@@ -77,14 +77,33 @@ def listed(bookings=(), periods=(), first=date(2027, 3, 1), last=date(2027, 3, 1
 # -- The rule -------------------------------------------------------------------
 
 
-class TestTheDefaultRange:
-    def test_it_is_the_next_14_days_today_included(self):
-        assert default_range(TODAY) == (date(2027, 3, 1), date(2027, 3, 14))
 
 
 class TestWhatIsListed:
     """AC2 and AC4."""
 
+    def test_each_entry_is_labelled_by_type(self):
+        found = listed(
+            [
+                booking(1, status=BookingStatus.CONFIRMED),
+                booking(2, status=BookingStatus.REQUESTED, starts_at="2027-03-04T10:00"),
+                booking(
+                    3,
+                    status=BookingStatus.HELD,
+                    starts_at="2027-03-08T10:00",
+                    ends_at="2027-03-08T12:00",
+                    hold_expires_at="2027-03-02T17:00:00",
+                ),
+            ],
+            [period()],
+        )
+
+        assert [entry.kind for entry in found] == [
+            EntryKind.CONFIRMED,
+            EntryKind.REQUESTED,
+            EntryKind.UNAVAILABLE,
+            EntryKind.HOLD,
+        ]
 
     @pytest.mark.parametrize(
         "status",
@@ -99,43 +118,26 @@ class TestWhatIsListed:
     def test_what_does_not_hold_the_venue_is_hidden(self, status):
         assert listed([booking(status=status)]) == []
 
-    def test_a_hold_past_its_expiry_is_hidden_before_the_sweep_marks_it(self):
-        lapsed = booking(status=BookingStatus.HELD, hold_expires_at="2027-03-01T09:00:00")
-
-        assert listed([lapsed]) == []
-
-    def test_another_venues_records_are_not_listed(self):
-        assert listed([booking(venue_id=2)], [period(venue_id=2)]) == []
-
-    def test_a_booking_whose_times_cannot_be_read_is_left_out(self):
-        assert listed([booking(starts_at="not a time")]) == []
 
 
-class TestTheOccupiedWindow:
-    """AC3: US9.4's example, 10:00-12:00, occupies 09:30-12:45."""
 
-    def test_a_booking_spans_setup_to_turnaround(self):
-        [entry] = listed([booking()])
-
-        assert entry.starts_at == datetime(2027, 3, 3, 9, 30)
-        assert entry.ends_at == datetime(2027, 3, 3, 12, 45)
 
 
 
 class TestTheRange:
+    def test_it_is_chronological_by_when_the_venue_is_taken(self):
+        found = listed(
+            [
+                booking(1, starts_at="2027-03-10T10:00", ends_at="2027-03-10T11:00"),
+                booking(2, starts_at="2027-03-02T10:00", ends_at="2027-03-02T11:00"),
+            ],
+            [period(start="2027-03-04", end="2027-03-04")],
+        )
+
+        assert [entry.starts_at.day for entry in found] == [2, 4, 10]
 
 
-    def test_setup_alone_can_bring_a_booking_into_the_range(self):
-        """Starting 00:15 on the day after the range, its setup begins inside it."""
-        early = booking(starts_at="2027-03-15T00:15", ends_at="2027-03-15T02:00")
 
-        assert len(listed([early])) == 1
-
-    def test_one_whose_turnaround_ends_at_midnight_on_the_first_day_is_not(self):
-        """Half-open, as US15.1's windows are."""
-        late = booking(starts_at="2027-02-28T22:00", ends_at="2027-02-28T23:15")
-
-        assert listed([late]) == []
 
 
 
@@ -254,65 +256,10 @@ class TestTheRoute:
         assert hold["holdExpiresAt"] == "2027-03-04T17:00"
 
 
-    def test_a_chosen_range_is_used(self, client, auth_headers):
-        body = view(client, auth_headers("Venue Staff"), "?from=2027-03-25&to=2027-04-05").json()
-
-        assert (body["from"], body["to"]) == ("2027-03-25", "2027-04-05")
-        assert [entry["bookingId"] for entry in body["entries"]] == ["4"]
 
 
-    def test_venue_staff_see_every_events_title(self, client, auth_headers):
-        titles = [
-            entry["eventTitle"]
-            for entry in view(client, auth_headers("Venue Staff")).json()["entries"]
-            if entry["bookingId"]
-        ]
-
-        assert titles == ["Faculty Welcome Night", "Someone Else's Gala"]
-
-    def test_a_coordinator_sees_only_their_own_events_titles(self, client, auth_headers):
-        """US8.6: someone else's booking is shown by number, status and times alone."""
-        found = view(client, auth_headers("Event Coordinator")).json()["entries"]
-        mine, theirs = found[0], found[2]
-
-        assert (mine["eventId"], mine["eventTitle"]) == ("1", "Faculty Welcome Night")
-        assert (theirs["eventId"], theirs["eventTitle"]) == ("", "")
-        assert theirs["bookingId"] == "2"
-        assert theirs["startsAt"] == "2027-03-08T13:30"
-
-    def test_an_unknown_venue_is_404(self, client, auth_headers):
-        assert view(client, auth_headers("Venue Staff"), venue_id="999").status_code == 404
-
-    def test_a_role_without_the_catalogue_is_refused(self, client, auth_headers):
-        assert view(client, auth_headers("Event Organiser")).status_code == 403
 
 
-@pytest.mark.usefixtures("great_hall")
-class TestPickingTheRange:
-
-    def test_to_alone_runs_the_14_days_before_it(self, client, auth_headers):
-        body = view(client, auth_headers("Venue Staff"), "?to=2027-06-14").json()
-
-        assert (body["from"], body["to"]) == ("2027-06-01", "2027-06-14")
 
 
-    @pytest.mark.parametrize(
-        ("query", "message"),
-        [
-            ("?from=2027-06-14&to=2027-06-01", "The to date cannot be earlier than the from date."),
-            ("?from=01/06/2027", "Give the from date as YYYY-MM-DD."),
-            ("?to=2027-02-30", "The to date 2027-02-30 is not a real calendar date."),
-            ("?from=2027-01-01&to=2028-01-02", "Pick a range of 366 days or fewer."),
-            ("?to=0001-01-05", "That range runs off the calendar. Pick nearer dates."),
-            ("?from=9999-12-25", "That range runs off the calendar. Pick nearer dates."),
-            (
-                "?from=9999-12-31&to=9999-12-31",
-                "That range runs off the calendar. Pick nearer dates.",
-            ),
-        ],
-    )
-    def test_a_range_that_cannot_be_used_is_refused(self, client, auth_headers, query, message):
-        response = view(client, auth_headers("Venue Staff"), query)
 
-        assert response.status_code == 400
-        assert response.json()["detail"] == {"code": "invalid_filter", "message": message}

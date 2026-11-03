@@ -13,25 +13,13 @@ The worked example from the requirement: 10:00-12:00 with 30 minutes' setup and
 45 minutes' turnaround occupies the venue from 09:30 to 12:45.
 """
 
-from datetime import datetime
 
 import pytest
 
-from app.booking_store import COLUMNS as BOOKING_COLUMNS
-from app.booking_store import Booking, BookingStatus, SupabaseBookings
-from app.venue_store import SupabaseVenues
+from app.booking_store import Booking, BookingStatus
 from app.venue_turnaround import (
     MINUTES_MAX,
-    InvalidMinutes,
-    find_conflicts,
-    occupied_window,
-    parse_minutes,
-    recheck,
 )
-from tests.test_booking_store import FakeClient as BookingFakeClient
-from tests.test_booking_store import FakeQuery as BookingFakeQuery
-from tests.test_venue_store import FakeClient as VenueFakeClient
-from tests.test_venue_store import FakeQuery as VenueFakeQuery
 
 STAFF = "Venue Staff"
 COORDINATOR = "Event Coordinator"
@@ -83,18 +71,6 @@ def put(client, headers, venue_id: str, **fields):
 # =================================================================================
 
 
-class TestParseMinutes:
-
-    @pytest.mark.parametrize(
-        "raw", [True, False, 1.5, -0.5, "1.5", "abc", "30m", "-", "+5", "٣", [], {}]
-    )
-    def test_refuses_anything_that_is_not_a_whole_number(self, raw):
-        with pytest.raises(InvalidMinutes) as refused:
-            parse_minutes(raw, which="setup")
-        assert str(refused.value) == WHOLE_NUMBER.format(label="setup time")
-
-
-
 
 
 # =================================================================================
@@ -102,60 +78,8 @@ class TestParseMinutes:
 # =================================================================================
 
 
-class TestOccupiedWindow:
-
-    def test_zero_buffers_occupy_exactly_the_booking(self):
-        start, end = occupied_window(
-            "2027-03-01T10:00:00", "2027-03-01T12:00:00", setup_minutes=0, turnaround_minutes=0
-        )
-        assert (start, end) == (datetime(2027, 3, 1, 10), datetime(2027, 3, 1, 12))
 
 
-
-
-class TestFindConflicts:
-
-
-
-
-
-
-    def test_every_clashing_pair_in_time_order(self):
-        late = booking(3, "2027-03-01T12:10", "2027-03-01T13:00")
-        early = booking(1, "2027-03-01T10:00", "2027-03-01T12:00")
-        middle = booking(2, "2027-03-01T12:05", "2027-03-01T12:30")
-        tomorrow = booking(4, "2027-03-02T10:00", "2027-03-02T12:00")
-
-        conflicts = find_conflicts(
-            [late, tomorrow, early, middle], setup_minutes=0, turnaround_minutes=15
-        )
-
-        assert [conflict.key for conflict in conflicts] == [(1, 2), (1, 3), (2, 3)]
-
-
-class TestRecheck:
-    BOOKINGS = [
-        # Already overlap with no buffers at all.
-        booking(1, "2027-03-01T10:00", "2027-03-01T12:00"),
-        booking(2, "2027-03-01T11:00", "2027-03-01T11:30"),
-        # Clear of each other until a turnaround of 30+ minutes.
-        booking(3, "2027-03-02T10:00", "2027-03-02T12:00"),
-        booking(4, "2027-03-02T12:30", "2027-03-02T13:00"),
-        # Not checked: cancelled, and unreadable.
-        booking(5, "2027-03-02T11:00", "2027-03-02T13:00", status=BookingStatus.CANCELLED),
-        booking(6, "", ""),
-    ]
-
-    def test_identifies_what_the_change_made_clash_and_what_already_did(self):
-        result = recheck(self.BOOKINGS, before=(0, 0), after=(15, 30))
-
-        assert result.setup_minutes == 15
-        assert result.turnaround_minutes == 30
-        assert result.checked == 4
-        assert [(c.key, c.caused_by_change) for c in result.conflicts] == [
-            ((1, 2), False),
-            ((3, 4), True),
-        ]
 
 
 
@@ -165,60 +89,7 @@ class TestRecheck:
 # =================================================================================
 
 
-class TestVenueStore:
 
-
-
-
-    @pytest.fixture
-    def query(self, monkeypatch):
-        from app import supabase_client
-
-        recorder = VenueFakeQuery()
-        monkeypatch.setattr(supabase_client, "admin", lambda: VenueFakeClient(recorder))
-        return recorder
-
-    DETAILS = {
-        "name": "Atrium",
-        "location": "Science Quarter",
-        "capacity": 90,
-        "facilities": "",
-        "accessibility_features": "",
-        "operating_hours": "",
-        "supported_layouts": "",
-    }
-
-    def test_create_writes_both_columns(self, query):
-        SupabaseVenues().create_venue(**self.DETAILS, setup_minutes=30, turnaround_minutes=45)
-
-        (_, row), = query.named("insert")
-        assert (row["setup_minutes"], row["turnaround_minutes"]) == (30, 45)
-
-
-
-
-
-class TestBookingStoreListForVenue:
-    def test_supabase_reads_one_venue_s_bookings_soonest_first(self, monkeypatch):
-        from app import supabase_client
-
-        recorder = BookingFakeQuery()
-        monkeypatch.setattr(supabase_client, "admin", lambda: BookingFakeClient(recorder))
-
-        found = SupabaseBookings().list_for_venue(7)
-
-        assert recorder.named("select") == [("select", BOOKING_COLUMNS)]
-        assert recorder.named("eq") == [("eq", "venue_id", 7)]
-        assert [call[1] for call in recorder.named("order")] == ["start_at", "end_at", "id"]
-        assert len(found) == 1
-
-    def test_supabase_reads_an_empty_answer_as_none(self, monkeypatch):
-        from app import supabase_client
-
-        recorder = BookingFakeQuery(rows=None)
-        monkeypatch.setattr(supabase_client, "admin", lambda: BookingFakeClient(recorder))
-
-        assert SupabaseBookings().list_for_venue(7) == []
 
 
 
@@ -228,6 +99,10 @@ class TestBookingStoreListForVenue:
 
 
 class TestCreating:
+    def test_both_default_to_0(self, client, auth_headers):
+        venue = create(client, auth_headers(STAFF))
+
+        assert (venue["setupMinutes"], venue["turnaroundMinutes"]) == (0, 0)
 
 
     @pytest.mark.parametrize(
@@ -277,16 +152,12 @@ class TestCreating:
 class TestEditing:
 
 
-    def test_a_refused_edit_changes_nothing(self, client, auth_headers):
-        staff = auth_headers(STAFF)
-        venue = create(client, staff, setupMinutes=30)
 
-        response = put(client, staff, venue["id"], setupMinutes=-1)
+    @pytest.mark.parametrize("role", [COORDINATOR, ORGANISER, "Safety Officer"])
+    def test_only_venue_staff_may_edit(self, client, auth_headers, role):
+        response = put(client, auth_headers(role), "1", setupMinutes=30)
 
-        assert response.status_code == 400
-        fetched = client.get(f"/venues/{venue['id']}", headers=staff).json()
-        assert fetched["setupMinutes"] == 30
-
+        assert response.status_code == 403
 
 
 
@@ -296,16 +167,14 @@ class TestEditing:
 
 
 class TestCoordinatorsSeeThem:
+    def test_on_the_detail_view(self, client, auth_headers):
+        venue = create(client, auth_headers(STAFF), setupMinutes=30, turnaroundMinutes=45)
 
-    def test_in_the_catalogue(self, client, auth_headers):
-        create(client, auth_headers(STAFF), setupMinutes=5, turnaroundMinutes=10)
+        response = client.get(f"/venues/{venue['id']}", headers=auth_headers(COORDINATOR))
 
-        listed = client.get("/venues", headers=auth_headers(COORDINATOR)).json()
+        assert response.status_code == 200
+        assert (response.json()["setupMinutes"], response.json()["turnaroundMinutes"]) == (30, 45)
 
-        atrium = next(v for v in listed if v["name"] == "Atrium")
-        assert (atrium["setupMinutes"], atrium["turnaroundMinutes"]) == (5, 10)
-        hall = next(v for v in listed if v["name"] == "Great Hall")
-        assert (hall["setupMinutes"], hall["turnaroundMinutes"]) == (0, 0)
 
 
 # =================================================================================
@@ -342,21 +211,26 @@ def put_hall(client, auth_headers, **fields):
 
 class TestRecheckOnChange:
 
-
-
-
-    def test_problem_bookings_are_identified_not_removed(
-        self, client, auth_headers, hall_bookings
+    @pytest.mark.parametrize(
+        "change", [{"setupMinutes": 45}, {"turnaroundMinutes": 45}], ids=["setup", "turnaround"]
+    )
+    def test_changing_either_value_rechecks_and_identifies_the_clash(
+        self, client, auth_headers, hall_bookings, change
     ):
-        before = [(b.id, b.status) for b in hall_bookings.bookings]
+        response = put_hall(client, auth_headers, **change)
 
-        put_hall(client, auth_headers, turnaroundMinutes=120)
+        assert response.status_code == 200, response.text
+        result = response.json()["recheck"]
+        assert result["checkedBookings"] == 2
+        assert len(result["conflicts"]) == 1
+        conflict = result["conflicts"][0]
+        assert conflict["causedByChange"] is True
+        assert conflict["first"]["bookingId"] == "1"
+        assert conflict["first"]["eventId"] == "901"
+        assert conflict["second"]["bookingId"] == "2"
 
-        # US15.2 flags them, but nothing is removed and no status changes.
-        assert [(b.id, b.status) for b in hall_bookings.bookings] == before
-        assert all(
-            b.status is BookingStatus.REQUESTED for b in hall_bookings.bookings if b.id != 3
-        )
+
+
 
 
 

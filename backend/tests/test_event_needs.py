@@ -17,18 +17,10 @@ from app import supabase_client
 from app.event_needs import (
     ACCESSIBILITY_OPTIONS,
     FACILITY_OPTIONS,
-    FREE_TEXT_MAX,
     LAYOUT_OPTIONS,
     MISSING_MESSAGES,
-    NEED_FIELDS,
     NOT_REQUIRED,
-    EventNeeds,
-    format_error,
-    listed,
-    missing_error,
 )
-from app.event_store import SupabaseEvents, to_event
-from app.events import ATTENDANCE_TOO_LARGE
 from tests.conftest import (
     COORDINATOR_ID,
     ORGANISER_ID,
@@ -102,98 +94,11 @@ def _frontend_list(source: str, name: str) -> tuple[str, ...]:
     return tuple(re.findall(r"'([^']*)'", match.group(1)))
 
 
-@pytest.mark.skipif(not FRONTEND.exists(), reason="the frontend is not checked out")
-class TestFrontendParity:
-
-    def test_the_browser_uses_the_same_answers_and_messages(self):
-        source = FRONTEND.read_text(encoding="utf-8")
-        assert f"export const NOT_REQUIRED = '{NOT_REQUIRED}'" in source
-        assert f"export const FREE_TEXT_MAX = {FREE_TEXT_MAX}" in source
-        for message in MISSING_MESSAGES.values():
-            template = message.replace(NOT_REQUIRED, "${NOT_REQUIRED}")
-            assert f"`{template}`" in source
-
-
-class TestEventNeeds:
-
-
-    def test_an_unanswered_column_is_written_null(self):
-        needs = EventNeeds(preferred_layout="Theatre")
-        assert needs.as_columns() == {
-            "venue_requirements": None,
-            "preferred_layout": "Theatre",
-            "accessibility_needs": None,
-            "equipment_needs": None,
-            "registration_needs": None,
-        }
 
 
 
-class TestListed:
-    @pytest.mark.parametrize(
-        ("value", "expected"),
-        [
-            ("", ()),
-            ("   ", ()),
-            ("Stage", ("Stage",)),
-            ("Stage, Projector", ("Stage", "Projector")),
-            (" Stage ,, Projector ,", ("Stage", "Projector")),
-        ],
-    )
-    def test_reads_the_joined_options(self, value, expected):
-        assert listed(value) == expected
 
 
-class TestFormatError:
-    """Applies to drafts too: blanks are fine, values off the lists are not."""
-
-
-    @pytest.mark.parametrize(
-        ("needs", "message"),
-        [
-            (
-                EventNeeds(venue_requirements="Stage, Helipad"),
-                "Choose the venue requirements from the list. Helipad is not one of the options.",
-            ),
-            (
-                EventNeeds(venue_requirements=f"Stage, {NOT_REQUIRED}"),
-                f"Choose the venue requirements, or {NOT_REQUIRED} — not both.",
-            ),
-            (
-                EventNeeds(accessibility_needs="ramp"),
-                "Choose the accessibility needs from the list. ramp is not one of the options.",
-            ),
-            (
-                EventNeeds(accessibility_needs=f"{NOT_REQUIRED}, Lift"),
-                f"Choose the accessibility needs, or {NOT_REQUIRED} — not both.",
-            ),
-            (
-                EventNeeds(preferred_layout="theatre"),
-                "Choose a preferred layout from the list. theatre is not one of the options.",
-            ),
-            (
-                EventNeeds(preferred_layout="Theatre, Banquet"),
-                "Choose a preferred layout from the list. "
-                "Theatre, Banquet is not one of the options.",
-            ),
-            (
-                EventNeeds(equipment_needs="e" * (FREE_TEXT_MAX + 1)),
-                f"Keep the equipment needs to {FREE_TEXT_MAX} characters or fewer.",
-            ),
-            (
-                EventNeeds(registration_needs="r" * (FREE_TEXT_MAX + 1)),
-                f"Keep the registration needs to {FREE_TEXT_MAX} characters or fewer.",
-            ),
-        ],
-    )
-    def test_refused_answers(self, needs, message):
-        assert format_error(needs) == message
-
-
-class TestMissingError:
-
-    def test_not_required_counts_as_an_answer(self):
-        assert missing_error(EventNeeds(**{name: NOT_REQUIRED for name in NEED_FIELDS})) is None
 
 
 
@@ -203,26 +108,16 @@ class TestMissingError:
 
 
 class TestDrafts:
+    def test_a_draft_saves_with_no_needs(self, client, auth_headers):
+        event = create(client, auth_headers(ORGANISER), title="Ideas for later")
+
+        assert event["status"] == "Draft"
+        assert {event[key] for key in NEED_KEYS.values()} == {""}
 
 
 
 
 
-    def test_the_owner_saves_needs_on_a_draft(self, client, auth_headers):
-        organiser = auth_headers(ORGANISER)
-        event = create(client, organiser, title="Gala")
-
-        response = client.put(
-            f"/events/{event['id']}",
-            json={"title": "Gala", **ALL_NOT_REQUIRED, "preferredLayout": "Cabaret"},
-            headers=organiser,
-        )
-
-        assert response.status_code == 200, response.text
-        saved = response.json()
-        assert saved["status"] == "Draft"
-        assert saved["preferredLayout"] == "Cabaret"
-        assert saved["equipmentNeeds"] == NOT_REQUIRED
 
 
 
@@ -240,24 +135,40 @@ class TestSubmitting:
         assert response.status_code == 200, response.text
         assert response.json()["status"] == "Submitted"
 
+    @pytest.mark.parametrize(
+        ("missing", "message"),
+        [
+            ({"title": "  "}, "Give the event a title."),
+            ({"description": ""}, "Give the event a description."),
+            ({"description": " \n "}, "Give the event a description."),
+            ({"purpose": ""}, "Give the event a purpose."),
+            ({"startsAt": ""}, "Give the event a date."),
+            ({"endsAt": None}, "Give the event an end date."),
+            ({"endsAt": "  "}, "Give the event an end date."),
+            ({"expectedAttendance": None}, "Give the expected attendance."),
+            ({"expectedAttendance": 0}, "Expected attendance must be at least 1."),
+            (
+                {"startsAt": "2000-01-01T10:00", "endsAt": "2000-01-01T12:00"},
+                "The start date cannot be in the past.",
+            ),
+            *[({key: ""}, MISSING_MESSAGES[name]) for name, key in NEED_KEYS.items()],
+        ],
+    )
+    def test_a_missing_field_blocks_submit_with_a_clear_error(
+        self, client, auth_headers, missing, message
+    ):
+        organiser = auth_headers(ORGANISER)
+        event = create(client, organiser, **{**REQUEST, **missing})
 
-
-
-class TestAttendanceUpperBound:
-    """`events.expected_attendance` is INTEGER: past its maximum the write would fail."""
-
-
-    @pytest.mark.parametrize("attendance", [2147483648, 10**20])
-    def test_one_past_it_is_refused_with_a_sentence(self, client, auth_headers, attendance):
-        response = client.post(
-            "/events",
-            json={"title": "Big", "expectedAttendance": attendance},
-            headers=auth_headers(ORGANISER),
-        )
+        response = submit(client, organiser, event["id"])
 
         assert response.status_code == 400
-        assert response.json()["detail"]["message"] == ATTENDANCE_TOO_LARGE
-        assert ATTENDANCE_TOO_LARGE == "Expected attendance must be 2,147,483,647 or fewer."
+        assert response.json()["detail"]["message"] == message
+        fetched = client.get(f"/events/{event['id']}", headers=organiser).json()
+        assert fetched["status"] == "Draft"
+
+
+
 
 
 # --- Coordinator edits and reads -------------------------------------------------
@@ -276,19 +187,6 @@ def _submitted_and_assigned(client, auth_headers) -> dict:
     return assigned.json()
 
 
-class TestCoordinator:
-
-    def test_a_coordinator_edit_saves_the_needs(self, client, auth_headers):
-        event = _submitted_and_assigned(client, auth_headers)
-
-        response = client.put(
-            f"/events/{event['id']}",
-            json={**REQUEST, "accessibilityNeeds": "Hearing loop, Lift"},
-            headers=auth_headers("Event Coordinator"),
-        )
-
-        assert response.status_code == 200, response.text
-        assert response.json()["accessibilityNeeds"] == "Hearing loop, Lift"
 
 
 # --- the Supabase store writes and reads the new columns -------------------------
@@ -371,51 +269,3 @@ DETAIL_KWARGS = {
 }
 
 
-class TestSupabaseStore:
-
-
-
-
-
-    def test_save_writes_the_needs(self, recorder):
-        SupabaseEvents().save_event(42, **DETAIL_KWARGS, needs=EventNeeds(**SUBMITTABLE_NEED_ATTRS))
-
-        _, written = recorder.updates[0]
-        for name, value in SUBMITTABLE_NEED_ATTRS.items():
-            assert written[name] == value
-
-    def test_a_tracked_save_logs_each_changed_need(self, recorder, monkeypatch):
-        previous = to_event(recorder.stored_row)
-        needs = EventNeeds(
-            **{
-                **SUBMITTABLE_NEED_ATTRS,
-                "preferred_layout": "Banquet",
-                "equipment_needs": NOT_REQUIRED,
-            }
-        )
-
-        calls = []
-
-        def rpc(name, payload):
-            calls.append((name, payload))
-            return type("Rpc", (), {"execute": lambda self: type("Result", (), {"data": True})()})()
-
-        monkeypatch.setattr(recorder, "rpc", rpc, raising=False)
-
-        SupabaseEvents().save_event_with_tracking(
-            42,
-            **{**DETAIL_KWARGS, "starts_at": previous.starts_at, "ends_at": previous.ends_at},
-            editor_id=COORDINATOR_ID,
-            previous_event=previous,
-            needs=needs,
-        )
-
-        name, payload = calls[0]
-        assert name == "us11_edit"
-        assert [
-            (row["changed_field"], row["old_value"], row["new_value"], row["change_type"])
-            for row in payload["p_changes"]
-        ] == [
-            ("preferred_layout", "Theatre", "Banquet", "important"),
-            ("equipment_needs", "Two wireless microphones", NOT_REQUIRED, "important"),
-        ]

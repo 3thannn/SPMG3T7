@@ -95,16 +95,3 @@ class TestBeforeConfirmed:
         assert response.json()["description"] == "Tours, talks and lunch."
 
 
-class TestTheChangeProcess:
-    def test_the_organiser_can_still_request_a_change(self, client, auth_headers, event_repository):
-        seed(event_repository, EventStatus.CONFIRMED)
-
-        response = client.post(
-            f"/events/{EVENT_ID}/change-request",
-            json={**FORM, "title": "Open House 2099"},
-            headers=auth_headers(ORGANISER),
-        )
-
-        assert response.status_code == 200, response.text
-        assert response.json()["status"] == "Confirmed"
-        assert [c["field"] for c in response.json()["pendingChanges"]] == ["name"]

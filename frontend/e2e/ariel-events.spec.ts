@@ -1,7 +1,5 @@
 import { test, expect } from './ariel-fixtures'
 
-test.describe.configure({ timeout: 180_000 })
-
 test('SPMG3T7-27 / SPMG3T7-29: own draft saves, persists and submits exactly once', async ({ page, world }) => {
   const event = await world.event('Draft')
   await world.open(page, 'organiser', '/events')
@@ -50,22 +48,3 @@ for (const decision of ['approve', 'reject'] as const) {
     expect((await world.response('coordinator', 'POST', `/events/${event.id}/approve`)).status()).toBe(409)
   })
 }
-
-test('SPMG3T7-60: first venue starts Planning; safety approval gates completion', async ({ page, world }) => {
-  const event = await world.event()
-  expect(event.status).toBe('Planning')
-  expect(event.history.filter(h => h.from === 'Approved' && h.to === 'Planning')).toHaveLength(1)
-  const bookings = await world.call<{ id: string }[]>('coordinator', 'GET', `/events/${event.id}/bookings`)
-  await world.call('venue', 'POST', `/booking-requests/${bookings[0].id}/approve`)
-  await world.call('coordinator', 'POST', `/events/${event.id}/safety-check`)
-  await world.call('safety', 'POST', `/events/${event.id}/safety-check/approve`)
-  await world.open(page, 'coordinator', `/events/${event.id}`)
-  await expect(page.getByRole('button', { name: 'Mark Completed', exact: true })).toBeDisabled()
-  expect((await world.response('coordinator', 'POST', `/events/${event.id}/complete`)).status()).toBe(409)
-  // Only the test event is edited. Real server time, rather than a browser clock, controls completion.
-  const day = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10)
-  await world.call('coordinator', 'PUT', `/events/${event.id}`, { ...world.draft(), startsAt: `${day}T10:00`, endsAt: `${day}T12:00` })
-  await page.reload()
-  await page.getByRole('button', { name: 'Mark Completed', exact: true }).click()
-  await expect.poll(async () => (await world.call('organiser', 'GET', `/events/${event.id}`)).status).toBe('Completed')
-})

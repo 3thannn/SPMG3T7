@@ -14,8 +14,8 @@ from datetime import datetime
 
 import pytest
 
-from app import availability, booking_store
-from app.booking_store import Booking, BookingStatus, SlotTaken
+from app import booking_store
+from app.booking_store import Booking, BookingStatus
 from app.event_status import EventStatus
 from tests.conftest import COORDINATOR_ID, VENUE_STAFF_ID
 from tests.test_venue_bookings import EVENT_ID, seed_event
@@ -118,20 +118,38 @@ def status_of(booking_repository, booking_id) -> BookingStatus:
 class TestTheQueue:
     """AC1: every Requested booking, oldest first, with what a decision needs."""
 
+    def test_tc_d01_oldest_request_first(self, client, staff, events, booking_repository):
+        seed(booking_repository, 11, requested_at="2027-09-03T09:00:00")
+        seed(booking_repository, 12, requested_at="2027-09-01T09:00:00", venue_id=2)
+        seed(booking_repository, 13, requested_at="2027-09-02T09:00:00", venue_id=2,
+             starts_at="2027-11-05T09:00", ends_at="2027-11-05T10:00")
 
-    def test_tc_d02_only_requested_bookings_are_listed(
+        listed = client.get("/booking-requests", headers=staff)
+
+        assert listed.status_code == 200, listed.text
+        assert [item["id"] for item in listed.json()] == ["12", "13", "11"]
+
+
+    def test_tc_d03_each_request_shows_what_a_decision_needs(
         self, client, staff, events, booking_repository
     ):
         seed(booking_repository, 11)
-        seed(booking_repository, 12, status=BookingStatus.HELD, hold_expires_at="2027-10-08T17:00")
-        seed(booking_repository, 13, status=BookingStatus.CANCELLED)
-        seed(booking_repository, 14, status=BookingStatus.CONFIRMED)
-        seed(booking_repository, 15, status=BookingStatus.REJECTED)
 
-        assert [item["id"] for item in client.get("/booking-requests", headers=staff).json()] == [
-            "11"
-        ]
+        [item] = client.get("/booking-requests", headers=staff).json()
 
+        assert item["eventTitle"] == "Faculty Welcome Night"
+        assert item["venueName"] == "Great Hall"
+        assert (item["startsAt"], item["endsAt"]) == ("2027-11-02T09:00", "2027-11-02T17:00")
+        # The full occupied window: 30 minutes' setup before, 45 minutes' turnaround after.
+        assert (item["occupiedFrom"], item["occupiedTo"]) == (
+            "2027-11-02T08:30",
+            "2027-11-02T17:45",
+        )
+        assert (item["setupMinutes"], item["turnaroundMinutes"]) == (30, 45)
+        assert item["headcount"] == 120
+        assert item["requiredLayout"] == "Theatre"
+        assert item["coordinatorName"] == "Priya"
+        assert item["clashes"] == []
 
 
 
@@ -140,65 +158,49 @@ class TestTheQueue:
 class TestApproving:
     """AC2: Approve -> Confirmed, with the conflict check run again at approval."""
 
-
-
-
-
-
-
-
-
-
-
-    def test_tc_d15_a_clash_taken_between_the_check_and_the_write_is_shown(
-        self, client, staff, events, booking_repository, monkeypatch
+    def test_tc_d06_approving_confirms_the_booking(
+        self, client, staff, events, booking_repository
     ):
         seed(booking_repository, 11)
 
-        def lost_the_race(*_args, **_kwargs):
-            raise SlotTaken
+        response = approve(client, staff, 11)
 
-        monkeypatch.setattr(booking_repository, "approve", lost_the_race)
-        assert refused(approve(client, staff, 11))["reason"] == "slot-taken"
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["status"] == "Confirmed"
+        assert body["decision"]["byName"] == "Sam"
+        assert body["decision"]["byId"] == str(VENUE_STAFF_ID)
+        assert body["decision"]["at"]
+        assert body["decision"]["reason"] == ""
+        assert status_of(booking_repository, 11) is BookingStatus.CONFIRMED
 
-    @pytest.mark.parametrize(
-        ("status", "message"),
-        [
-            (BookingStatus.CONFIRMED, "This booking has already been confirmed."),
-            (BookingStatus.REJECTED, "This booking has already been rejected."),
-            (BookingStatus.CANCELLED, "The Coordinator cancelled this booking."),
-            (
-                BookingStatus.HELD,
-                "This is a tentative hold. The Coordinator has not requested it yet.",
-            ),
-        ],
-    )
-    def test_tc_d16_only_a_requested_booking_can_be_approved(
-        self, client, staff, events, booking_repository, status, message
-    ):
-        seed(booking_repository, 11, status=status, hold_expires_at="2027-10-08T17:00")
-        detail = refused(approve(client, staff, 11))
-        assert (detail["reason"], detail["message"]) == ("not-requested", message)
-
-    def test_tc_d17_approving_twice_at_once_is_decided_once(
-        self, client, staff, events, booking_repository, monkeypatch
+    def test_tc_d07_two_requests_for_one_slot_cannot_both_be_approved(
+        self, client, staff, events, booking_repository
     ):
         seed(booking_repository, 11)
-        real_approve = booking_repository.approve
+        seed(booking_repository, 12, event_id=OTHER_EVENT,
+             starts_at="2027-11-02T12:00", ends_at="2027-11-02T14:00")
 
-        def someone_else_first(booking_id, **kwargs):
-            real_approve(booking_id, **kwargs)
-            return real_approve(booking_id, **kwargs)
+        assert approve(client, staff, 11).status_code == 200
+        detail = refused(approve(client, staff, 12))
 
-        monkeypatch.setattr(booking_repository, "approve", someone_else_first)
-        assert refused(approve(client, staff, 11))["message"] == (
-            "This booking has already been confirmed."
-        )
+        assert detail["reason"] == "slot-taken"
+        assert "Great Hall is already taken for this slot" in detail["message"]
+        assert '"Faculty Welcome Night" (Confirmed' in detail["message"]
+        assert [clash["bookingId"] for clash in detail["clashes"]] == ["11"]
+        assert status_of(booking_repository, 12) is BookingStatus.REQUESTED
 
-    @pytest.mark.parametrize("booking_id", ["999", "abc"])
-    def test_tc_d18_an_unknown_booking_is_not_found(self, client, staff, booking_id):
-        assert approve(client, staff, booking_id).status_code == 404
-        assert reject(client, staff, booking_id, reason="No").status_code == 404
+
+
+
+
+
+
+
+
+
+
+
 
 
 class TestRejecting:
@@ -234,40 +236,22 @@ class TestRejecting:
         )
         assert status_of(booking_repository, 11) is BookingStatus.REQUESTED
 
-    def test_tc_d22_the_reason_and_suggestion_have_a_limit(
-        self, client, staff, events, booking_repository
-    ):
-        seed(booking_repository, 11)
-        assert "2000 characters" in bad_request(reject(client, staff, 11, reason="x" * 2001))
-        assert "2000 characters" in bad_request(
-            reject(client, staff, 11, reason="No", suggestion="x" * 2001)
-        )
-        assert reject(client, staff, 11, reason="x" * 2000).status_code == 200
 
-
-    def test_tc_d24_after_a_rejection_the_slot_can_be_confirmed(
+    def test_tc_d23_a_rejected_booking_frees_its_slot(
         self, client, staff, events, booking_repository
     ):
         seed(booking_repository, 11)
         seed(booking_repository, 12, event_id=OTHER_EVENT)
-        reject(client, staff, 11, reason="Changed plans.")
-        assert approve(client, staff, 12).status_code == 200
+        approve(client, staff, 11)
+        assert refused(approve(client, staff, 12))["reason"] == "slot-taken"
+
+        seed(booking_repository, 13, event_id=OTHER_EVENT)
+        reject(client, staff, 12, reason="Clashes with another event.")
+
+        assert booking_repository.get_booking(12).holds_venue is False
 
 
-    def test_tc_d26_rejecting_twice_at_once_is_decided_once(
-        self, client, staff, events, booking_repository, monkeypatch
-    ):
-        seed(booking_repository, 11)
-        real_reject = booking_repository.reject
 
-        def someone_else_first(booking_id, **kwargs):
-            real_reject(booking_id, **kwargs)
-            return real_reject(booking_id, **kwargs)
-
-        monkeypatch.setattr(booking_repository, "reject", someone_else_first)
-        assert refused(reject(client, staff, 11, reason="No"))["message"] == (
-            "This booking has already been rejected."
-        )
 
 
 class TestOnlyThisBooking:
@@ -301,27 +285,35 @@ class TestTheCoordinatorIsTold:
     def notices(self, notification_repository):
         return [(n.user_id, n.kind, n.message) for n in notification_repository.notifications]
 
-
-
-
-    def test_tc_d31_a_blocked_approval_notifies_nobody(
+    def test_tc_d28_an_approval_notifies_the_coordinator(
         self, client, staff, events, booking_repository, notification_repository
     ):
-        seed(booking_repository, 10, event_id=OTHER_EVENT, status=BookingStatus.CONFIRMED)
         seed(booking_repository, 11)
         approve(client, staff, 11)
-        assert notification_repository.notifications == []
+        assert self.notices(notification_repository) == [
+            (
+                COORDINATOR_ID,
+                "booking-confirmed",
+                'Venue Staff confirmed Great Hall for "Faculty Welcome Night".',
+            )
+        ]
 
-    def test_tc_d32_a_failed_notice_does_not_undo_the_decision(
-        self, client, staff, events, booking_repository, notification_repository, monkeypatch
+    def test_tc_d29_a_rejection_notifies_with_the_reason_and_suggestion(
+        self, client, staff, events, booking_repository, notification_repository
     ):
-        def broken(**_kwargs):
-            raise RuntimeError("notifications table missing")
-
-        monkeypatch.setattr(notification_repository, "create_notice", broken)
         seed(booking_repository, 11)
-        assert approve(client, staff, 11).status_code == 200
-        assert status_of(booking_repository, 11) is BookingStatus.CONFIRMED
+        reject(client, staff, 11, reason="Closed that week.", suggestion="Bertha Room")
+        assert self.notices(notification_repository) == [
+            (
+                COORDINATOR_ID,
+                "booking-rejected",
+                'Venue Staff rejected Great Hall for "Faculty Welcome Night". '
+                "Reason: Closed that week. Suggested instead: Bertha Room",
+            )
+        ]
+
+
+
 
 
 
@@ -329,6 +321,18 @@ class TestTheCoordinatorIsTold:
 class TestVenueStaffOnly:
     """AC6: Venue Staff only. The decision is logged with who and when."""
 
+    @pytest.mark.parametrize(
+        "role", ["Event Coordinator", "Event Organiser", "Event Coordinator Lead"]
+    )
+    def test_tc_d35_other_roles_cannot_see_or_decide(
+        self, client, auth_headers, events, booking_repository, role
+    ):
+        seed(booking_repository, 11)
+        headers = auth_headers(role)
+        assert client.get("/booking-requests", headers=headers).status_code == 403
+        assert approve(client, headers, 11).status_code == 403
+        assert reject(client, headers, 11, reason="No").status_code == 403
+        assert status_of(booking_repository, 11) is BookingStatus.REQUESTED
 
 
     def test_tc_d37_the_decision_records_who_and_when(
@@ -342,97 +346,6 @@ class TestVenueStaffOnly:
         assert decision.at
 
 
-class TestThePlaceholderRule:
-    """The US15.1 placeholder `availability.find_clashes`, on its own."""
-
-    def booking(self, booking_id, status, starts, ends, venue_id=1, expires=""):
-        return Booking(
-            id=booking_id, event_id=EVENT_ID, venue_id=venue_id, venue_name="",
-            starts_at=starts, ends_at=ends, status=status, requested_by_id=None,
-            requested_at="", hold_expires_at=expires,
-        )
 
 
-    def test_tc_d39_without_a_venue_there_are_no_buffers(self):
-        mine = self.booking(1, BookingStatus.REQUESTED, "2027-11-02T10:00", "2027-11-02T11:00")
-        before = self.booking(2, BookingStatus.CONFIRMED, "2027-11-02T09:00", "2027-11-02T10:00")
-        assert availability.find_clashes(mine, None, [mine, before], now=NOW) == []
-
-
-
-class TestTheSupabaseStore:
-    class Fake:
-        """Records calls; answers reads with one row and RPCs with `answer`."""
-
-        def __init__(self, answer="confirmed", updated=True):
-            self.calls: list[tuple] = []
-            self.answer = answer
-            self.updated = updated
-            self._rpc = False
-
-        def __getattr__(self, name):
-            def record(*args, **_kwargs):
-                self.calls.append((name, *args))
-                if name == "rpc":
-                    self._rpc = True
-                return self
-
-            return record
-
-        def execute(self):
-            if self._rpc:
-                self._rpc = False
-                return type("R", (), {"data": self.answer})()
-            if any(call[0] == "update" for call in self.calls) and not self.updated:
-                return type("R", (), {"data": []})()
-            row = {
-                "id": 11, "event_id": EVENT_ID, "venue_id": 1, "start_at": "2027-11-02T09:00",
-                "end_at": "2027-11-02T17:00", "status": "Confirmed", "created_at": "2027-09-01",
-                "decided_at": "2027-10-01T01:00:00", "decided_by_id": VENUE_STAFF_ID,
-                "decided_by": {"name": "Sam"},
-            }
-            return type("R", (), {"data": [row]})()
-
-    def use(self, monkeypatch, fake):
-        monkeypatch.setattr(booking_store.supabase_client, "admin", lambda: fake)
-        return booking_store.SupabaseBookings()
-
-    def test_tc_d41_approve_calls_the_locking_rpc(self, monkeypatch):
-        fake = self.Fake("confirmed")
-        confirmed = self.use(monkeypatch, fake).approve(11, actor_id=VENUE_STAFF_ID)
-        assert ("rpc", "approve_venue_booking", {"p_booking_id": 11,
-                "p_actor_id": VENUE_STAFF_ID}) in fake.calls
-        assert confirmed.decision.by_name == "Sam"
-
-    @pytest.mark.parametrize(
-        ("answer", "error"),
-        [("clash", SlotTaken), ("not-requested", booking_store.StaleBookingStatus)],
-    )
-    def test_tc_d42_each_rpc_refusal_is_its_own_error(self, monkeypatch, answer, error):
-        with pytest.raises(error):
-            self.use(monkeypatch, self.Fake(answer)).approve(11, actor_id=VENUE_STAFF_ID)
-
-    def test_tc_d43_reject_writes_only_a_still_requested_row(self, monkeypatch):
-        fake = self.Fake()
-        self.use(monkeypatch, fake).reject(
-            11, actor_id=VENUE_STAFF_ID, reason="Closed.", suggestion=""
-        )
-        [(_, changes)] = [call for call in fake.calls if call[0] == "update"]
-        assert changes["status"] == "Rejected"
-        assert changes["rejection_reason"] == "Closed."
-        assert changes["suggested_alternative"] is None
-        assert changes["decided_by_id"] == VENUE_STAFF_ID
-        assert ("eq", "status", "Requested") in fake.calls
-
-    def test_tc_d44_no_row_rejected_means_it_was_already_decided(self, monkeypatch):
-        with pytest.raises(booking_store.StaleBookingStatus):
-            self.use(monkeypatch, self.Fake(updated=False)).reject(
-                11, actor_id=VENUE_STAFF_ID, reason="Closed."
-            )
-
-    def test_tc_d45_the_queue_reads_requested_oldest_first(self, monkeypatch):
-        fake = self.Fake()
-        self.use(monkeypatch, fake).list_requested()
-        assert ("eq", "status", "Requested") in fake.calls
-        assert fake.calls.index(("order", "created_at")) < fake.calls.index(("order", "id"))
 

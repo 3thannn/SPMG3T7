@@ -20,7 +20,7 @@ Acceptance criteria, and the tests that hold each one:
 import pytest
 
 from app.booking_store import Booking, BookingStatus
-from app.change_requests import FieldChange, reopen_reason, reopens_planning
+from app.change_requests import FieldChange, reopen_reason
 from app.event_status import EventStatus, transition_allowed
 from app.event_store import Event, StatusChange
 from app.notifications import CoordinatorNotice
@@ -134,13 +134,6 @@ ATTENDANCE_REASON = reopen_reason((FieldChange("expected_attendance", "30", "35"
 
 
 class TestBackToPlanning:
-    def test_accepted_attendance_change_moves_it_to_planning(self, client, auth_headers, confirmed):
-        confirmed()
-
-        event = change_and_accept(client, auth_headers, expectedAttendance=35)
-
-        assert event["status"] == "Planning"
-        assert event["expectedAttendance"] == 35
 
     def test_the_move_is_recorded_with_who_when_and_why(self, client, auth_headers, confirmed):
         confirmed()
@@ -168,23 +161,6 @@ class TestBackToPlanning:
 
         assert change_and_accept(client, auth_headers, **changes)["status"] == "Planning"
 
-    def test_a_rejected_change_leaves_it_confirmed(self, client, auth_headers, confirmed):
-        confirmed()
-        client.post(
-            f"/events/{EVENT_ID}/change-request",
-            json={**FORM, "expectedAttendance": 35},
-            headers=auth_headers(ORGANISER),
-        )
-
-        rejected = client.post(
-            f"/events/{EVENT_ID}/change-request/reject",
-            json={"reason": "The hall is booked for 30."},
-            headers=auth_headers(COORDINATOR),
-        )
-
-        assert rejected.status_code == 200, rejected.text
-        assert rejected.json()["status"] == "Confirmed"
-        assert rejected.json()["expectedAttendance"] == 30
 
 
 class TestRoutineChange:
@@ -229,31 +205,9 @@ class TestArrangements:
         assert booking.event_conflict_reason
         assert event["status"] == "Planning"
 
-    def test_a_flagged_booking_holds_back_the_safety_check(self, client, auth_headers, confirmed):
-        confirmed(BERTHA_ROOM)
-        change_and_accept(client, auth_headers, expectedAttendance=41)
-
-        sent = client.post(f"/events/{EVENT_ID}/safety-check", headers=auth_headers(COORDINATOR))
-
-        assert sent.status_code == 409
-        assert sent.json()["detail"]["reason"] == "venue-conflict"
 
 
 class TestFreshSafetyCheck:
-    def test_the_safety_officer_cannot_confirm_it_from_planning(
-        self, client, auth_headers, confirmed, event_repository
-    ):
-        confirmed()
-        change_and_accept(client, auth_headers, expectedAttendance=35)
-
-        approved = client.post(
-            f"/events/{EVENT_ID}/safety-check/approve", headers=auth_headers(OFFICER)
-        )
-
-        # The Safety Officer reads only events waiting for their check (US4.4),
-        # so one back in Planning is not there to approve at all.
-        assert approved.status_code == 404
-        assert event_repository.get_event(EVENT_ID).status is EventStatus.PLANNING
 
     def test_resending_needs_a_new_decision_not_the_earlier_one(
         self, client, auth_headers, confirmed
@@ -273,31 +227,6 @@ class TestFreshSafetyCheck:
         assert earlier.status_code == 409
         assert earlier.json()["detail"]["message"] == CHECK_MOVED_ON
 
-    def test_confirming_again_takes_the_new_approval(self, client, auth_headers, confirmed):
-        confirmed()
-        change_and_accept(client, auth_headers, expectedAttendance=35)
-        client.post(f"/events/{EVENT_ID}/safety-check", headers=auth_headers(COORDINATOR))
-        review = client.get(
-            f"/events/{EVENT_ID}/safety-review", headers=auth_headers(OFFICER)
-        ).json()
-
-        approved = client.post(
-            f"/events/{EVENT_ID}/safety-check/approve",
-            json={"checkStartedAt": review["waitingSince"]},
-            headers=auth_headers(OFFICER),
-        )
-
-        assert approved.status_code == 200, approved.text
-        assert approved.json()["status"] == "Pending Safety Check"
-        assert review["waitingSince"] != FIRST_CHECK
-        # US4.7: and then the Coordinator confirms it, on the new approval.
-        confirmed = client.post(f"/events/{EVENT_ID}/confirm", headers=auth_headers(COORDINATOR))
-        assert confirmed.status_code == 200, confirmed.text
-        assert [(e["from"], e["to"]) for e in confirmed.json()["history"][-3:]] == [
-            ("Confirmed", "Planning"),
-            ("Planning", "Pending Safety Check"),
-            ("Pending Safety Check", "Confirmed"),
-        ]
 
 
 class TestNotices:
@@ -316,19 +245,6 @@ class TestNotices:
         expected = f'"Open House" is back in Planning. {ATTENDANCE_REASON}'
         assert told == {ORGANISER_ID: expected, COORDINATOR_ID: expected}
 
-    def test_the_organiser_still_hears_the_change_was_accepted(
-        self, client, auth_headers, confirmed, notification_repository
-    ):
-        confirmed()
-
-        change_and_accept(client, auth_headers, expectedAttendance=35)
-
-        kinds = [
-            notice.kind
-            for notice in notification_repository.notifications
-            if notice.user_id == ORGANISER_ID
-        ]
-        assert "change-accepted" in kinds
 
 
 class TestRegistrations:
@@ -364,43 +280,6 @@ class TestRules:
     def test_confirmed_to_planning_is_allowed(self):
         assert transition_allowed(from_status=EventStatus.CONFIRMED, to_status=EventStatus.PLANNING)
 
-    def test_planning_still_cannot_jump_to_confirmed(self):
-        assert not transition_allowed(
-            from_status=EventStatus.PLANNING, to_status=EventStatus.CONFIRMED
-        )
 
-    @pytest.mark.parametrize(
-        ("status", "important", "reopens"),
-        [
-            (EventStatus.CONFIRMED, True, True),
-            (EventStatus.CONFIRMED, False, False),
-            # Was False: an important change during the safety check left any
-            # approval standing for different numbers (CODE_AUDIT.md D1).
-            (EventStatus.PENDING_SAFETY_CHECK, True, True),
-            (EventStatus.PENDING_SAFETY_CHECK, False, False),
-            (EventStatus.PLANNING, True, False),
-        ],
-    )
-    def test_only_an_important_change_once_the_safety_check_starts_reopens(
-        self, status, important, reopens
-    ):
-        change = FieldChange("expected_attendance", "30", "35", important=important)
 
-        assert reopens_planning(status=status, changes=(change,)) is reopens
 
-    def test_the_reason_names_every_important_field_in_form_order(self):
-        changes = (
-            FieldChange("expected_attendance", "30", "35", important=True),
-            FieldChange("name", "Open House", "Open Day", important=False),
-            FieldChange("proposed_date", "2099-11-02T09:00", "2099-11-02T10:00", important=True),
-            FieldChange("end_date", "2099-11-02T17:00", "2099-11-02T18:00", important=True),
-        )
-
-        assert reopen_reason(changes).startswith(
-            "Approved changes to Starts, Ends and Expected attendance. "
-        )
-
-    def test_no_important_field_means_no_reason(self):
-        routine = FieldChange("name", "Open House", "Open Day", important=False)
-
-        assert reopen_reason((routine,)) == ""

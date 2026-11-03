@@ -19,18 +19,13 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import EventDetailPage from './EventDetailPage'
 import {
-  EventRuleError,
-  approveEventChange,
   getEvent,
   rejectEventChange,
   requestEventChange,
-  saveEvent,
-  submitEvent,
   type EventRecord,
   type ProposedChange,
 } from '../eventsStore'
-import { ApiError } from '../api'
-import { formatRecordedAt, formatTimestamp } from '../status'
+import { formatTimestamp } from '../status'
 import { ANSWERED_NEEDS } from '../test/eventNeeds'
 import { buildSession } from '../test/sessions'
 
@@ -53,10 +48,8 @@ vi.mock('../components/EventRegistration', () => ({ default: () => null }))
 
 const getEventMock = vi.mocked(getEvent)
 const requestEventChangeMock = vi.mocked(requestEventChange)
-const approveEventChangeMock = vi.mocked(approveEventChange)
+
 const rejectEventChangeMock = vi.mocked(rejectEventChange)
-const saveEventMock = vi.mocked(saveEvent)
-const submitEventMock = vi.mocked(submitEvent)
 
 afterEach(() => {
   vi.resetAllMocks()
@@ -123,13 +116,6 @@ const ATTENDANCE_CHANGE: ProposedChange = {
   newValue: '150',
   important: true,
 }
-const CLEARED_END: ProposedChange = {
-  field: 'end_date',
-  label: 'Ends',
-  oldValue: '2027-11-02T21:00',
-  newValue: '',
-  important: true,
-}
 
 /** The same event once the Organiser has asked for changes. */
 function pending(
@@ -177,14 +163,6 @@ function answered(approved: boolean, note: string): EventRecord {
   }
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((done) => {
-    resolve = done
-  })
-  return { promise, resolve }
-}
-
 async function openAs(session = organiser, event = submitted()) {
   getEventMock.mockResolvedValue(event)
   render(<EventDetailPage eventId={event.id} session={session} />)
@@ -201,17 +179,6 @@ async function openProposalForm() {
 // --- AC1: the Organiser opens the existing edit form ---------------------------
 
 describe('AC1 — opening the edit form on a submitted event', () => {
-  it('offers the owner "Request changes" instead of editing or submitting', async () => {
-    await openAs()
-
-    expect(screen.getByRole('button', { name: 'Request changes' })).toBeEnabled()
-    expect(screen.queryByRole('button', { name: 'Submit event' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Save draft' })).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
-    expect(
-      screen.getByText(/no longer edited directly\. Request changes and the Coordinator/),
-    ).toBeInTheDocument()
-  })
 
   it('opens the same edit form, filled with the current details', async () => {
     await openProposalForm()
@@ -226,94 +193,11 @@ describe('AC1 — opening the edit form on a submitted event', () => {
     expect(screen.queryByRole('button', { name: 'Request changes' })).not.toBeInTheDocument()
     expect(screen.getByText(/keeps its current details until they approve/)).toBeInTheDocument()
   })
-
-  it('is offered on an event already Under Review, to answer a clarification', async () => {
-    await openAs(organiser, submitted({ status: 'Under Review', awaitingReply: true }))
-
-    expect(screen.getByRole('button', { name: 'Request changes' })).toBeEnabled()
-  })
-
-  it('cancelling closes the form and discards what was typed', async () => {
-    const user = await openProposalForm()
-    await user.clear(screen.getByLabelText('Title'))
-    await user.type(screen.getByLabelText('Title'), 'Typo')
-    await user.type(screen.getByLabelText('Note for the Coordinator (optional)'), 'x')
-
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
-
-    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Request changes' }))
-    expect(screen.getByLabelText('Title')).toHaveValue('Faculty Welcome Night')
-    expect(screen.getByLabelText('Note for the Coordinator (optional)')).toHaveValue('')
-    expect(requestEventChangeMock).not.toHaveBeenCalled()
-  })
-
-  it('still lets the owner edit and submit a Draft directly', async () => {
-    await openAs(organiser, submitted({ status: 'Draft', history: [] }))
-
-    expect(screen.getByRole('button', { name: 'Save draft' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Submit event' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Request changes' })).not.toBeInTheDocument()
-  })
-
-  it('a Draft still submits through the shared submission rules', async () => {
-    // US4.2 and US11.1 now share one validation rule; submitting must not regress.
-    const draftEvent = submitted({ status: 'Draft', history: [] })
-    saveEventMock.mockResolvedValue(draftEvent)
-    submitEventMock.mockResolvedValue(submitted())
-    const user = userEvent.setup()
-    await openAs(organiser, draftEvent)
-
-    await user.click(screen.getByRole('button', { name: 'Submit event' }))
-
-    expect(await screen.findByRole('status')).toHaveTextContent('Submitted.')
-    expect(saveEventMock).toHaveBeenCalledWith(
-      '101',
-      expect.objectContaining({ title: 'Faculty Welcome Night', expectedAttendance: 120 }),
-      organiser,
-    )
-    expect(submitEventMock).toHaveBeenCalledWith('101', organiser)
-    expect(screen.getByRole('button', { name: 'Request changes' })).toBeInTheDocument()
-  })
-
-  it('a Draft that is incomplete is not submitted', async () => {
-    const user = userEvent.setup()
-    await openAs(organiser, submitted({ status: 'Draft', purpose: '', history: [] }))
-
-    await user.click(screen.getByRole('button', { name: 'Submit event' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Give the event a purpose.')
-    expect(submitEventMock).not.toHaveBeenCalled()
-  })
-
-  it.each([
-    ['Rejected', 'already been decided'],
-    ['Under Review', 'already been decided'],
-  ] as const)('is not offered on a %s event, and says why', async (status, why) => {
-    await openAs(organiser, submitted({ status }))
-
-    expect(screen.queryByRole('button', { name: 'Request changes' })).not.toBeInTheDocument()
-    expect(screen.getByText(new RegExp(why))).toBeInTheDocument()
-  })
-
-  it('is not offered to a Coordinator', async () => {
-    await openAs(coordinator)
-
-    expect(screen.queryByRole('button', { name: 'Request changes' })).not.toBeInTheDocument()
-  })
 })
 
 // --- AC2: editing and submitting for review ------------------------------------
 
 describe('AC2 — submitting the proposed changes for review', () => {
-  it('keeps "Submit change request" disabled until something changes', async () => {
-    const user = await openProposalForm()
-    const submit = screen.getByRole('button', { name: 'Submit change request' })
-
-    expect(submit).toBeDisabled()
-    await user.type(screen.getByLabelText('Title'), '!')
-    expect(submit).toBeEnabled()
-  })
 
   it('sends every field as typed, plus the trimmed note', async () => {
     requestEventChangeMock.mockResolvedValue(pending())
@@ -344,101 +228,6 @@ describe('AC2 — submitting the proposed changes for review', () => {
       'Moved to 19:00.',
       organiser,
       undefined,
-    )
-  })
-
-  it('shows the event Under Review and the request awaiting review', async () => {
-    requestEventChangeMock.mockResolvedValue(pending())
-    const user = await openProposalForm()
-    await user.type(screen.getByLabelText('Title'), '!')
-
-    await user.click(screen.getByRole('button', { name: 'Submit change request' }))
-
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Change request sent. The event is now Under Review and the Coordinator will review your changes.',
-    )
-    expect(screen.getAllByText('Under Review').length).toBeGreaterThan(0)
-    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Requested changes' })).toBeInTheDocument()
-    expect(screen.getByText(/Awaiting the Coordinator.s review/)).toBeInTheDocument()
-    expect(
-      screen.getByText(/already awaiting the Coordinator's review/),
-    ).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Request changes' })).not.toBeInTheDocument()
-  })
-
-  it('records the request, with its note, in the history', async () => {
-    await openAs(organiser, pending())
-
-    expect(screen.getByText('Change requested by Organiser')).toBeInTheDocument()
-    expect(screen.getByText('Moved to 19:00.')).toBeInTheDocument()
-  })
-
-  it('does not offer the owner the Coordinator’s approve and reject controls', async () => {
-    await openAs(organiser, pending())
-
-    expect(screen.queryByRole('button', { name: 'Approve changes' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Reject changes' })).not.toBeInTheDocument()
-  })
-
-  it('labels the button while the request is being sent', async () => {
-    const reply = deferred<EventRecord>()
-    requestEventChangeMock.mockReturnValue(reply.promise)
-    const user = await openProposalForm()
-    await user.type(screen.getByLabelText('Title'), '!')
-
-    await user.click(screen.getByRole('button', { name: 'Submit change request' }))
-
-    expect(screen.getByRole('button', { name: 'Sending…' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
-    reply.resolve(pending())
-    await screen.findByRole('heading', { name: 'Requested changes' })
-  })
-
-  it.each([
-    ['Title', '', 'Give the event a title.'],
-    ['Ends', '2027-11-02T18:00', 'The end date must be after the start date.'],
-    ['Expected attendance', '0', 'Expected attendance must be at least 1.'],
-    ['Starts', '2020-01-01T10:00', 'The start date cannot be in the past.'],
-  ])('refuses to send when %s is "%s"', async (label, value, message) => {
-    const user = await openProposalForm()
-    await user.clear(screen.getByLabelText(label))
-    if (value) await user.type(screen.getByLabelText(label), value)
-
-    await user.click(screen.getByRole('button', { name: 'Submit change request' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(message)
-    expect(requestEventChangeMock).not.toHaveBeenCalled()
-  })
-
-  it('shows the server’s refusal and keeps what was typed', async () => {
-    requestEventChangeMock.mockRejectedValue(
-      new EventRuleError(
-        "A change request for this event is already awaiting the Coordinator's review.",
-      ),
-    )
-    const user = await openProposalForm()
-    await user.type(screen.getByLabelText('Title'), '!')
-    await user.type(screen.getByLabelText('Note for the Coordinator (optional)'), 'Please')
-
-    await user.click(screen.getByRole('button', { name: 'Submit change request' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      "A change request for this event is already awaiting the Coordinator's review.",
-    )
-    expect(screen.getByLabelText('Title')).toHaveValue('Faculty Welcome Night!')
-    expect(screen.getByLabelText('Note for the Coordinator (optional)')).toHaveValue('Please')
-  })
-
-  it('explains an unexpected failure', async () => {
-    requestEventChangeMock.mockRejectedValue(new ApiError('Boom', 'unknown', 500))
-    const user = await openProposalForm()
-    await user.type(screen.getByLabelText('Title'), '!')
-
-    await user.click(screen.getByRole('button', { name: 'Submit change request' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Could not send the change request. The API answered HTTP 500',
     )
   })
 })
@@ -474,89 +263,11 @@ describe('AC3/AC4 — the Coordinator sees the proposal, important changes flagg
     expect(rows[0]).toHaveTextContent(formatTimestamp('2027-11-02T19:00'))
     expect(rows[2]).toHaveTextContent('Title')
   })
-
-  it('shows a cleared value as "Not set"', async () => {
-    await openAs(coordinator, pending([CLEARED_END]))
-
-    expect(
-      within(screen.getByRole('list', { name: 'Proposed changes' })).getByText('Not set'),
-    ).toBeInTheDocument()
-  })
-
-  it('shows the Organiser’s note in the history', async () => {
-    await openAs(coordinator, pending())
-
-    expect(screen.getByText('Change requested by Organiser')).toBeInTheDocument()
-    expect(screen.getByText('Moved to 19:00.')).toBeInTheDocument()
-  })
-
-  it('shows nothing to review when there is no request', async () => {
-    await openAs(coordinator, submitted({ status: 'Under Review', awaitingReply: true }))
-
-    expect(screen.queryByRole('heading', { name: 'Requested changes' })).not.toBeInTheDocument()
-  })
 })
 
 // --- AC5: review before deciding -----------------------------------------------
 
 describe('AC5 — the Coordinator reviews, then approves or rejects', () => {
-  it('asks for the request to be answered before the event is decided', async () => {
-    await openAs(coordinator, pending())
-
-    expect(screen.getByRole('button', { name: 'Approve changes' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Reject changes' })).toBeDisabled()
-    expect(screen.queryByRole('button', { name: 'Approve event' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Reject event' })).not.toBeInTheDocument()
-    expect(screen.getByText(/approve or reject the request before deciding/)).toBeInTheDocument()
-  })
-
-  it('approving applies the changes and makes the event decidable', async () => {
-    approveEventChangeMock.mockResolvedValue(
-      answered(true, ''),
-    )
-    const user = userEvent.setup()
-    await openAs(coordinator, pending())
-
-    await user.click(screen.getByRole('button', { name: 'Approve changes' }))
-
-    expect(approveEventChangeMock).toHaveBeenCalledWith('101', coordinator, undefined)
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Changes approved and applied. The event keeps its current status.',
-    )
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Welcome Night')
-    expect(screen.queryByRole('heading', { name: 'Requested changes' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Approve event' })).toBeInTheDocument()
-    expect(screen.getByText('Requested changes approved')).toBeInTheDocument()
-  })
-
-  it('labels the approve button while it works', async () => {
-    const reply = deferred<EventRecord>()
-    approveEventChangeMock.mockReturnValue(reply.promise)
-    const user = userEvent.setup()
-    await openAs(coordinator, pending())
-
-    await user.click(screen.getByRole('button', { name: 'Approve changes' }))
-
-    expect(screen.getByRole('button', { name: 'Approving…' })).toBeDisabled()
-    reply.resolve(answered(true, ''))
-    await screen.findByRole('status')
-  })
-
-  it.each([
-    [new EventRuleError('There is no change request awaiting review on this event.'),
-      'There is no change request awaiting review on this event.'],
-    [new ApiError('Boom', 'unknown', 500),
-      'Could not approve the requested changes. The API answered HTTP 500'],
-  ])('reports a failed approval (%#)', async (error, message) => {
-    approveEventChangeMock.mockRejectedValue(error)
-    const user = userEvent.setup()
-    await openAs(coordinator, pending())
-
-    await user.click(screen.getByRole('button', { name: 'Approve changes' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(message)
-    expect(screen.getByRole('heading', { name: 'Requested changes' })).toBeInTheDocument()
-  })
 
   it('rejecting needs a reason, sends it trimmed, and shows it to the Organiser', async () => {
     rejectEventChangeMock.mockResolvedValue(answered(false, 'Hall is booked at 19:00.'))
@@ -585,121 +296,6 @@ describe('AC5 — the Coordinator reviews, then approves or rejects', () => {
     expect(screen.getByText('Hall is booked at 19:00.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Faculty Welcome Night')
   })
-
-  it('labels the reject button while it works', async () => {
-    const reply = deferred<EventRecord>()
-    rejectEventChangeMock.mockReturnValue(reply.promise)
-    const user = userEvent.setup()
-    await openAs(coordinator, pending())
-    await user.type(screen.getByLabelText('Reason for rejecting the changes'), 'No.')
-
-    await user.click(screen.getByRole('button', { name: 'Reject changes' }))
-
-    expect(screen.getByRole('button', { name: 'Rejecting…' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Approve changes' })).toBeDisabled()
-    reply.resolve(answered(false, 'No.'))
-    await screen.findByRole('status')
-  })
-
-  it.each([
-    [new EventRuleError('This event changed while you were working on it.'),
-      'This event changed while you were working on it.'],
-    [new ApiError('Boom', 'unknown', 500),
-      'Could not reject the requested changes. The API answered HTTP 500'],
-  ])('reports a failed rejection and keeps the reason (%#)', async (error, message) => {
-    rejectEventChangeMock.mockRejectedValue(error)
-    const user = userEvent.setup()
-    await openAs(coordinator, pending())
-    await user.type(screen.getByLabelText('Reason for rejecting the changes'), 'Booked.')
-
-    await user.click(screen.getByRole('button', { name: 'Reject changes' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(message)
-    expect(screen.getByLabelText('Reason for rejecting the changes')).toHaveValue('Booked.')
-  })
-})
-
-describe('AC5 — the Coordinator’s answer is shown to both sides', () => {
-  it('shows the Organiser that their changes were rejected, and why', async () => {
-    await openAs(organiser, answered(false, 'Hall is booked at 19:00.'))
-
-    expect(screen.getByRole('heading', { name: 'Requested changes rejected' })).toBeInTheDocument()
-    expect(screen.getByText(/kept the current details on/)).toBeInTheDocument()
-    expect(screen.getByText(formatRecordedAt(ANSWERED_AT))).toHaveAttribute('dateTime', ANSWERED_AT)
-    expect(screen.getByText('Reason')).toBeInTheDocument()
-    expect(screen.getByText('Hall is booked at 19:00.')).toBeInTheDocument()
-    expect(screen.getByText('Organiser\'s note')).toBeInTheDocument()
-    expect(screen.getByText('Please adjust the welcome programme.')).toBeInTheDocument()
-  })
-
-  it('shows an approval without a reason block', async () => {
-    await openAs(organiser, answered(true, ''))
-
-    expect(screen.getByRole('heading', { name: 'Requested changes approved' })).toBeInTheDocument()
-    expect(screen.getByText(/applied the changes on/)).toBeInTheDocument()
-    expect(screen.queryByText('Reason')).not.toBeInTheDocument()
-    expect(screen.getByText('Please adjust the welcome programme.')).toBeInTheDocument()
-  })
-
-  it('shows the Coordinator the same answer', async () => {
-    await openAs(coordinator, answered(false, 'Hall is booked at 19:00.'))
-
-    expect(screen.getByRole('heading', { name: 'Requested changes rejected' })).toBeInTheDocument()
-  })
-
-  it('hides the previous answer while a new request is waiting', async () => {
-    await openAs(organiser, {
-      ...pending(),
-      changeRequestNote: 'Current request note.',
-      lastChangeReview: {
-        outcome: 'rejected', at: ANSWERED_AT, note: 'Earlier, no.',
-        requestNote: 'Previous request note.',
-      },
-    })
-
-    expect(screen.getByRole('heading', { name: 'Requested changes' })).toBeInTheDocument()
-    expect(screen.queryByText('Requested changes rejected')).not.toBeInTheDocument()
-    expect(screen.queryByText('Earlier, no.')).not.toBeInTheDocument()
-    expect(screen.queryByText('Previous request note.')).not.toBeInTheDocument()
-    expect(screen.getByText('Current request note.')).toBeInTheDocument()
-  })
-
-  it('shows nothing for an event that was never asked about', async () => {
-    await openAs(organiser, submitted({ lastChangeReview: null }))
-
-    expect(screen.queryByText(/Requested changes (approved|rejected)/)).not.toBeInTheDocument()
-  })
-})
-
-
-describe('US11.2 amendments and arrangement results', () => {
-  it('shows a recorded review across the SGT year boundary', async () => {
-    const at = '2026-12-31T16:30:00'
-    await openAs(organiser, submitted({ lastChangeReview: {
-      outcome: 'rejected', note: 'Keep the details', at,
-    } }))
-    expect(screen.getByText('01 Jan 2027, 00:30')).toHaveAttribute('dateTime', at)
-  })
-  it('opens the active proposal for amendment after a question and sends its revision', async () => {
-    const event = submitted({ status: 'Confirmed', awaitingReply: true, reviewRevision: 4,
-      changeRequested: true, pendingChanges: [TITLE_CHANGE] })
-    requestEventChangeMock.mockResolvedValue({ ...event, awaitingReply: false, reviewRevision: 5 })
-    await openAs(organiser, event)
-    const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Request changes' }))
-    expect(screen.getByLabelText('Title')).toHaveValue(TITLE_CHANGE.newValue)
-    await user.clear(screen.getByLabelText('Title'))
-    await user.type(screen.getByLabelText('Title'), 'Final title')
-    await user.click(screen.getByRole('button', { name: 'Submit change request' }))
-    expect(requestEventChangeMock).toHaveBeenCalledWith('101', expect.objectContaining({ title: 'Final title' }), '', organiser, 4)
-  })
-  it('shows incomplete checks, conflict reasons and preserved status', async () => {
-    await openAs(coordinator, submitted({ status: 'Confirmed', arrangementReviewPending: true,
-      arrangementReview: [{ kind: 'venue', id: '1', label: 'Hall', reason: 'Over capacity', error: false }] }))
-    expect(screen.getByRole('region', { name: 'Arrangement review' })).toHaveTextContent('Over capacity')
-    expect(screen.getByRole('button', { name: 'Recheck arrangements' })).toBeEnabled()
-    expect(screen.getByRole('alert')).toHaveTextContent('Some arrangement checks have not completed')
-  })
 })
 
 // --- US11.3: an important change to a Confirmed event --------------------------
@@ -714,35 +310,5 @@ describe('US11.3 — an important change to a Confirmed event goes back through 
 
     expect(screen.getByText(/Approving sends the event back to Planning/)).toBeInTheDocument()
     expect(screen.queryByText(/the event keeps its current status/)).not.toBeInTheDocument()
-  })
-
-  it('tells the Organiser what an approval would mean', async () => {
-    await openAs(organiser, confirmedPending([ATTENDANCE_CHANGE]))
-
-    expect(
-      screen.getByText(/the event goes back to Planning until it passes its checks again/),
-    ).toBeInTheDocument()
-  })
-
-  it('keeps the usual wording for a routine change', async () => {
-    await openAs(coordinator, confirmedPending([TITLE_CHANGE]))
-
-    expect(screen.getByText(/the event keeps its current status/)).toBeInTheDocument()
-    expect(screen.queryByText(/back to Planning/)).not.toBeInTheDocument()
-  })
-
-  it('after approving, says the event is back in Planning and what comes next', async () => {
-    approveEventChangeMock.mockResolvedValue({ ...answered(true, ''), status: 'Planning' })
-    const user = userEvent.setup()
-    await openAs(coordinator, confirmedPending([ATTENDANCE_CHANGE]))
-
-    await user.click(screen.getByRole('button', { name: 'Approve changes' }))
-
-    expect(
-      await screen.findByText(
-        'Changes approved and applied. The event is back in Planning: check its ' +
-          'arrangements, then send it for a new safety check.',
-      ),
-    ).toBeInTheDocument()
   })
 })

@@ -70,6 +70,9 @@ VALID_TRANSITIONS: frozenset[tuple[EventStatus, EventStatus]] = frozenset(
         (EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW),
         (EventStatus.UNDER_REVIEW, EventStatus.APPROVED),
         (EventStatus.UNDER_REVIEW, EventStatus.REJECTED),
+        # D2: "Rejected events may be resubmitted after appropriate changes are
+        # made" (Week 4 customer answers). It rejoins the unassigned queue.
+        (EventStatus.REJECTED, EventStatus.SUBMITTED),
         (EventStatus.APPROVED, EventStatus.PLANNING),
         # US4.4: Planning -> Pending Safety Check once every active venue
         # booking is Confirmed and every equipment line is reserved
@@ -123,7 +126,7 @@ REFUSAL_MESSAGES: dict[SubmitRefusal, str] = {
     SubmitRefusal.ALREADY_SUBMITTED: (
         "This event has already been submitted. An event can only be submitted once."
     ),
-    SubmitRefusal.NOT_DRAFT: "Only a Draft event can be submitted.",
+    SubmitRefusal.NOT_DRAFT: "Only a Draft or Rejected event can be submitted.",
 }
 
 
@@ -140,7 +143,8 @@ def check_submit(
         return SubmitRefusal.NOT_OWNER
     if status is EventStatus.SUBMITTED:
         return SubmitRefusal.ALREADY_SUBMITTED
-    if status is not EventStatus.DRAFT:
+    # D2: a Rejected event may be revised and submitted again (Week 4 answers).
+    if status not in (EventStatus.DRAFT, EventStatus.REJECTED):
         return SubmitRefusal.NOT_DRAFT
     return None
 

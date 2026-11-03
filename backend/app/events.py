@@ -47,6 +47,7 @@ from app import (
 from app.auth import CurrentUser, ErrorCode, require_any_permission, require_permission
 from app.availability import SlotCheck
 from app.booking_store import (
+    CANCELLABLE,
     Booking,
     BookingStatus,
     HoldExpired,
@@ -747,9 +748,12 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
     """
     event = _readable(_as_id(event_id), user)
     _refuse_if_cancelled(event)
-    if event.status in (EventStatus.COMPLETED, EventStatus.REJECTED):
-        raise _stale_request()
     is_owner = event.organiser_id == user.id
+    # D2: a Rejected event is back with its Organiser to revise and resubmit.
+    if event.status is EventStatus.COMPLETED or (
+        event.status is EventStatus.REJECTED and not is_owner
+    ):
+        raise _stale_request()
     is_coordinator = has_permission(user.role, Permission.EVENTS_EDIT)
 
     # Coordinators can only edit submitted events (not drafts)
@@ -792,7 +796,11 @@ def save_event(event_id: str, draft: EventDraft, user: CurrentUser) -> EventOut:
 
     # US11.1: once submitted, the event is the Coordinator's to review. The
     # Organiser proposes changes instead, so they are reviewed, not applied.
-    if is_owner and not is_coordinator and event.status is not EventStatus.DRAFT:
+    if (
+        is_owner
+        and not is_coordinator
+        and event.status not in (EventStatus.DRAFT, EventStatus.REJECTED)
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -2387,6 +2395,21 @@ def _booking_not_found() -> HTTPException:
     )
 
 
+def _not_cancellable(booking: Booking) -> HTTPException:
+    """D7: Rejected, Replaced or Expired bookings no longer hold the venue."""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": EventError.REFUSED,
+            "message": (
+                f"This booking is {booking.status}, so it no longer holds the venue. "
+                "There is nothing to cancel."
+            ),
+            "reason": "not-cancellable",
+        },
+    )
+
+
 def _already_cancelled() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
@@ -2438,6 +2461,8 @@ def cancel_booking(
         raise _already_cancelled()
     if booking.hold_expired:
         raise _nothing_to_cancel(booking)
+    if booking.status not in CANCELLABLE:
+        raise _not_cancellable(booking)
 
     reason = payload.reason.strip()
     if not reason:

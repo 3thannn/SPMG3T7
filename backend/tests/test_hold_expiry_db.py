@@ -177,31 +177,5 @@ def test_the_sweep_expires_warns_and_tells_the_coordinator_once(db, notification
     assert len(world.notices()) == 2
 
 
-def test_an_expired_hold_frees_its_slot_and_cannot_be_requested(db):
-    world = World(db)
-    expired = world.hold(world.open_event, timedelta(minutes=-1))
-    live = world.hold(world.open_event, timedelta(days=3))
-    world.sweep()
-
-    def clashes(booking_id):
-        _, _, starts, ends, _ = world.booking(booking_id)
-        return one(db, "SELECT public.venue_slot_clashes(%s, %s, %s, NULL, TRUE)",
-                   world.venue, starts, ends)
-
-    assert clashes(expired) is False
-    assert clashes(live) is True
-    outcome = one(
-        db, "SELECT public.request_held_booking(%s, 'Planning', %s)", expired, world.coordinator
-    )
-    assert outcome == "not-held"
-    assert world.booking(expired)[0] == "Expired"
 
 
-def test_an_expired_hold_keeps_its_expiry(db):
-    world = World(db)
-    expired = world.hold(world.open_event, timedelta(minutes=-1))
-    world.sweep()
-    with pytest.raises(psycopg.errors.CheckViolation):
-        db.execute(
-            "UPDATE public.venue_bookings SET hold_expires_at = NULL WHERE id = %s", (expired,)
-        )

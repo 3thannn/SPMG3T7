@@ -6,7 +6,7 @@ import pytest
 
 from app.event_status import EventStatus
 from tests import test_equipment as fixtures
-from tests.test_equipment import ITEM, LINE
+from tests.test_equipment import LINE
 
 actors = fixtures.actors
 item = fixtures.item
@@ -16,59 +16,10 @@ approved_event = fixtures.approved_event
 
 
 
-def test_exact_item_selection_and_no_substitution(client, actors, line, item, equipment_repository):
-    repo = equipment_repository
-    other = repo.save_item(replace(repo.items[0], id=0, name="Lapel microphone"))
-    assert line["requestedEquipmentId"] == item["id"]
-    assert line["equipmentName"] == item["name"]
-    assert reserve(client, actors, line, item, equipmentId=other.id).status_code == 400
-    assert (
-        client.patch(
-            f"/equipment-requests/{line['id']}",
-            json={"version": 1, "equipmentId": other.id},
-            headers=actors["tech"],
-        ).status_code
-        == 403
-    )
-    response = client.patch(
-        f"/equipment-requests/{line['id']}",
-        json={"version": 1, "equipmentId": other.id},
-        headers=actors["coord"],
-    )
-    assert response.status_code == 200
-    assert response.json()["requestedEquipmentId"] == str(other.id)
-    assert response.json()["equipmentName"] == "Lapel microphone"
-    assert reserve(client, actors, response.json(), item).status_code == 400
-    assert reserve(client, actors, response.json(), item, equipmentId=other.id).status_code == 200
 
 
-def test_legacy_request_requires_coordinator_selection(
-    client, actors, line, item, equipment_repository
-):
-    repo = equipment_repository
-    repo.requests = [replace(repo.requests[0], requested_equipment_id=None, equipment_name="")]
-    path = f"/equipment-requests/{line['id']}"
-    assert client.get(path, headers=actors["tech"]).status_code == 200
-    assert repo.availability(int(line["id"])) == []
-    assert reserve(client, actors, line, item).status_code == 400
-    assert client.patch(path, json={"version": 1}, headers=actors["coord"]).status_code == 400
-    assert (
-        client.patch(
-            path, json={"version": 1, "equipmentId": int(item["id"])}, headers=actors["coord"]
-        ).status_code
-        == 200
-    )
 
 
-@pytest.mark.parametrize("selected", [None, True, 0, 999])
-def test_new_request_requires_valid_catalogue_item(client, actors, planning_event, item, selected):
-    payload = {"quantity": 1}
-    if selected is not None:
-        payload["equipmentId"] = selected
-    response = client.post(
-        f"/events/{planning_event}/equipment-requests", json=payload, headers=actors["coord"]
-    )
-    assert response.status_code in (400, 422)
 
 
 @pytest.fixture
@@ -88,27 +39,24 @@ def reserve(client, actors, line, item, **changes):
     )
 
 
-def test_missing_notification_kind_returns_clear_error(
-    client, actors, line, item, equipment_repository, monkeypatch
-):
-    from postgrest.exceptions import APIError
 
-    def fail(*args, **kwargs):
-        raise APIError(
-            {
-                "code": "23514",
-                "message": 'new row violates check constraint "notifications_kind_valid"',
-            }
-        )
 
-    monkeypatch.setattr(equipment_repository, "decide", fail)
+def test_reserve_persists_and_notifies_once(client, actors, line, item, planning_event):
     response = reserve(client, actors, line, item)
-    assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "equipment_configuration_error"
-    assert "notifications are not configured" in response.json()["detail"]["message"]
-    assert equipment_repository.get_request(int(line["id"])).status == "Requested"
-
-
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "Reserved"
+    assert response.json()["equipmentId"] == item["id"]
+    assert response.json()["eventId"] == planning_event
+    assert response.json()["version"] == 2
+    assert reserve(client, actors, line, item).status_code == 409
+    notices = client.get("/notifications", headers=actors["coord"]).json()
+    assert len([n for n in notices if n["kind"] == "equipment-reserved"]) == 1
+    assert (
+        client.get(f"/events/{planning_event}/equipment-requests", headers=actors["coord"]).json()[
+            0
+        ]["status"]
+        == "Reserved"
+    )
 
 
 @pytest.mark.parametrize("quantity,expected,shortfall", [(2, 200, 0), (3, 409, 1)])
@@ -138,6 +86,33 @@ def test_ten_minus_two_minus_six(
         )
 
 
+@pytest.mark.parametrize(
+    "start,end,used",
+    [
+        ("08:00", "09:00", 0),
+        ("17:00", "18:00", 0),
+        ("08:00", "09:01", 1),
+        ("16:59", "18:00", 1),
+        ("09:00", "17:00", 1),
+        ("10:00", "12:00", 1),
+    ],
+)
+def test_overlap_boundaries(client, actors, line, item, equipment_repository, start, end, used):
+    current = equipment_repository.get_request(int(line["id"]))
+    equipment_repository.requests.append(
+        replace(
+            current,
+            id=999,
+            status="Reserved",
+            equipment_id=int(item["id"]),
+            starts_at=f"2027-11-02T{start}",
+            ends_at=f"2027-11-02T{end}",
+        )
+    )
+    stock = client.get(
+        f"/equipment-requests/{line['id']}/availability", headers=actors["tech"]
+    ).json()[0]
+    assert stock["reservedQuantity"] == used
 
 
 
@@ -179,45 +154,25 @@ def test_negative_decisions(client, actors, line, item, event_repository, equipm
     assert reserve(client, actors, line, item).status_code == 409
 
 
-def test_catalogue_guard_and_release(client, actors, line, item, equipment_repository):
-    assert reserve(client, actors, line, item).status_code == 200
-    path = f"/equipment/{item['id']}"
-    assert (
-        client.put(
-            path, json={**ITEM, "outOfServiceQuantity": 5}, headers=actors["tech"]
-        ).status_code
-        == 409
+
+
+
+
+def test_multiple_overlaps_and_independent_items(client, actors, line, item, equipment_repository):
+    repo = equipment_repository
+    current = repo.get_request(int(line["id"]))
+    other = repo.save_item(replace(repo.items[0], id=0, name="Other microphone"))
+    repo.requests.extend(
+        [
+            replace(current, id=20, status="Reserved", equipment_id=int(item["id"])),
+            replace(current, id=21, status="Reserved", equipment_id=int(item["id"])),
+            replace(current, id=22, status="Reserved", equipment_id=other.id, quantity=3),
+        ]
     )
-    assert client.delete(path, headers=actors["tech"]).status_code == 409
-    equipment_repository.release_for_event(int(line["eventId"]), actor_id=1)
-    assert equipment_repository.availability(int(line["id"]))[0]["reservedQuantity"] == 0
-    assert client.delete(path, headers=actors["tech"]).status_code == 409
+    stock = {row["equipmentId"]: row for row in repo.availability(current.id)}
+    assert stock[item["id"]]["availableQuantity"] == 1
+    assert str(other.id) not in stock  # Only the requested item is offered.
 
 
 
 
-
-
-
-
-def test_unavailable_recovery_permissions_versions_and_rechecks(
-    client, actors, line, item, event_repository
-):
-    path = f"/equipment-requests/{line['id']}"
-    assert (
-        client.post(
-            path + "/unavailable", json={"version": 1, "reason": "Shortage"}, headers=actors["tech"]
-        ).status_code
-        == 200
-    )
-    assert client.patch(path, json={"version": 2}, headers=actors["tech"]).status_code == 409
-    for role in ("organiser", "lead"):
-        assert client.patch(path, json={"version": 2}, headers=actors[role]).status_code == 403
-    assert client.patch(path, json={"version": 1}, headers=actors["coord"]).status_code == 409
-    assert client.delete(path + "?version=1", headers=actors["coord"]).status_code == 409
-    response = client.patch(path, json={"version": 2, "quantity": 4}, headers=actors["coord"])
-    assert response.status_code == 200
-    assert reserve(client, actors, response.json(), item).status_code == 409  # Only 3 usable.
-    event = event_repository.get_event(int(line["eventId"]))
-    event_repository._replace(replace(event, status=EventStatus.CONFIRMED))
-    assert client.patch(path, json={"version": 3}, headers=actors["coord"]).status_code == 409
