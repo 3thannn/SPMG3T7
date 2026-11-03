@@ -272,6 +272,21 @@ describe('US14.1 — after a venue is requested', () => {
     expect(screen.getAllByText('Approved')).not.toHaveLength(0)
   })
 
+  it('US12.4 says so when a replacement sent a Confirmed event back to Planning', async () => {
+    const user = userEvent.setup()
+    getEventMock.mockResolvedValueOnce({ ...ASSIGNED, status: 'Confirmed' })
+    getEventMock.mockResolvedValueOnce({ ...ASSIGNED, status: 'Planning' })
+    render(<EventDetailPage eventId="101" session={coordinator} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Stand-in: a venue was requested' }))
+
+    expect(
+      await screen.findByText(
+        'This event is back in Planning. The replacement venue needs Venue Staff’s approval and a new safety check, then you confirm the event again.',
+      ),
+    ).toBeTruthy()
+  })
+
   it('says the request was saved even when the refresh fails', async () => {
     const user = userEvent.setup()
     getEventMock.mockResolvedValueOnce({ ...ASSIGNED, status: 'Approved' })

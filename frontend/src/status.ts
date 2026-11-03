@@ -184,7 +184,7 @@ export const BOOKABLE: readonly EventStatus[] = [
 ]
 
 /** Why venues cannot be requested, so the UI can explain rather than deny. */
-export type BookingRefusal = 'not-yet-submitted' | 'not-approved' | 'event-closed'
+export type BookingRefusal = 'not-yet-submitted' | 'not-approved' | 'past-planning' | 'event-closed'
 
 export type BookingCheck = { allowed: true } | { allowed: false; reason: BookingRefusal }
 
@@ -200,6 +200,11 @@ export function checkBooking(event: { status: EventStatus }): BookingCheck {
   if (event.status === 'Submitted' || event.status === 'Under Review') {
     return { allowed: false, reason: 'not-approved' }
   }
+  // Past planning but still going ahead: not closed. A booking that falls
+  // through can still be replaced (US14.5/US12.4).
+  if (event.status === 'Pending Safety Check' || event.status === 'Confirmed') {
+    return { allowed: false, reason: 'past-planning' }
+  }
   if (!BOOKABLE.includes(event.status)) return { allowed: false, reason: 'event-closed' }
   return { allowed: true }
 }
@@ -210,6 +215,11 @@ export function bookingRefusalMessage(reason: BookingRefusal): string {
       return 'This event has not been submitted yet, so no venues can be requested for it.'
     case 'not-approved':
       return 'Approve this event before requesting a venue.'
+    case 'past-planning':
+      return (
+        'Venues are requested while an event is in Planning, so no new ones can be requested ' +
+        'now. A booking that needs replacing can still be replaced.'
+      )
     case 'event-closed':
       return 'This event is closed, so no more venues can be requested for it.'
   }
