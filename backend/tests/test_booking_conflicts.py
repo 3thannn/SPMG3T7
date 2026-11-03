@@ -30,8 +30,6 @@ from app.booking_store import (
     BookingStatus,
     ConflictFlag,
     SlotTaken,
-    StaleBookingStatus,
-    SupabaseBookings,
 )
 from app.event_store import StaleEventStatus
 from app.venue_unavailability_store import Unavailability

@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 
-from app import supabase_client
 from app.event_needs import (
     ACCESSIBILITY_OPTIONS,
     FACILITY_OPTIONS,
@@ -26,14 +25,10 @@ from app.event_needs import (
     EventNeeds,
     format_error,
     listed,
-    missing_error,
 )
 from app.event_status import EventStatus
-from app.event_store import EVENT_COLUMNS, Event, SupabaseEvents, to_event
-from app.events import ATTENDANCE_TOO_LARGE
+from app.event_store import Event
 from tests.conftest import (
-    COORDINATOR_ID,
-    ORGANISER_ID,
     SUBMITTABLE_NEED_ATTRS,
     SUBMITTABLE_NEEDS,
 )

@@ -2,11 +2,8 @@
 
 import pytest
 
-from app import supabase_client
 from app.event_status import EventStatus, transition_allowed
-from app.event_store import Event, StaleEventStatus, SupabaseEvents
-from app.permissions import Role
-from app.users import User
+from app.event_store import Event
 from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {

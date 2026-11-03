@@ -17,10 +17,7 @@ from datetime import datetime
 
 import pytest
 
-from app.booking_store import COLUMNS as BOOKING_COLUMNS
-from app.booking_store import Booking, BookingStatus, InMemoryBookings, SupabaseBookings
-from app.venue_store import COLUMNS as VENUE_COLUMNS
-from app.venue_store import InMemoryVenues, SupabaseVenues, Venue, to_venue
+from app.booking_store import Booking, BookingStatus
 from app.venue_turnaround import (
     MINUTES_MAX,
     InvalidMinutes,
@@ -29,6 +26,7 @@ from app.venue_turnaround import (
     parse_minutes,
     recheck,
 )
+
 # Removed imports from deleted test store files
 
 STAFF = "Venue Staff"

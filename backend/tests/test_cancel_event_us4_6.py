@@ -15,11 +15,9 @@ Acceptance criteria, and the tests that hold each one:
   Attendees are notified -> `TestNotifications`, `TestRegistrations`.
 """
 
-from types import SimpleNamespace
 
 import pytest
 
-from app import notification_store, supabase_client
 from app.booking_store import Booking, BookingStatus, ConflictFlag, Decision
 from app.equipment_store import EquipmentRequest
 from app.event_cancellation import (
@@ -33,7 +31,7 @@ from app.event_cancellation import (
     history_kind,
 )
 from app.event_status import CANCELLABLE, CLOSED, EventStatus, transition_allowed
-from app.event_store import CancelledEvent, Event, StaleEventStatus, SupabaseEvents
+from app.event_store import Event, StaleEventStatus
 from app.notifications import _listed
 from app.permissions import Permission, Role, has_permission, roles_with
 from app.registration_store import Registration, RegistrationStatus
@@ -43,7 +41,6 @@ from tests.conftest import (
     ORGANISER_ID,
     SECOND_ATTENDEE_ID,
     SUBMITTABLE_NEED_ATTRS,
-    SUBMITTABLE_NEEDS,
     TECH_SUPPORT_ID,
     VENUE_STAFF_ID,
 )

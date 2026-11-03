@@ -12,7 +12,7 @@ conftest. No blackout periods exist until a test records one.
 import pytest
 
 from app.venues import REASON_MAX
-from tests.conftest import COORDINATOR_ID, VENUE_STAFF_ID
+from tests.conftest import VENUE_STAFF_ID
 
 GREAT_HALL = "1"
 SEMINAR_ROOM = "3"
@@ -228,3 +228,5 @@ class TestEndNotBeforeStart:
     def test_a_long_range_is_accepted(self, client, staff):
         """No upper bound on length: a long closure is still a closure."""
         response = mark(client, staff, startDate="2026-01-01", endDate="2030-12-31")
+
+        assert response.status_code == 201, response.text

@@ -15,32 +15,24 @@ Acceptance criteria, and the tests that hold each one:
 """
 
 from datetime import datetime
-from types import SimpleNamespace
 
 import pytest
 
-from app import supabase_client
 from app.booking_store import Booking, BookingStatus, ConflictFlag
 from app.equipment_store import EquipmentRequest
-from app.event_status import VALID_TRANSITIONS, EventStatus, transition_allowed
-from app.event_store import Event, StaleEventStatus, StatusChange, SupabaseEvents
-from app.permissions import Permission, Role, has_permission, permissions_for
+from app.event_status import EventStatus
+from app.event_store import Event, StaleEventStatus, StatusChange
 from app.safety_check import (
     EQUIPMENT_RESERVED,
-    KIND_SAFETY_RETURN,
     SAFETY_CHECK_REFUSAL_MESSAGES,
-    SAFETY_NOTE_MAX,
     SafetyCheckRefusal,
     check_ready_for_safety_check,
-    history_kind,
     safety_check_refusal_message,
 )
 from tests.conftest import (
     COORDINATOR_ID,
     ORGANISER_ID,
-    SAFETY_OFFICER_ID,
     SUBMITTABLE_NEED_ATTRS,
-    SUBMITTABLE_NEEDS,
 )
 
 PSC = EventStatus.PENDING_SAFETY_CHECK

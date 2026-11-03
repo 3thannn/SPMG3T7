@@ -23,14 +23,12 @@ every line of the feature runs without a database.
 
 import pytest
 
-from app import change_requests, supabase_client
+from app import change_requests
 from app.change_requests import (
     CHANGE_REQUEST_REFUSAL_MESSAGES,
     EDITABLE_FIELDS,
     IMPORTANT_FIELDS,
-    NOTHING_PENDING_MESSAGE,
     ChangeRequestRefusal,
-    ChangeReview,
     FieldChange,
     applied_values,
     change_request_refusal_message,
@@ -41,31 +39,18 @@ from app.change_requests import (
     is_important,
     label_for,
     ordered,
-    reopen_reason,
 )
 from app.event_status import EventStatus
 from app.event_store import (
-    CHANGE_REQUESTS_TABLE,
-    EVENT_CHANGES_TABLE,
     Event,
-    InMemoryEvents,
-    StaleEventStatus,
-    SupabaseEvents,
-    latest_review,
-    to_change,
-    to_event,
-    to_field_change,
 )
-from app.events import CHANGE_NOTE_MAX, DECISION_REASON_MAX, PURPOSE_MAX, TITLE_MAX
 from app.permissions import Role
 from app.users import User
 from tests.conftest import (
     COORDINATOR_ID,
     ORGANISER_ID,
     PASSWORD,
-    SUBMITTABLE_NEED_ATTRS,
     SUBMITTABLE_NEEDS,
-    TODAY,
 )
 
 DRAFT = {
@@ -547,3 +532,60 @@ class TestProposing:
 
         assert event["changeRequestNote"] == ""
 
+
+# Restored from main: shared with test_change_review_us11_2.py, which imports FakeAdmin.
+class FakeRpc:
+    def __init__(self, data):
+        self.data = data
+
+    def execute(self):
+        return self
+
+
+class FakeQuery:
+    def __init__(self, admin: "FakeAdmin", table: str) -> None:
+        self.admin = admin
+        self.table_name = table
+        self.filters: list[tuple] = []
+
+    def select(self, _columns):
+        return self
+
+    def eq(self, *args):
+        self.filters.append(("eq", *args))
+        return self
+
+    def neq(self, *args):
+        self.filters.append(("neq", *args))
+        return self
+
+    def in_(self, *args):
+        self.filters.append(("in", *args))
+        return self
+
+    def limit(self, *_args):
+        return self
+
+    def order(self, *_args, **_kwargs):
+        return self
+
+    def execute(self):
+        self.admin.queries.append((self.table_name, self.filters))
+        return FakeRpc(self.admin.rows.get(self.table_name, []))
+
+
+class FakeAdmin:
+    """Records RPC calls and table reads; answers reads from `rows`."""
+
+    def __init__(self, rpc_result=True, rows: dict[str, list[dict]] | None = None) -> None:
+        self.rpc_result = rpc_result
+        self.rows = rows or {}
+        self.calls: list[tuple[str, dict]] = []
+        self.queries: list[tuple[str, list[tuple]]] = []
+
+    def rpc(self, name: str, params: dict):
+        self.calls.append((name, params))
+        return FakeRpc(self.rpc_result)
+
+    def table(self, name: str) -> FakeQuery:
+        return FakeQuery(self, name)

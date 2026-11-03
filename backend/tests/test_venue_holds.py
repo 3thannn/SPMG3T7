@@ -10,16 +10,14 @@ than by the day it runs. Fixture venues are 1 (Great Hall) and 2 (Bertha
 Room); the fixture Venue Staff member is Sam and the Coordinator is Priya.
 """
 
-from dataclasses import replace
 from datetime import datetime
 
 import pytest
 
 from app import booking_store
-from app.booking_store import BookingStatus, HoldExpired
+from app.booking_store import BookingStatus
 from app.event_status import EventStatus
-from app.venue_turnaround import find_conflicts
-from tests.conftest import COORDINATOR_ID, VENUE_STAFF_ID
+from tests.conftest import VENUE_STAFF_ID
 from tests.test_venue_bookings import EVENT_ID, request, seed_event
 
 NOW = datetime(2027, 10, 1, 9, 0)
@@ -276,5 +274,15 @@ class TestTheSlotIsTaken:
         self, client, staff, coordinator, event, booking_repository
     ):
         hold = place(client, staff).json()
+
+        # US15.1: the held slot is taken, so a request for it is refused outright.
+        response = request(client, coordinator)
+
+        assert response.status_code == 409, response.text
+        detail = response.json()["detail"]
+        assert detail["reason"] == "not-available"
+        assert f"booking #{hold['id']}" in detail["clashes"][0]
+        assert "Held" in detail["clashes"][0]
+        assert len(booking_repository.bookings) == 1
 
         # US15.1: the held slot is taken, so a request for it is refused outright.

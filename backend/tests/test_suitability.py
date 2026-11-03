@@ -12,9 +12,7 @@ Dates: 2027-11-01 is a Monday, 2027-11-02 a Tuesday, 2027-11-06 a Saturday and
 from dataclasses import replace
 from datetime import datetime
 
-import pytest
-
-from app.suitability import BookingNeeds, assess, listed_items, parse_hours, within_hours
+from app.suitability import BookingNeeds, assess, listed_items
 from app.venue_store import Venue
 
 VENUE = Venue(
@@ -241,4 +239,15 @@ class TestListedItems:
             facilities='{projector,stage,"AV system"}',
             accessibility_features='{"wheelchair access","hearing loop"}',
         )
+
+        verdict = assess(
+            venue,
+            needs(
+                layout="Banquet",
+                facilities=("AV system",),
+                accessibility=("wheelchair access",),
+            ),
+        )
+
+        assert verdict.suitable
 

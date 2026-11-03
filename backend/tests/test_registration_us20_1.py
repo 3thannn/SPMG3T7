@@ -20,29 +20,23 @@ Acceptance criteria, and the tests that hold each one:
   (US10.2) -> `TestFullNotice`.
 """
 
-import threading
-from dataclasses import replace
 
 import pytest
 
-from app.booking_store import Booking, BookingStatus
+from app.booking_store import Booking
 from app.event_status import EventStatus
 from app.event_store import Event
 from app.notifications import CoordinatorNotice
-from app.permissions import Permission, Role, denial_message, roles_with
-from app.registration_store import SETTABLE, RegisterOutcome
+from app.registration_store import SETTABLE
 from app.registrations import (
     SETTINGS_REFUSAL_MESSAGES,
     SettingsRefusal,
-    _tell_full,
     check_settings,
     settings_refusal_message,
 )
 from tests.conftest import (
-    ATTENDEE_ID,
     COORDINATOR_ID,
     ORGANISER_ID,
-    SECOND_ATTENDEE_ID,
     SUBMITTABLE_NEED_ATTRS,
 )
 

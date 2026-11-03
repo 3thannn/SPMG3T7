@@ -3,13 +3,11 @@
 from dataclasses import replace
 
 import pytest
-from postgrest.exceptions import APIError
 
-from app.equipment_store import EquipmentRequest
 from app.event_status import EventStatus
 from app.permissions import Role
 from app.users import User
-from tests.conftest import COORDINATOR_ID, SUBMITTABLE_NEEDS, TECH_SUPPORT_ID
+from tests.conftest import COORDINATOR_ID, SUBMITTABLE_NEEDS
 
 ITEM = {
     "name": "Wireless microphone",

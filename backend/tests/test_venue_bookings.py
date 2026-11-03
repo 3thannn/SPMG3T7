@@ -15,9 +15,9 @@ from dataclasses import replace
 import pytest
 
 from app.booking_store import BookingStatus
-from app.event_status import BOOKABLE, BookingRefusal, EventStatus, check_booking
+from app.event_status import EventStatus
 from app.event_store import Event
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS, TODAY
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID
 
 EVENT_ID = 900
 GREAT_HALL = "1"

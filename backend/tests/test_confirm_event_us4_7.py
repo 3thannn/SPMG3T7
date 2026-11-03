@@ -35,7 +35,7 @@ from app.event_confirmation import (
     current_approval,
 )
 from app.event_status import EventStatus
-from app.event_store import Event, StaleEventStatus, StatusChange, SupabaseEvents
+from app.event_store import Event, StaleEventStatus, StatusChange
 from app.permissions import Role
 from app.safety_decision_store import SafetyDecision
 from app.safety_decisions import SafetyOutcome

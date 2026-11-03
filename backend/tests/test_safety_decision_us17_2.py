@@ -17,31 +17,17 @@ The rules themselves are in `TestRules`, and both stores in `TestInMemoryStore`
 and `TestSupabaseStore`.
 """
 
-from dataclasses import dataclass, field, replace
 from types import SimpleNamespace
 
 import pytest
 
-from app import notifications, supabase_client
 from app.booking_store import Booking, BookingStatus
 from app.equipment_store import RESERVED, EquipmentRequest
 from app.event_status import EventStatus
-from app.event_store import Event, StaleEventStatus, StatusChange
+from app.event_store import Event, StatusChange
 from app.notifications import CoordinatorNotice
 from app.safety_check import SAFETY_NOTE_MAX, SafetyCheckRefusal, check_ready_for_safety_check
-from app.safety_decision_store import (
-    COLUMNS,
-    FLAG_COLUMNS,
-    InMemorySafetyDecisions,
-    ReviewFlag,
-    SafetyDecision,
-    StaleFlag,
-    SupabaseSafetyDecisions,
-    to_decision,
-    to_flag,
-)
 from app.safety_decisions import (
-    CHECK_MOVED_ON,
     FLAGS_ONLY_ON_CHANGES,
     NOTE_REQUIRED,
     UNKNOWN_BOOKING,
@@ -55,7 +41,6 @@ from app.safety_decisions import (
 from tests.conftest import (
     COORDINATOR_ID,
     ORGANISER_ID,
-    SAFETY_OFFICER_ID,
     SUBMITTABLE_NEED_ATTRS,
 )
 

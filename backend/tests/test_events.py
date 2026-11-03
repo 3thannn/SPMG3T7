@@ -348,3 +348,6 @@ class TestSaving:
             json={**DRAFT, "title": "Hijacked"},
             headers=auth_headers("Event Coordinator"),
         )
+
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "event_not_found"
