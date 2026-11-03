@@ -34,13 +34,13 @@ fullyParallel: false,  // Was: true
 ```typescript
 export const TEST_USERS = {
   'Event Organiser': {
-    email: 'organiser@spmg3t7.edu',
-    password: 'Sprint1!demo',
+    email: 'organiser@connectsphere.com',
+    password: 'password',
     name: 'Lincoln',  // CHANGED: Was 'Dylan'
   },
   'Event Coordinator': {
-    email: 'coordinator@spmg3t7.edu',
-    password: 'Sprint1!demo',
+    email: 'coordinator@connectsphere.com',
+    password: 'password',
     name: 'Ethan',  // CHANGED: Was 'Priya'
   },
   // ... other roles unchanged

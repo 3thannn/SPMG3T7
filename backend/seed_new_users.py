@@ -22,7 +22,7 @@ load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-PASSWORD = os.getenv("SEED_PASSWORD", "Sprint1!demo")
+PASSWORD = os.getenv("SEED_PASSWORD", "password")
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     print("❌ Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env")
@@ -34,19 +34,19 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 # New users to create
 NEW_USERS = [
     {
-        "email": "coordinatorlead@spmg3t7.edu",
+        "email": "coordinatorlead@connectsphere.com",
         "password": PASSWORD,
         "email_confirm": True,
         "user_metadata": {"name": "Jordan", "role": "Event Coordinator Lead"},
     },
     {
-        "email": "safetyofficer@spmg3t7.edu",
+        "email": "safetyofficer@connectsphere.com",
         "password": PASSWORD,
         "email_confirm": True,
         "user_metadata": {"name": "Alex", "role": "Safety Officer"},
     },
     {
-        "email": "technicalsupport@spmg3t7.edu",
+        "email": "technicalsupport@connectsphere.com",
         "password": PASSWORD,
         "email_confirm": True,
         "user_metadata": {"name": "Bryan", "role": "Technical Support Staff"},
@@ -56,13 +56,13 @@ NEW_USERS = [
 #: US20.1: registering for Confirmed events.
 ATTENDEES = [
     {
-        "email": "attendee@spmg3t7.edu",
+        "email": "attendee@connectsphere.com",
         "password": PASSWORD,
         "email_confirm": True,
         "user_metadata": {"name": "Casey", "role": "Attendee"},
     },
     {
-        "email": "attendee2@spmg3t7.edu",
+        "email": "attendee2@connectsphere.com",
         "password": PASSWORD,
         "email_confirm": True,
         "user_metadata": {"name": "Morgan", "role": "Attendee"},
@@ -73,7 +73,11 @@ ATTENDEES = [
 def seed_user(user_data: dict) -> None:
     email = user_data["email"]
     metadata = user_data["user_metadata"]
-    role = "Technical Support" if email == "technicalsupport@spmg3t7.edu" else metadata["role"]
+    role = (
+        "Technical Support"
+        if email == "technicalsupport@connectsphere.com"
+        else metadata["role"]
+    )
     existing_auth = next((u for u in supabase.auth.admin.list_users() if u.email == email), None)
     if existing_auth is None:
         created = supabase.auth.admin.create_user(user_data)

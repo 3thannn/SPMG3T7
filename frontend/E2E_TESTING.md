@@ -68,11 +68,11 @@ The following test users are available (defined in `e2e/helpers.ts`):
 
 | Role                      | Email                  | Password       | Name   |
 |--------------------------|------------------------|----------------|--------|
-| Event Organiser          | dylan@spmg3t7.edu      | Sprint1!demo   | Dylan  |
-| Event Coordinator        | priya@spmg3t7.edu      | Sprint1!demo   | Priya  |
-| Event Coordinator Lead   | jordan@spmg3t7.edu     | Sprint1!demo   | Jordan |
-| Safety Officer           | sam@spmg3t7.edu        | Sprint1!demo   | Sam    |
-| Venue Staff              | alex@spmg3t7.edu       | Sprint1!demo   | Alex   |
+| Event Organiser          | dylan@connectsphere.com      | password   | Dylan  |
+| Event Coordinator        | priya@connectsphere.com      | password   | Priya  |
+| Event Coordinator Lead   | jordan@connectsphere.com     | password   | Jordan |
+| Safety Officer           | sam@connectsphere.com        | password   | Sam    |
+| Venue Staff              | alex@connectsphere.com       | password   | Alex   |
 
 ## Writing E2E Tests
 

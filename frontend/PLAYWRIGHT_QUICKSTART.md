@@ -89,10 +89,10 @@ test('User can sign in', async ({ page }) => {
   await page.goto('/#/signin')
 
   // 2. Fill in email
-  await page.getByLabel('Email address').fill('dylan@spmg3t7.edu')
+  await page.getByLabel('Email address').fill('dylan@connectsphere.com')
 
   // 3. Fill in password
-  await page.getByLabel('Password').fill('Sprint1!demo')
+  await page.getByLabel('Password').fill('password')
 
   // 4. Click sign in button
   await page.getByRole('button', { name: 'Sign in' }).click()

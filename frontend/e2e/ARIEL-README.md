@@ -19,7 +19,7 @@ npm run test:e2e -- ariel- change-review-us11-2 --workers=1 --reporter=line
 
 Playwright starts Vite. Use one worker to limit load on the shared database.
 Demo accounts required: organiser, coordinator, coordinatorlead, venuestaff,
-technicalsupport and safetyofficer at `@spmg3t7.edu`. Default password follows
+technicalsupport and safetyofficer at `@connectsphere.com`. Default password follows
 the existing helpers; override with `E2E_PASSWORD` if all demo accounts use a
 different password. `E2E_API_URL` overrides fixture requests; set
 `VITE_API_BASE_URL` to the same URL when starting Vite. Existing database

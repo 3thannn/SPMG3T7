@@ -132,10 +132,10 @@ User** on) and a `public.users` row holding the name and role.
 
 | Email | Role | Can |
 | ----- | ---- | --- |
-| `organiser@spmg3t7.edu` | Event Organiser | create, read own and submit events |
-| `coordinator@spmg3t7.edu` | Event Coordinator | review and edit submitted events, read the venue catalogue |
-| `venuestaff@spmg3t7.edu` | Venue Staff | read the venue catalogue and maintain the records in it |
-| `attendee@spmg3t7.edu`, `attendee2@spmg3t7.edu` | Attendee | see the Confirmed events taking registrations and register for them (US20.1). Created by `python backend/seed_new_users.py --attendees-only` |
+| `organiser@connectsphere.com` | Event Organiser | create, read own and submit events |
+| `coordinator@connectsphere.com` | Event Coordinator | review and edit submitted events, read the venue catalogue |
+| `venuestaff@connectsphere.com` | Venue Staff | read the venue catalogue and maintain the records in it |
+| `attendee@connectsphere.com`, `attendee2@connectsphere.com` | Attendee | see the Confirmed events taking registrations and register for them (US20.1). Created by `python backend/seed_new_users.py --attendees-only` |
 
 The role strings are `user_role` enum values, so Postgres rejects a typo rather
 than creating a user nobody has permissions for. These are development
@@ -165,12 +165,12 @@ reach `/health`, and **Backend unreachable** when it cannot — the latter is th
 expected state if you skipped terminal 1, not a build failure.
 
 Sign in with one of the development accounts, both with the password
-`Sprint1!demo`:
+`password`:
 
 | Email                     | Role              | Can do                                |
 | ------------------------- | ----------------- | ------------------------------------- |
-| `organiser@spmg3t7.edu`   | Event Organiser   | create, edit and submit their events  |
-| `coordinator@spmg3t7.edu` | Event Coordinator | see submitted events, review them     |
+| `organiser@connectsphere.com`   | Event Organiser   | create, edit and submit their events  |
+| `coordinator@connectsphere.com` | Event Coordinator | see submitted events, review them     |
 
 The role names come from the `user_role` enum in the database, which is why they
 read as `Event Organiser` rather than `Organiser`.

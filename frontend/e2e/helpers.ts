@@ -17,28 +17,28 @@ export type Role =
  */
 export const TEST_USERS = {
   'Event Organiser': {
-    email: 'organiser@spmg3t7.edu',
-    password: 'Sprint1!demo',
+    email: 'organiser@connectsphere.com',
+    password: 'password',
     name: 'Lincoln',
   },
   'Event Coordinator': {
-    email: 'coordinator@spmg3t7.edu',
-    password: 'Sprint1!demo',
+    email: 'coordinator@connectsphere.com',
+    password: 'password',
     name: 'Ethan',
   },
   'Event Coordinator Lead': {
-    email: 'coordinatorlead@spmg3t7.edu',
-    password: 'Sprint1!demo',
+    email: 'coordinatorlead@connectsphere.com',
+    password: 'password',
     name: 'Jordan',
   },
   'Safety Officer': {
-    email: 'safetyofficer@spmg3t7.edu',
-    password: 'Sprint1!demo',
+    email: 'safetyofficer@connectsphere.com',
+    password: 'password',
     name: 'Alex',
   },
   'Venue Staff': {
-    email: 'venuestaff@spmg3t7.edu',
-    password: 'Sprint1!demo',
+    email: 'venuestaff@connectsphere.com',
+    password: 'password',
     name: 'Sam',
   },
 } as const

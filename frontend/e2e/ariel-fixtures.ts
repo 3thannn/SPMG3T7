@@ -32,7 +32,7 @@ export class World {
   async session(actor: Actor) {
     if (!this.sessions.has(actor)) {
       const response = await this.request.post(api + '/auth/login', { data: {
-        email: `${accounts[actor]}@spmg3t7.edu`, password: process.env.E2E_PASSWORD || 'Sprint1!demo',
+        email: `${accounts[actor]}@connectsphere.com`, password: process.env.E2E_PASSWORD || 'password',
       } })
       expect(response.ok(), `Sign in ${actor}: ${await response.text()}`).toBeTruthy()
       this.sessions.set(actor, await response.json() as Session)
@@ -53,8 +53,8 @@ export class World {
     await page.goto('/#/signin')
     await page.evaluate(() => localStorage.removeItem('spmg3t7.session.v1'))
     await page.reload()
-    await page.getByLabel('Email').fill(`${accounts[actor]}@spmg3t7.edu`)
-    await page.getByLabel('Password').fill(process.env.E2E_PASSWORD || 'Sprint1!demo')
+    await page.getByLabel('Email').fill(`${accounts[actor]}@connectsphere.com`)
+    await page.getByLabel('Password').fill(process.env.E2E_PASSWORD || 'password')
     await page.locator('form').getByRole('button', { name: 'Sign in', exact: true }).click()
     await expect(page.locator('.topnav-role')).toHaveText((await this.session(actor)).role)
     await page.goto('/#' + path)

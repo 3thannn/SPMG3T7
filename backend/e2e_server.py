@@ -16,6 +16,7 @@ trigger in SUPABASE_US9_5_DELETE_VENUE_HISTORY.sql: the in-memory venue store
 deletes the venue only.
 """
 
+from dataclasses import replace
 from datetime import timedelta
 
 from app import (
@@ -45,14 +46,22 @@ from app.venue_unavailability_store import (
     UnavailabilityReasonType,
 )
 from tests.conftest import (
-    ACCOUNTS,
     COORDINATOR_ID,
     ORGANISER_ID,
-    PASSWORD,
     SUBMITTABLE_NEED_ATTRS,
     fixture_users,
     fixture_venues,
 )
+
+E2E_PASSWORD = "password"
+
+
+def _e2e_users() -> list[users.User]:
+    """Use the documented browser-test accounts without changing pytest data."""
+    return [
+        replace(user, email=user.email.replace("@spmg3t7.edu", "@connectsphere.com"))
+        for user in fixture_users()
+    ]
 
 #: Venue ids the specs refer to. 1-3 are the pytest suite's own catalogue.
 FUTURE_BOOKING = 1  # Great Hall: two bookings still to come
@@ -262,14 +271,15 @@ def seed() -> None:
     ]
     venues.extend(safety_venues)
 
+    test_users = _e2e_users()
     users.use_repository(
         users.InMemoryUsers(
-            users=fixture_users(),
-            passwords={email: PASSWORD for email in ACCOUNTS.values()},
+            users=test_users,
+            passwords={user.email: E2E_PASSWORD for user in test_users},
         )
     )
     events = InMemoryEvents(
-        events=safety_events, names={user.id: user.name for user in fixture_users()}
+        events=safety_events, names={user.id: user.name for user in test_users}
     )
     event_store.use_repository(events)
     safety_decision_store.use_repository(InMemorySafetyDecisions(names=events.names))

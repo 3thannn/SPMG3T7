@@ -10,15 +10,15 @@ export const test = base.extend<{ world: World; role: string }>({
     const reset = await request.post(api + '/__test__/reset')
     expect(reset.ok()).toBeTruthy()
     const seeded = await reset.json()
-    const email = role === 'Event Organiser' ? 'organiser@spmg3t7.edu' : 'coordinator@spmg3t7.edu'
+    const email = role === 'Event Organiser' ? 'organiser@connectsphere.com' : 'coordinator@connectsphere.com'
     const login = await request.post(api + '/auth/login', {
-      data: { email, password: 'Sprint1!demo' },
+      data: { email, password: 'password' },
     })
     expect(login.ok()).toBeTruthy()
     const session = await login.json()
     await page.goto('/#/signin')
     await page.getByLabel('Email').fill(email)
-    await page.getByLabel('Password').fill('Sprint1!demo')
+    await page.getByLabel('Password').fill('password')
     await page.locator('form').getByRole('button', { name: 'Sign in' }).click()
     await expect(page.locator('.topnav-name')).toHaveText(session.name)
     await page.goto('/#/events/' + seeded.eventId)
