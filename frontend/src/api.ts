@@ -35,6 +35,8 @@ export type Permission =
   | 'coordinators:assign'
   | 'safety:review'
   | 'safety:submit'
+  /** US4.7: the assigned Coordinator confirms the event once every approval is in. */
+  | 'events:confirm'
   | 'equipment:read'
   | 'equipment:write'
   | 'equipment:request'

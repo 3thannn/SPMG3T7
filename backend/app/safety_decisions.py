@@ -1,8 +1,10 @@
 """US17.2: the Safety Officer's decision on an event Pending Safety Check.
 
-Three outcomes, each a move out of Pending Safety Check (US4.4):
+Three outcomes. Two move the event out of Pending Safety Check (US4.4):
 
-* Approve -> Confirmed.
+* Approve -> stays Pending Safety Check, now approved. US4.7: the assigned
+  Coordinator confirms it once every other approval is in too
+  (`app.event_confirmation`); the Safety Officer no longer does.
 * Request changes -> back to Planning, with a note saying what must change. The
   venue bookings and equipment lines the note is about are flagged for
   re-review, and the assigned Coordinator is told (US10.2).
@@ -41,9 +43,10 @@ class SafetyOutcome(StrEnum):
     REJECTED = "rejected"
 
 
-#: Where each outcome sends the event. Both refusals go back to Planning.
+#: Where each outcome sends the event. Both refusals go back to Planning; an
+#: approval leaves it where it is, for the Coordinator to confirm (US4.7).
 OUTCOME_STATUS: dict[SafetyOutcome, EventStatus] = {
-    SafetyOutcome.APPROVED: EventStatus.CONFIRMED,
+    SafetyOutcome.APPROVED: EventStatus.PENDING_SAFETY_CHECK,
     SafetyOutcome.CHANGES_REQUESTED: EventStatus.PLANNING,
     SafetyOutcome.REJECTED: EventStatus.PLANNING,
 }

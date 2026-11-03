@@ -551,7 +551,7 @@ it('shows the Safety Officer the outcome of their approval', async () => {
   const pending = { ...submittedEvent, status: 'Pending Safety Check' as const }
   getEventMock.mockResolvedValue(pending)
   loadedReview()
-  vi.mocked(approveSafetyCheck).mockResolvedValue({ ...pending, status: 'Confirmed' })
+  vi.mocked(approveSafetyCheck).mockResolvedValue({ ...pending, safetyApproved: true })
 
   render(<EventDetailPage eventId="101" session={officer} />)
   await user.click(await approveButton())
@@ -559,9 +559,11 @@ it('shows the Safety Officer the outcome of their approval', async () => {
   expect(vi.mocked(approveSafetyCheck)).toHaveBeenCalledWith('101', WAITING_SINCE, officer)
 
   expect(await screen.findByRole('status')).toHaveTextContent(
-    'Approved. The event is now Confirmed.',
+    'Approved. The Coordinator confirms the event once everything else is in place.',
   )
   expect(screen.queryByRole('heading', { name: 'Safety check decision' })).not.toBeInTheDocument()
+  // US4.7: the event waits for its Coordinator now, and the page says so.
+  expect(screen.getByText(/You approved this safety check/)).toBeInTheDocument()
 })
 
 it('shows the Safety Officer why a decision was refused', async () => {

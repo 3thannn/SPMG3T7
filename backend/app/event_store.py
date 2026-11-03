@@ -394,6 +394,8 @@ class Repository(Protocol):
         self, event_id: int, *, actor_id: int, to_status: EventStatus, note: str
     ) -> Event: ...
 
+    def confirm_event(self, event_id: int, *, actor_id: int) -> Event: ...
+
     def cancel_event(
         self, event_id: int, *, actor_id: int, from_status: EventStatus, reason: str
     ) -> CancelledEvent: ...
@@ -857,10 +859,31 @@ class SupabaseEvents:
         assert sent is not None  # noqa: S101 - the row was just updated
         return sent
 
+    def confirm_event(self, event_id: int, *, actor_id: int) -> Event:
+        """US4.7: Pending Safety Check -> Confirmed, by the assigned Coordinator.
+
+        The RPC locks the event and repeats every check the route made — the
+        safety approval of this stay, the venues, the equipment, the change
+        request — so something that changed after the route's check is
+        reported as stale rather than confirmed. It is the only way into
+        Confirmed: the database refuses every other route there.
+        """
+        result = (
+            supabase_client.admin()
+            .rpc("confirm_event", {"p_event_id": event_id, "p_coordinator_id": actor_id})
+            .execute()
+        )
+        if result.data is not True:
+            raise StaleEventStatus
+        confirmed = self.get_event(event_id)
+        assert confirmed is not None  # noqa: S101 - the row was just updated
+        return confirmed
+
     def decide_safety_check(
         self, event_id: int, *, actor_id: int, to_status: EventStatus, note: str
     ) -> Event:
-        """US4.4: Pending Safety Check -> Confirmed or back to Planning, audited.
+        """US4.4: Pending Safety Check -> back to Planning, audited. US4.7 took
+        Confirmed away from it: only `confirm_event` gets there now.
 
         The RPC only moves an event that is still Pending Safety Check, and
         only for a Safety Officer, so a second decision on the same check
@@ -1456,6 +1479,23 @@ class InMemoryEvents:
             from_status=EventStatus.PENDING_SAFETY_CHECK,
             to_status=to_status,
             reason=note,
+        )
+
+    def confirm_event(self, event_id: int, *, actor_id: int) -> Event:
+        """The RPC's status and assignment checks; readiness is the route's here."""
+        existing = self.get_event(event_id)
+        assert existing is not None  # noqa: S101 - the caller checked it exists
+        if (
+            existing.status is not EventStatus.PENDING_SAFETY_CHECK
+            or existing.coordinator_id != actor_id
+        ):
+            raise StaleEventStatus
+        return self.decide_event(
+            event_id,
+            actor_id=actor_id,
+            from_status=EventStatus.PENDING_SAFETY_CHECK,
+            to_status=EventStatus.CONFIRMED,
+            reason="",
         )
 
     def cancel_event(

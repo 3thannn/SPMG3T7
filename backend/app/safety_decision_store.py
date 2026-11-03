@@ -256,8 +256,20 @@ class InMemorySafetyDecisions:
         entered = entered_safety_check(existing)
         if check_started_at and not same_check(check_started_at, entered):
             raise StaleEventStatus
-        moved = events.decide_safety_check(
-            event_id, actor_id=officer_id, to_status=to_status(outcome), note=note
+        # US4.7: one decision per stay. An approval leaves the event Pending
+        # Safety Check, so without this it could be decided again.
+        if any(
+            item.event_id == event_id and same_check(item.check_started_at, entered)
+            for item in self.decisions
+        ):
+            raise StaleEventStatus
+        # US4.7: an approval does not move the event; the Coordinator confirms it.
+        decided_at = (
+            events.decide_safety_check(
+                event_id, actor_id=officer_id, to_status=to_status(outcome), note=note
+            ).updated_at
+            if outcome is not SafetyOutcome.APPROVED
+            else datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
         )
         decision_id = self.next_id
         self.next_id += 1
@@ -284,7 +296,7 @@ class InMemorySafetyDecisions:
             note=note,
             decided_by_id=officer_id,
             decided_by_name=self.names.get(officer_id, ""),
-            decided_at=moved.updated_at,
+            decided_at=decided_at,
             check_started_at=entered,
             flags=tuple(flags),
         )

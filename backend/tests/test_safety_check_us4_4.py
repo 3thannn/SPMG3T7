@@ -437,20 +437,20 @@ class TestSafetyOfficerQueue:
 
 
 class TestSafetyOfficerDecision:
-    def test_approval_confirms_the_event(self, client, auth_headers, event_repository):
+    def test_approval_leaves_it_for_the_coordinator_to_confirm(
+        self, client, auth_headers, event_repository
+    ):
+        """US4.7: approving no longer confirms the event; the Coordinator does."""
         seed_event(event_repository, PSC)
         response = client.post(
             f"/events/{EVENT_ID}/safety-check/approve", headers=auth_headers("Safety Officer")
         )
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["status"] == "Confirmed"
-        last = body["history"][-1]
-        assert (last["from"], last["to"], last["byId"], last["byName"], last["notes"]) == (
-            "Pending Safety Check", "Confirmed", str(SAFETY_OFFICER_ID), "Alex", "",
-        )
-        assert last["at"]
-        assert event_repository.get_event(EVENT_ID).status is EventStatus.CONFIRMED
+        assert body["status"] == "Pending Safety Check"
+        assert body["safetyApproved"] is True
+        assert body["history"] == []  # no status move, so nothing new in the trail
+        assert event_repository.get_event(EVENT_ID).status is EventStatus.PENDING_SAFETY_CHECK
 
     def test_sending_back_returns_it_to_planning_with_the_note(
         self, client, auth_headers, event_repository, notification_repository
@@ -486,8 +486,10 @@ class TestSafetyOfficerDecision:
         resent = client.post(f"/events/{EVENT_ID}/safety-check", headers=coordinator)
         assert resent.json()["status"] == "Pending Safety Check"
         approved = client.post(f"/events/{EVENT_ID}/safety-check/approve", headers=officer)
-        assert approved.json()["status"] == "Confirmed"
-        moves = [(h["from"], h["to"]) for h in approved.json()["history"]][-3:]
+        assert approved.json()["safetyApproved"] is True
+        confirmed = client.post(f"/events/{EVENT_ID}/confirm", headers=coordinator)
+        assert confirmed.json()["status"] == "Confirmed"
+        moves = [(h["from"], h["to"]) for h in confirmed.json()["history"]][-3:]
         assert moves == [
             ("Pending Safety Check", "Planning"),
             ("Planning", "Pending Safety Check"),
@@ -547,18 +549,15 @@ class TestSafetyOfficerDecision:
         assert "review event safety" in response.json()["detail"]["message"]
         assert event_repository.get_event(EVENT_ID).status is PSC
 
-    def test_a_check_decided_twice_is_refused(
-        self, client, auth_headers, event_repository, monkeypatch
-    ):
+    def test_a_check_decided_twice_is_refused(self, client, auth_headers, event_repository):
+        """US4.7: an approval leaves the event Pending Safety Check, and the same
+        stay still cannot be decided again."""
         seed_event(event_repository, PSC)
-
-        def already(*_args, **_kwargs):
-            raise StaleEventStatus
-
-        monkeypatch.setattr(event_repository, "decide_safety_check", already)
-        response = client.post(
-            f"/events/{EVENT_ID}/safety-check/approve", headers=auth_headers("Safety Officer")
-        )
+        officer = auth_headers("Safety Officer")
+        assert client.post(
+            f"/events/{EVENT_ID}/safety-check/approve", headers=officer
+        ).status_code == 200
+        response = client.post(f"/events/{EVENT_ID}/safety-check/approve", headers=officer)
         assert response.status_code == 409
         assert response.json()["detail"]["message"] == (
             "This safety check was already decided. Refresh it and try again."
@@ -640,9 +639,12 @@ class TestOnlyWayToConfirmed:
 
         sent = client.post(f"/events/{event_id}/safety-check", headers=coordinator)
         assert sent.json()["status"] == "Pending Safety Check"
-        confirmed = client.post(
+        approved = client.post(
             f"/events/{event_id}/safety-check/approve", headers=auth_headers("Safety Officer")
         )
+        assert approved.json()["status"] == "Pending Safety Check"
+        # US4.7: the Coordinator confirms once the Safety Officer has approved.
+        confirmed = client.post(f"/events/{event_id}/confirm", headers=coordinator)
         assert confirmed.json()["status"] == "Confirmed"
         assert [(h["from"], h["to"]) for h in confirmed.json()["history"]] == [
             (None, "Draft"),
