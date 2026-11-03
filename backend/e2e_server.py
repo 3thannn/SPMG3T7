@@ -149,6 +149,34 @@ def _safety_event(event_id: int, title: str, attendance: int, entered: timedelta
     )
 
 
+#: Event 1, which bookings 1, 2 and 5 belong to: a Planning event assigned to
+#: Priya, so the booking journeys (US16.1 decisions, US14.2 cancel, US14.5
+#: replacement of the flagged booking) have an event to work on.
+OPEN_HOUSE = 1
+
+
+def _open_house() -> Event:
+    coordinator = next(user for user in fixture_users() if user.id == COORDINATOR_ID)
+    organiser = next(user for user in fixture_users() if user.id == ORGANISER_ID)
+    return Event(
+        id=OPEN_HOUSE,
+        title="Open House",
+        purpose="Show the campus to visitors",
+        description="Seeded for the booking browser tests.",
+        starts_at=_at(timedelta(days=7))[:16],
+        ends_at=_at(timedelta(days=7, hours=8))[:16],
+        expected_attendance=60,
+        status=EventStatus.PLANNING,
+        organiser_id=organiser.id,
+        organiser_name=organiser.name,
+        created_at=_at(timedelta(days=-70)),
+        updated_at=_at(timedelta(days=-60)),
+        coordinator_id=coordinator.id,
+        coordinator_name=coordinator.name,
+        **SUBMITTABLE_NEED_ATTRS,
+    )
+
+
 SafetySeed = tuple[
     list[Venue], list[Booking], list[Event], list[EquipmentRequest], list[Unavailability]
 ]
@@ -279,7 +307,7 @@ def seed() -> None:
         )
     )
     events = InMemoryEvents(
-        events=safety_events, names={user.id: user.name for user in test_users}
+        events=[_open_house(), *safety_events], names={user.id: user.name for user in test_users}
     )
     event_store.use_repository(events)
     safety_decision_store.use_repository(InMemorySafetyDecisions(names=events.names))

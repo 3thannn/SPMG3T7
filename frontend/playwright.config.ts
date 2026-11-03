@@ -1,57 +1,50 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * Playwright configuration for E2E testing
- * @see https://playwright.dev/docs/test-configuration
+ * The browser journeys (one or more per role), run against an API with no
+ * database behind it, so they can never change the team's real records.
+ *
+ * The specs in `e2e-isolated/` start their own pair: `backend/e2e_server.py`
+ * (the real API over in-memory stores, reset before each test) on 8001, and a
+ * dev server on 5174 pointed at it. Neither reuses a running server.
+ *
+ *   npm run test:e2e
  */
+const API_PORT = 8001
+const WEB_PORT = 5174
+const python = process.platform === 'win32' ? '.venv\\Scripts\\python' : '.venv/bin/python'
+
 export default defineConfig({
-  testDir: './e2e',
-  testMatch: '**/*.spec.ts',  // Only match E2E test files, ignore Vitest tests
-  testIgnore: /replacement-venue-us14-5.*\.spec\.ts/,  // TODO: Enable when backend test fixtures are implemented
-
-  /* Run tests in files in parallel */
+  testDir: './e2e-isolated',
   fullyParallel: false,
-
-  /* Fail the build on CI if you accidentally left test.only in the source code. */
+  workers: 1,
   forbidOnly: !!process.env.CI,
-
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
-
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
-
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
-
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+  reporter: 'list',
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:5173',
-
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
-
-    /* Screenshot only on failure */
+    baseURL: `http://localhost:${WEB_PORT}`,
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-
-    /* Set viewport size to ensure .topnav-identity is visible (needs > 860px) */
     viewport: { width: 1280, height: 720 },
+    // Optional: a Chromium already on the machine (e.g. a cloud container)
+    // when it does not match the Playwright version installed here.
+    launchOptions: { executablePath: process.env.PW_CHROMIUM_PATH || undefined },
   },
-
-  /* Configure projects for major browsers */
-  projects: [
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  webServer: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      command: `${python} -m uvicorn e2e_server:app --port ${API_PORT}`,
+      cwd: '../backend',
+      env: { CORS_ORIGINS: `http://localhost:${WEB_PORT}` },
+      url: `http://127.0.0.1:${API_PORT}/health`,
+      reuseExistingServer: false,
+      timeout: 60 * 1000,
+    },
+    {
+      command: `npx vite --port ${WEB_PORT} --strictPort`,
+      env: { VITE_API_BASE_URL: `http://127.0.0.1:${API_PORT}` },
+      url: `http://localhost:${WEB_PORT}`,
+      reuseExistingServer: false,
+      timeout: 60 * 1000,
     },
   ],
-
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
 })

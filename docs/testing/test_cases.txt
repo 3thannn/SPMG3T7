@@ -5322,80 +5322,6 @@
   why: AC6 is evidence that the migration exists; this test proves a fresh database built from it
     works.
 
-- id: TC-E2E-01
-  ac: US1.1-AC1, US1.4-AC2
-  category: E2E
-  scenario: Each role lands on its own home page in the browser
-  preconditions: The shared test environment with seed accounts
-  steps: Sign in as each role
-  data: Organiser, Coordinator, Lead, Safety Officer
-  expected: Each lands on its view
-  layer: E2E
-  test: frontend/e2e/authentication.spec.ts::US1.3: Each role is routed to their correct home page
-  why: One browser journey per area, to show the pieces work together. Not run in CI; run before
-    each demo.
-
-- id: TC-E2E-02
-  ac: US2.1-AC1, US2.2-AC1
-  category: E2E
-  scenario: A draft saves, persists and submits exactly once
-  preconditions: The shared test environment
-  steps: Create a draft, edit, reload, submit
-  data: One event
-  expected: The edit persists; Submitted once
-  layer: E2E
-  test: frontend/e2e/ariel-events.spec.ts::SPMG3T7-27 / SPMG3T7-29: own draft saves, persists and submits exactly once
-  why: As TC-E2E-01.
-
-- id: TC-E2E-03
-  ac: US19.3-AC1, US19.3-AC2
-  category: E2E
-  scenario: Overlapping reservations subtract stock and show the shortfall
-  preconditions: The shared test environment with stock
-  steps: Reserve one line, then open an overlapping one
-  data: Two events
-  expected: The first Reserved; the second shows "Shortfall: 1" with Reserve disabled
-  layer: E2E
-  test: frontend/e2e/ariel-equipment.spec.ts::SPMG3T7-77: overlapping reservations subtract stock and show shortfall
-  why: As TC-E2E-01.
-
-- id: TC-E2E-04
-  ac: US14.5-AC2, US14.5-AC3
-  category: E2E
-  scenario: A replacement keeps history and leaves other bookings alone
-  preconditions: The shared test environment with a flagged booking
-  steps: Request a replacement in the browser
-  data: Bertha Room
-  expected: Three rows; the old one Replaced
-  layer: E2E
-  test: frontend/e2e/replacement-venue-us14-5.spec.ts::AC2/AC3: replacement persists history and leaves other bookings untouched
-  why: As TC-E2E-01.
-
-- id: TC-E2E-05
-  ac: US17.1-AC1, US17.2-AC2, US17.2-AC3, US17.2-AC5
-  category: E2E
-  scenario: The whole safety review loop
-  preconditions: A fresh isolated backend
-  steps: Queue, request changes, re-review, reject, resend, approve
-  data: Two events
-  expected: Each step shows the expected state
-  layer: E2E
-  test: frontend/e2e-isolated/safety-check-us17.spec.ts::review queue, request changes, re-review, reject, resubmit and approve
-  why: Runs against its own backend (npm run test:e2e:isolated).
-
-- id: TC-E2E-06
-  ac: US9.5-AC1
-  category: E2E
-  scenario: Deleting a booked venue tells staff to mark it unavailable
-  preconditions: A fresh isolated backend
-  steps: Try to delete a booked venue
-  data: Great Hall
-  expected: The alert with the message; the venue stays in the catalogue
-  layer: E2E
-  test: frontend/e2e-isolated/venue-delete-us9-5.spec.ts::staff are told to mark it unavailable instead, and the venue stays
-  why: As TC-E2E-05.
-
-
 - id: TC-D2-01
   ac: US4.3-AC1
   category: Defect
@@ -5556,3 +5482,500 @@
   layer: Component
   test: frontend/src/components/EventBookings.test.tsx::offers no cancel on a %s booking
   why: The other side of TC-D7-03.
+
+
+- id: TC-US20.1-16
+  ac: US20.1-AC1
+  category: Happy path
+  scenario: The Coordinator turns registration on from the event page
+  preconditions: The assigned Coordinator on the event page
+  steps: Tick Open registration; Save
+  data: Capacity 30 (the attendance)
+  expected: Saved with open and capacity 30; "0 of 30 places taken"
+  layer: Component
+  test: frontend/src/components/EventRegistration.test.tsx::turns registration on with the capacity shown
+  why: AC1 on screen.
+
+- id: TC-D3-05
+  ac: US20.1-AC1
+  category: Defect
+  scenario: Another Organiser gets no switch
+  preconditions: An Organiser who does not own the event
+  steps: Render the registration card
+  data: organiserId 77
+  expected: Status shown; no switch
+  layer: Component
+  test: frontend/src/components/EventRegistration.test.tsx::offers another Organiser no switch
+  why: D3 must not reach other Organisers' events.
+
+- id: TC-D2-06
+  ac: US4.3-AC1
+  category: Defect
+  scenario: A Coordinator gets nothing to resubmit
+  preconditions: A Rejected event opened by a Coordinator
+  steps: Render the event page
+  data: Rejected event
+  expected: No Resubmit button
+  layer: Component
+  test: frontend/src/pages/EventDetailPage.test.tsx::gives a Coordinator nothing to resubmit
+  why: Only the owner resubmits (TC-D2-04 at the API).
+
+
+- id: TC-E2E-01
+  ac: US1.1-AC1, US1.4-AC2
+  category: E2E
+  scenario: Each of the seven roles signs in to its own view
+  preconditions: The isolated server's accounts
+  steps: Sign in as each role in turn
+  data: Seven accounts
+  expected: Each lands on its home page with its name in the bar
+  layer: E2E
+  test: frontend/e2e-isolated/accounts-and-access.spec.ts::US1.1/US1.4: each of the seven roles lands on its own view
+  why: One journey per role, in the browser.
+
+- id: TC-E2E-02
+  ac: US1.1-AC2
+  category: E2E
+  scenario: A wrong password is refused
+  preconditions: Signed out
+  steps: Sign in with a wrong password
+  data: Organiser email
+  expected: An error; nobody signed in
+  layer: E2E
+  test: frontend/e2e-isolated/accounts-and-access.spec.ts::US1.1: a wrong password is refused and nobody is signed in
+  why: The negative half of sign-in.
+
+- id: TC-E2E-03
+  ac: US1.2-AC1
+  category: E2E
+  scenario: Signing out locks the pages again
+  preconditions: Signed in as the Organiser
+  steps: Sign out; open Events
+  data: None
+  expected: The sign-in form, not the page
+  layer: E2E
+  test: frontend/e2e-isolated/accounts-and-access.spec.ts::US1.2: after signing out, a protected page asks for sign-in again
+  why: US1.2 in the browser.
+
+- id: TC-E2E-04
+  ac: US1.3-AC1
+  category: E2E
+  scenario: An out-of-role page is refused with the reason
+  preconditions: Signed in as the Organiser
+  steps: Open the venue catalogue
+  data: /venues
+  expected: "This page is not open to your role" and the exact reason; no venues shown
+  layer: E2E
+  test: frontend/e2e-isolated/accounts-and-access.spec.ts::US1.3: an Organiser opening the venue catalogue is refused, not shown it
+  why: US1.3 in the browser.
+
+- id: TC-E2E-05
+  ac: US2.2-AC1, US4.2-AC1
+  category: E2E
+  scenario: A draft is saved, kept and submitted once
+  preconditions: Signed in as the Organiser
+  steps: Fill the form, Save as draft, reload, Submit event
+  data: Open Day 2027
+  expected: Draft after saving and reloading; Submitted after; no second Submit
+  layer: E2E
+  test: frontend/e2e-isolated/event-requests.spec.ts::US2.2/US4.2: a draft is saved, kept as Draft, then submitted exactly once
+  why: The Organiser's main flow.
+
+- id: TC-E2E-06
+  ac: US2.1-AC1
+  category: E2E
+  scenario: Submitting an empty form names every missing field
+  preconditions: The new event form with only a title
+  steps: Click Submit
+  data: Half-finished idea
+  expected: The summary alert and one message under each missing field; still on the form
+  layer: E2E
+  test: frontend/e2e-isolated/event-requests.spec.ts::US2.1: submitting an empty form names every missing field
+  why: US2.1 in the browser.
+
+- id: TC-E2E-07
+  ac: US2.2-AC1
+  category: E2E
+  scenario: A Coordinator does not see a draft
+  preconditions: An Organiser's draft
+  steps: Open Events as the Coordinator
+  data: Secret Draft
+  expected: Not listed
+  layer: E2E
+  test: frontend/e2e-isolated/event-requests.spec.ts::US2.2: a Coordinator does not see an Organiser draft
+  why: Draft privacy in the browser.
+
+- id: TC-E2E-08
+  ac: US8.2-AC1, US8.3-AC1
+  category: E2E
+  scenario: The Lead assigns; the Coordinator sees it Under Review
+  preconditions: A submitted event
+  steps: The Lead assigns Priya from the queue; Priya opens it
+  data: Careers Fair
+  expected: Gone from the queue; Under Review on Priya's list
+  layer: E2E
+  test: frontend/e2e-isolated/event-requests.spec.ts::US8.2/US8.3: the Lead assigns a submitted event and the Coordinator sees it Under Review
+  why: The Lead's main flow.
+
+- id: TC-E2E-09
+  ac: US7.3-AC1
+  category: E2E
+  scenario: A clarification request reaches the Organiser
+  preconditions: An event assigned to Priya
+  steps: Priya sends a request; the Organiser opens the event
+  data: Which caterer?
+  expected: The Organiser sees the question
+  layer: E2E
+  test: frontend/e2e-isolated/event-requests.spec.ts::US7.3/US10.1: a clarification request reaches the Organiser
+  why: US7.3 across two roles.
+
+- id: TC-E2E-10
+  ac: US4.3-AC1, US10.1-AC1
+  category: E2E
+  scenario: Approving notifies the Organiser
+  preconditions: An event Under Review
+  steps: Priya clicks Approve event; the Organiser opens Notifications
+  data: Alumni Night
+  expected: Approved; '"Alumni Night" was approved.'
+  layer: E2E
+  test: frontend/e2e-isolated/event-requests.spec.ts::US4.3/US10.1: approving notifies the Organiser
+  why: Decision and notice across two roles.
+
+- id: TC-E2E-11
+  ac: US4.3-AC1, US4.3-AC2
+  category: E2E
+  scenario: A rejection shows its reason; the Organiser revises and resubmits (D2)
+  preconditions: A rejected event
+  steps: The Organiser reads the reason, changes the title, clicks Resubmit event
+  data: The hall is booked that week.
+  expected: Submitted; back in the Lead's queue
+  layer: E2E
+  test: frontend/e2e-isolated/event-requests.spec.ts::US4.3 + D2: a rejection shows its reason; the Organiser revises and resubmits
+  why: D2 in the browser.
+
+- id: TC-E2E-12
+  ac: US11.1-AC3, US11.2-AC1, US11.2-AC2
+  category: E2E
+  scenario: A change request is proposed and accepted
+  preconditions: An Approved event
+  steps: The Organiser proposes attendance 45; Priya sees old and new values, Important, and
+    approves
+  data: 30 to 45
+  expected: Awaiting review, then the new value saved
+  layer: E2E
+  test: frontend/e2e-isolated/event-requests.spec.ts::US11.1/US11.2: the Organiser proposes a change and the Coordinator accepts it
+  why: Change requests across two roles.
+
+- id: TC-E2E-13
+  ac: US9.1a-AC2, US9.2-AC1
+  category: E2E
+  scenario: Venue Staff add a venue; a Coordinator sees it read-only
+  preconditions: Signed in as Venue Staff
+  steps: Add Atrium; open it as the Coordinator
+  data: Atrium, Science Quarter, 90
+  expected: The venue page; no Edit or Delete for the Coordinator
+  layer: E2E
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US9.1a/US9.2: Venue Staff add a venue; a Coordinator sees it read-only
+  why: The catalogue across two roles.
+
+- id: TC-E2E-14
+  ac: US9.3-AC2
+  category: E2E
+  scenario: The catalogue filters
+  preconditions: The seed catalogue
+  steps: Minimum capacity 100; Apply filters
+  data: 100
+  expected: Great Hall listed; Bertha Room (40) not
+  layer: E2E
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US9.3: the catalogue filters combine
+  why: US9.3 in the browser.
+
+- id: TC-E2E-15
+  ac: US14.1-AC5, US18.1-AC2, US18.1-AC4
+  category: E2E
+  scenario: A suitable venue is requested; a too-small one cannot be
+  preconditions: An Approved event of 50
+  steps: Pick Bertha Room (40), then Seminar Room 4 (60), request
+  data: 50 people
+  expected: Not suitable with the reason and Request disabled; then Suitable and Requested
+  layer: E2E
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US14.1/US18.1: a suitable venue is requested; one that is too small cannot be
+  why: Suitability in the browser.
+
+- id: TC-E2E-16
+  ac: US16.1-AC2, US16.1-AC5
+  category: E2E
+  scenario: Venue Staff approve a request and the Coordinator is told
+  preconditions: Open House's Requested booking
+  steps: Approve it; Priya opens the event and Notifications
+  data: Great Hall
+  expected: Confirmed; a notice about Great Hall
+  layer: E2E
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US16.1/US10.2: Venue Staff approve a request and the Coordinator is told
+  why: US16.1 across two roles.
+
+- id: TC-E2E-17
+  ac: US16.1-AC3
+  category: E2E
+  scenario: A rejection needs a reason, which the Coordinator sees
+  preconditions: Open House's Requested booking
+  steps: Reject with no reason, then with one; Priya opens the event
+  data: Closed for exams that week.
+  expected: Refused without; then the reason shown to Priya
+  layer: E2E
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US16.1: a rejection needs a reason, which the Coordinator then sees
+  why: US16.1's reject path.
+
+- id: TC-E2E-18
+  ac: US14.2-AC1, US12.2-AC5
+  category: E2E
+  scenario: A Confirmed booking is cancelled with a reason (D7)
+  preconditions: Open House's Confirmed Great Hall booking
+  steps: Cancel it with a reason
+  data: Moving to a smaller room.
+  expected: "Cancelled by Priya … Moving to a smaller room."; Cancelled in the API
+  layer: E2E
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US14.2 + D7: the Coordinator cancels a Confirmed booking with a reason
+  why: D7 in the browser.
+
+- id: TC-E2E-19
+  ac: US15.1-AC3, US15.1-AC5
+  category: E2E
+  scenario: A taken slot is refused, naming the clash
+  preconditions: Great Hall Confirmed for a slot
+  steps: Pick Great Hall for another event at that time
+  data: Booking #2
+  expected: The clash names booking #2; Request disabled
+  layer: E2E
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US15.1: a request for a taken slot is refused, naming the clash
+  why: US15.1 in the browser.
+
+- id: TC-E2E-20
+  ac: US14.5-AC1, US14.5-AC2
+  category: E2E
+  scenario: A flagged booking is replaced and kept as history
+  preconditions: Open House's Flagged Room booking (Burst pipe)
+  steps: Find a replacement; choose Seminar Room 4; request
+  data: Seminar Room 4
+  expected: "Requested Seminar Room 4 as a replacement"; the old one Replaced
+  layer: E2E
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US14.5: a flagged booking is replaced and kept as history
+  why: US14.5 in the browser.
+
+- id: TC-E2E-21
+  ac: US12.1-AC1, US12.1-AC4, US12.2-AC6
+  category: E2E
+  scenario: Venue Staff mark a venue unavailable; a Coordinator sees the dates
+  preconditions: Seminar Room 4
+  steps: Mark one day unavailable for maintenance; open it as the Coordinator
+  data: A date 90 days ahead
+  expected: "No bookings were flagged." (D8); Unavailable dates shown, nothing to add
+  layer: E2E
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US12.1: Venue Staff mark a venue unavailable; a Coordinator sees the dates
+  why: US12.1 across two roles, and D8.
+
+- id: TC-E2E-22
+  ac: US14.3-AC1, US14.3-AC4
+  category: E2E
+  scenario: Venue Staff hold a venue; the Coordinator requests it
+  preconditions: An Approved event
+  steps: Place a hold with an expiry; Priya requests it from the event
+  data: Seminar Room 4
+  expected: Held, then Requested
+  layer: E2E
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US14.3: Venue Staff hold a venue; the Coordinator turns it into a request
+  why: US14.3 across two roles.
+
+- id: TC-E2E-23
+  ac: US9.5-AC1
+  category: E2E
+  scenario: A booked venue cannot be deleted
+  preconditions: Great Hall has future bookings
+  steps: Try to delete it
+  data: Great Hall
+  expected: The mark-unavailable message; the venue stays
+  layer: E2E
+  test: frontend/e2e-isolated/venue-delete-us9-5.spec.ts::staff are told to mark it unavailable instead, and the venue stays
+  why: US9.5 in the browser.
+
+- id: TC-E2E-24
+  ac: US9.5-AC1
+  category: E2E
+  scenario: A booking awaiting a replacement also blocks deletion
+  preconditions: Flagged Room
+  steps: Try to delete it
+  data: Flagged Room
+  expected: Refused; the venue stays
+  layer: E2E
+  test: frontend/e2e-isolated/venue-delete-us9-5.spec.ts::a booking waiting for a replacement venue also blocks it
+  why: A flagged booking still counts.
+
+- id: TC-E2E-25
+  ac: US9.5-AC2
+  category: E2E
+  scenario: A venue never booked is deleted
+  preconditions: Seminar Room 4
+  steps: Delete it
+  data: Seminar Room 4
+  expected: Gone from the catalogue
+  layer: E2E
+  test: frontend/e2e-isolated/venue-delete-us9-5.spec.ts::one that was never booked is deleted
+  why: US9.5 AC2.
+
+- id: TC-E2E-26
+  ac: US9.5-AC2
+  category: E2E
+  scenario: A venue with only past or cancelled bookings is deleted
+  preconditions: Bertha Room
+  steps: Delete it
+  data: Bertha Room
+  expected: Gone from the catalogue
+  layer: E2E
+  test: frontend/e2e-isolated/venue-delete-us9-5.spec.ts::one with only past and cancelled bookings is deleted
+  why: US9.5 AC2 with history present.
+
+- id: TC-E2E-27
+  ac: US9.5-AC2
+  category: E2E
+  scenario: The confirmation warns that past bookings go too
+  preconditions: A venue with past bookings
+  steps: Click Delete venue
+  data: Bertha Room
+  expected: The confirmation says past bookings go with it
+  layer: E2E
+  test: frontend/e2e-isolated/venue-delete-us9-5.spec.ts::the confirmation says past bookings go with the venue
+  why: What staff are told before deleting.
+
+- id: TC-E2E-28
+  ac: US4.4-AC2, US4.7-AC1, US10.3-AC2
+  category: E2E
+  scenario: Sent for the safety check, approved, confirmed, Organiser told
+  preconditions: A Planning event with a Confirmed booking
+  steps: Priya sends it; the Safety Officer approves; Priya confirms; the Organiser opens
+    Notifications
+  data: Graduation Dinner
+  expected: Pending Safety Check, then Confirmed; "is confirmed and ready to go ahead."
+  layer: E2E
+  test: frontend/e2e-isolated/confirm-register-cancel.spec.ts::US4.4/US4.7/US10.3: sent for the safety check, approved, then confirmed by the Coordinator
+  why: The whole end of the lifecycle across three roles.
+
+- id: TC-E2E-29
+  ac: US17.1-AC1, US17.2-AC2, US17.2-AC3, US17.2-AC5
+  category: E2E
+  scenario: The whole safety review loop
+  preconditions: Two events Pending Safety Check
+  steps: Queue; request changes with flags; re-review; reject; resend; approve
+  data: Charity Gala Night, Youth Workshop
+  expected: Each step shows the expected state and record
+  layer: E2E
+  test: frontend/e2e-isolated/safety-check-us17.spec.ts::review queue, request changes, re-review, reject, resubmit and approve
+  why: US17 in one browser journey.
+
+- id: TC-E2E-30
+  ac: US17.2-AC5
+  category: E2E
+  scenario: A decision on an earlier submission is refused
+  preconditions: An event resubmitted while the review was open
+  steps: Approve on the stale page
+  data: Charity Gala Night
+  expected: The "sent back and submitted again" message
+  layer: E2E
+  test: frontend/e2e-isolated/safety-check-us17.spec.ts::US17.2: a decision on a submission that has since been resubmitted is refused
+  why: US17.2 AC5.
+
+- id: TC-E2E-31
+  ac: US17.1-AC1
+  category: E2E
+  scenario: An empty queue says so
+  preconditions: Nothing Pending Safety Check
+  steps: Open the safety review
+  data: None
+  expected: The empty message
+  layer: E2E
+  test: frontend/e2e-isolated/safety-check-us17.spec.ts::US17.1: with nothing Pending Safety Check, the queue says so
+  why: The empty state.
+
+- id: TC-E2E-32
+  ac: US17.2-AC2
+  category: E2E
+  scenario: A request for changes with nothing flagged does not block resubmission
+  preconditions: An event Pending Safety Check
+  steps: Request changes without flags; the Coordinator resends
+  data: Note only
+  expected: It can be sent again
+  layer: E2E
+  test: frontend/e2e-isolated/safety-check-us17.spec.ts::US17.2: a request for changes with nothing flagged does not block resubmission
+  why: The edge of AC2's flagging.
+
+- id: TC-E2E-33
+  ac: US17.1-AC4
+  category: E2E
+  scenario: The safety review is for the Safety Officer only
+  preconditions: Signed in as another role
+  steps: Open the safety review
+  data: Coordinator
+  expected: The access-denied page
+  layer: E2E
+  test: frontend/e2e-isolated/safety-check-us17.spec.ts::US17.1: the safety review queue is for the Safety Officer role only
+  why: US17.1 AC4.
+
+- id: TC-E2E-34
+  ac: US20.1-AC1, US20.1-AC3, US20.2-AC2, US20.3-AC1
+  category: E2E
+  scenario: The Organiser opens registration; an Attendee registers and withdraws (D3)
+  preconditions: A Confirmed event
+  steps: The Organiser opens it for 2; Casey registers; the Organiser sees Casey; Casey withdraws
+  data: Capacity 2
+  expected: 0 of 2, then 1 of 2 with Casey listed; after withdrawing, 0 registered
+  layer: E2E
+  test: frontend/e2e-isolated/confirm-register-cancel.spec.ts::D3/US20.1/US20.2/US20.3: the Organiser opens registration, an Attendee registers and withdraws
+  why: D3 and registration across two roles.
+
+- id: TC-E2E-35
+  ac: US4.6-AC1, US4.6-AC3
+  category: E2E
+  scenario: The Organiser cancels an event; its booking is released
+  preconditions: A Planning event with a Confirmed booking
+  steps: Cancel with no reason (disabled), then with one
+  data: The speaker cannot attend.
+  expected: Cancelled; the booking Cancelled
+  layer: E2E
+  test: frontend/e2e-isolated/confirm-register-cancel.spec.ts::US4.6: the Organiser cancels an event; its booking is released
+  why: US4.6 in the browser.
+
+- id: TC-E2E-36
+  ac: US19.1-AC1, US19.1-AC3
+  category: E2E
+  scenario: Technical Support add an item; a Coordinator sees usable stock read-only
+  preconditions: Signed in as Technical Support
+  steps: Add Projector A with 1 of 3 out of service; open the catalogue as the Coordinator
+  data: Projector A
+  expected: "Usable of 3"; no Add equipment
+  layer: E2E
+  test: frontend/e2e-isolated/equipment.spec.ts::US19.1: Technical Support add an item; a Coordinator sees usable stock, read-only
+  why: US19.1 across two roles.
+
+- id: TC-E2E-37
+  ac: US19.2-AC1, US19.3-AC2, US19.3-AC4
+  category: E2E
+  scenario: A Coordinator requests a projector; Technical Support reserve it
+  preconditions: A Planning event; Projector A
+  steps: Request 2 (times default to the event's); Technical Support reserve; Priya opens
+    Notifications
+  data: Quantity 2
+  expected: Requested; Reserved; a notice about the projector
+  layer: E2E
+  test: frontend/e2e-isolated/equipment.spec.ts::US19.2/US19.3/US10.2: a Coordinator requests a projector; Technical Support reserve it
+  why: Equipment across two roles.
+
+- id: TC-E2E-38
+  ac: US19.3-AC2
+  category: E2E
+  scenario: More than the usable stock shows the shortfall
+  preconditions: A line for 3 when 2 are usable
+  steps: Open it as Technical Support
+  data: Quantity 3
+  expected: "Shortfall: 1"; Reserve disabled
+  layer: E2E
+  test: frontend/e2e-isolated/equipment.spec.ts::US19.3: more than the usable stock shows the shortfall and cannot be reserved
+  why: US19.3's block in the browser.

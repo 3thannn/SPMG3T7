@@ -112,3 +112,17 @@ it('says the range was saved and clears the form for the next one', async () => 
     '2 bookings flagged as needing replacement.',
   )
 })
+
+// D8 (CODE_AUDIT.md): US12.2 AC6 says Venue Staff see how many bookings were
+// flagged "(including 0)". The message used to say nothing when none were.
+it('says so when no bookings were flagged', async () => {
+  markMock.mockResolvedValue(range({ flaggedBookingsCount: 0 }))
+  renderForStaff()
+  await screen.findByLabelText('Start date')
+
+  await fill('2026-11-02', '2026-11-06')
+
+  expect(await screen.findByText(/^Marked unavailable:/)).toHaveTextContent(
+    'No bookings were flagged.',
+  )
+})
