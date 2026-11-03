@@ -30,6 +30,8 @@ export type CoordinatorNoticeKind =
   | 'booking-rejected'
   /** US20.1: registrations reached capacity. The Organiser is told too. */
   | 'event-full'
+  /** US11.3: an accepted change sent a Confirmed event back to Planning. The Organiser is told too. */
+  | 'back-in-planning'
 
 export type NotificationKind = 'event-status' | 'equipment-request' | CoordinatorNoticeKind
 
@@ -53,6 +55,7 @@ export const KIND_LABELS: Record<Exclude<NotificationKind, 'event-status'>, stri
   'booking-confirmed': 'Booking confirmed',
   'booking-rejected': 'Booking rejected',
   'event-full': 'Event full',
+  'back-in-planning': 'Back in planning',
 }
 
 export type NotificationRecord = {

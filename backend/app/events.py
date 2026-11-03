@@ -69,6 +69,7 @@ from app.event_status import (
 from app.event_store import Event, StaleEventStatus
 from app.notifications import (
     notify_assigned,
+    notify_back_in_planning,
     notify_change_decision,
     notify_change_submitted,
     notify_clarification,
@@ -1655,6 +1656,9 @@ def _resolve_change(
     if resolved.arrangement_review_pending:
         resolved = arrangement_review.recheck(resolved)
     notify_change_decision(resolved, approved=approve, reason=note)
+    # US11.3: the store moved it, if anything did; the route only tells people.
+    if event.status is EventStatus.CONFIRMED and resolved.status is EventStatus.PLANNING:
+        notify_back_in_planning(resolved, change_requests.reopen_reason(event.pending_changes))
     return _to_out(resolved)
 
 
@@ -1664,7 +1668,8 @@ def approve_change(
     user: Annotated[User, Depends(require_permission(Permission.EVENTS_REVIEW))],
     review_revision: int | None = None,
 ) -> EventOut:
-    """Apply the proposed changes while preserving the event's lifecycle status."""
+    """Apply the proposed changes. The status stays, except that US11.3 sends a
+    Confirmed event with an important change back to Planning."""
     return _resolve_change(event_id, user, approve=True, note="", revision=review_revision)
 
 

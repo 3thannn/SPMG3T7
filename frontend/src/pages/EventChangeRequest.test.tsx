@@ -701,3 +701,48 @@ describe('US11.2 amendments and arrangement results', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Some arrangement checks have not completed')
   })
 })
+
+// --- US11.3: an important change to a Confirmed event --------------------------
+
+describe('US11.3 — an important change to a Confirmed event goes back through approval', () => {
+  function confirmedPending(changes: ProposedChange[]): EventRecord {
+    return { ...pending(changes), status: 'Confirmed' }
+  }
+
+  it('warns the Coordinator that approving sends the event back to Planning', async () => {
+    await openAs(coordinator, confirmedPending([ATTENDANCE_CHANGE]))
+
+    expect(screen.getByText(/Approving sends the event back to Planning/)).toBeInTheDocument()
+    expect(screen.queryByText(/the event keeps its current status/)).not.toBeInTheDocument()
+  })
+
+  it('tells the Organiser what an approval would mean', async () => {
+    await openAs(organiser, confirmedPending([ATTENDANCE_CHANGE]))
+
+    expect(
+      screen.getByText(/the event goes back to Planning until it passes its checks again/),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the usual wording for a routine change', async () => {
+    await openAs(coordinator, confirmedPending([TITLE_CHANGE]))
+
+    expect(screen.getByText(/the event keeps its current status/)).toBeInTheDocument()
+    expect(screen.queryByText(/back to Planning/)).not.toBeInTheDocument()
+  })
+
+  it('after approving, says the event is back in Planning and what comes next', async () => {
+    approveEventChangeMock.mockResolvedValue({ ...answered(true, ''), status: 'Planning' })
+    const user = userEvent.setup()
+    await openAs(coordinator, confirmedPending([ATTENDANCE_CHANGE]))
+
+    await user.click(screen.getByRole('button', { name: 'Approve changes' }))
+
+    expect(
+      await screen.findByText(
+        'Changes approved and applied. The event is back in Planning: check its ' +
+          'arrangements, then send it for a new safety check.',
+      ),
+    ).toBeInTheDocument()
+  })
+})

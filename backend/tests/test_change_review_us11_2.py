@@ -32,6 +32,8 @@ def question(client, auth_headers, event, revision=None):
     )
 
 
+#: Confirmed is not here: US11.3 sends it back to Planning when, as here, an
+#: important field changes (tests/test_reconfirm_us11_3.py).
 @pytest.mark.parametrize(
     "status",
     [
@@ -39,7 +41,6 @@ def question(client, auth_headers, event, revision=None):
         EventStatus.APPROVED,
         EventStatus.PLANNING,
         EventStatus.PENDING_SAFETY_CHECK,
-        EventStatus.CONFIRMED,
     ],
 )
 def test_request_question_revision_and_accept_preserve_status(

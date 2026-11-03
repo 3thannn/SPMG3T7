@@ -222,6 +222,22 @@ it('labels the event-full notice and links to the event (US20.1)', async () => {
   expect(screen.getByRole('link', { name: 'Open Gala' })).toBeInTheDocument()
 })
 
+it('labels the back-in-planning notice (US11.3)', async () => {
+  listMock.mockResolvedValue([
+    notice({
+      id: '1',
+      status: null,
+      kind: 'back-in-planning',
+      message: '"Gala" is back in Planning. Approved change to Expected attendance.',
+    }),
+  ])
+  render(<NotificationsPage session={coordinator} />)
+  expect(await screen.findByText('Back in planning')).toBeInTheDocument()
+  expect(
+    screen.getByText('"Gala" is back in Planning. Approved change to Expected attendance.'),
+  ).toBeInTheDocument()
+})
+
 /* ---------- US4.6: cancelled events ---------- */
 
 const venueStaff = buildSession({ role: 'Venue Staff', id: '4' })

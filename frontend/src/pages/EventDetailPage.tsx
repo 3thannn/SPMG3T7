@@ -238,6 +238,10 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   // One left waiting when the event was cancelled can no longer be answered.
   const changeRequested = (event.changeRequested ?? false) && !cancelled
   const pendingChanges = event.pendingChanges ?? []
+  // US11.3: approving an important change to a Confirmed event sends it back to
+  // Planning, so both sides are told before the Coordinator approves.
+  const reopensPlanning =
+    event.status === 'Confirmed' && pendingChanges.some((change) => change.important)
   // Shown once nothing is waiting, so a fresh request is not overshadowed by
   // the answer to the one before it.
   const lastReview = changeRequested ? null : (event.lastChangeReview ?? null)
@@ -442,7 +446,11 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
       setDraft(draftFrom(updated))
       setBanner({
         kind: 'ok',
-        text: 'Changes approved and applied. The event keeps its current status.',
+        text:
+          event.status === 'Confirmed' && updated.status === 'Planning'
+            ? 'Changes approved and applied. The event is back in Planning: check its ' +
+              'arrangements, then send it for a new safety check.'
+            : 'Changes approved and applied. The event keeps its current status.',
       })
     } catch (error) {
       setBanner({
@@ -984,10 +992,17 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     ? event.status === 'Under Review'
                       ? 'The Organiser has asked to change these details. Review them and ' +
                         'approve or reject the request before deciding the event.'
-                      : 'The Organiser has asked to change these details. Approve or reject ' +
-                        'the request; the event keeps its current status.'
-                    : 'Awaiting the Coordinator\'s review. Your event keeps its current ' +
-                      'details until the changes are approved.'}
+                      : reopensPlanning
+                        ? 'The Organiser has asked to change these details. Approving sends ' +
+                          'the event back to Planning: its arrangements are re-checked and it ' +
+                          'needs a new safety check before it is Confirmed again.'
+                        : 'The Organiser has asked to change these details. Approve or reject ' +
+                          'the request; the event keeps its current status.'
+                    : reopensPlanning
+                      ? 'Awaiting the Coordinator\'s review. If the changes are approved, the ' +
+                        'event goes back to Planning until it passes its checks again.'
+                      : 'Awaiting the Coordinator\'s review. Your event keeps its current ' +
+                        'details until the changes are approved.'}
                 </p>
                 <ProposedChanges changes={pendingChanges} />
                 {event.changeRequestNote && <p className="detail-clarify-lede">{event.changeRequestNote}</p>}

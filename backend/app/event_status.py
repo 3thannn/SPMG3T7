@@ -80,6 +80,11 @@ VALID_TRANSITIONS: frozenset[tuple[EventStatus, EventStatus]] = frozenset(
         (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
         (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
         (EventStatus.CONFIRMED, EventStatus.COMPLETED),
+        # US11.3: an accepted change to an important field sends a Confirmed
+        # event back to Planning, to be re-checked and signed off again. It is
+        # the Coordinator's approval of the change that moves it
+        # (`change_requests.reopens_planning`), never a request of its own.
+        (EventStatus.CONFIRMED, EventStatus.PLANNING),
         # US4.6: the owning Organiser or the assigned Coordinator cancels
         # (`app.event_cancellation`). Cancelled is final, like the other two.
         *((status, EventStatus.CANCELLED) for status in CANCELLABLE),
