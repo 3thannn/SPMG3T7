@@ -4,6 +4,10 @@ Branch: `chore/playwright-test-reduction-handover`. Commit as
 `3thannn <ethan.leong@gmail.com>`. Read this first; it supersedes
 `HANDOVER_CLOUD_SESSION.md` for the testing work.
 
+**Rule: update this file, commit and push it after every step you finish**, so
+the next session can pick up mid-task. The repo now lives at
+`github.com/3thannn/SPMG3T7`.
+
 ## The goal (from the team)
 
 We had about 4,000 tests, too many to show that each one is needed and checks the right
