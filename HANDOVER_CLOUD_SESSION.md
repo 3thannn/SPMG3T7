@@ -8,7 +8,7 @@
 
 ### Repository
 - **Location:** `/Users/ethan/Documents/GitHub/SPMG3T7`
-- **Current Branch:** `feature/US12.2-flag-unavailable-bookings`
+- **Current Branch:** `chore/playwright-test-reduction-handover`
 - **Main Branch:** `main`
 - **Remote:** GitHub repo `SPMG3T7`
 
@@ -34,8 +34,8 @@
 ```bash
 cd /Users/ethan/Documents/GitHub/SPMG3T7/backend
 git status
-# Branch: feature/US12.2-flag-unavailable-bookings
-# Status: Clean (or will be after commit above)
+# Branch: chore/playwright-test-reduction-handover
+# Status: Clean (after latest commit)
 ```
 
 ### Key Files Modified/Created
@@ -64,8 +64,8 @@ git status
 ```bash
 git clone https://github.com/YOUR_USERNAME/SPMG3T7.git
 cd SPMG3T7
-git checkout feature/US12.2-flag-unavailable-bookings
-git pull origin feature/US12.2-flag-unavailable-bookings
+git checkout chore/playwright-test-reduction-handover
+git pull origin chore/playwright-test-reduction-handover
 ```
 
 ### Step 2: Environment Setup
@@ -195,7 +195,7 @@ I've just completed generating a comprehensive test inventory CSV
 with 1,568 tests (581 unit, 953 integration, 34 e2e) and reduced
 the test suite from ~2,504 to 1,534 backend tests.
 
-The work is on branch: feature/US12.2-flag-unavailable-bookings
+The work is on branch: chore/playwright-test-reduction-handover
 
 Key files:
 - test_inventory.csv (full inventory)
