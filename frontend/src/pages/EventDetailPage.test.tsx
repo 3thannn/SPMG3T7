@@ -519,6 +519,23 @@ it('shows the Safety Officer the decision, but not the bookings or equipment car
   expect(vi.mocked(listBookings)).not.toHaveBeenCalled()
 })
 
+it('US17.2 shows an approved safety check as awaiting the Coordinator', async () => {
+  getEventMock.mockResolvedValue({
+    ...submittedEvent,
+    status: 'Pending Safety Check',
+    safetyApproved: true,
+  })
+
+  render(<EventDetailPage eventId="101" session={officer} />)
+
+  expect(
+    await screen.findByText('Safety approved, awaiting Coordinator confirmation'),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText(/You approved this safety check\. The Coordinator confirms the event/),
+  ).toBeInTheDocument()
+})
+
 it('takes the Safety Officer back to their queue', async () => {
   const user = userEvent.setup()
   getEventMock.mockResolvedValue({ ...submittedEvent, status: 'Pending Safety Check' })

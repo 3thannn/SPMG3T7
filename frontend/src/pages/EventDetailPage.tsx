@@ -657,7 +657,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
               {' · Created '}{formatRecordedAt(event.createdAt)}
             </p>
           </div>
-          <StatusBadge status={event.status} size="lg" />
+          <StatusBadge status={event.status} size="lg" safetyApproved={event.safetyApproved} />
         </header>
 
         {banner && (

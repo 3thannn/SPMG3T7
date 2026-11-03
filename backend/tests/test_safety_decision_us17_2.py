@@ -2,7 +2,12 @@
 
 Acceptance criteria, and the tests that hold each one:
 
-* Approve -> event moves to Confirmed -> `TestApprove`.
+* Approve -> the decision is recorded as approved on the current Pending Safety
+  Check stay, and the event stays Pending Safety Check ("Safety approved,
+  awaiting Coordinator confirmation" in the app) until the assigned
+  Coordinator confirms it (US4.7) -> `TestApprove`. The story's test is
+  `test_approving_leaves_it_pending_with_an_approved_decision_recorded`. The
+  Sprint 4 criterion "Approve -> Confirmed" was replaced in Sprint 5.
 * Request changes -> back to Planning; note required; affected venue/equipment
   arrangements flagged for re-review; assigned Coordinator notified (US10.2)
   -> `TestRequestChanges`, `TestReReview`.
@@ -248,10 +253,22 @@ class TestRules:
         assert refusal is SafetyCheckRefusal.CHANGE_PENDING
 
 
-# -- AC1: Approve -> Confirmed --------------------------------------------------
+# -- AC1: Approve -> stays Pending Safety Check, approved (Sprint 5) ------------
 
 
 class TestApprove:
+    def test_approving_leaves_it_pending_with_an_approved_decision_recorded(
+        self, client, officer, world, safety_decision_repository
+    ):
+        """The story's test: approved, on this stay, and still waiting for the Coordinator."""
+        response = decide(client, officer, "approve", {"checkStartedAt": ENTERED})
+
+        assert response.json()["status"] == "Pending Safety Check"
+        assert world.events.get_event(EVENT_ID).status is PSC
+        (decision,) = safety_decision_repository.list_for_event(EVENT_ID)
+        assert decision.outcome is SafetyOutcome.APPROVED
+        assert decision.check_started_at == ENTERED
+
     def test_approval_leaves_it_for_the_coordinator_to_confirm(self, client, officer, world):
         """US4.7: the Safety Officer approves; the Coordinator confirms."""
         response = decide(client, officer, "approve", {"checkStartedAt": ENTERED})
