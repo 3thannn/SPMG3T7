@@ -7,32 +7,27 @@
 
 ## Read this first: state of the branch
 
-Verified by running the suites on this branch, and on `main` for comparison.
-See `TEST_AUDIT.md` for the full audit.
+Verified by running the suites on this branch. See `TEST_AUDIT.md` for the method.
 
-| Check | `main` | This branch |
+| Check | `main` (`a6c8213`) | This branch |
 | --- | --- | --- |
-| `pytest --cov` | 2,505 passed, 10 skipped, **100%** | 1,534 passed, 10 skipped, **90.05%** |
-| `ruff check .` | clean | clean (after this commit) |
-| `python -m compileall -q app` | ok | ok |
-| Frontend `npm test` / `npm run build` | 1,400 passed | 1,400 passed; build ok |
+| `pytest --cov` | 2,513 passed, 10 skipped, 100% | **1,557 passed, 10 skipped, 100.00%** |
+| `ruff check .` and `compileall` | clean | clean |
+| Frontend `npm test -- --coverage` | 1,406 passed, 100% lines | unchanged |
+| Real-database tests (`integration/`, `*_db.py`) | untouched | untouched, identical to `main` |
 
-**Still failing CI:** the 100% line and branch coverage gate in
-`backend/pyproject.toml`. The earlier test trimming removed about 971 backend
-tests, and about 485 production statements are no longer covered.
-
-**Already fixed on this branch:** the `FakeAdmin` import that broke
-`test_change_review_us11_2.py`, four tests whose assertions had been cut off, and
-the lint errors the trimming left behind.
+The backend was cut from `main`'s full suite, keeping every test the test-case
+documents cite, the tests for the customer's Week 7 and clarified rules, the
+fewest others needed to hold 100% coverage, and one test per class or file.
+The frontend was not reduced: the eight coverage-scaffold files were each tried
+and each was needed to keep the 100% line threshold.
 
 **Still open:**
-1. Restore coverage to 100%, or get the team to agree a new gate in writing.
-   Do not lower it silently.
-2. 161 test cases in `backend/tests/test_cases_*.md` cite tests that no longer
-   exist (`test_case_register.csv` lists them).
-3. Decide how to cut further. Options are in `TEST_AUDIT.md` section 4.
-
-Do not merge until CI is green on the PR.
+1. A named team member must review that the kept tests assert the right things.
+   The CSVs have blank `Reviewed By` and `Review Result` columns for that.
+2. 11 frontend test titles cited in the docs are worded differently from the
+   tests themselves.
+3. The Postgres migration tests in `integration/` were not run here.
 
 ## What the branch changed
 

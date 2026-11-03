@@ -207,10 +207,16 @@ def _visit(node: ast.AST, owner: str, source: str, rel: str, info: dict) -> None
                 args = {a.arg for a in child.args.args}
                 body = ast.get_source_segment(source, child) or ""
                 uses_client = "client" in args or "client." in body or "TestClient(" in body
+                asserts = sum(isinstance(n, ast.Assert) for n in ast.walk(child))
+                asserts += sum(
+                    isinstance(n, ast.Call) and "raises" in ast.unparse(n.func)
+                    for n in ast.walk(child)
+                )
                 info[(rel, child.name)] = {
                     "line": child.lineno,
                     "class": owner,
                     "client": uses_client,
+                    "asserts": asserts,
                 }
 
 
@@ -240,7 +246,9 @@ def collect_backend(info: dict) -> list[dict]:
         file, rest = match.groups()
         parts = rest.split("::")
         func = re.sub(r"\[.*\]$", "", parts[-1])
-        meta = info.get((file, func), {"line": "", "class": "", "client": False})
+        meta = info.get(
+            (file, func), {"line": "", "class": "", "client": False, "asserts": ""}
+        )
         real_db = file.startswith("integration/") or file.endswith("_db.py")
         if real_db:
             layer, needs = "Integration", "TEST_POSTGRES_DSN"
@@ -262,6 +270,7 @@ def collect_backend(info: dict) -> list[dict]:
                 "file": "backend/" + file,
                 "line": meta["line"],
                 "suite": meta["class"],
+                "asserts": meta["asserts"],
                 "name": parts[-1],
                 "func": func,
                 "needs": needs,
@@ -274,30 +283,39 @@ def collect_backend(info: dict) -> list[dict]:
 
 
 def collect_vitest() -> list[dict]:
-    out = run(["npx", "vitest", "list", "--json"], FRONTEND)
+    """Every Vitest test that actually runs, from the JSON report.
+
+    `vitest list` misses generated tests, so the suite is run once instead.
+    """
+    report = ROOT / "frontend" / ".vitest-report.json"
+    run(["npx", "vitest", "run", "--reporter=json", f"--outputFile={report}"], FRONTEND)
     try:
-        listed = json.loads(out)
-    except json.JSONDecodeError:
+        data = json.loads(report.read_text())
+    except (OSError, json.JSONDecodeError):
         return []
+    finally:
+        report.unlink(missing_ok=True)
     rows = []
-    for item in listed:
-        file = Path(item["file"]).relative_to(ROOT).as_posix()
+    for result in data.get("testResults", []):
+        file = Path(result["name"]).relative_to(ROOT).as_posix()
         is_component = file.endswith(".tsx")
-        rows.append(
-            {
-                "layer": "Unit",
-                "scope": "React component or page (Testing Library, mocked API)"
-                if is_component
-                else "Frontend logic, store or API client (mocked fetch)",
-                "framework": "vitest",
-                "file": file,
-                "line": item.get("location", {}).get("line", ""),
-                "suite": "",
-                "name": item["name"],
-                "func": item["name"],
-                "needs": "",
-            }
-        )
+        for item in result.get("assertionResults", []):
+            rows.append(
+                {
+                    "layer": "Unit",
+                    "scope": "React component or page (Testing Library, mocked API)"
+                    if is_component
+                    else "Frontend logic, store or API client (mocked fetch)",
+                    "framework": "vitest",
+                    "file": file,
+                    "line": (item.get("location") or {}).get("line", ""),
+                    "suite": " > ".join(item.get("ancestorTitles", [])),
+                    "asserts": "",
+                    "name": item["title"],
+                    "func": item["title"],
+                    "needs": "",
+                }
+            )
     return rows
 
 
@@ -314,6 +332,7 @@ def walk_playwright(suites: list, trail: list[str], file: str, out: list, scope:
                     "file": f"frontend/e2e{'-isolated' if 'isolated' in scope else ''}/{file}",
                     "line": spec.get("line", ""),
                     "suite": " > ".join(here),
+                    "asserts": "",
                     "name": spec["title"],
                     "func": spec["title"],
                     "needs": "Isolated local servers (ports 8001 and 5174)"
@@ -402,10 +421,13 @@ def main() -> None:
                 "Why Kept": reasons.get((test["file"], test["func"]), "")
                 or ("cited by a test case" if case else ""),
                 "Linked To A Test Case": "Yes" if case else "No",
+                "Assertions In Test": test["asserts"],
                 "Audit Flag": audit_flag(
                     test, case, cases_in.get((test["file"], test["func"], test["suite"]), 1)
                 ),
                 "Needs": test["needs"],
+                "Reviewed By": "",
+                "Review Result": "",
             }
         )
 
@@ -434,6 +456,8 @@ def main() -> None:
                 "Automated Tests Missing": missing,
                 "Missing Backend Tests": "; ".join(py_missing),
                 "Document": case["doc"],
+                "Reviewed By": "",
+                "Review Result": "",
                 "Status": "No automated test cited"
                 if refs == 0
                 else (
