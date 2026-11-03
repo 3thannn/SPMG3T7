@@ -9,7 +9,7 @@ can be made against acceptance criteria instead of coverage.
 
 | # | Source | What it gives | Read |
 | --- | --- | --- | --- |
-| 1 | Week 1 customer briefing ("Word Document") | The original 14-step process and pain points | **Not available to me.** Only quoted through the answers below |
+| 1 | Week 1 customer briefing | Organisation, roles, ~50 candidate features, the 14-step process, notifications, non-functional requirements | All |
 | 2 | Week 2 clarification answers (21 Q&A) | Early process answers | All |
 | 3 | Week 4 Project Instructions | The 20 core features, deliverables, rubric | All |
 | 4 | Week 4 clarification answers (71 Q&A, updated 14 Sep) | Detailed rules | All |
@@ -102,25 +102,45 @@ before exporting.
 
 ## 5. Customer requirements with no story, or not met
 
-These come straight from the answers and are not covered by any Done story. They
-matter for testing because no test can prove them yet, and an instructor may ask.
+These come from the answers and are not covered by any Done story. The "Release 1?"
+column matters: the Week 1 briefing lists about 50 features, and Week 4 chose 20 of
+them as core. An answer about a feature outside those 20 does not make it core.
 
-| # | Customer said | Source | State in Jira and code |
-| --- | --- | --- | --- |
-| G1 | Rejected events can be resubmitted after changes | Wk4 (three answers) | **No story.** Rejected has no way out in `event_status.py` |
-| G2 | Venue Staff set **and update** the hold duration | Wk9 | US14.6 is **To Do**; no update or release route |
-| G3 | A hold starts **after** venue approval; the Coordinator confirms once Venue Staff approve | Wk9 | Built the other way round: Held → Requested → Confirmed (US14.3). Needs a team decision |
-| G4 | Registration timing and closing are the **Organiser's** call; a waiting list is supported; capacity is at the Organiser's discretion | Wk2, Wk4 | US20.1 gives the switch and capacity to the **Coordinator** and blocks at capacity; no waiting list |
-| G5 | Reminders for incomplete arrangements, frequency configurable | Wk4 | **No story.** Only hold-expiry notices exist |
-| G6 | One person can hold several roles | Wk4 (three answers) | **No story.** A user has exactly one `role` |
-| G7 | Room layouts are managed in the venue catalogue (add, edit, delete) | Wk9 | Layouts are a fixed list in `event_needs.py` |
-| G8 | A single event calendar across all events for Coordinators and venue approvers | Wk4 | US12.3 is per venue only |
-| G9 | Organisers in one organisation can see the organisation's calendar | Wk4 | **No story**; Organisers see only their own events |
-| G10 | Organiser can ask to withdraw a request via the Coordinator | Wk4 | Partly met: US4.6 lets the Organiser cancel directly |
-| G11 | Safety Officer checks emergency access, crowd movement and equipment placement | Wk7 #6 | The review shows attendance, capacity, layout, accessibility and equipment. Wk9 says the Safety Officer "do not need to input but to approve", which may be enough. Worth one sentence in the docs |
+| # | Customer said | Source | Release 1? | State in Jira and code |
+| --- | --- | --- | --- | --- |
+| G1 | Rejected events can be resubmitted after changes | Wk4 (three answers) | **Yes**: core "Event Review and Approval" and "Event Status Management" | **No story.** Rejected has no way out in `event_status.py` |
+| G2 | Venue Staff set **and update** the hold duration | Wk9 | **Yes**: Week 7 change #4 | US14.6 is **To Do**; no update or release route |
+| G3 | A hold starts **after** venue approval; the Coordinator confirms once Venue Staff approve | Wk9 | **Yes**: Week 7 change #4 | Built the other way round: Held → Requested → Confirmed (US14.3). Needs a team decision |
+| G4a | Registration timing and closing are the **Organiser's** call, and capacity is at the Organiser's discretion | Wk4 | **Partly**: core "Attendee Registration" says "where enabled" but not by whom | US20.1 gives the switch and capacity to the **Coordinator** |
+| G6 | One person can hold several roles | Wk4 (three answers) | **Partly**: core "User Authorisation and Authentication" | **No story.** A user has exactly one `role` |
+| G7 | Room layouts are managed in the venue catalogue (add, edit, delete) | Wk9 | **Partly**: core "Venue Catalogue" includes supported layouts; "Room Layout Management" itself is not core | Layouts are a fixed list in `event_needs.py` |
+| G11 | Safety Officer checks emergency access, crowd movement and equipment placement | Wk7 #6 | **Yes** | The review shows attendance, capacity, layout, accessibility and equipment. Wk9 says the Safety Officer "do not need to input but to approve", which may be enough. Worth one sentence in the docs |
+| G4b | A waiting list is supported | Wk2, Wk4 | **No**: "Attendee Waiting List" is a separate, non-core feature | Not built |
+| G5 | Reminders for incomplete arrangements, frequency configurable | Wk4 | **No**: "Reminder System" is non-core, though the answer was given about notifications | Not built; only hold-expiry notices exist |
+| G8 | A single event calendar across all events | Wk4 | **No**: "Event Calendar" is non-core | US12.3 is per venue only |
+| G9 | Organisers in one organisation see the organisation's events | Wk2, Wk4 | **No**: "Client Management" is non-core | Organisers see only their own events |
+| G10 | Organiser can ask to withdraw a request via the Coordinator | Wk4 | **No**: "Cancellation Management" is non-core | Partly met anyway: US4.6 lets the Organiser cancel |
 
-G1, G2 and G4 are the most visible. Each is either a story to add or a written
-team decision explaining why it was left out of Release 1.
+G1, G2 and G3 are the ones an instructor is most likely to test, because they sit
+inside core features or Week 7 changes. The "No" rows need only a written
+"not in Release 1" note in the backlog, not code or tests.
+
+### Week 1 features outside the Release 1 core
+
+User Profile Management, Client Management, Event Categories, Event Programme and
+Agenda, Multi-Session Events (handled instead as several venue bookings, per Wk9),
+Recurring or Similar Events, Comments and Discussion (Wk9 asks only that
+clarification comments are recorded, which US7.3 does), Supporting Documents,
+Tentative Venue Holding and Setup and Turnaround Time (both brought in by Week 7),
+Venue Unavailability Management (brought in by Week 7 #2), Room Layout Management,
+Event Capacity Management, Equipment Maintenance Status (partly in US19.1),
+Technical Support Requests, Technical Staff Assignment, Event Readiness Tracking
+and Outstanding Action Tracking (partly in US4.7's confirmation checks), Event
+Confirmation (US4.7), Registration Capacity and Period, Attendee Waiting List,
+Attendance Recording, Rescheduling, Cancellation Management (US4.6), Reminder
+System, Event Calendar, Search and Filtering of events, Activity and Change History
+(partly met by the audited status history), Role-Based Dashboard, and all reports
+and exports.
 
 ## 6. What this means for the tests
 
@@ -140,8 +160,7 @@ team decision explaining why it was left out of Release 1.
 
 ## 7. Open questions for the team
 
-1. Can I have the Week 1 customer briefing? Several answers refer to it.
-2. For G1-G11, which are in scope for the Week 12 release, and which become a
-   written "out of scope for Release 1" note?
-3. Should the AC-to-test mapping go into the existing `MASTER_TEST_PLAN.md`, or into
+1. For G1, G2, G3, G4a, G6, G7 and G11, which will the team build before Week 12,
+   and which get a written decision instead?
+2. Should the AC-to-test mapping go into the existing `MASTER_TEST_PLAN.md`, or into
    a separate traceability file?
