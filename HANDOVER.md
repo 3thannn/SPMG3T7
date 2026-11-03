@@ -57,14 +57,55 @@ Organiser controls registration, D7 cancel a Confirmed/flagged booking, D8
 instructions and Week 7 changes before following the customer's answer. Details
 and tests are in CODE_AUDIT.md section 4 and as `TC-D*` cases.
 
-## What is left (optional, in order)
+## Branches
 
-1. Done: `SUPABASE_FIX_ORGANISER_REGISTRATION.sql` was applied to the live Supabase on
-   2026-11-03 with the user's approval.
-2. Raise coverage if wanted: restore the Supabase store contract tests (~240
-   functions; full suite at commit `da67018`), add each as a `category:
-   Technical` case, rebuild the workbook, raise the floors.
-3. Done: `REQUIREMENTS_BASELINE.md` updated (G1, G4a met).
+- `chore/playwright-test-reduction-handover`: the working branch, 29 commits.
+- `final-amendments-after-audit`: the same files as one commit ("Final
+  amendments after audit"). Open the PR from this one into `main`. The user
+  will delete the old branch themselves (history rewrites are blocked here).
+
+## Jira (done)
+
+Stories amended to match the code: SPMG3T7-38 (US4.3, resubmit Rejected),
+-79 (US20.1, Organiser controls registration), -58 (US14.2, cancel Confirmed or
+flagged bookings), -86 (US11.3, important change during the safety check).
+SPMG3T7-91 was created by mistake; the user will delete it. Do not create new
+Jira issues.
+
+## What is left: the next task (user approved)
+
+**Goal: raise backend coverage while keeping the test count small enough for
+the team to review every test.** Add back the Supabase store contract tests,
+listed in the workbook as about 10 grouped "Technical" test cases (one per
+store), not one row per test.
+
+1. Restore the standalone store test files from before the cut:
+
+   ```bash
+   for f in test_booking_store test_equipment_store test_notification_store test_registration_store test_user_store test_venue_store test_venue_unavailability_store test_draft_store; do git show da67018:backend/tests/$f.py > backend/tests/$f.py; done
+   ```
+
+   (`test_booking_store.py` and `test_venue_store.py` still exist with their
+   tests removed, because other tests import their helpers; overwriting them
+   keeps those helpers.) Then run `ruff check tests` and `pytest --cov`. Fix
+   anything that no longer matches the code (D2/D3/D7 changed
+   `registration_store.set_settings`, `booking_store.cancel` and
+   `event_store.submit_event`).
+2. Optionally also restore the `TestSupabaseStore`-style classes inside other
+   files (they are in `da67018`), for about 240 functions in total and about 86%
+   coverage.
+3. Add one `category: Technical` test case per store to
+   `docs/testing/test_cases.txt` (layer `Unit`, test = one representative test
+   from that file, why = "the production store sends the right queries; the
+   rest of this file's tests check the same adapter").
+4. Raise `fail_under` in `backend/pyproject.toml` to the new total, re-run the
+   four JUnit runs (see `build_workbook.py`), rebuild the workbook, update the
+   Summary sheet's coverage line, commit as 3thannn and push to **both**
+   branches (rebuild the single commit on `final-amendments-after-audit`
+   the same way: `git commit-tree "HEAD^{tree}" -p a6c8213a...` then push it).
+
+Do not delete defensive error handling to raise coverage; the user agreed to
+keep it.
 
 Notes:
 - Minor, not fixed: an Organiser on an Under Review event sees "already been
