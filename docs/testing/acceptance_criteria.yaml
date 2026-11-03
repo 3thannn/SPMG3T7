@@ -1,8 +1,3 @@
-# Acceptance criteria for every Jira story in SPMG3T7, as they stand now.
-# Source: the Jira project (65 stories), curated on 2026-11-03.
-# kind: behaviour = needs a test case; superseded = replaced by a later story or the
-# customer (the note says which); evidence = proven by an artefact, not a test;
-# note = scope note or assumption; not built = story not delivered in Release 1.
 - story: US1.1
   jira: SPMG3T7-22
   title: Login
@@ -273,6 +268,12 @@
     text: Extends US4.2's existing trigger function rather than replacing it.
     kind: note
     note: Implementation note; the transitions themselves are tested.
+  - id: US4.3-AC4
+    text: 'A Rejected event is not final: the owning Organiser can revise it and resubmit it (Rejected→Submitted).
+      It goes back to the Leads'' unassigned queue, its earlier Coordinator assignment is cleared, the
+      Leads are notified, and it must still pass the US2.1 submission rules. Only the owning Organiser
+      can resubmit.'
+    kind: behaviour
 - story: US9.1a
   jira: SPMG3T7-39
   title: Create a venue record
@@ -622,7 +623,8 @@
   core_feature: Venue Booking Request
   acceptance_criteria:
   - id: US14.2-AC1
-    text: 'Coordinator can cancel a single booking: status → Cancelled, reason required, who/when logged.'
+    text: 'Coordinator can cancel a single booking that still holds or is waiting for the venue (Requested,
+      Held, Confirmed, or flagged Needs replacement): status → Cancelled, reason required, who/when logged.'
     kind: behaviour
   - id: US14.2-AC2
     text: Other venue bookings on the same event are unchanged.
@@ -632,6 +634,10 @@
     kind: behaviour
   - id: US14.2-AC4
     text: Cancelled booking frees the venue for that slot (no longer counted in US15.1).
+    kind: behaviour
+  - id: US14.2-AC5
+    text: A booking that no longer holds the venue (Rejected, Replaced, Expired, already Cancelled) cannot
+      be cancelled, and the message says why.
     kind: behaviour
 - story: US14.3
   jira: SPMG3T7-59
@@ -1061,8 +1067,9 @@
   core_feature: Attendee Registration
   acceptance_criteria:
   - id: US20.1-AC1
-    text: The assigned Coordinator can turn registration on for an event and set a registration capacity
-      (whole number ≥ 1, defaults to expected attendance).
+    text: The owning Organiser or the assigned Coordinator can turn registration on or off for an event
+      and set a registration capacity (whole number ≥ 1, defaults to expected attendance). Other Organisers
+      and Coordinators cannot.
     kind: behaviour
   - id: US20.1-AC2
     text: 'Attendees see Confirmed events with registration turned on: name, date/time, venue(s) and places
@@ -1245,6 +1252,11 @@
   - id: US11.3-AC7
     text: Confirmed → Planning is added to the allowed transitions (US4.3 pattern) and the database guard.
       It is timestamped and attributable.
+    kind: behaviour
+  - id: US11.3-AC8
+    text: 'The same applies while the event is Pending Safety Check: an important change, whether an accepted
+      change request or a direct Coordinator edit, sends it back to Planning, so a Safety approval given
+      for different details can never confirm it.'
     kind: behaviour
   story_test_hints:
   - accepted attendance change on Confirmed → Planning, with arrangements re-checked

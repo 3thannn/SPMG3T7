@@ -2624,7 +2624,7 @@
   why: The Coordinator should know the effect before acting.
 
 - id: TC-D1-01
-  ac: US11.3-AC4
+  ac: US11.3-AC4, US11.3-AC8
   category: Defect
   scenario: An important edit after safety approval sends the event back to Planning
   preconditions: An event Pending Safety Check, approved by the Safety Officer
@@ -2637,7 +2637,7 @@
     given for different details.
 
 - id: TC-D1-02
-  ac: US11.3-AC4
+  ac: US11.3-AC4, US11.3-AC8
   category: Defect
   scenario: The old approval can no longer confirm it
   preconditions: As TC-D1-01
@@ -2661,7 +2661,7 @@
   why: The fix must not overreach.
 
 - id: TC-D1-04
-  ac: US11.3-AC4
+  ac: US11.3-AC4, US11.3-AC8
   category: Defect
   scenario: Accepting an important change request does the same
   preconditions: As TC-D1-01
@@ -2673,7 +2673,7 @@
   why: D1 had two paths; both are fixed.
 
 - id: TC-D1-05
-  ac: US11.3-AC4
+  ac: US11.3-AC4, US11.3-AC8
   category: Defect
   scenario: The database edit function reopens Planning too
   preconditions: A disposable Postgres with the fix migration
@@ -5323,7 +5323,7 @@
     works.
 
 - id: TC-D2-01
-  ac: US4.3-AC1
+  ac: US4.3-AC4
   category: Defect
   scenario: The Organiser revises a Rejected event
   preconditions: An event rejected by its Coordinator
@@ -5336,7 +5336,7 @@
     changes are made"; the Week 4 instructions list Rejected without making it final.
 
 - id: TC-D2-02
-  ac: US4.3-AC1
+  ac: US4.3-AC4
   category: Defect
   scenario: Resubmitting returns it to the Leads' queue
   preconditions: As TC-D2-01
@@ -5361,7 +5361,7 @@
   why: The same submission rules apply the second time.
 
 - id: TC-D2-04
-  ac: US4.3-AC1
+  ac: US4.3-AC4
   category: Defect
   scenario: Only the owner resubmits
   preconditions: As TC-D2-01
@@ -5373,7 +5373,7 @@
   why: D2's guard.
 
 - id: TC-D2-05
-  ac: US4.3-AC1
+  ac: US4.3-AC4
   category: Defect
   scenario: The owner edits and resubmits on the event page
   preconditions: A Rejected event open to its owner
@@ -5447,7 +5447,7 @@
     of cancelling one venue arrangement; Week 4: the Coordinator records whether to cancel.
 
 - id: TC-D7-02
-  ac: US14.2-AC1
+  ac: US14.2-AC5
   category: Defect
   scenario: A closed booking says it has nothing to cancel
   preconditions: A Rejected, then a Replaced booking
@@ -5472,7 +5472,7 @@
   why: D7 on screen; the closed statuses are the next case.
 
 - id: TC-D7-04
-  ac: US14.2-AC1
+  ac: US14.2-AC5
   category: Defect
   scenario: No Cancel on a Rejected, Replaced or Cancelled booking
   preconditions: One booking in each
@@ -5509,7 +5509,7 @@
   why: D3 must not reach other Organisers' events.
 
 - id: TC-D2-06
-  ac: US4.3-AC1
+  ac: US4.3-AC4
   category: Defect
   scenario: A Coordinator gets nothing to resubmit
   preconditions: A Rejected event opened by a Coordinator
