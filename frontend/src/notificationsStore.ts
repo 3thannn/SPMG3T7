@@ -34,6 +34,8 @@ export type CoordinatorNoticeKind =
   | 'back-in-planning'
   /** US4.7: the Safety Officer approved, so the Coordinator can confirm. */
   | 'safety-approved'
+  /** US10.4: an Attendee's event has a new date, time or venue. */
+  | 'event-updated'
 
 export type NotificationKind = 'event-status' | 'equipment-request' | CoordinatorNoticeKind
 
@@ -59,6 +61,7 @@ export const KIND_LABELS: Record<Exclude<NotificationKind, 'event-status'>, stri
   'event-full': 'Event full',
   'back-in-planning': 'Back in planning',
   'safety-approved': 'Safety approved',
+  'event-updated': 'Event updated',
 }
 
 export type NotificationRecord = {

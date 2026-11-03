@@ -29,16 +29,21 @@ US10.3 tells every Coordinator Lead when a submitted event lands in the
 unassigned queue, and the Organiser when the Coordinator confirms it (US4.7).
 US12.4 reuses US11.3's notice when a replacement venue sends a Confirmed event
 back to Planning; the database tells the Organiser when the venue fell through.
+
+US10.4 tells an event's registered Attendees when its date, time or venue
+changes. Those notices carry only what an Attendee may see (US20.1): the
+event's name and the new date, time or venue, never a reason or a note.
 """
 
 import logging
+from datetime import datetime
 from enum import StrEnum
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app import notification_store, users
+from app import notification_store, registration_store, users
 from app.auth import require_permission
 from app.equipment_store import EquipmentRequest
 from app.event_status import EventStatus
@@ -475,6 +480,61 @@ def notify_back_in_planning(event: Event, reason: str, *, actor_id: int | None =
     for person in dict.fromkeys((event.coordinator_id, event.organiser_id)):
         if person != actor_id:
             _notify_coordinator(person, event, CoordinatorNotice.BACK_IN_PLANNING, message)
+
+
+#: US10.4: the kind of an Attendee's notice that their event's date, time or
+#: venue changed.
+EVENT_UPDATED = "event-updated"
+
+
+def _day(moment: datetime) -> str:
+    return f"{moment.day} {moment:%b %Y}"
+
+
+def _when(event: Event) -> str:
+    """ "2 Nov 2099, 10:00 to 17:00", or with both days when it runs past midnight."""
+    try:
+        start = datetime.fromisoformat(event.starts_at)
+        end = datetime.fromisoformat(event.ends_at)
+    except ValueError:
+        return f"{event.starts_at} to {event.ends_at}"
+    if start.date() == end.date():
+        return f"{_day(start)}, {start:%H:%M} to {end:%H:%M}"
+    return f"{_day(start)}, {start:%H:%M} to {_day(end)}, {end:%H:%M}"
+
+
+def _notify_attendees(event: Event, message: str) -> None:
+    """One notice per Attendee whose registration is active. Withdrawn ones are not told."""
+    try:
+        registrations = registration_store.repository().list_for_event(event.id)
+    except Exception:
+        logger.exception("Could not read the US10.4 Attendees of event %s", event.id)
+        return
+    attendees = [
+        item.attendee_id
+        for item in registrations
+        if item.status is registration_store.RegistrationStatus.REGISTERED
+    ]
+    for attendee in dict.fromkeys(attendees):
+        try:
+            notification_store.repository().create_notice(
+                user_id=attendee, event_id=event.id, kind=EVENT_UPDATED, message=message
+            )
+        except Exception:
+            logger.exception(
+                "Could not write the US10.4 notice for event %s to user %s", event.id, attendee
+            )
+
+
+def notify_attendees_of_new_time(event: Event) -> None:
+    """US10.4: an accepted change moved the event. `event` is as it now stands."""
+    _notify_attendees(event, f'"{_event_title(event)}" has a new date and time: {_when(event)}.')
+
+
+def notify_attendees_of_new_venue(event: Event, venue_name: str, location: str = "") -> None:
+    """US10.4: Venue Staff confirmed a replacement venue (US14.5/US12.4)."""
+    where = f"{venue_name}, {location}" if location else venue_name
+    _notify_attendees(event, f'"{_event_title(event)}" has a new venue: {where}.')
 
 
 class NotificationOut(BaseModel):

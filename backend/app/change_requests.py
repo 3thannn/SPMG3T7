@@ -284,6 +284,19 @@ def reopen_reason(changes: Iterable[FieldChange]) -> str:
     )
 
 
+#: US10.4: the fields that say when the event happens.
+WHEN_FIELDS: frozenset[str] = frozenset({"proposed_date", "end_date"})
+
+
+def moves_when(changes: Iterable[FieldChange]) -> bool:
+    """US10.4: whether approving these changes moves the event's date or time.
+
+    Its registered Attendees are told when it does; a routine change, such as
+    the title, tells nobody.
+    """
+    return any(change.field in WHEN_FIELDS for change in changes)
+
+
 #: How the history labels the entry a change request wrote.
 KIND_CHANGE_REQUEST = "change-request"
 
