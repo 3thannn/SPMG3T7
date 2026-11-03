@@ -352,6 +352,10 @@ def _require_transition(from_status: EventStatus, to_status: EventStatus) -> Non
     )
 
 
+#: D4: true whether the event is missing or not the caller's, and says neither.
+EVENT_NOT_FOUND_MESSAGE = "That event does not exist, or you do not have access to it."
+
+
 def _not_found() -> HTTPException:
     """The same answer whether the event is missing or simply not the caller's.
 
@@ -360,7 +364,7 @@ def _not_found() -> HTTPException:
     """
     return HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail={"code": EventError.NOT_FOUND, "message": "That event no longer exists."},
+        detail={"code": EventError.NOT_FOUND, "message": EVENT_NOT_FOUND_MESSAGE},
     )
 
 
