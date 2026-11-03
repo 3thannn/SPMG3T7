@@ -22,7 +22,8 @@ two hold notices are written by the database's scheduled sweep instead, in the
 words `notify_hold_expiring` and `notify_hold_expired` set out.
 
 US20.1 adds one more of the same kind of notice, for the Organiser as well as
-the Coordinator: the event's registrations have reached capacity.
+the Coordinator: the event's registrations have reached capacity. US11.3 adds
+another for both: an accepted change sent a Confirmed event back to Planning.
 """
 
 import logging
@@ -247,6 +248,9 @@ class CoordinatorNotice(StrEnum):
     BOOKING_REJECTED = "booking-rejected"
     #: US20.1: registrations reached capacity. The Organiser is told too.
     EVENT_FULL = "event-full"
+    #: US11.3: an accepted change sent a Confirmed event back to Planning. The
+    #: Organiser is told too.
+    BACK_IN_PLANNING = "back-in-planning"
 
 
 def _event_title(event: Event) -> str:
@@ -406,6 +410,17 @@ def notify_event_full(event: Event, capacity: int) -> None:
     message = f'"{_event_title(event)}" is full: {places} taken.'
     for person in dict.fromkeys((event.coordinator_id, event.organiser_id)):
         _notify_coordinator(person, event, CoordinatorNotice.EVENT_FULL, message)
+
+
+def notify_back_in_planning(event: Event, reason: str) -> None:
+    """US11.3: an accepted change sent the Confirmed event back to Planning, and why.
+
+    Both hear: the Organiser, whose event is no longer Confirmed, and the
+    Coordinator, who now has its arrangements and safety check to see to again.
+    """
+    message = f'"{_event_title(event)}" is back in Planning. {reason}'
+    for person in dict.fromkeys((event.coordinator_id, event.organiser_id)):
+        _notify_coordinator(person, event, CoordinatorNotice.BACK_IN_PLANNING, message)
 
 
 class NotificationOut(BaseModel):

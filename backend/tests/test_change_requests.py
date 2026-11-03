@@ -41,6 +41,7 @@ from app.change_requests import (
     is_important,
     label_for,
     ordered,
+    reopen_reason,
 )
 from app.event_status import EventStatus
 from app.event_store import (
@@ -1500,8 +1501,7 @@ class TestSupabaseStore:
                 42, actor_id=ORGANISER_ID, from_status=EventStatus.SUBMITTED, changes=(), note=""
             )
 
-    @pytest.mark.parametrize(("approve_it", "note"), [(True, ""), (False, "No.")])
-    def test_an_answer_is_one_rpc(self, monkeypatch, approve_it, note):
+    def test_a_rejection_is_one_rpc(self, monkeypatch):
         admin = FakeAdmin(True)
         store = SupabaseEvents()
         returned = _event(status=EventStatus.UNDER_REVIEW)
@@ -1509,7 +1509,7 @@ class TestSupabaseStore:
         monkeypatch.setattr(store, "get_event", lambda _event_id: returned)
 
         result = store.resolve_change_request(
-            42, actor_id=COORDINATOR_ID, approve=approve_it, note=note
+            42, actor_id=COORDINATOR_ID, approve=False, note="No."
         )
 
         assert result is returned
@@ -1518,10 +1518,36 @@ class TestSupabaseStore:
                 "us11_review",
                 {
                     "p_event_id": 42,
-                    "p_action": "approve" if approve_it else "reject",
+                    "p_action": "reject",
                     "p_revision": 0,
                     "p_actor_id": COORDINATOR_ID,
-                    "p_payload": {"note": note},
+                    "p_payload": {"note": "No."},
+                },
+            )
+        ]
+
+    def test_an_approval_is_one_rpc_carrying_the_us11_3_reason(self, monkeypatch):
+        """US11.3: the database decides whether the event goes back to Planning;
+        the API sends the words its history entry would carry."""
+        admin = FakeAdmin(True)
+        store = SupabaseEvents()
+        attendance = FieldChange("expected_attendance", "50", "75", important=True)
+        returned = _event(status=EventStatus.CONFIRMED, pending_changes=(attendance,))
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+        monkeypatch.setattr(store, "get_event", lambda _event_id: returned)
+
+        result = store.resolve_change_request(42, actor_id=COORDINATOR_ID, approve=True, note="")
+
+        assert result is returned
+        assert admin.calls == [
+            (
+                "us11_approve_change",
+                {
+                    "p_event_id": 42,
+                    "p_revision": 0,
+                    "p_actor_id": COORDINATOR_ID,
+                    "p_payload": {"note": ""},
+                    "p_reason": reopen_reason((attendance,)),
                 },
             )
         ]

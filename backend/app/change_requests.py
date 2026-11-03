@@ -250,10 +250,38 @@ NOTHING_PENDING_MESSAGE = "There is no change request awaiting review on this ev
 def has_pending_request(*, status: EventStatus, change_requested: bool) -> bool:
     """Whether a Coordinator has a change request to approve or reject.
 
-    Proposals and their decisions preserve status. Under Review may contain a
-    clarification response even though it is not an ordinary proposal status.
+    Proposals and their decisions preserve status, except as `reopens_planning`
+    says. Under Review may contain a clarification response even though it is
+    not an ordinary proposal status.
     """
     return change_requested and status in (*REQUESTABLE, EventStatus.UNDER_REVIEW)
+
+
+def reopens_planning(*, status: EventStatus, changes: Iterable[FieldChange]) -> bool:
+    """US11.3: whether approving these changes sends the event back to Planning.
+
+    Only a Confirmed event, and only when a change is important by US5.2's rule.
+    Before Confirmed, the checks a change could upset are still to come. A
+    routine change, such as the title, does not affect whether the event is
+    safe or workable. Either way the status stays.
+    """
+    return status is EventStatus.CONFIRMED and any(change.important for change in changes)
+
+
+def reopen_reason(changes: Iterable[FieldChange]) -> str:
+    """US11.3: why the event went back to Planning, for its history and the notices.
+
+    Empty when none of the changes is important, as then it does not go back.
+    """
+    labels = [label_for(change.field) for change in ordered(changes) if change.important]
+    if not labels:
+        return ""
+    listed = labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} and {labels[-1]}"
+    noun = "change" if len(labels) == 1 else "changes"
+    return (
+        f"Approved {noun} to {listed}. The arrangements are re-checked, and the event "
+        "needs a new safety check before it is Confirmed again."
+    )
 
 
 #: How the history labels the entry a change request wrote.
@@ -278,6 +306,7 @@ class ChangeReview:
 
     Kept on the `event_change_requests` rows it answered, not as a status
     change, because answering a request does not move the event's status.
+    The one exception, US11.3's return to Planning, writes its own entry.
     """
 
     outcome: str

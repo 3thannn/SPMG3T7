@@ -158,8 +158,9 @@ function SendForSafetyCheck({ event, session, disabled, onUpdated, onError }: Pr
   }
 
   const ready = readiness.state === 'loaded' && readiness.readiness.ready
-  // An approval moves the event to Confirmed, so in Planning the latest
-  // decision is a request for changes or a rejection, if there is one at all.
+  // In Planning, the latest decision is shown only when it sent the event back.
+  // It can also be the approval of an event US11.3 has sent back to Planning,
+  // which no longer counts, so it is not shown.
   const sentBack = latest !== null && latest.outcome !== 'approved' ? latest : null
   return (
     <div className="detail-decision">

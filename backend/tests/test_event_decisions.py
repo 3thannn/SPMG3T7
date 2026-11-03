@@ -86,6 +86,8 @@ class TestTransitionRules:
             (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
             (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
             (EventStatus.CONFIRMED, EventStatus.COMPLETED),
+            # US11.3: an accepted important change sends it back to Planning.
+            (EventStatus.CONFIRMED, EventStatus.PLANNING),
         ],
     )
     def test_allowed_transitions(self, before, after):
@@ -103,6 +105,8 @@ class TestTransitionRules:
             (EventStatus.PENDING_SAFETY_CHECK, EventStatus.CONFIRMED),
             (EventStatus.PENDING_SAFETY_CHECK, EventStatus.PLANNING),
             (EventStatus.CONFIRMED, EventStatus.COMPLETED),
+            # US11.3: an accepted important change sends it back to Planning.
+            (EventStatus.CONFIRMED, EventStatus.PLANNING),
             # US4.6: anything not already Completed, Cancelled or Rejected.
             *(
                 (status, EventStatus.CANCELLED)

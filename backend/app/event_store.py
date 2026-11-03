@@ -32,6 +32,8 @@ from app.change_requests import (
     change_type,
     diff,
     ordered,
+    reopen_reason,
+    reopens_planning,
 )
 from app.event_needs import NEED_FIELDS, NO_NEEDS, EventNeeds
 from app.event_status import CLOSED, EventStatus, check_completion
@@ -642,20 +644,23 @@ class SupabaseEvents:
         if event is None:
             raise StaleEventStatus
         revision = event.review_state.get("revision", 0)
-        result = (
-            supabase_client.admin()
-            .rpc(
-                "us11_review",
-                {
-                    "p_event_id": event_id,
-                    "p_actor_id": actor_id,
-                    "p_action": action,
-                    "p_revision": revision if expected_revision is None else expected_revision,
-                    "p_payload": payload,
-                },
-            )
-            .execute()
-        )
+        params = {
+            "p_event_id": event_id,
+            "p_actor_id": actor_id,
+            "p_action": action,
+            "p_revision": revision if expected_revision is None else expected_revision,
+            "p_payload": payload,
+        }
+        rpc = "us11_review"
+        if action == "approve":
+            # US11.3: one call applies the changes and, on a Confirmed event with
+            # an important one, moves it back to Planning, so neither lands
+            # without the other. The database decides whether it moves; the
+            # reason is only the words its history entry carries.
+            rpc = "us11_approve_change"
+            del params["p_action"]
+            params["p_reason"] = reopen_reason(event.pending_changes)
+        result = supabase_client.admin().rpc(rpc, params).execute()
         if result.data is not True:
             raise StaleEventStatus
         updated = self.get_event(event_id)
@@ -1313,10 +1318,29 @@ class InMemoryEvents:
         if approve:
             self.change_log.extend((event_id, change) for change in existing.pending_changes)
         applied = applied_values(existing.pending_changes) if approve else {}
+        # US11.3: what us11_approve_change does in the real store.
+        reopened = approve and reopens_planning(
+            status=existing.status, changes=existing.pending_changes
+        )
+        history = existing.history
+        if reopened:
+            history = (
+                *history,
+                StatusChange(
+                    from_status=EventStatus.CONFIRMED,
+                    to_status=EventStatus.PLANNING,
+                    at=at,
+                    by_id=actor_id,
+                    by_name=self.names.get(actor_id, ""),
+                    notes=reopen_reason(existing.pending_changes),
+                ),
+            )
         return self._replace(
             replace(
                 existing,
                 **applied,
+                status=EventStatus.PLANNING if reopened else existing.status,
+                history=history,
                 review_state={
                     **self._review_state(existing, actor_id, outcome, message=note),
                     "awaitingReply": False,
