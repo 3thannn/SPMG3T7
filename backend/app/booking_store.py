@@ -244,6 +244,22 @@ class Booking:
         return self.status is BookingStatus.NEEDS_REPLACEMENT and self.ends_after(now)
 
 
+def is_replacement(booking: Booking, event_bookings: list[Booking]) -> bool:
+    """US10.4: whether `booking` was requested in place of one that fell through.
+
+    Nothing links the two rows. request_replacement_venue (US14.5) copies the
+    old booking's times onto the new one and marks the old one Replaced, so a
+    Replaced booking of the same event at the same times is the one it replaced.
+    """
+    return any(
+        other.id != booking.id
+        and other.event_id == booking.event_id
+        and other.status is BookingStatus.REPLACED
+        and (other.starts_at, other.ends_at) == (booking.starts_at, booking.ends_at)
+        for other in event_bookings
+    )
+
+
 class StaleBookingStatus(RuntimeError):
     """The booking changed after the route checked it, e.g. cancelled twice at once."""
 

@@ -70,6 +70,7 @@ from app.event_status import (
 from app.event_store import Event, StaleEventStatus
 from app.notifications import (
     notify_assigned,
+    notify_attendees_of_new_time,
     notify_back_in_planning,
     notify_change_decision,
     notify_change_submitted,
@@ -1748,6 +1749,9 @@ def _resolve_change(
     # US11.3: the store moved it, if anything did; the route only tells people.
     if event.status is EventStatus.CONFIRMED and resolved.status is EventStatus.PLANNING:
         notify_back_in_planning(resolved, change_requests.reopen_reason(event.pending_changes))
+    # US10.4: registered Attendees hear the new date and time, and nothing else.
+    if approve and change_requests.moves_when(event.pending_changes):
+        notify_attendees_of_new_time(resolved)
     return _to_out(resolved)
 
 

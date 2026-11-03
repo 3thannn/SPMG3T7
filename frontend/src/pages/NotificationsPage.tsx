@@ -32,8 +32,11 @@ const SUBTITLES: Partial<Record<Session['role'], string>> = {
   'Event Coordinator': 'Assignments and booking or safety problems on your events, unread first.',
   // US4.6: Venue Staff are told when a cancelled event gives its bookings back.
   'Venue Staff': 'Bookings released by cancelled events, unread first.',
-  // US4.6: Attendees are told when an event they registered for is cancelled.
-  Attendee: 'Events you registered for that have been cancelled, unread first.',
+  // US4.6: Attendees are told when an event they registered for is cancelled,
+  // and US10.4 when its date, time or venue changes.
+  Attendee: 'Changes to events you registered for, and cancellations, unread first.',
+  // US10.3: Leads are told when a submitted event lands in the unassigned queue.
+  'Event Coordinator Lead': 'New events waiting for assignment, unread first.',
 }
 
 const EMPTY_TEXT: Partial<Record<Session['role'], string>> = {
@@ -42,7 +45,9 @@ const EMPTY_TEXT: Partial<Record<Session['role'], string>> = {
   'Event Coordinator':
     'When an event is assigned to you, or one of yours has a hold, booking or safety problem, it shows up here.',
   'Venue Staff': 'When a cancelled event gives back its venue bookings, it shows up here.',
-  Attendee: 'If an event you registered for is cancelled, it shows up here.',
+  Attendee:
+    'If an event you registered for changes its date, time or venue, or is cancelled, it shows up here.',
+  'Event Coordinator Lead': 'When an event is submitted for assignment, it shows up here.',
 }
 
 /**

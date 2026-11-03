@@ -17,6 +17,8 @@ where they stand:
 * Only that booking's row is written. The event and its other bookings are
   left exactly as they were.
 * The assigned Coordinator is notified of the decision and reason (US10.2).
+* US10.4: approving a replacement venue (US14.5/US12.4) tells the event's
+  registered Attendees where it now is.
 * Venue Staff only, and each decision records who and when.
 """
 
@@ -39,7 +41,7 @@ from app.auth import require_permission
 from app.availability import SlotCheck
 from app.booking_store import Booking, BookingStatus, SlotTaken, StaleBookingStatus
 from app.events import BookingOut, EventError, _booking_out, _invalid_booking
-from app.notifications import notify_booking_decision
+from app.notifications import notify_attendees_of_new_venue, notify_booking_decision
 from app.permissions import Permission
 from app.users import User
 from app.venue_store import Venue
@@ -287,6 +289,18 @@ def _notify(booking: Booking, **decision) -> None:
         notify_booking_decision(event, booking.venue_name, **decision)
 
 
+def _notify_attendees_if_replaced(booking: Booking) -> None:
+    """US10.4: a confirmed replacement venue is news for the event's Attendees."""
+    siblings = booking_store.repository().list_for_event(booking.event_id)
+    event = event_store.repository().get_event(booking.event_id)
+    if event is None or not booking_store.is_replacement(booking, siblings):
+        return
+    venue = venue_store.repository().get_venue(booking.venue_id)
+    notify_attendees_of_new_venue(
+        event, booking.venue_name or "a new venue", venue.location if venue else ""
+    )
+
+
 @router.get("", response_model=list[BookingRequestOut])
 def list_booking_requests(user: DecidesBookings) -> list[BookingRequestOut]:
     """Every Requested booking, oldest request first, with what a decision needs."""
@@ -309,6 +323,7 @@ def approve_booking_request(booking_id: str, user: DecidesBookings) -> BookingRe
     except StaleBookingStatus:
         raise _not_requested(_current_status(booking.id)) from None
     _notify(confirmed, confirmed=True)
+    _notify_attendees_if_replaced(confirmed)
     return context.request_out(confirmed)
 
 

@@ -312,7 +312,7 @@ it('links an Attendee to My Registrations, since they cannot open the event', as
   )
   expect(screen.queryByRole('link', { name: 'Open Open House' })).not.toBeInTheDocument()
   expect(
-    screen.getByText('Events you registered for that have been cancelled, unread first.'),
+    screen.getByText('Changes to events you registered for, and cancellations, unread first.'),
   ).toBeInTheDocument()
 })
 
@@ -321,6 +321,32 @@ it('tells an Attendee with no notices what will show up here', async () => {
   render(<NotificationsPage session={attendee} />)
 
   expect(
-    await screen.findByText('If an event you registered for is cancelled, it shows up here.'),
+    await screen.findByText(
+      'If an event you registered for changes its date, time or venue, or is cancelled, it shows up here.',
+    ),
+  ).toBeInTheDocument()
+})
+
+it('US10.4 labels an Attendee notice of a new date, time or venue', async () => {
+  listMock.mockResolvedValue([
+    notice({
+      id: '1',
+      status: null,
+      kind: 'event-updated',
+      message: '"Open House" has a new venue: Bertha Room, Library, Level 3.',
+    }),
+  ])
+  render(<NotificationsPage session={attendee} />)
+
+  expect(await screen.findByText('Event updated')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Open My Registrations' })).toBeInTheDocument()
+})
+
+it('US10.3 tells a Lead what their notices are about', async () => {
+  listMock.mockResolvedValue([])
+  render(<NotificationsPage session={buildSession({ role: 'Event Coordinator Lead' })} />)
+
+  expect(
+    await screen.findByText('When an event is submitted for assignment, it shows up here.'),
   ).toBeInTheDocument()
 })
