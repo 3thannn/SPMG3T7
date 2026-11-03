@@ -78,6 +78,7 @@ from app.notifications import (
     notify_safety_changes,
     notify_safety_rejected,
     notify_status_change,
+    notify_submitted,
 )
 from app.permissions import Permission, Role, has_permission
 from app.safety_decision_store import ReviewFlag, SafetyDecision, StaleFlag
@@ -823,6 +824,8 @@ def submit_event(
     submitted = event_store.repository().submit_event(
         event.id, actor_id=user.id, from_status=event.status
     )
+    # US10.3: it is in the unassigned queue now, so every Lead hears.
+    notify_submitted(submitted)
     return _to_out(submitted)
 
 

@@ -52,6 +52,8 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'users:read',
     'venues:read',
     'equipment:read',
+    // US10.3: told when a submitted event lands in the unassigned queue.
+    'notifications:read',
   ],
   // US9.1a-c: Venue Staff maintain the catalogue and hold nothing else.
   'Venue Staff': [

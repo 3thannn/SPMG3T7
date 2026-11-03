@@ -158,8 +158,11 @@ class TestNotificationIsCreated:
     ):
         under_review_event(client, auth_headers)
         # US10.2's assignment notice goes to the Coordinator; status notices don't.
+        # US10.3's Submitted notice goes to the Leads, and is tested there.
         status_notices = [
-            item for item in notification_repository.notifications if item.kind == "event-status"
+            item
+            for item in notification_repository.notifications
+            if item.kind == "event-status" and item.status is not EventStatus.SUBMITTED
         ]
         assert status_notices
         assert all(item.user_id == ORGANISER_ID for item in status_notices)
@@ -236,8 +239,8 @@ class TestAccess:
         assert response.status_code == 404
 
     # US4.6 gave Venue Staff notifications: they are told when a cancelled
-    # event's bookings are released.
-    @pytest.mark.parametrize("role", ["Event Coordinator Lead", "Safety Officer"])
+    # event's bookings are released. US10.3 gave the Lead them, for submissions.
+    @pytest.mark.parametrize("role", ["Safety Officer"])
     def test_tc_n15_other_roles_are_refused(self, client, auth_headers, role):
         response = client.get("/notifications", headers=auth_headers(role))
         assert response.status_code == 403

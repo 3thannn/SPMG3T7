@@ -60,15 +60,32 @@ it('TC-F15 re-reads the count when read state changes', async () => {
   await waitFor(() => expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument())
 })
 
-// US4.6 gave Venue Staff notifications, for bookings a cancellation releases.
-it.each(['Event Coordinator Lead', 'Safety Officer'] as const)(
-  'TC-F16 offers no Notifications link to %s',
-  (role) => {
-    render(<TopNav route="/events" session={buildSession({ role })} onSignOut={() => {}} />)
-    expect(screen.queryByRole('link', { name: /Notifications/ })).not.toBeInTheDocument()
-    expect(listMock).not.toHaveBeenCalled()
-  },
-)
+// US4.6 gave Venue Staff notifications, for bookings a cancellation releases,
+// and US10.3 the Lead, for new submissions.
+it('TC-F16 offers no Notifications link to a Safety Officer', () => {
+  render(
+    <TopNav
+      route="/events"
+      session={buildSession({ role: 'Safety Officer' })}
+      onSignOut={() => {}}
+    />,
+  )
+  expect(screen.queryByRole('link', { name: /Notifications/ })).not.toBeInTheDocument()
+  expect(listMock).not.toHaveBeenCalled()
+})
+
+it('US10.3 gives a Lead the Notifications link and unread count', async () => {
+  listMock.mockResolvedValue([{ ...notice('1', false), status: 'Submitted' }])
+  render(
+    <TopNav
+      route="/unassigned-queue"
+      session={buildSession({ role: 'Event Coordinator Lead' })}
+      onSignOut={() => {}}
+    />,
+  )
+  expect(await screen.findByLabelText('1 unread')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /Notifications/ })).toBeInTheDocument()
+})
 
 it('TC-CF06 gives a Coordinator the Notifications link and unread count', async () => {
   listMock.mockResolvedValue([{ ...notice('1', false), status: null, kind: 'assigned' }])

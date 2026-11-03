@@ -24,6 +24,9 @@ words `notify_hold_expiring` and `notify_hold_expired` set out.
 US20.1 adds one more of the same kind of notice, for the Organiser as well as
 the Coordinator: the event's registrations have reached capacity. US11.3 adds
 another for both: an accepted change sent a Confirmed event back to Planning.
+
+US10.3 tells every Coordinator Lead when a submitted event lands in the
+unassigned queue, and the Organiser when the Coordinator confirms it (US4.7).
 """
 
 import logging
@@ -83,6 +86,36 @@ def notify_status_change(event: Event, to_status: EventStatus, notes: str = "") 
         logger.exception(
             "Could not write the US10.1 notification for event %s -> %s", event.id, to_status
         )
+
+
+def notify_submitted(event: Event) -> None:
+    """US10.3: every Coordinator Lead hears a new event is waiting for assignment.
+
+    A status notice (Submitted), as US4.6's are, one per Lead; the customer
+    supports more than one. Best effort: the submission already happened.
+    """
+    try:
+        recipients = users.list_users()
+    except Exception:
+        logger.exception("Could not look up the US10.3 Leads for event %s", event.id)
+        return
+    message = f"New event waiting for assignment: {event.title.strip() or 'an untitled event'}"
+    for recipient in recipients:
+        if recipient.role is not Role.COORDINATOR_LEAD:
+            continue
+        try:
+            notification_store.repository().create(
+                user_id=recipient.id,
+                event_id=event.id,
+                status=EventStatus.SUBMITTED,
+                message=message,
+            )
+        except Exception:
+            logger.exception(
+                "Could not write the US10.3 submission notice for event %s to user %s",
+                event.id,
+                recipient.id,
+            )
 
 
 def notify_change_decision(event: Event, *, approved: bool, reason: str = "") -> None:
