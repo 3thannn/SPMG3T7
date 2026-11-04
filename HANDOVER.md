@@ -42,6 +42,17 @@ Test reference formats in test_cases.txt: `backend/tests/test_x.py::Class::test`
 
 ## Current numbers (all green locally)
 
+### Progress checkpoint — 4 November 2026
+
+Step 1 complete: restored all eight standalone store files from `da67018`.
+`ruff check tests` passes; `pytest --cov` reports **699 passed, 2 skipped,
+82.64% combined line/branch coverage** on local Python 3.13. No restored test
+needed D2/D3/D7 changes and no application code was changed. Installed the
+declared requirements-dev dependencies in the existing local virtualenv.
+Next: restore suitable embedded Supabase contract classes, then add grouped
+Technical cases and regenerate all JUnit results/workbook. The numbers below
+are the previous baseline until the final refresh. Live Supabase is off limits.
+
 - Backend: 591 pass (`pytest --cov`, floor 77% in `backend/pyproject.toml`).
 - DB suites: 20 tests on Postgres (`integration/`).
 - Frontend: 66 Vitest tests, floors in `frontend/vite.config.ts` (lines 52 / statements 51 / functions 49 / branches 48); lint, `tsc -b` and build clean.
