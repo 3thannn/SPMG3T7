@@ -1,5 +1,7 @@
 # MASTER TEST PLAN: ConnectSphere (SPMG3T7)
 
+> **Historical, kept as process evidence.** The manual cross-testing plan the team ran during the sprints, for the 58 stories of that time. The test cases that are maintained now, one or more per acceptance criterion, are in `docs/testing/test_cases.txt`. Current sources: [`REQUIREMENTS_BASELINE.md`](REQUIREMENTS_BASELINE.md) (what the system must do, and the decisions on each gap), [`docs/testing/acceptance_criteria.yaml`](docs/testing/acceptance_criteria.yaml) and [`docs/testing/test_cases.txt`](docs/testing/test_cases.txt) (the ACs and their test cases; the workbook is generated from them), [`docs/GAP_CLOSURE_CHANGE_LOG.md`](docs/GAP_CLOSURE_CHANGE_LOG.md) (what changed on 4 Nov 2026 and why), and [`docs/design/C4.md`](docs/design/C4.md) (system design).
+
 Cross-testing plan for all 58 Jira user stories (59 tests, because US2.1 is tested in Sprint 1 and again after it was reopened in Sprint 3). Tests are grouped **by tester**, in the order to run them. Every test shows its sprint, user story, who implemented it, who tests it, and the Jira acceptance criteria, with the steps that check each one.
 
 **Rule:** nobody tests a story they implemented (or were the Sprint 1 buddy on).
