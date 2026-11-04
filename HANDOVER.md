@@ -26,7 +26,7 @@ Do not invent TDD dates or claim tests were written first unless they were
 | File | What it is |
 |---|---|
 | `docs/testing/acceptance_criteria.yaml` | Every Jira story and AC, numbered `US4.7-AC2`; `kind` = behaviour / superseded / note / evidence / not built |
-| `docs/testing/test_cases.txt` | **The source of truth: 488 test cases.** Format: `- id:` then `  key: value`, continuation lines indented 4 spaces. Fields: id, ac (comma list), category, scenario, preconditions, steps, data, expected, layer, test, why |
+| `docs/testing/test_cases.txt` | **The source of truth: 498 test cases.** Format: `- id:` then `  key: value`, continuation lines indented 4 spaces. Fields: id, ac (comma list), category, scenario, preconditions, steps, data, expected, layer, test, why |
 | `docs/testing/tools/tcparse.py` | Parser and validator: `python docs/testing/tools/tcparse.py docs/testing/test_cases.txt` |
 | `docs/testing/tools/tcrefs.py` | Checks that every `test:` reference exists (backend AST, frontend titles incl. `it.each`, `evidence: path`) |
 | `docs/testing/tools/tcgen.py` | Appends cases from pipe-separated rows (11 fields) |
@@ -69,13 +69,34 @@ Each group has one representative test and plain wording explaining the other
 checks for that adapter. Next: raise the floor to 85.6%, regenerate the four
 JUnit reports, rebuild the workbook and publish the same tree to both branches.
 
-- Backend: 591 pass (`pytest --cov`, floor 77% in `backend/pyproject.toml`).
+Step 4 complete: all four fresh JUnit runs passed on 4 November 2026. Backend
+coverage is **85.66% combined line/branch (88.38% lines)**; floor raised to
+**85.6%**. Workbook regenerated from `/private/tmp/spmg-final-results` using
+the existing builder and checked against the parsed cases and a rendered preview.
+Frontend coverage: 52.76% lines, 51.30% statements, 49.20% functions, 48.89%
+branches. Backend Ruff/compileall and frontend lint/build pass (two existing
+React effect warnings, no lint errors). All coverage gates pass.
+
+Closed one existing traceability omission without adding a test: TC-E2E-28
+already asserts the Organiser confirmation notice, so it now also names
+US4.7-AC5 (the same rule as US10.3-AC2). All 214 behaviour ACs have a case.
+The ten Technical cases group adapter contracts; they do not claim a live
+Supabase end-to-end check. No application code or live database was changed.
+DB integration used a disposable local PostgreSQL 16 cluster on port 5433,
+which was stopped afterwards. No Docker needed.
+
+Publish this checkpoint to the working branch and the identical tree to
+`final-amendments-after-audit`, with its current remote tip as parent (no force).
+Remaining user actions: open that branch's PR, wait for GitHub checks, use
+Squash and merge, delete Jira SPMG3T7-91, and re-sync old local branches.
+
+- Backend: 747 passed, 2 skipped (`pytest --cov`, floor 85.6% in `backend/pyproject.toml`).
 - DB suites: 20 tests on Postgres (`integration/`).
 - Frontend: 66 Vitest tests, floors in `frontend/vite.config.ts` (lines 52 / statements 51 / functions 49 / branches 48); lint, `tsc -b` and build clean.
 - E2E: 38 Playwright journeys (`npm run test:e2e`), CI job `e2e`.
 - Workbook: `docs/testing/ConnectSphere_Test_Cases.xlsx`, built by
   `docs/testing/build_workbook.py <junit-results-dir>` (see its docstring for
-  the four JUnit runs). 488 cases: 481 Passed, 5 Evidence, 2 Not Executed
+  the four JUnit runs). 498 cases: 491 Passed, 5 Evidence, 2 Not Executed
   (opt-in DB tests: `tests/test_hold_expiry_db.py` needs the live project,
   `tests/test_equipment_reservations_db.py` needs a database with every
   migration applied). Layout follows the seniors' sheets.
@@ -90,9 +111,9 @@ and tests are in CODE_AUDIT.md section 4 and as `TC-D*` cases.
 
 ## Branches
 
-- `chore/playwright-test-reduction-handover`: the working branch, 29 commits.
-- `final-amendments-after-audit`: the same files as one commit ("Final
-  amendments after audit"). Open the PR from this one into `main`. The user
+- `chore/playwright-test-reduction-handover`: the working branch with checkpoint commits.
+- `final-amendments-after-audit`: the same tree, published as a new commit on
+  its existing tip. Open the PR from this one into `main`. The user
   will delete the old branch themselves (history rewrites are blocked here).
 
 ## Jira (done)
@@ -103,7 +124,7 @@ flagged bookings), -86 (US11.3, important change during the safety check).
 SPMG3T7-91 was created by mistake; the user will delete it. Do not create new
 Jira issues.
 
-## What is left: the next task (user approved)
+## Completed task (user approved; kept for audit)
 
 **Goal: raise backend coverage while keeping the test count small enough for
 the team to review every test.** Add back the Supabase store contract tests,
@@ -133,7 +154,8 @@ store), not one row per test.
    four JUnit runs (see `build_workbook.py`), rebuild the workbook, update the
    Summary sheet's coverage line, commit as 3thannn and push to **both**
    branches (rebuild the single commit on `final-amendments-after-audit`
-   the same way: `git commit-tree "HEAD^{tree}" -p a6c8213a...` then push it).
+   with `git commit-tree "HEAD^{tree}" -p <current-remote-tip>` then push it;
+   never use the old base as parent or force-push).
 
 Do not delete defensive error handling to raise coverage; the user agreed to
 keep it.

@@ -5849,7 +5849,7 @@
   why: What staff are told before deleting.
 
 - id: TC-E2E-28
-  ac: US4.4-AC2, US4.7-AC1, US10.3-AC2
+  ac: US4.4-AC2, US4.7-AC1, US4.7-AC5, US10.3-AC2
   category: E2E
   scenario: Sent for the safety check, approved, confirmed, Organiser told
   preconditions: A Planning event with a Confirmed booking
