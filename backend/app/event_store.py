@@ -31,6 +31,7 @@ from app.change_requests import (
     applied_values,
     change_type,
     diff,
+    edit_reopen_reason,
     ordered,
     reopen_reason,
     reopens_planning,
@@ -608,6 +609,9 @@ class SupabaseEvents:
                         }
                         for c in changes
                     ],
+                    # D1: the database decides whether the edit reopens Planning;
+                    # this is only the words its history entry carries.
+                    "p_reason": edit_reopen_reason(changes),
                 },
             )
             .execute()
@@ -621,15 +625,18 @@ class SupabaseEvents:
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
         """Move the event and write the audit entry US4.2 requires.
 
-        US8.2: Auto-assignment is now OFF. Events remain unassigned on submit."""
+        US8.2: Auto-assignment is now OFF. Events remain unassigned on submit.
+        D2: a resubmitted Rejected event returns to the unassigned queue, so its
+        earlier Coordinator is cleared and the Lead assigns it again."""
         at = _now()
-        supabase_client.admin().table(EVENTS_TABLE).update(
-            {
-                "status": str(EventStatus.SUBMITTED),
-                "submitted_at": at,
-                "updated_at": at,
-            }
-        ).eq("id", event_id).execute()
+        values = {
+            "status": str(EventStatus.SUBMITTED),
+            "submitted_at": at,
+            "updated_at": at,
+        }
+        if from_status is EventStatus.REJECTED:
+            values["coordinator_id"] = None
+        supabase_client.admin().table(EVENTS_TABLE).update(values).eq("id", event_id).execute()
         supabase_client.admin().table(CHANGES_TABLE).insert(
             {
                 "event_id": event_id,
@@ -1166,9 +1173,31 @@ class InMemoryEvents:
             expected_attendance=expected_attendance,
             needs=needs,
         )
-        return self._replace(
-            replace(saved, arrangement_review_pending=pending or current.arrangement_review_pending)
+        saved = replace(
+            saved, arrangement_review_pending=pending or current.arrangement_review_pending
         )
+        # D1: what us11_edit does in the real store. An important edit during the
+        # safety check sends the event back to Planning, so no decision made
+        # about the old details can confirm it.
+        if reopens_planning(status=current.status, changes=changes):
+            at = _now()
+            saved = replace(
+                saved,
+                status=EventStatus.PLANNING,
+                updated_at=at,
+                history=(
+                    *saved.history,
+                    StatusChange(
+                        from_status=current.status,
+                        to_status=EventStatus.PLANNING,
+                        at=at,
+                        by_id=editor_id,
+                        by_name=self.names.get(editor_id, ""),
+                        notes=edit_reopen_reason(changes),
+                    ),
+                ),
+            )
+        return self._replace(saved)
 
     def submit_event(self, event_id: int, *, actor_id: int, from_status: EventStatus) -> Event:
         """US8.2: Moving to Submitted leaves coordinator_id as NULL (auto-assignment OFF)."""
@@ -1189,6 +1218,10 @@ class InMemoryEvents:
                 status=EventStatus.SUBMITTED,
                 updated_at=at,
                 history=(*existing.history, entry),
+                # D2: a resubmitted Rejected event goes back to the Lead's queue.
+                coordinator_id=(
+                    None if from_status is EventStatus.REJECTED else existing.coordinator_id
+                ),
             )
         )
 
@@ -1422,7 +1455,7 @@ class InMemoryEvents:
             history = (
                 *history,
                 StatusChange(
-                    from_status=EventStatus.CONFIRMED,
+                    from_status=existing.status,
                     to_status=EventStatus.PLANNING,
                     at=at,
                     by_id=actor_id,

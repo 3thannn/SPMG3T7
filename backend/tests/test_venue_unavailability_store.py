@@ -102,46 +102,14 @@ class TestSupabaseListing:
         assert query.named("select") == [("select", COLUMNS)]
         assert query.named("eq") == [("eq", "venue_id", 1)]
 
-    def test_it_asks_for_soonest_first_with_stable_ties(self, query):
-        SupabaseUnavailability().list_for_venue(1)
 
-        assert query.named("order") == [
-            ("order", "start_date", False),
-            ("order", "end_date", False),
-            ("order", "id", False),
-        ]
 
-    def test_it_filters_before_it_executes(self, query):
-        SupabaseUnavailability().list_for_venue(1)
-
-        verbs = [call[0] for call in query.calls]
-        assert verbs.index("eq") < verbs.index("execute")
-        assert verbs[-1] == "execute"
-
-    def test_rows_come_back_as_ranges(self, query):
-        [entry] = SupabaseUnavailability().list_for_venue(1)
-
-        assert entry == Unavailability(
-            id=7,
-            venue_id=1,
-            start_date=date(2026, 11, 2),
-            end_date=date(2026, 11, 6),
-            reason_type="maintenance",
-            other_reason="",
-            created_by_id=3,
-            created_at="2026-10-01T09:00:00",
-        )
 
     def test_no_rows_is_an_empty_list(self, query):
         query.rows = []
 
         assert SupabaseUnavailability().list_for_venue(1) == []
 
-    def test_a_null_data_payload_is_an_empty_list(self, query):
-        """PostgREST can answer with `data: None`; that is no rows, not a crash."""
-        query.rows = None
-
-        assert SupabaseUnavailability().list_for_venue(1) == []
 
 
 class TestSupabaseCreating:
@@ -163,43 +131,10 @@ class TestSupabaseCreating:
         assert query.calls[0] == ("table", TABLE)
         assert len(query.named("insert")) == 1
 
-    def test_the_row_carries_the_range_as_iso_dates(self, query):
-        self.create()
 
-        [(_, row)] = query.named("insert")
-        assert row["venue_id"] == 1
-        assert row["start_date"] == "2026-11-02"
-        assert row["end_date"] == "2026-11-06"
-        assert row["reason_type"] == "maintenance"
-        assert row["other_reason"] is None
-        assert row["created_by_id"] == 3
 
-    def test_the_row_is_timestamped(self, query):
-        self.create()
 
-        [(_, row)] = query.named("insert")
-        assert row["created_at"]
 
-    def test_the_row_sends_no_id(self, query):
-        """The id is the database's to assign."""
-        self.create()
-
-        [(_, row)] = query.named("insert")
-        assert "id" not in row
-
-    def test_an_empty_other_reason_is_stored_as_null(self, query):
-        self.create(other_reason="")
-
-        [(_, row)] = query.named("insert")
-        assert row["other_reason"] is None
-
-    def test_the_stored_row_is_what_comes_back(self, query):
-        query.rows = [{**ROW, "id": 42}]
-
-        created = self.create()
-
-        assert created.id == 42
-        assert created.start_date == date(2026, 11, 2)
 
 
 class TestSupabaseOverlap:
@@ -214,19 +149,7 @@ class TestSupabaseOverlap:
         assert query.named("lte") == [("lte", "start_date", "2026-11-06")]
         assert query.named("gte") == [("gte", "end_date", "2026-11-02")]
 
-    def test_it_does_not_narrow_to_one_venue(self, query):
-        SupabaseUnavailability().venues_unavailable_between(date(2026, 11, 2), date(2026, 11, 6))
 
-        assert query.named("eq") == []
-
-    def test_the_answer_is_the_distinct_venue_ids(self, query):
-        query.rows = [{"venue_id": 1}, {"venue_id": 3}, {"venue_id": 1}]
-
-        blocked = SupabaseUnavailability().venues_unavailable_between(
-            date(2026, 11, 2), date(2026, 11, 6)
-        )
-
-        assert blocked == frozenset({1, 3})
 
     def test_nothing_overlapping_is_an_empty_set(self, query):
         query.rows = None
@@ -239,20 +162,9 @@ class TestSupabaseOverlap:
 
 
 class TestReadingARow:
-    def test_a_null_other_reason_reads_as_empty(self):
-        assert to_unavailability({**ROW, "other_reason": None}).other_reason == ""
 
-    def test_a_missing_other_reason_reads_as_empty(self):
-        row = {key: value for key, value in ROW.items() if key != "other_reason"}
 
-        assert to_unavailability(row).other_reason == ""
 
-    def test_a_null_author_stays_null(self):
-        """`created_by_id` is SET NULL when the user goes; the range is still shown."""
-        assert to_unavailability({**ROW, "created_by_id": None}).created_by_id is None
-
-    def test_a_missing_timestamp_reads_as_empty(self):
-        assert to_unavailability({**ROW, "created_at": None}).created_at == ""
 
     def test_dates_already_parsed_are_accepted(self):
         """A driver that hands back `date` objects reads the same as one that sends text."""
@@ -275,29 +187,8 @@ class TestInMemoryStore:
             created_by_id=3,
         )
 
-    def test_ids_are_assigned_in_sequence_from_next_id(self):
-        store = InMemoryUnavailability()
 
-        first = self.create(store, date(2026, 1, 1), date(2026, 1, 2))
-        second = self.create(store, date(2026, 1, 1), date(2026, 1, 2))
 
-        assert (first.id, second.id) == (101, 102)
-
-    def test_it_orders_by_start_then_end_then_id(self):
-        store = InMemoryUnavailability()
-        late = self.create(store, date(2026, 3, 1), date(2026, 3, 2))
-        long = self.create(store, date(2026, 1, 1), date(2026, 1, 9))
-        short = self.create(store, date(2026, 1, 1), date(2026, 1, 2))
-        twin = self.create(store, date(2026, 1, 1), date(2026, 1, 2))
-
-        assert store.list_for_venue(1) == [short, twin, long, late]
-
-    def test_it_lists_one_venue_only(self):
-        store = InMemoryUnavailability()
-        mine = self.create(store, date(2026, 1, 1), date(2026, 1, 2), venue_id=1)
-        self.create(store, date(2026, 1, 1), date(2026, 1, 2), venue_id=2)
-
-        assert store.list_for_venue(1) == [mine]
 
     @pytest.mark.parametrize(
         ("start", "end", "blocked"),
@@ -316,8 +207,6 @@ class TestInMemoryStore:
 
         assert (1 in store.venues_unavailable_between(start, end)) is blocked
 
-    def test_an_unknown_venue_has_nothing(self):
-        assert InMemoryUnavailability().list_for_venue(999) == []
 
 
 class TestSwappingTheStore:

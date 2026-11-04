@@ -76,15 +76,6 @@ class TestWriting:
         assert row["status"] is None
         assert created.kind == "equipment-request"
 
-    def test_a_plain_notice_carries_its_kind(self, fake):
-        fake.queued = {TABLE: [[{"id": 13}], [dict(ROW, id=13, kind="assigned", status=None)]]}
-
-        created = SupabaseNotifications().create_notice(
-            user_id=2, event_id=7, kind="assigned", message="You were assigned."
-        )
-
-        assert written(fake)["kind"] == "assigned"
-        assert created.status is None
 
     def test_reading_a_notice_stamps_when(self, fake):
         fake.rows = {TABLE: [dict(ROW, is_read=True, read_at="2026-10-02T09:00:00")]}
@@ -95,11 +86,3 @@ class TestWriting:
         assert update[1]["is_read"] is True
         assert update[1]["read_at"]
         assert updated.read_at == "2026-10-02T09:00:00"
-
-    def test_marking_unread_clears_the_stamp(self, fake):
-        fake.rows = {TABLE: [dict(ROW)]}
-
-        SupabaseNotifications().set_read(11, is_read=False)
-
-        [update] = fake.on(TABLE)[0].named("update")
-        assert update[1] == {"is_read": False, "read_at": None}

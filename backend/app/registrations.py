@@ -230,8 +230,9 @@ def save_registration_settings(
 ) -> RegistrationSettingsOut:
     """US20.1 AC1: the assigned Coordinator turns registration on or off.
 
-    The permission admits the role and `_readable` the assignment, answering
-    404 for a Coordinator the event is not assigned to. Then 409 for a status
+    D3: so can the owning Organiser (Week 4 answers: the Organiser controls
+    timing and closing). The permission admits the role and `_readable` the
+    ownership or assignment, answering 404 for anyone else. Then 409 for a status
     that takes no settings, then 400 for the capacity. The capacity may not go
     below the places already taken; the database re-checks that under the lock
     registrations take, so one arriving meanwhile is counted.

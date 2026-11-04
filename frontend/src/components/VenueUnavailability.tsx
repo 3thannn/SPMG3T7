@@ -110,12 +110,13 @@ export default function VenueUnavailability({
             : current,
         )
         setFields(EMPTY_UNAVAILABILITY)
-        // US12.2: Include flagged bookings count in success message
+        // US12.2 AC6: how many bookings were flagged, including 0 (D8).
         const flaggedCount = created.flaggedBookingsCount ?? 0
         let successMessage = `Marked unavailable: ${formatDateRange(created.startDate, created.endDate)}.`
-        if (flaggedCount > 0) {
-          successMessage += ` ${flaggedCount} booking${flaggedCount === 1 ? '' : 's'} flagged as needing replacement.`
-        }
+        successMessage +=
+          flaggedCount > 0
+            ? ` ${flaggedCount} booking${flaggedCount === 1 ? '' : 's'} flagged as needing replacement.`
+            : ' No bookings were flagged.'
         setSaved(successMessage)
       })
       .catch((error: unknown) => {

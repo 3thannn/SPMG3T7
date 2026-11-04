@@ -20,7 +20,7 @@ ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'Safety Officer';
 
 -- Coordinator Lead
 INSERT INTO public.users (id, email, name, role, created_at, updated_at)
-VALUES (3, 'coordinatorlead@spmg3t7.edu', 'Jordan', 'Event Coordinator Lead', NOW(), NOW())
+VALUES (3, 'coordinatorlead@connectsphere.com', 'Jordan', 'Event Coordinator Lead', NOW(), NOW())
 ON CONFLICT (id) DO UPDATE SET
     email = EXCLUDED.email,
     name = EXCLUDED.name,
@@ -29,7 +29,7 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- Safety Officer
 INSERT INTO public.users (id, email, name, role, created_at, updated_at)
-VALUES (5, 'safetyofficer@spmg3t7.edu', 'Alex', 'Safety Officer', NOW(), NOW())
+VALUES (5, 'safetyofficer@connectsphere.com', 'Alex', 'Safety Officer', NOW(), NOW())
 ON CONFLICT (id) DO UPDATE SET
     email = EXCLUDED.email,
     name = EXCLUDED.name,
@@ -38,7 +38,7 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- Additional Coordinator for testing US8.6 (visibility isolation)
 INSERT INTO public.users (id, email, name, role, created_at, updated_at)
-VALUES (10, 'coordinator2@spmg3t7.edu', 'Sam Chen', 'Event Coordinator', NOW(), NOW())
+VALUES (10, 'coordinator2@connectsphere.com', 'Sam Chen', 'Event Coordinator', NOW(), NOW())
 ON CONFLICT (id) DO UPDATE SET
     email = EXCLUDED.email,
     name = EXCLUDED.name,
@@ -149,7 +149,7 @@ VALUES (
     30,
     'Submitted',
     1, -- Dylan
-    2, -- ASSIGNED to Priya (coordinator@spmg3t7.edu)
+    2, -- ASSIGNED to Priya (coordinator@connectsphere.com)
     '2027-02-15T11:00:00',
     '2027-02-15T11:00:00'
 )
@@ -173,7 +173,7 @@ VALUES (
     25,
     'Submitted',
     1, -- Dylan
-    10, -- ASSIGNED to Sam (coordinator2@spmg3t7.edu)
+    10, -- ASSIGNED to Sam (coordinator2@connectsphere.com)
     '2027-02-20T10:00:00',
     '2027-02-20T10:00:00'
 )
@@ -234,18 +234,18 @@ ORDER BY id;
 -- 2. Create these 3 auth accounts:
 --
 --    Account 1 (Coordinator Lead):
---    - Email: coordinatorlead@spmg3t7.edu
---    - Password: Sprint1!demo
+--    - Email: coordinatorlead@connectsphere.com
+--    - Password: password
 --    - ✅ Auto Confirm User
 --
 --    Account 2 (Safety Officer):
---    - Email: safetyofficer@spmg3t7.edu
---    - Password: Sprint1!demo
+--    - Email: safetyofficer@connectsphere.com
+--    - Password: password
 --    - ✅ Auto Confirm User
 --
 --    Account 3 (Second Coordinator):
---    - Email: coordinator2@spmg3t7.edu
---    - Password: Sprint1!demo
+--    - Email: coordinator2@connectsphere.com
+--    - Password: password
 --    - ✅ Auto Confirm User
 --
 -- =============================================================================
@@ -253,9 +253,9 @@ ORDER BY id;
 -- =============================================================================
 --
 -- ✅ US1.4 - New Roles Route to Home:
---    1. Sign in as coordinatorlead@spmg3t7.edu
+--    1. Sign in as coordinatorlead@connectsphere.com
 --    2. Should redirect to /unassigned-queue
---    3. Sign in as safetyofficer@spmg3t7.edu
+--    3. Sign in as safetyofficer@connectsphere.com
 --    4. Should redirect to /safety-review
 --
 -- ✅ US8.2 - Unassigned Queue:
@@ -273,10 +273,10 @@ ORDER BY id;
 --    6. Sign in as Priya → should now see the event in /events
 --
 -- ✅ US8.6 - Coordinators Only See Assigned Events:
---    1. Sign in as coordinator@spmg3t7.edu (Priya)
+--    1. Sign in as coordinator@connectsphere.com (Priya)
 --    2. Should see "Workshop Series - Assigned to Priya"
 --    3. Should NOT see "Training Seminar - Assigned to Sam"
---    4. Sign in as coordinator2@spmg3t7.edu (Sam)
+--    4. Sign in as coordinator2@connectsphere.com (Sam)
 --    5. Should see "Training Seminar - Assigned to Sam"
 --    6. Should NOT see "Workshop Series - Assigned to Priya"
 --    7. Sign in as Coordinator Lead

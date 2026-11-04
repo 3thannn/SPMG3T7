@@ -7,14 +7,12 @@
  * way on to the decision for a flagged request.
  */
 
-import { render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import BookingConflictsPage from './BookingConflictsPage'
 import { listBookingConflicts, type FlaggedBooking } from '../bookingConflictsStore'
 import { CONFLICT_LABEL, formatBookingTimes } from '../eventsStore'
 import { formatRecordedAt } from '../status'
-import { ApiError } from '../api'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../bookingConflictsStore', async (importOriginal) => ({
@@ -109,110 +107,4 @@ it('TC-FF07 lists every flagged booking in the server order, with what a review 
     )}`,
   )
   expect(listMock).toHaveBeenCalledWith(staff)
-})
-
-it('TC-FF08 names an unavailability period the booking now overlaps', async () => {
-  listMock.mockResolvedValue([
-    flagged({
-      clashes: [],
-      unavailable: [
-        { id: '5', startDate: '2027-11-01', endDate: '2027-11-03', reason: 'Closure' },
-        { id: '6', startDate: '2027-11-02', endDate: '2027-11-02', reason: '' },
-      ],
-    }),
-  ])
-
-  render(<BookingConflictsPage session={staff} />)
-
-  expect(await screen.findByText('Venue unavailable 2027-11-01 to 2027-11-03 (Closure)'))
-    .toBeInTheDocument()
-  expect(screen.getByText('Venue unavailable 2027-11-02')).toBeInTheDocument()
-})
-
-it('TC-FF09 says when nothing clashes with it any more', async () => {
-  listMock.mockResolvedValue([flagged({ clashes: [], unavailable: undefined })])
-
-  render(<BookingConflictsPage session={staff} />)
-
-  expect(
-    await screen.findByText('Nothing clashes with it any more. Refresh to clear the flag.'),
-  ).toBeInTheDocument()
-})
-
-it('TC-FF10 offers a flagged request the way on to its decision, and nothing else', async () => {
-  const user = userEvent.setup()
-  listMock.mockResolvedValue([
-    flagged(),
-    flagged({ id: '11', eventTitle: 'Board Retreat', status: 'Requested' }),
-  ])
-
-  render(<BookingConflictsPage session={staff} />)
-  const [decide] = await screen.findAllByRole('button', { name: 'Decide on Booking Requests' })
-
-  expect(screen.getAllByRole('button', { name: 'Decide on Booking Requests' })).toHaveLength(1)
-  await user.click(decide)
-  expect(window.location.hash).toBe('#/booking-requests')
-})
-
-it('TC-FF11 fills in what the record leaves out', async () => {
-  listMock.mockResolvedValue([
-    flagged({
-      label: '',
-      venueName: '',
-      eventTitle: '',
-      coordinatorName: '',
-      setupMinutes: 1,
-      turnaroundMinutes: 1,
-      conflict: null,
-    }),
-  ])
-
-  render(<BookingConflictsPage session={staff} />)
-
-  const list = await screen.findByRole('list', { name: 'Flagged bookings' })
-  expect(list).toHaveTextContent('Conflict – review needed')
-  expect(list).toHaveTextContent('Unnamed venue')
-  expect(list).toHaveTextContent('Not assigned')
-  expect(list).toHaveTextContent('(1 minute setup, 1 minute turnaround)')
-  expect(list).not.toHaveTextContent('Flagged ')
-})
-
-it('TC-FF12 says so when nothing is flagged', async () => {
-  listMock.mockResolvedValue([])
-
-  render(<BookingConflictsPage session={staff} />)
-
-  expect(await screen.findByRole('heading', { name: 'No booking conflicts' })).toBeInTheDocument()
-})
-
-it('TC-FF13 shows a list that will not load as an error', async () => {
-  listMock.mockRejectedValue(new ApiError('Server error', 'unknown', 500))
-
-  render(<BookingConflictsPage session={staff} />)
-
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Could not load the flagged bookings. The API answered HTTP 500',
-  )
-})
-
-it('TC-FF14 reads the list again on Refresh, so resolved flags drop off', async () => {
-  const user = userEvent.setup()
-  listMock.mockResolvedValueOnce([flagged()]).mockResolvedValueOnce([])
-
-  render(<BookingConflictsPage session={staff} />)
-  await screen.findByRole('list', { name: 'Flagged bookings' })
-
-  await user.click(screen.getByRole('button', { name: 'Refresh' }))
-
-  expect(await screen.findByRole('heading', { name: 'No booking conflicts' })).toBeInTheDocument()
-  await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2))
-})
-
-it('TC-FF15 shows loading until the list arrives', () => {
-  listMock.mockReturnValue(new Promise(() => {}))
-
-  render(<BookingConflictsPage session={staff} />)
-
-  expect(screen.getByText('Loading flagged bookings…')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled()
 })

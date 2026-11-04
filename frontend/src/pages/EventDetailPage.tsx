@@ -259,11 +259,14 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
   const locked = event.status === 'Confirmed'
   // US5.2: Coordinators can edit submitted events (not drafts), owners can edit their own drafts.
   // US11.1: an owner can also open the form on a submitted event, to propose changes.
+  // D2: a Rejected event is back with its owner to revise and resubmit.
+  const revisable = isOwner && event.status === 'Rejected'
   const editable =
-    !closed &&
-    ((canEdit && event.status !== 'Draft' && !changeRequested && !locked) ||
-      (isOwner && event.status === 'Draft') ||
-      (isOwner && proposing))
+    revisable ||
+    (!closed &&
+      ((canEdit && event.status !== 'Draft' && !changeRequested && !locked) ||
+        (isOwner && event.status === 'Draft') ||
+        (isOwner && proposing)))
   const dirty =
     draft.title !== event.title ||
     draft.purpose !== event.purpose ||
@@ -809,7 +812,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     {busy ? 'Saving…' : canEdit && !isOwner ? 'Save changes' : 'Save draft'}
                   </button>
                 )}
-                {isOwner && event.status === 'Draft' && (
+                {isOwner && (event.status === 'Draft' || revisable) && (
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -817,7 +820,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     disabled={writePending || !submitCheck.allowed}
                     title={submitCheck.allowed ? undefined : submitRefusalMessage(submitCheck.reason)}
                   >
-                    {busy ? 'Working…' : 'Submit event'}
+                    {busy ? 'Working…' : revisable ? 'Resubmit event' : 'Submit event'}
                   </button>
                 )}
                 {isOwner && proposing && (

@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API = os.getenv("SEED_API_URL", "http://localhost:8000").rstrip("/")
-EMAIL = "technicalsupport@spmg3t7.edu"
-PASSWORD = os.getenv("SEED_PASSWORD", "Sprint1!demo")
+EMAIL = "technicalsupport@connectsphere.com"
+PASSWORD = os.getenv("SEED_PASSWORD", "password")
 
 SAMPLES = [
     ("Epson laser projector", "Projector", "Main Campus AV Store", 8, 1, "Lens maintenance",

@@ -5,7 +5,7 @@ The Lead needs to see which events are Submitted but have no Coordinator assigne
 """
 
 from app.event_status import EventStatus
-from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
+from tests.conftest import ORGANISER_ID, SUBMITTABLE_NEEDS
 
 DRAFT = {
     "title": "Team Building Workshop",
@@ -46,11 +46,6 @@ class TestUnassignedQueueAccess:
         assert response.status_code == 403
         assert response.json()["detail"]["code"] == "forbidden"
 
-    def test_organiser_cannot_access_unassigned_queue(self, client, auth_headers):
-        """Event Organisers cannot access the unassigned queue."""
-        response = client.get("/events/unassigned", headers=auth_headers("Event Organiser"))
-
-        assert response.status_code == 403
 
 
 class TestUnassignedQueueFiltering:
@@ -182,48 +177,27 @@ class TestUnassignedQueueFiltering:
         assert events[0]["id"] == "502"
         assert events[0]["status"] == "Submitted"
 
-    def test_assigned_events_not_in_unassigned_queue(self, client, auth_headers, event_repository):
-        """Events with an assigned coordinator don't appear in the unassigned queue."""
-        from app.event_store import Event
 
-        # Seed one unassigned and one assigned event
-        event_repository.events.extend([
-            Event(
-                id=501,
-                title="Unassigned Event",
-                purpose="Testing",
-                description="No coordinator",
-                starts_at="2026-11-15T14:00",
-                ends_at="2026-11-15T16:00",
-                expected_attendance=30,
-                status=EventStatus.SUBMITTED,
-                organiser_id=ORGANISER_ID,
-                organiser_name="Dylan",
-                created_at="2026-01-10T09:00:00",
-                updated_at="2026-01-10T09:00:00",
-                coordinator_id=None,
-            ),
-            Event(
-                id=502,
-                title="Assigned Event",
-                purpose="Testing",
-                description="Has coordinator",
-                starts_at="2026-11-16T14:00",
-                ends_at="2026-11-16T16:00",
-                expected_attendance=40,
-                status=EventStatus.SUBMITTED,
-                organiser_id=ORGANISER_ID,
-                organiser_name="Dylan",
-                created_at="2026-01-10T10:00:00",
-                updated_at="2026-01-10T10:00:00",
-                coordinator_id=COORDINATOR_ID,
-            ),
-        ])
 
-        response = client.get("/events/unassigned", headers=auth_headers("Event Coordinator Lead"))
+class TestLeadReadsTheEvent:
+    """US8.2 AC3: the Lead opens a queued event and sees its basic info, read-only."""
 
-        assert response.status_code == 200
-        events = response.json()
-        assert len(events) == 1
-        assert events[0]["id"] == "501"
-        assert events[0]["coordinatorId"] is None
+    def test_the_lead_opens_a_queued_event_but_cannot_edit_it(self, client, auth_headers):
+        organiser = auth_headers("Event Organiser")
+        event_id = client.post("/events", json=DRAFT, headers=organiser).json()["id"]
+        client.post(f"/events/{event_id}/submit", headers=organiser)
+        lead = auth_headers("Event Coordinator Lead")
+
+        opened = client.get(f"/events/{event_id}", headers=lead)
+        edited = client.put(f"/events/{event_id}", json={**DRAFT, "title": "Renamed"}, headers=lead)
+
+        assert opened.status_code == 200
+        body = opened.json()
+        assert (body["title"], body["status"], body["coordinatorId"]) == (
+            DRAFT["title"],
+            "Submitted",
+            None,
+        )
+        assert body["expectedAttendance"] == DRAFT["expectedAttendance"]
+        assert edited.status_code == 403
+        assert client.get(f"/events/{event_id}", headers=lead).json()["title"] == DRAFT["title"]

@@ -88,6 +88,8 @@ so running one twice is a no-op.
 | [`SUPABASE_FIX_UNAVAILABILITY_NOTICE.sql`](backend/SUPABASE_FIX_UNAVAILABILITY_NOTICE.sql) | US12.2: puts back the committed `flag_bookings_for_unavailability()`, whose notice must carry no status. Only needed where the live function was changed outside the repo | **Marking a venue unavailable over an existing booking returns 500** (the browser says CORS): the notice violates `notifications_kind_valid` |
 | [`SUPABASE_US11_3_RECONFIRM.sql`](backend/SUPABASE_US11_3_RECONFIRM.sql) | US11.3: approving an important change to a Confirmed event sends it back to Planning (`us11_approve_change`), the guard on where a Confirmed event may go, and the `back-in-planning` notice kind. Run after the US11.2 and US4.4 scripts | **Approving any change request returns 500**; rejecting, proposing and every other route are unaffected |
 | [`SUPABASE_US4_7_CONFIRM_EVENT.sql`](backend/SUPABASE_US4_7_CONFIRM_EVENT.sql) | US4.7: the Coordinator confirms the event (`confirm_event`), a safety approval no longer confirms it, the guard that makes confirming the only way into Confirmed, and the `safety-approved` notice kind. Run after the US17.2, US11.2 and US11.3 scripts | **Confirming returns 500**, and a safety approval still confirms the event on its own, as before US4.7 |
+| [`SUPABASE_FIX_SAFETY_CHECK_CHANGES.sql`](backend/SUPABASE_FIX_SAFETY_CHECK_CHANGES.sql) | An important change (date, time, attendance, venue or equipment) to an event Pending Safety Check sends it back to Planning, through a Coordinator's edit (`us11_edit`, which gains an optional `p_reason`) or an accepted change request (`us11_approve_change`), so an earlier safety approval cannot confirm it. Run after the US11.2, US11.3 and US4.7 scripts, and before deploying the backend that sends `p_reason` | **Coordinator edits return 500** once the new backend is deployed; before that, an important change during the safety check keeps the old approval |
+| [`SUPABASE_FIX_ORGANISER_REGISTRATION.sql`](backend/SUPABASE_FIX_ORGANISER_REGISTRATION.sql) | D3 (applied live 2026-11-03): the owning Organiser may open and close registration and set its capacity, as well as the assigned Coordinator (`set_event_registration`). Run after the US20.1 script | An Organiser's registration save is refused (409, "changed while you were working on it"); the Coordinator's still works |
 | [`SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql`](backend/SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql) | US12.4: a venue closure also tells the Organiser of a Confirmed event (the event stays Confirmed), and `us12_4_request_replacement` requests the replacement through the live `request_replacement_venue` and moves a Confirmed event back to Planning in the same transaction. Run after the US12.2 (or its fix), US14.5 and US11.3 scripts | **Requesting a replacement venue returns 500**; searching for one and every other route are unaffected. Organisers are not told about a closure |
 | [`SUPABASE_US10_4_EVENT_UPDATED_NOTICE.sql`](backend/SUPABASE_US10_4_EVENT_UPDATED_NOTICE.sql) | US10.4: the `event-updated` notice kind, which tells registered Attendees their event has a new date, time or venue. Run after the US4.7 script | Attendees' notices are rejected by the `kind` check, so none are written. Approving the change or the replacement venue still succeeds; the failure is only logged |
 | [`SUPABASE_US8_4_REASSIGN_COORDINATOR.sql`](backend/SUPABASE_US8_4_REASSIGN_COORDINATOR.sql) | US8.4: `reassign_event_coordinator`, which moves an assigned, active event to another Coordinator, logs it naming the previous one and notifies both. First created on the live database by an uncommitted repair script; this is that function with two US8.4 changes (finished events refused, names in the log). Run after the US10.2 and US12.2 scripts | **A fresh database cannot reassign** (the API answers 409). On the live database, the repair script's version stays: finished events can be reassigned and the log gives ids |
@@ -132,10 +134,10 @@ User** on) and a `public.users` row holding the name and role.
 
 | Email | Role | Can |
 | ----- | ---- | --- |
-| `organiser@spmg3t7.edu` | Event Organiser | create, read own and submit events |
-| `coordinator@spmg3t7.edu` | Event Coordinator | review and edit submitted events, read the venue catalogue |
-| `venuestaff@spmg3t7.edu` | Venue Staff | read the venue catalogue and maintain the records in it |
-| `attendee@spmg3t7.edu`, `attendee2@spmg3t7.edu` | Attendee | see the Confirmed events taking registrations and register for them (US20.1). Created by `python backend/seed_new_users.py --attendees-only` |
+| `organiser@connectsphere.com` | Event Organiser | create, read own and submit events |
+| `coordinator@connectsphere.com` | Event Coordinator | review and edit submitted events, read the venue catalogue |
+| `venuestaff@connectsphere.com` | Venue Staff | read the venue catalogue and maintain the records in it |
+| `attendee@connectsphere.com`, `attendee2@connectsphere.com` | Attendee | see the Confirmed events taking registrations and register for them (US20.1). Created by `python backend/seed_new_users.py --attendees-only` |
 
 The role strings are `user_role` enum values, so Postgres rejects a typo rather
 than creating a user nobody has permissions for. These are development
@@ -165,12 +167,12 @@ reach `/health`, and **Backend unreachable** when it cannot — the latter is th
 expected state if you skipped terminal 1, not a build failure.
 
 Sign in with one of the development accounts, both with the password
-`Sprint1!demo`:
+`password`:
 
 | Email                     | Role              | Can do                                |
 | ------------------------- | ----------------- | ------------------------------------- |
-| `organiser@spmg3t7.edu`   | Event Organiser   | create, edit and submit their events  |
-| `coordinator@spmg3t7.edu` | Event Coordinator | see submitted events, review them     |
+| `organiser@connectsphere.com`   | Event Organiser   | create, edit and submit their events  |
+| `coordinator@connectsphere.com` | Event Coordinator | see submitted events, review them     |
 
 The role names come from the `user_role` enum in the database, which is why they
 read as `Event Organiser` rather than `Organiser`.

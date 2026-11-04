@@ -118,6 +118,12 @@ HOLDS_VENUE: frozenset[BookingStatus] = frozenset(
     {BookingStatus.REQUESTED, BookingStatus.HELD, BookingStatus.CONFIRMED}
 )
 
+#: US14.2: the statuses a Coordinator can cancel. A booking flagged Needs
+#: replacement (US12.2) can be too: US12.2 AC5 and US15.2 AC4 clear a flag by
+#: cancelling, and the Week 4 answer leaves that decision to the Coordinator
+#: (CODE_AUDIT.md D7). Rejected, Replaced, Expired and Cancelled hold nothing.
+CANCELLABLE: frozenset[BookingStatus] = HOLDS_VENUE | {BookingStatus.NEEDS_REPLACEMENT}
+
 
 @dataclass(frozen=True)
 class Cancellation:
@@ -551,10 +557,11 @@ class SupabaseBookings:
         return booking
 
     def cancel(self, booking_id: int, *, actor_id: int, reason: str) -> Booking:
-        """US14.2: Requested -> Cancelled, with who, when and why on the row.
+        """US14.2: a booking -> Cancelled, with who, when and why on the row.
 
-        US14.3: a Held booking can be cancelled too, which releases the hold.
-        The update only matches a booking that is still Requested or Held, so two
+        US14.3: a Held booking can be cancelled too, which releases the hold;
+        so can a Confirmed or flagged one (`CANCELLABLE`, D7). The update only
+        matches a booking still in one of those statuses, so two
         cancels racing each other cannot both succeed. The second finds no row
         and raises, as `event_store.request_clarification` does for an event
         that moved. Nothing else is written: the event and its other bookings
@@ -572,7 +579,7 @@ class SupabaseBookings:
                 }
             )
             .eq("id", booking_id)
-            .in_("status", [str(BookingStatus.REQUESTED), str(BookingStatus.HELD)])
+            .in_("status", sorted(str(each) for each in CANCELLABLE))
             .execute()
         )
         if not updated.data:
@@ -856,10 +863,7 @@ class InMemoryBookings:
 
     def cancel(self, booking_id: int, *, actor_id: int, reason: str) -> Booking:
         existing = self.get_booking(booking_id)
-        if existing is None or existing.status not in (
-            BookingStatus.REQUESTED,
-            BookingStatus.HELD,
-        ):
+        if existing is None or existing.status not in CANCELLABLE:
             raise StaleBookingStatus
         actor = users.get_by_id(actor_id)
         cancelled = replace(

@@ -16,8 +16,8 @@ const API = 'http://127.0.0.1:8001'
 test.beforeEach(async ({ page, request }) => {
   expect((await request.post(`${API}/__test__/reset`)).ok()).toBeTruthy()
   await page.goto('/#/signin')
-  await page.getByLabel('Email').fill('venuestaff@spmg3t7.edu')
-  await page.getByLabel('Password').fill('Sprint1!demo')
+  await page.getByLabel('Email').fill('venuestaff@connectsphere.com')
+  await page.getByLabel('Password').fill('password')
   await page.locator('form').getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator('.topnav-name')).toHaveText('Sam')
 })

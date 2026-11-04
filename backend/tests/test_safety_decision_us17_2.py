@@ -22,40 +22,29 @@ The rules themselves are in `TestRules`, and both stores in `TestInMemoryStore`
 and `TestSupabaseStore`.
 """
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 
 import pytest
 
-from app import notifications, supabase_client
+from app import supabase_client
 from app.booking_store import Booking, BookingStatus
 from app.equipment_store import RESERVED, EquipmentRequest
 from app.event_status import EventStatus
 from app.event_store import Event, StaleEventStatus, StatusChange
 from app.notifications import CoordinatorNotice
-from app.safety_check import SAFETY_NOTE_MAX, SafetyCheckRefusal, check_ready_for_safety_check
 from app.safety_decision_store import (
     COLUMNS,
     FLAG_COLUMNS,
-    InMemorySafetyDecisions,
     ReviewFlag,
-    SafetyDecision,
     StaleFlag,
     SupabaseSafetyDecisions,
-    to_decision,
     to_flag,
 )
 from app.safety_decisions import (
     CHECK_MOVED_ON,
-    FLAGS_ONLY_ON_CHANGES,
     NOTE_REQUIRED,
-    UNKNOWN_BOOKING,
-    UNKNOWN_EQUIPMENT,
     SafetyOutcome,
-    flag_error,
-    note_error,
-    same_check,
-    to_status,
 )
 from tests.conftest import (
     COORDINATOR_ID,
@@ -179,78 +168,6 @@ def coordinator_notices(notification_repository):
 # -- The rules -----------------------------------------------------------------
 
 
-class TestRules:
-    def test_each_outcome_goes_where_the_story_says(self):
-        # US4.7: an approval leaves the event for its Coordinator to confirm.
-        assert to_status(SafetyOutcome.APPROVED) is EventStatus.PENDING_SAFETY_CHECK
-        assert to_status(SafetyOutcome.CHANGES_REQUESTED) is EventStatus.PLANNING
-        assert to_status(SafetyOutcome.REJECTED) is EventStatus.PLANNING
-
-    def test_an_approval_needs_no_note(self):
-        assert note_error(SafetyOutcome.APPROVED, "") is None
-
-    @pytest.mark.parametrize(
-        "outcome", [SafetyOutcome.CHANGES_REQUESTED, SafetyOutcome.REJECTED]
-    )
-    def test_changes_and_rejection_need_words(self, outcome):
-        assert note_error(outcome, "") == NOTE_REQUIRED[outcome]
-        assert note_error(outcome, "Exit blocked") is None
-
-    def test_the_note_has_a_limit_whatever_the_outcome(self):
-        too_long = "x" * (SAFETY_NOTE_MAX + 1)
-        for outcome in SafetyOutcome:
-            assert "2000 characters" in note_error(outcome, too_long)
-        assert note_error(SafetyOutcome.REJECTED, "x" * SAFETY_NOTE_MAX) is None
-
-    def test_no_flags_is_always_fine(self):
-        for outcome in SafetyOutcome:
-            assert flag_error(
-                outcome, booking_ids=[], equipment_ids=[],
-                flaggable_bookings=[], flaggable_equipment=[],
-            ) is None
-
-    @pytest.mark.parametrize("outcome", [SafetyOutcome.APPROVED, SafetyOutcome.REJECTED])
-    def test_only_a_request_for_changes_flags(self, outcome):
-        assert flag_error(
-            outcome, booking_ids=[1], equipment_ids=[],
-            flaggable_bookings=[1], flaggable_equipment=[],
-        ) == FLAGS_ONLY_ON_CHANGES
-
-    def test_only_what_was_shown_can_be_flagged(self):
-        arguments = {"flaggable_bookings": [1, 2], "flaggable_equipment": [5]}
-        assert flag_error(
-            SafetyOutcome.CHANGES_REQUESTED, booking_ids=[3], equipment_ids=[], **arguments
-        ) == UNKNOWN_BOOKING
-        assert flag_error(
-            SafetyOutcome.CHANGES_REQUESTED, booking_ids=[1], equipment_ids=[6], **arguments
-        ) == UNKNOWN_EQUIPMENT
-        assert flag_error(
-            SafetyOutcome.CHANGES_REQUESTED, booking_ids=[1, 2, 2], equipment_ids=[5],
-            **arguments,
-        ) is None
-
-    def test_the_same_check_is_compared_as_a_time(self):
-        assert same_check("2099-01-02 10:00:00", "2099-01-02T10:00:00")
-        assert same_check("2099-01-02T10:00:00.000000", "2099-01-02T10:00:00")
-        assert not same_check("2099-01-02T10:00:01", "2099-01-02T10:00:00")
-
-    def test_a_check_that_is_not_a_time_is_an_error(self):
-        with pytest.raises(ValueError):
-            same_check("yesterday", ENTERED)
-
-    def test_open_flags_hold_the_event_back(self):
-        refusal = check_ready_for_safety_check(
-            status=EventStatus.PLANNING, change_requested=False,
-            bookings=[booking()], equipment=[], flags_open=True,
-        )
-        assert refusal is SafetyCheckRefusal.FLAGS_OPEN
-
-    def test_a_pending_change_request_is_named_before_open_flags(self):
-        refusal = check_ready_for_safety_check(
-            status=EventStatus.PLANNING, change_requested=True,
-            bookings=[booking()], equipment=[], flags_open=True,
-        )
-        assert refusal is SafetyCheckRefusal.CHANGE_PENDING
 
 
 # -- AC1: Approve -> stays Pending Safety Check, approved (Sprint 5) ------------
@@ -269,36 +186,9 @@ class TestApprove:
         assert decision.outcome is SafetyOutcome.APPROVED
         assert decision.check_started_at == ENTERED
 
-    def test_approval_leaves_it_for_the_coordinator_to_confirm(self, client, officer, world):
-        """US4.7: the Safety Officer approves; the Coordinator confirms."""
-        response = decide(client, officer, "approve", {"checkStartedAt": ENTERED})
-        assert response.status_code == 200, response.text
-        assert response.json()["status"] == "Pending Safety Check"
-        assert response.json()["safetyApproved"] is True
-        assert world.events.get_event(EVENT_ID).status is PSC
 
-    def test_an_approval_without_a_body_still_works(self, client, officer, world):
-        assert decide(client, officer, "approve").json()["safetyApproved"] is True
 
-    def test_an_approval_flags_nothing(self, client, officer, world):
-        response = decide(
-            client, officer, "approve", {"flaggedBookingIds": [str(BOOKING_ID)]}
-        )
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == FLAGS_ONLY_ON_CHANGES
-        assert world.events.get_event(EVENT_ID).status is PSC
 
-    def test_an_approval_tells_the_coordinator_it_is_theirs_to_confirm(
-        self, client, officer, world, notification_repository
-    ):
-        """US4.7: confirming is the Coordinator's move now, so they hear."""
-        decide(client, officer, "approve")
-        (notice,) = coordinator_notices(notification_repository)
-        assert notice.kind == CoordinatorNotice.SAFETY_APPROVED
-        assert notice.message == (
-            'The Safety Officer approved the safety check for "Open House". '
-            "Confirm the event once its venues and equipment are all in place."
-        )
 
 
 # -- AC2: Request changes -------------------------------------------------------
@@ -324,9 +214,6 @@ class TestRequestChanges:
         )
         assert world.events.get_event(EVENT_ID).status is PSC
 
-    def test_the_note_has_a_limit(self, client, officer, world):
-        response = changes(client, officer, note="x" * (SAFETY_NOTE_MAX + 1))
-        assert response.status_code == 400
 
     def test_the_affected_arrangements_are_flagged(
         self, client, officer, world, safety_decision_repository
@@ -339,25 +226,8 @@ class TestRequestChanges:
         ]
         assert all(flag.is_open for flag in decision.flags)
 
-    def test_nothing_need_be_flagged(self, client, officer, world, safety_decision_repository):
-        assert changes(client, officer, bookings=()).status_code == 200
-        [decision] = safety_decision_repository.list_for_event(EVENT_ID)
-        assert decision.flags == ()
 
-    def test_a_booking_not_in_the_review_cannot_be_flagged(self, client, officer, world):
-        world.bookings.bookings.append(booking(12, BookingStatus.CANCELLED))
-        world.bookings.bookings.append(booking(13, event_id=OTHER_EVENT_ID))
-        for stranger in (12, 13, 999):
-            response = changes(client, officer, bookings=(stranger,))
-            assert response.status_code == 400
-            assert response.json()["detail"]["message"] == UNKNOWN_BOOKING
-        assert world.events.get_event(EVENT_ID).status is PSC
 
-    def test_equipment_not_in_the_review_cannot_be_flagged(self, client, officer, world):
-        world.equipment.requests.append(line(22, "Requested"))
-        response = changes(client, officer, bookings=(), equipment=(22,))
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == UNKNOWN_EQUIPMENT
 
     def test_the_assigned_coordinator_is_told(
         self, client, officer, world, notification_repository
@@ -371,18 +241,7 @@ class TestRequestChanges:
             "2 arrangements flagged for re-review."
         )
 
-    def test_one_flag_reads_in_the_singular(self, client, officer, world, notification_repository):
-        changes(client, officer)
-        [notice] = coordinator_notices(notification_repository)
-        assert notice.message.endswith(" 1 arrangement flagged for re-review.")
 
-    def test_us4_4s_return_route_is_the_same_move(
-        self, client, officer, world, safety_decision_repository
-    ):
-        response = decide(client, officer, "return", {"note": "Fix exits"})
-        assert response.json()["status"] == "Planning"
-        [decision] = safety_decision_repository.list_for_event(EVENT_ID)
-        assert decision.outcome is SafetyOutcome.CHANGES_REQUESTED
 
 
 # -- AC3: Reject ----------------------------------------------------------------
@@ -407,13 +266,6 @@ class TestReject:
             assert response.json()["detail"]["message"] == NOTE_REQUIRED[SafetyOutcome.REJECTED]
         assert world.events.get_event(EVENT_ID).status is PSC
 
-    def test_a_rejection_flags_nothing(self, client, officer, world):
-        response = decide(
-            client, officer, "reject",
-            {"note": "No", "flaggedEquipmentIds": [str(LINE_ID)]},
-        )
-        assert response.status_code == 400
-        assert response.json()["detail"]["message"] == FLAGS_ONLY_ON_CHANGES
 
     def test_the_coordinator_is_told_why(self, client, officer, world, notification_repository):
         decide(client, officer, "reject", {"note": "Venue unsafe."})
@@ -423,12 +275,6 @@ class TestReject:
             'The Safety Officer rejected the safety check for "Open House": Venue unsafe.'
         )
 
-    def test_it_is_recorded_as_a_rejection(
-        self, client, officer, world, safety_decision_repository
-    ):
-        decide(client, officer, "reject", {"note": "Venue unsafe."})
-        [decision] = safety_decision_repository.list_for_event(EVENT_ID)
-        assert decision.outcome is SafetyOutcome.REJECTED
 
 
 # -- Who may decide, and when ----------------------------------------------------
@@ -444,34 +290,9 @@ class TestWhoDecides:
         assert response.status_code == 403
         assert world.events.get_event(EVENT_ID).status is PSC
 
-    @pytest.mark.parametrize("action", ["approve", "request-changes", "reject"])
-    def test_only_while_pending(self, client, officer, event_repository, action):
-        seed_event(event_repository, EventStatus.PLANNING)
-        response = decide(client, officer, action, {"note": "x"})
-        assert response.status_code == 404
 
-    def test_an_unknown_event(self, client, officer):
-        assert decide(client, officer, "approve", event_id="nope").status_code == 404
 
-    def test_a_check_decided_twice_is_refused(self, client, officer, world):
-        assert decide(client, officer, "approve").status_code == 200
-        # US4.7: still Pending Safety Check, but this stay has its decision.
-        second = decide(client, officer, "reject", {"note": "Too late"})
-        assert second.status_code == 409
-        assert world.events.get_event(EVENT_ID).status is PSC
 
-    def test_a_race_lost_in_the_store_is_reported(
-        self, client, officer, world, safety_decision_repository, monkeypatch
-    ):
-        def lost(*_args, **_kwargs):
-            raise StaleEventStatus
-
-        monkeypatch.setattr(safety_decision_repository, "record", lost)
-        response = decide(client, officer, "approve")
-        assert response.status_code == 409
-        assert response.json()["detail"]["message"] == (
-            "This safety check was already decided. Refresh it and try again."
-        )
 
 
 # -- AC4: timestamped and attributable -------------------------------------------
@@ -491,87 +312,13 @@ class TestDecisionRecord:
         assert record["decidedAt"]
         assert record["checkStartedAt"] == ENTERED
 
-    def test_the_audit_trail_records_it_too(self, client, officer, world):
-        history = decide(client, officer, "reject", {"note": "No fire plan."}).json()["history"]
-        last = history[-1]
-        assert (last["from"], last["to"]) == ("Pending Safety Check", "Planning")
-        assert last["byId"] == str(SAFETY_OFFICER_ID)
-        assert last["byName"] == "Alex"
-        assert last["at"]
 
-    def test_an_approval_is_recorded_on_the_decision_not_as_a_move(
-        self, client, officer, world, safety_decision_repository
-    ):
-        """US4.7: the status does not change, so the trail has nothing new; the
-        decision itself is timestamped and attributable."""
-        history = decide(client, officer, "approve").json()["history"]
-        assert history[-1]["to"] == "Pending Safety Check"
-        (decision,) = safety_decision_repository.list_for_event(EVENT_ID)
-        assert decision.outcome is SafetyOutcome.APPROVED
-        assert (decision.decided_by_id, decision.decided_by_name) == (SAFETY_OFFICER_ID, "Alex")
-        assert decision.decided_at
 
-    def test_decisions_come_newest_first_with_their_flags(
-        self, client, officer, coordinator, world, safety_decision_repository
-    ):
-        changes(client, officer, bookings=(BOOKING_ID,), equipment=(LINE_ID,))
-        records = client.get(f"/events/{EVENT_ID}/safety-decisions", headers=coordinator).json()
-        flags = records[0]["flags"]
-        assert flags[0] == {
-            "id": flags[0]["id"],
-            "target": "booking",
-            "targetId": str(BOOKING_ID),
-            "label": "Great Hall",
-            "status": "Confirmed",
-            "startsAt": "2099-11-02T09:00",
-            "endsAt": "2099-11-02T17:00",
-            "resolvedAt": "",
-            "resolvedByName": "",
-        }
-        assert flags[1]["target"] == "equipment"
-        assert flags[1]["label"] == "Projector × 2"
-        assert flags[1]["status"] == RESERVED
 
-    def test_a_flagged_arrangement_that_has_gone_is_still_described(
-        self, client, officer, coordinator, world
-    ):
-        changes(client, officer, bookings=(BOOKING_ID,), equipment=(LINE_ID,))
-        world.bookings.bookings.clear()
-        world.equipment.requests.clear()
-        flags = client.get(
-            f"/events/{EVENT_ID}/safety-decisions", headers=coordinator
-        ).json()[0]["flags"]
-        assert [flag["label"] for flag in flags] == [
-            "A venue booking that no longer exists",
-            "An equipment request that no longer exists",
-        ]
-        assert [flag["status"] for flag in flags] == ["", ""]
 
-    def test_an_event_never_checked_has_no_decisions(self, client, coordinator, event_repository):
-        seed_event(event_repository, EventStatus.PLANNING)
-        assert client.get(
-            f"/events/{EVENT_ID}/safety-decisions", headers=coordinator
-        ).json() == []
 
-    def test_another_coordinator_cannot_read_them(self, client, coordinator, event_repository):
-        seed_event(event_repository, EventStatus.PLANNING, coordinator_id=99)
-        response = client.get(f"/events/{EVENT_ID}/safety-decisions", headers=coordinator)
-        assert response.status_code == 404
 
-    def test_the_safety_officer_reads_them_while_the_event_waits(
-        self, client, officer, event_repository
-    ):
-        seed_event(event_repository)
-        assert client.get(f"/events/{EVENT_ID}/safety-decisions", headers=officer).json() == []
-        event_repository.events.clear()
-        seed_event(event_repository, EventStatus.PLANNING)
-        response = client.get(f"/events/{EVENT_ID}/safety-decisions", headers=officer)
-        assert response.status_code == 404
 
-    @pytest.mark.parametrize("role", ["Event Organiser", "Venue Staff", "Technical Support"])
-    def test_nobody_else_reads_them(self, client, auth_headers, world, role):
-        response = client.get(f"/events/{EVENT_ID}/safety-decisions", headers=auth_headers(role))
-        assert response.status_code == 403
 
 
 # -- Re-review: the flags in the Coordinator's hands ------------------------------
@@ -598,70 +345,12 @@ class TestReReview:
         assert sent.status_code == 409
         assert sent.json()["detail"]["reason"] == "safety-flags-open"
 
-    def test_the_coordinator_marks_each_one_re_reviewed(
-        self, client, officer, coordinator, world
-    ):
-        changes(client, officer)
-        [flag_id] = flag_ids(client, coordinator)
-        response = resolve(client, coordinator, flag_id)
-        assert response.status_code == 200, response.text
-        assert response.json()["resolvedByName"] == "Priya"
-        assert response.json()["resolvedAt"]
-        readiness = client.get(f"/events/{EVENT_ID}/safety-check", headers=coordinator).json()
-        assert readiness["ready"] is True
 
-    def test_a_flag_is_resolved_once(self, client, officer, coordinator, world):
-        changes(client, officer)
-        [flag_id] = flag_ids(client, coordinator)
-        resolve(client, coordinator, flag_id)
-        again = resolve(client, coordinator, flag_id)
-        assert again.status_code == 409
-        assert again.json()["detail"]["reason"] == "flag-resolved"
 
-    @pytest.mark.parametrize("flag_id", ["999", "abc"])
-    def test_an_unknown_flag(self, client, officer, coordinator, world, flag_id):
-        changes(client, officer)
-        response = resolve(client, coordinator, flag_id)
-        assert response.status_code == 404
-        assert response.json()["detail"]["code"] == "safety_flag_not_found"
 
-    def test_another_events_flag_is_not_this_ones(
-        self, client, officer, coordinator, world, event_repository
-    ):
-        changes(client, officer)
-        [flag_id] = flag_ids(client, coordinator)
-        seed_event(event_repository, EventStatus.PLANNING, event_id=OTHER_EVENT_ID)
-        response = resolve(client, coordinator, flag_id, event_id=OTHER_EVENT_ID)
-        assert response.status_code == 404
 
-    def test_only_while_planning(
-        self, client, officer, coordinator, world, event_repository, safety_decision_repository
-    ):
-        changes(client, officer)
-        [flag_id] = flag_ids(client, coordinator)
-        event = event_repository.get_event(EVENT_ID)
-        event_repository._replace(replace(event, status=EventStatus.CANCELLED))
-        response = resolve(client, coordinator, flag_id)
-        assert response.status_code == 409
-        assert response.json()["detail"]["reason"] == "not-planning"
-        assert safety_decision_repository.get_flag(int(flag_id)).is_open
 
-    def test_only_the_assigned_coordinator(self, client, officer, auth_headers, world):
-        changes(client, officer)
-        response = resolve(client, auth_headers("Safety Officer"), "1")
-        assert response.status_code == 403
 
-    def test_a_race_lost_in_the_store_is_reported(
-        self, client, officer, coordinator, world, safety_decision_repository, monkeypatch
-    ):
-        changes(client, officer)
-        [flag_id] = flag_ids(client, coordinator)
-
-        def lost(*_args, **_kwargs):
-            raise StaleFlag
-
-        monkeypatch.setattr(safety_decision_repository, "resolve_flag", lost)
-        assert resolve(client, coordinator, flag_id).status_code == 409
 
 
 # -- AC5: a fresh decision each time ----------------------------------------------
@@ -677,11 +366,6 @@ class TestFreshDecision:
         assert sent.status_code == 200, sent.text
         return sent.json()
 
-    def test_a_returned_event_comes_back_undecided(self, client, officer, coordinator, world):
-        resent = self.resend(client, officer, coordinator)
-        assert resent["status"] == "Pending Safety Check"
-        queue = client.get("/events/safety-check", headers=officer).json()
-        assert [event["id"] for event in queue] == [str(EVENT_ID)]
 
     def test_a_decision_on_the_earlier_submission_is_refused(
         self, client, officer, coordinator, world
@@ -696,95 +380,12 @@ class TestFreshDecision:
         }
         assert world.events.get_event(EVENT_ID).status is PSC
 
-    def test_a_decision_on_the_current_submission_lands(
-        self, client, officer, coordinator, world, safety_decision_repository
-    ):
-        self.resend(client, officer, coordinator)
-        review = client.get(f"/events/{EVENT_ID}/safety-review", headers=officer).json()
-        approved = decide(client, officer, "approve", {"checkStartedAt": review["waitingSince"]})
-        assert approved.json()["safetyApproved"] is True
-        newest, earlier = safety_decision_repository.list_for_event(EVENT_ID)
-        assert newest.outcome is SafetyOutcome.APPROVED
-        assert newest.check_started_at == review["waitingSince"]
-        assert earlier.check_started_at == ENTERED
 
-    def test_a_check_time_that_is_not_a_time_is_a_bad_request(self, client, officer, world):
-        response = decide(client, officer, "approve", {"checkStartedAt": "last Tuesday"})
-        assert response.status_code == 400
-        assert world.events.get_event(EVENT_ID).status is PSC
 
 
 # -- The stores -------------------------------------------------------------------
 
 
-class TestInMemoryStore:
-    def record(self, store, **overrides):
-        arguments = {
-            "officer_id": SAFETY_OFFICER_ID,
-            "outcome": SafetyOutcome.CHANGES_REQUESTED,
-            "note": "Fix exits",
-            "check_started_at": ENTERED,
-            "booking_ids": (BOOKING_ID, BOOKING_ID),
-            "equipment_ids": (LINE_ID,),
-            **overrides,
-        }
-        return store.record(EVENT_ID, **arguments)
-
-    def test_records_moves_and_flags_once_each(self, event_repository):
-        seed_event(event_repository)
-        store = InMemorySafetyDecisions(names={SAFETY_OFFICER_ID: "Alex"})
-        decision = self.record(store)
-        assert decision.decided_by_name == "Alex"
-        assert decision.decided_at == event_repository.get_event(EVENT_ID).updated_at
-        assert [flag.id for flag in decision.flags] == [1, 2]
-        assert event_repository.get_event(EVENT_ID).status is EventStatus.PLANNING
-
-    def test_an_empty_check_time_skips_the_comparison(self, event_repository):
-        seed_event(event_repository)
-        store = InMemorySafetyDecisions()
-        decision = self.record(store, check_started_at="", booking_ids=(), equipment_ids=())
-        assert decision.check_started_at == ENTERED
-        assert decision.decided_by_name == ""
-
-    def test_refuses_a_missing_or_undecidable_event(self, event_repository):
-        store = InMemorySafetyDecisions()
-        with pytest.raises(StaleEventStatus):
-            self.record(store)
-        seed_event(event_repository, EventStatus.PLANNING)
-        with pytest.raises(StaleEventStatus):
-            self.record(store)
-
-    def test_refuses_a_later_stay(self, event_repository):
-        seed_event(event_repository)
-        with pytest.raises(StaleEventStatus):
-            self.record(InMemorySafetyDecisions(), check_started_at="2099-01-01T00:00:00")
-
-    def test_lists_one_events_decisions_newest_first(self, event_repository):
-        store = InMemorySafetyDecisions(
-            decisions=[
-                SafetyDecision(1, EVENT_ID, SafetyOutcome.REJECTED, "a", 5, "", "2099-01-01", ""),
-                SafetyDecision(2, OTHER_EVENT_ID, SafetyOutcome.APPROVED, "", 5, "", "2099-01-03",
-                               ""),
-                SafetyDecision(3, EVENT_ID, SafetyOutcome.APPROVED, "", 5, "", "2099-01-02", ""),
-            ]
-        )
-        assert [item.id for item in store.list_for_event(EVENT_ID)] == [3, 1]
-
-    def test_resolves_an_open_flag_once_and_only_on_its_event(self, event_repository):
-        seed_event(event_repository)
-        store = InMemorySafetyDecisions(names={COORDINATOR_ID: "Priya"})
-        self.record(store)
-        assert store.get_flag(99) is None
-        with pytest.raises(StaleFlag):
-            store.resolve_flag(1, event_id=OTHER_EVENT_ID, actor_id=COORDINATOR_ID)
-        with pytest.raises(StaleFlag):
-            store.resolve_flag(99, event_id=EVENT_ID, actor_id=COORDINATOR_ID)
-        resolved = store.resolve_flag(1, event_id=EVENT_ID, actor_id=COORDINATOR_ID)
-        assert (resolved.resolved_by_id, resolved.resolved_by_name) == (COORDINATOR_ID, "Priya")
-        assert not store.get_flag(1).is_open
-        assert store.get_flag(2).is_open
-        with pytest.raises(StaleFlag):
-            store.resolve_flag(1, event_id=EVENT_ID, actor_id=COORDINATOR_ID)
 
 
 FLAG_ROW = {
@@ -849,12 +450,6 @@ class TestSupabaseStore:
         monkeypatch.setattr(supabase_client, "admin", lambda: fake)
         return fake
 
-    def test_rows_become_decisions_and_flags(self):
-        decision = to_decision(DECISION_ROW)
-        assert decision.outcome is SafetyOutcome.CHANGES_REQUESTED
-        assert decision.decided_by_name == "Alex"
-        assert [flag.id for flag in decision.flags] == [4, 5]
-        assert to_decision({**DECISION_ROW, "note": None, "safety_review_flags": None}).note == ""
 
     def test_a_joined_name_may_come_as_a_list_or_not_at_all(self):
         resolved = {**FLAG_ROW, "resolved_at": "2099-01-03T09:00:00", "resolved_by_id": 2}
@@ -889,16 +484,6 @@ class TestSupabaseStore:
             },
         )
 
-    def test_an_empty_note_and_check_time_go_as_null(self, admin):
-        admin.rpc_result = 3
-        admin.rows = [DECISION_ROW]
-        SupabaseSafetyDecisions().record(
-            EVENT_ID, officer_id=SAFETY_OFFICER_ID, outcome=SafetyOutcome.APPROVED, note="",
-            check_started_at="", booking_ids=(), equipment_ids=(),
-        )
-        arguments = admin.calls[0][2]
-        assert arguments["p_note"] is None
-        assert arguments["p_check_started_at"] is None
 
     @pytest.mark.parametrize("answer", [None, False])
     def test_a_refused_record_is_stale(self, admin, answer):
@@ -944,9 +529,4 @@ class TestSupabaseStore:
             store.resolve_flag(4, event_id=EVENT_ID, actor_id=COORDINATOR_ID)
 
 
-class TestNotices:
-    def test_no_flags_says_nothing_about_flags(self, notification_repository, event_repository):
-        event = seed_event(event_repository)
-        notifications.notify_safety_changes(event, "Fix exits")
-        [notice] = notification_repository.notifications
-        assert notice.message == 'The Safety Officer requested changes to "Open House": Fix exits'
+

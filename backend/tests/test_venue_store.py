@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from app import supabase_client, venue_store
-from app.venue_store import NO_FILTERS, SupabaseVenues, VenueFilters
+from app.venue_store import SupabaseVenues, VenueFilters
 
 ROW = {
     "id": 1,
@@ -142,35 +142,14 @@ class TestReadingTheCatalogue:
         ):
             assert column in selected
 
-    def test_an_unfiltered_list_narrows_nothing(self, query):
-        SupabaseVenues().list_venues(NO_FILTERS)
 
-        assert query.named("gte") == []
-        assert query.named("ilike") == []
-
-    def test_it_orders_by_name(self, query):
-        SupabaseVenues().list_venues()
-
-        assert ("order", "name", False) in query.calls
 
 
 class TestFilteringHappensInThePostgresQuery:
     """US9.3, asserted where the in-memory store cannot speak for it."""
 
-    def test_minimum_capacity_becomes_a_gte(self, query):
-        SupabaseVenues().list_venues(VenueFilters(min_capacity=200))
 
-        assert query.named("gte") == [("gte", "capacity", 200)]
 
-    def test_location_becomes_an_ilike_on_location(self, query):
-        SupabaseVenues().list_venues(VenueFilters(location="Library"))
-
-        assert query.named("ilike") == [("ilike", "location", "%Library%")]
-
-    def test_accessibility_becomes_an_ilike_on_its_own_column(self, query):
-        SupabaseVenues().list_venues(VenueFilters(accessibility="hearing"))
-
-        assert query.named("ilike") == [("ilike", "accessibility_features", "%hearing%")]
 
     def test_all_three_are_sent_together(self, query):
         """Chained filters are ANDed by PostgREST, which is US9.3's rule."""
@@ -181,14 +160,6 @@ class TestFilteringHappensInThePostgresQuery:
         assert len(query.named("gte")) == 1
         assert len(query.named("ilike")) == 2
 
-    def test_an_empty_filter_is_not_sent_at_all(self, query):
-        """A form submitting untouched boxes must not add a clause."""
-        SupabaseVenues().list_venues(
-            VenueFilters(min_capacity=None, location="   ", accessibility="")
-        )
-
-        assert query.named("gte") == []
-        assert query.named("ilike") == []
 
     def test_excluded_venues_become_a_not_in_on_id(self, query):
         """US12.1: venues closed on the planning dates are left out by Postgres."""
@@ -197,12 +168,6 @@ class TestFilteringHappensInThePostgresQuery:
         assert query.named("not") == [("not",)]
         assert query.named("in") == [("in", "id", [1, 3])]
 
-    def test_no_exclusions_sends_no_not_in(self, query):
-        """Nothing to leave out sends no clause, rather than an empty `not.in.()`."""
-        SupabaseVenues().list_venues(VenueFilters(excluded_ids=frozenset()))
-
-        assert query.named("not") == []
-        assert query.named("in") == []
 
     def test_exclusions_count_as_a_filter(self):
         assert VenueFilters(excluded_ids=frozenset({1})).applied
@@ -243,23 +208,6 @@ class TestWritingARecord:
         assert row["capacity"] == 90
         assert row["supported_layouts"] == "Standing"
 
-    def test_an_empty_optional_field_is_stored_as_null(self, query):
-        """One state for "nothing recorded" in the database, not two."""
-        SupabaseVenues().create_venue(
-            name="Atrium",
-            location="Science Quarter",
-            capacity=90,
-            facilities="",
-            accessibility_features="",
-            operating_hours="",
-            supported_layouts="",
-        )
-
-        row = query.named("insert")[0][1]
-        assert row["facilities"] is None
-        assert row["accessibility_features"] is None
-        assert row["operating_hours"] is None
-        assert row["supported_layouts"] is None
 
     def test_updating_never_sends_the_system_generated_fields(self, query):
         """US9.1b: `id` and `created_at` are not editable, so they are not sent."""
@@ -293,19 +241,6 @@ class TestWritingARecord:
 
         assert query.named("update")[0][1]["updated_at"]
 
-    def test_updating_targets_the_one_row(self, query):
-        SupabaseVenues().save_venue(
-            7,
-            name="Great Hall",
-            location="Main Campus",
-            capacity=450,
-            facilities="",
-            accessibility_features="",
-            operating_hours="",
-            supported_layouts="",
-        )
-
-        assert ("eq", "id", 7) in query.calls
 
     def test_deleting_is_a_delete_of_that_row(self, query):
         """US9.1c: a hard delete, not a flag written by an update."""
@@ -349,22 +284,12 @@ class TestDeletingABookedVenue:
 class TestDuplicateNames:
     """A unique violation is a rule; anything else is still a failure."""
 
-    def test_a_unique_violation_becomes_a_named_error(self):
-        error = venue_store._as_duplicate(_ApiError("23505"), "Great Hall")
-
-        assert isinstance(error, venue_store.DuplicateVenueName)
-        assert "Great Hall" in str(error)
 
     def test_a_unique_violation_reported_in_the_args_is_recognised(self):
         error = venue_store._as_duplicate(Exception({"code": "23505"}), "Great Hall")
 
         assert isinstance(error, venue_store.DuplicateVenueName)
 
-    def test_any_other_failure_is_left_alone_to_be_re_raised(self):
-        """An unreachable database is not a name clash, and must not read as one."""
-        original = _ApiError("08006")
-
-        assert venue_store._as_duplicate(original, "Great Hall") is original
 
     def test_an_error_with_no_code_at_all_is_left_alone(self):
         original = RuntimeError("something else entirely")

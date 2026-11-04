@@ -45,13 +45,13 @@ print("\n2️⃣ Creating user records in public.users...")
 users_to_create = [
     {
         "id": 3,
-        "email": "coordinatorlead@spmg3t7.edu",
+        "email": "coordinatorlead@connectsphere.com",
         "name": "Jordan",
         "role": "Event Coordinator Lead"
     },
     {
         "id": 5,
-        "email": "safetyofficer@spmg3t7.edu",
+        "email": "safetyofficer@connectsphere.com",
         "name": "Alex",
         "role": "Safety Officer"
     }
@@ -87,5 +87,5 @@ for user in all_users.data:
 
 print("\n✅ Setup complete!")
 print("\n🎉 You can now sign in with:")
-print("   Coordinator Lead: coordinatorlead@spmg3t7.edu / Sprint1!demo")
-print("   Safety Officer:   safetyofficer@spmg3t7.edu / Sprint1!demo")
+print("   Coordinator Lead: coordinatorlead@connectsphere.com / password")
+print("   Safety Officer:   safetyofficer@connectsphere.com / password")

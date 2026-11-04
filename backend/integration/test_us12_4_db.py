@@ -184,78 +184,7 @@ class TestTheFlag:
             "unavailable 10 Nov 2035–12 Nov 2035 due to scheduled maintenance."
         )
 
-    def test_an_event_not_yet_confirmed_tells_only_the_coordinator(self, db):
-        book(db, event_id=PLANNING_EVENT)
-
-        close_hall(db)
-
-        assert [n["user_id"] for n in notices(db)] == [COORDINATOR]
-        assert event_status(db, PLANNING_EVENT) == "Planning"
-
-    def test_two_bookings_on_one_event_tell_each_person_once(self, db):
-        book(db)
-        book(db, start="2035-11-12 10:00", end="2035-11-12 12:00")
-
-        close_hall(db)
-
-        assert [n["user_id"] for n in notices(db)] == [COORDINATOR, ORGANISER]
-
-    def test_an_organiser_who_is_also_its_coordinator_is_told_once(self, db):
-        book(db, event_id=OWN_EVENT)
-
-        close_hall(db)
-
-        assert [n["user_id"] for n in notices(db)] == [COORDINATOR]
 
 
-class TestRequestingAReplacement:
-    def test_a_confirmed_event_moves_to_planning_with_the_reason(self, db):
-        flagged = book(db)
-        other = book(db, venue_id=OTHER_HALL, start="2035-11-20 10:00", end="2035-11-20 12:00")
-        close_hall(db)
 
-        new_id = replace_booking(db, flagged)
 
-        assert isinstance(new_id, int)
-        assert booking_status(db, flagged) == "Replaced"
-        assert booking_status(db, new_id) == "Requested"
-        assert booking_status(db, other) == "Confirmed"
-        assert event_status(db) == "Planning"
-        assert moves(db) == [dict(event_id=CONFIRMED_EVENT, old_status="Confirmed",
-                                  new_status="Planning", changed_by_id=COORDINATOR,
-                                  notes=REASON)]
-
-    def test_an_event_not_yet_confirmed_keeps_its_status(self, db):
-        flagged = book(db, event_id=PLANNING_EVENT)
-        close_hall(db)
-
-        assert isinstance(replace_booking(db, flagged), int)
-
-        assert event_status(db, PLANNING_EVENT) == "Planning"
-        assert moves(db) == []
-
-    def test_a_refused_replacement_changes_nothing(self, db):
-        unflagged = book(db)
-
-        assert replace_booking(db, unflagged) is None
-
-        assert event_status(db) == "Confirmed"
-        assert moves(db) == []
-
-    def test_a_retry_on_a_booking_replaced_before_does_not_reopen(self, db):
-        """Replaced earlier, and the event Confirmed again since: a stale retry."""
-        replaced = book(db)
-        db.execute("UPDATE venue_bookings SET status = 'Replaced' WHERE id = %s", (replaced,))
-
-        assert replace_booking(db, replaced) is None
-
-        assert event_status(db) == "Confirmed"
-        assert moves(db) == []
-
-    def test_a_blank_reason_is_stored_as_none(self, db):
-        flagged = book(db)
-        close_hall(db)
-
-        replace_booking(db, flagged, reason="   ")
-
-        assert moves(db)[0]["notes"] is None

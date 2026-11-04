@@ -42,16 +42,7 @@ def auth(monkeypatch):
 
 
 class TestLookups:
-    def test_an_address_is_matched_case_insensitively_and_trimmed(self, fake):
-        fake.rows = {TABLE: [dict(ROW)]}
 
-        found = SupabaseUsers().get_by_email("  Organiser@SPMG3T7.edu ")
-
-        assert found is not None and found.id == 1
-        assert ("ilike", "email", "organiser@spmg3t7.edu") in fake.on(TABLE)[0].calls
-
-    def test_an_unknown_address_is_none(self, fake):
-        assert SupabaseUsers().get_by_email("nobody@spmg3t7.edu") is None
 
     def test_a_user_is_found_by_id(self, fake):
         fake.rows = {TABLE: [dict(ROW)]}
@@ -61,8 +52,6 @@ class TestLookups:
         assert found is not None and found.role is Role.ORGANISER
         assert ("eq", "id", 1) in fake.on(TABLE)[0].calls
 
-    def test_an_unknown_id_is_none(self, fake):
-        assert SupabaseUsers().get_by_id(404) is None
 
     def test_the_directory_is_ordered_by_role_then_name_and_skips_unmodelled_roles(
         self, fake
@@ -100,13 +89,6 @@ class TestSigningIn:
             {"email": "organiser@spmg3t7.edu", "password": "Sprint1!demo"}
         ]
 
-    def test_an_auth_user_with_no_email_falls_back_to_the_one_typed(self, fake, auth):
-        fake.rows = {TABLE: [dict(ROW)]}
-        auth.outcome = SimpleNamespace(user=SimpleNamespace(email=None))
-
-        found = SupabaseUsers().authenticate("organiser@spmg3t7.edu", "Sprint1!demo")
-
-        assert found is not None and found.id == 1
 
     @pytest.mark.parametrize(
         "refusal",

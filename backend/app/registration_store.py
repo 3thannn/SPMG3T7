@@ -487,7 +487,9 @@ class InMemoryRegistrations:
     ) -> RegistrationSettings:
         with self.lock:
             event = event_store.repository().get_event(event_id)
-            if event is None or event.coordinator_id != actor_id or event.status not in SETTABLE:
+            # D3: the owning Organiser may change the settings as well.
+            allowed = event is not None and actor_id in (event.coordinator_id, event.organiser_id)
+            if not allowed or event.status not in SETTABLE:
                 raise StaleRegistrationSettings
             stored = self.settings.get(event_id, (False, None))[1]
             kept = capacity if capacity is not None else stored

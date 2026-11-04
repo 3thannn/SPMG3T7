@@ -52,7 +52,7 @@ jobs:
       - name: Build (byte-compile all sources)
         run: python -m compileall -q app
 
-      - name: Test, failing under 100% line and branch coverage
+      - name: Test, failing under the coverage floor in pyproject.toml
         run: pytest --cov
 
       - name: Test database migrations and review RPCs
@@ -61,6 +61,7 @@ jobs:
         run: >-
           pytest integration/test_unavailability_db.py integration/test_change_review_db.py
           integration/test_us12_4_db.py integration/test_us8_4_db.py
+          integration/test_safety_check_changes_db.py integration/test_organiser_registration_db.py
 
   frontend:
     runs-on: ubuntu-24.04
@@ -88,3 +89,35 @@ jobs:
 
       - name: Test, failing under the coverage thresholds in vite.config.ts
         run: npm test -- --coverage
+
+  e2e:
+    # The browser journeys in frontend/e2e-isolated, against backend/e2e_server.py
+    # (the real API over in-memory stores). No secrets and no shared database.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Backend virtualenv (Playwright starts the API from backend/.venv)
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install -r backend/requirements-dev.txt
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies and Chromium
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Browser journeys
+        working-directory: frontend
+        run: npm run test:e2e

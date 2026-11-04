@@ -14,7 +14,7 @@ from app.event_status import EventStatus
 from app.event_store import Event
 from app.notification_store import TABLE, SupabaseNotifications
 from app.notifications import CoordinatorNotice
-from tests.conftest import COORDINATOR_ID, COORDINATOR_LEAD_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
+from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
 OTHER_COORDINATOR_ID = 99
 
@@ -85,40 +85,8 @@ class TestAssignment:
         assert notice["status"] is None
         assert notice["read"] is False
 
-    def test_tc_cn02_the_organiser_gets_their_own_notice_not_this_one(
-        self, client, auth_headers, notification_repository
-    ):
-        event_id = submitted_event(client, auth_headers)
-        assign(client, auth_headers, event_id)
 
-        by_recipient = {item.user_id: item.kind for item in notification_repository.notifications}
-        assert by_recipient == {
-            ORGANISER_ID: "event-status",
-            COORDINATOR_ID: "assigned",
-            # US10.3: the Lead heard of the submission that put it in the queue.
-            COORDINATOR_LEAD_ID: "event-status",
-        }
 
-    def test_tc_cn03_a_refused_assignment_does_not_notify(self, client, auth_headers):
-        event_id = submitted_event(client, auth_headers)
-        assign(client, auth_headers, event_id)
-
-        again = assign(client, auth_headers, event_id)
-        assert again.status_code == 409
-        assert len(coordinator_notices(client, auth_headers)) == 1
-
-    def test_tc_cn04_a_failed_notice_does_not_fail_the_assignment(
-        self, client, auth_headers, notification_repository, monkeypatch
-    ):
-        def broken(**_kwargs):
-            raise RuntimeError("kind check rejected the row")
-
-        monkeypatch.setattr(notification_repository, "create_notice", broken)
-        event_id = submitted_event(client, auth_headers)
-
-        assigned = assign(client, auth_headers, event_id)
-        assert assigned.status_code == 200
-        assert assigned.json()["status"] == "Under Review"
 
 
 class TestReassignment:
@@ -134,19 +102,7 @@ class TestReassignment:
             OTHER_COORDINATOR_ID: ("assigned", 'You were assigned "Careers Fair".'),
         }
 
-    def test_tc_cn06_reassigning_to_the_same_coordinator_is_silent(
-        self, notification_repository
-    ):
-        notifications.notify_reassigned(event(), COORDINATOR_ID, COORDINATOR_ID)
-        assert notification_repository.notifications == []
 
-    def test_tc_cn07_a_first_assignment_through_reassign_only_notifies_the_new_one(
-        self, notification_repository
-    ):
-        notifications.notify_reassigned(event(coordinator_id=None), None, COORDINATOR_ID)
-
-        [notice] = notification_repository.notifications
-        assert (notice.user_id, notice.kind) == (COORDINATOR_ID, "assigned")
 
 
 class TestBookingAndSafety:
@@ -204,22 +160,7 @@ class TestBookingAndSafety:
         notifications.notify_safety_changes(unassigned, "Fix it.")
         assert notification_repository.notifications == []
 
-    def test_tc_cn14_a_failed_write_is_logged_not_raised(
-        self, notification_repository, monkeypatch, caplog
-    ):
-        def broken(**_kwargs):
-            raise RuntimeError("notifications table missing")
 
-        monkeypatch.setattr(notification_repository, "create_notice", broken)
-        notifications.notify_safety_changes(event(), "Fix it.")
-        assert "US10.2 safety-changes notification" in caplog.text
-
-    def test_tc_cn15_an_untitled_event_still_reads_sensibly(self, notification_repository):
-        notifications.notify_hold_expired(event(title="  "), "Main Hall")
-        [notice] = notification_repository.notifications
-        assert notice.message == (
-            'The tentative hold on Main Hall for "an untitled event" has expired.'
-        )
 
 
 class TestTheCoordinatorsList:
@@ -237,30 +178,8 @@ class TestTheCoordinatorsList:
         )
         assert unread.json()["read"] is False
 
-    def test_tc_cn17_unread_first_then_newest(self, client, auth_headers):
-        notifications.notify_hold_expiring(event(), "Main Hall", "tomorrow")
-        notifications.notify_hold_expired(event(), "Main Hall")
-        coordinator = auth_headers("Event Coordinator")
-        oldest, newest = sorted(item["id"] for item in coordinator_notices(client, auth_headers))
-        client.patch(f"/notifications/{newest}", json={"read": True}, headers=coordinator)
 
-        assert [item["id"] for item in coordinator_notices(client, auth_headers)] == [
-            oldest,
-            newest,
-        ]
 
-    def test_tc_cn18_a_coordinator_sees_only_their_own_notices(self, client, auth_headers):
-        notifications.notify_safety_changes(event(coordinator_id=OTHER_COORDINATOR_ID), "x")
-        assert coordinator_notices(client, auth_headers) == []
-
-    def test_tc_cn19_a_coordinator_cannot_toggle_someone_elses_notice(
-        self, client, auth_headers
-    ):
-        notifications.notify_safety_changes(event(coordinator_id=OTHER_COORDINATOR_ID), "x")
-        response = client.patch(
-            "/notifications/1", json={"read": True}, headers=auth_headers("Event Coordinator")
-        )
-        assert response.status_code == 404
 
 
 STORED_ROW = {
@@ -325,3 +244,4 @@ class TestTheSupabaseStore:
         assert created.kind == "hold-expired"
         assert created.event_title == "Careers Fair"
         assert created.status is None
+

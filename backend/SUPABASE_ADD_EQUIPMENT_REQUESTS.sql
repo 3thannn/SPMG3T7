@@ -163,7 +163,7 @@ SELECT setval(pg_get_serial_sequence('public.users', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 1) FROM public.users), 1));
 
 INSERT INTO public.users (email, name, role)
-VALUES ('technicalsupport@spmg3t7.edu', 'Bryan', 'Technical Support')
+VALUES ('technicalsupport@connectsphere.com', 'Bryan', 'Technical Support')
 ON CONFLICT (email) DO NOTHING;
 
 NOTIFY pgrst, 'reload schema';

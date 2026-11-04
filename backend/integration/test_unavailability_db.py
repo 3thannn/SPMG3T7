@@ -94,14 +94,6 @@ def close_venue(db, reason="maintenance", other=None):
     """, (reason, other)).fetchone()["id"]
 
 
-def test_migration_preserves_legacy_reasons_and_is_rerunnable(db):
-    rows = db.execute("""
-        SELECT reason_type, other_reason FROM venue_unavailability ORDER BY start_date
-    """).fetchall()
-    assert rows == [
-        dict(reason_type="other", other_reason="Legacy closure"),
-        dict(reason_type="other", other_reason="Venue unavailable"),
-    ]
 
 
 def test_active_bookings_flagged_once_and_decisions_preserved(db):

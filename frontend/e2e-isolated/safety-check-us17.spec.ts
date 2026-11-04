@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
-import { signOut, TEST_USERS } from '../e2e/helpers'
+import { ACCOUNT, PASSWORD, signOut } from './support'
 
 /**
  * US17.1 + US17.2 as one flow: the Safety Officer reviews an event Pending
@@ -13,7 +13,8 @@ import { signOut, TEST_USERS } from '../e2e/helpers'
  *   - Read-only. Safety Officer role only.
  *
  * US17.2 – Safety Officer records a decision
- *   - Approve -> Confirmed.
+ *   - Approve records the current Safety decision; the assigned Coordinator
+ *     confirms separately once every venue and equipment line is ready.
  *   - Request changes -> Planning; note required; affected venue/equipment
  *     flagged for re-review; assigned Coordinator notified (US10.2).
  *   - Reject -> reason required; back to Planning with the reason.
@@ -31,7 +32,7 @@ import { signOut, TEST_USERS } from '../e2e/helpers'
  *   51 Youth Workshop      Pending Safety Check since 5 days ago, 30 people.
  *                          Booking 51: Studio B, Confirmed.
  *
- * Credentials come from `e2e/helpers.ts`. Its `signIn` is not used because it
+ * Credentials come from `./support.ts`. Its `signIn` is not used because it
  * checks the Supabase display names; this seed's names come from
  * `backend/tests/conftest.py`, so sign-in here checks the role instead.
  */
@@ -68,7 +69,8 @@ type Decision = {
  * what the server recorded, and to act "elsewhere" while a page is open.
  */
 async function apiAs(request: APIRequestContext, role: FlowRole) {
-  const { email, password } = TEST_USERS[role]
+  const { email } = ACCOUNT[role]
+  const password = PASSWORD
   const login = await request.post(`${API}/auth/login`, { data: { email, password } })
   expect(login.ok(), `sign in as ${role}`).toBeTruthy()
   const headers = { Authorization: `Bearer ${(await login.json()).token}` }
@@ -89,8 +91,8 @@ async function apiAs(request: APIRequestContext, role: FlowRole) {
 /** Sign in through the real form; the role in the nav says it worked. */
 async function signInAs(page: Page, role: FlowRole) {
   await page.goto('/#/signin')
-  await page.getByLabel('Email').fill(TEST_USERS[role].email)
-  await page.getByLabel('Password').fill(TEST_USERS[role].password)
+  await page.getByLabel('Email').fill(ACCOUNT[role].email)
+  await page.getByLabel('Password').fill(PASSWORD)
   await page.locator('form').getByRole('button', { name: 'Sign in' }).click()
   await expect(page.locator('.topnav-role')).toHaveText(role, { timeout: 10000 })
 }
@@ -285,15 +287,17 @@ test.describe('US17.1 + US17.2: Operational Safety Check flow', () => {
         'Sent for the safety check. The event is now Pending Safety Check.')
     })
 
-    await test.step('US17.2: approve moves the event to Confirmed', async () => {
+    await test.step('US17.2: approval is recorded without auto-confirming the event', async () => {
       who = await actAs(page, who, 'Safety Officer', `/events/${GALA}`)
       const earlier = page.getByRole('region', { name: 'Earlier safety decisions' })
       await expect(earlier).toContainText(`Rejected by ${OFFICER}`)
       await expect(earlier).toContainText(`Changes requested by ${OFFICER}`)
       await page.getByRole('button', { name: 'Approve safety check' }).click()
 
-      await expect(status(page)).toHaveText('Approved. The event is now Confirmed.')
-      expect((await coordinatorApi.get(`/events/${GALA}`)).status).toBe('Confirmed')
+      await expect(status(page)).toHaveText(
+        'Approved. The Coordinator confirms the event once everything else is in place.',
+      )
+      expect((await coordinatorApi.get(`/events/${GALA}`)).status).toBe('Pending Safety Check')
       const decisions = (await coordinatorApi.get(`/events/${GALA}/safety-decisions`)) as Decision[]
       expect(decisions.map((each) => each.outcome)).toEqual(['approved', 'rejected', 'changes-requested'])
       for (const each of decisions) {
@@ -302,8 +306,20 @@ test.describe('US17.1 + US17.2: Operational Safety Check flow', () => {
       }
     })
 
+    await test.step('US4.7: the assigned Coordinator confirms the approved event', async () => {
+      who = await actAs(page, who, 'Event Coordinator', `/events/${GALA}`)
+      const confirm = page.getByRole('button', { name: 'Confirm event' })
+      await expect(confirm).toBeEnabled()
+      await confirm.click()
+
+      await expect(status(page)).toHaveText(
+        'Confirmed. The Organiser has been told the event is going ahead.',
+      )
+      expect((await coordinatorApi.get(`/events/${GALA}`)).status).toBe('Confirmed')
+    })
+
     await test.step('US17.1: a decided event leaves the queue', async () => {
-      await page.getByRole('link', { name: 'Safety Review', exact: true }).click()
+      who = await actAs(page, who, 'Safety Officer', '/safety-review')
       const queue = page.getByRole('list', { name: 'Events pending safety check' })
       await expect(queue.getByRole('heading', { level: 2 })).toHaveText(['Youth Workshop'])
     })
@@ -377,7 +393,7 @@ test.describe('US17.1 + US17.2: Operational Safety Check flow', () => {
 
   test('US17.1: the safety review queue is for the Safety Officer role only', async ({ page }) => {
     await actAs(page, null, 'Event Coordinator', '/safety-review')
-    // Same access-denied check as e2e/authentication.spec.ts (US1.3).
+    // Same access-denied check as accounts-and-access.spec.ts (US1.3).
     await expect(page.getByText('Access denied')).toBeVisible()
     await expect(page.getByText(
       'The Event Coordinator role cannot open the safety review queue. That is available to Safety Officer.',
