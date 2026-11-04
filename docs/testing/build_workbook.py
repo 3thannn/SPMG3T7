@@ -234,15 +234,17 @@ def main():
         ["How this was built", "Each Jira acceptance criterion was turned into test cases the Week 4 way: "
          "a happy path, one negative case per rule, and boundary values (just below, at, just above). "
          "Each test case points to the one automated test that checks it; we read every one."],
-        ["Behaviour ACs", f"{len(behaviour)} (all {len(covered)} have at least one test case)"],
+        ["Behaviour ACs", f"{len(covered)} of {len(behaviour)} have at least one test case"],
         ["Test cases", str(len(CASES))],
         *[[f"  {k}", str(v)] for k, v in sorted(layers.items())],
         ["Results of the run", ", ".join(f"{k} {v}" for k, v in sorted(statuses.items()))],
         ["Defects found and fixed", "D1, D2, D3, D4, D7, D8 (see CODE_AUDIT.md), each with a failing test first"],
-        ["Coverage", "Backend about 78% of lines, frontend about 50%. The rest is code no AC covers: the "
-         "Supabase versions of the stores (the API tests use in-memory stores), database-down branches, "
-         "and loading/error states. The DB integration tests and E2E journeys exercise those paths "
-         "end to end instead."],
+        ["Coverage", "Backend 85.66% combined line/branch coverage (88.38% lines); CI floor 85.6%. "
+         "Frontend 52.76% lines, 51.30% statements, 49.20% functions and 48.89% branches. "
+         "Ten grouped Technical cases cover the restored Supabase adapters using recording clients. "
+         "Remaining gaps include defensive database-error branches and UI loading/error states. "
+         "The suite follows AC rules rather than one test per line; defensive code is retained. "
+         "Local PostgreSQL suites check SQL contracts; isolated E2E uses in-memory stores, not Supabase."],
         ["Source of truth", "docs/testing/test_cases.txt and acceptance_criteria.yaml; this file is generated "
          "by docs/testing/build_workbook.py"],
     ]

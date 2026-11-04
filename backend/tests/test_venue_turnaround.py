@@ -16,10 +16,16 @@ The worked example from the requirement: 10:00-12:00 with 30 minutes' setup and
 
 import pytest
 
-from app.booking_store import Booking, BookingStatus
+from app.booking_store import COLUMNS as BOOKING_COLUMNS
+from app.booking_store import Booking, BookingStatus, SupabaseBookings
+from app.venue_store import SupabaseVenues
 from app.venue_turnaround import (
     MINUTES_MAX,
 )
+from tests.test_booking_store import FakeClient as BookingFakeClient
+from tests.test_booking_store import FakeQuery as BookingFakeQuery
+from tests.test_venue_store import FakeClient as VenueFakeClient
+from tests.test_venue_store import FakeQuery as VenueFakeQuery
 
 STAFF = "Venue Staff"
 COORDINATOR = "Event Coordinator"
@@ -229,6 +235,57 @@ class TestRecheckOnChange:
         assert conflict["first"]["eventId"] == "901"
         assert conflict["second"]["bookingId"] == "2"
 
+
+class TestVenueStore:
+
+
+
+
+    @pytest.fixture
+    def query(self, monkeypatch):
+        from app import supabase_client
+
+        recorder = VenueFakeQuery()
+        monkeypatch.setattr(supabase_client, "admin", lambda: VenueFakeClient(recorder))
+        return recorder
+
+    DETAILS = {
+        "name": "Atrium",
+        "location": "Science Quarter",
+        "capacity": 90,
+        "facilities": "",
+        "accessibility_features": "",
+        "operating_hours": "",
+        "supported_layouts": "",
+    }
+
+    def test_create_writes_both_columns(self, query):
+        SupabaseVenues().create_venue(**self.DETAILS, setup_minutes=30, turnaround_minutes=45)
+
+        (_, row), = query.named("insert")
+        assert (row["setup_minutes"], row["turnaround_minutes"]) == (30, 45)
+
+class TestBookingStoreListForVenue:
+    def test_supabase_reads_one_venue_s_bookings_soonest_first(self, monkeypatch):
+        from app import supabase_client
+
+        recorder = BookingFakeQuery()
+        monkeypatch.setattr(supabase_client, "admin", lambda: BookingFakeClient(recorder))
+
+        found = SupabaseBookings().list_for_venue(7)
+
+        assert recorder.named("select") == [("select", BOOKING_COLUMNS)]
+        assert recorder.named("eq") == [("eq", "venue_id", 7)]
+        assert [call[1] for call in recorder.named("order")] == ["start_at", "end_at", "id"]
+        assert len(found) == 1
+
+    def test_supabase_reads_an_empty_answer_as_none(self, monkeypatch):
+        from app import supabase_client
+
+        recorder = BookingFakeQuery(rows=None)
+        monkeypatch.setattr(supabase_client, "admin", lambda: BookingFakeClient(recorder))
+
+        assert SupabaseBookings().list_for_venue(7) == []
 
 
 

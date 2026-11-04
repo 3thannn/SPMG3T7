@@ -20,7 +20,9 @@ from app.event_needs import (
     LAYOUT_OPTIONS,
     MISSING_MESSAGES,
     NOT_REQUIRED,
+    EventNeeds,
 )
+from app.event_store import SupabaseEvents, to_event
 from tests.conftest import (
     COORDINATOR_ID,
     ORGANISER_ID,
@@ -268,4 +270,53 @@ DETAIL_KWARGS = {
     "expected_attendance": 80,
 }
 
+
+class TestSupabaseStore:
+
+
+
+
+
+    def test_save_writes_the_needs(self, recorder):
+        SupabaseEvents().save_event(42, **DETAIL_KWARGS, needs=EventNeeds(**SUBMITTABLE_NEED_ATTRS))
+
+        _, written = recorder.updates[0]
+        for name, value in SUBMITTABLE_NEED_ATTRS.items():
+            assert written[name] == value
+
+    def test_a_tracked_save_logs_each_changed_need(self, recorder, monkeypatch):
+        previous = to_event(recorder.stored_row)
+        needs = EventNeeds(
+            **{
+                **SUBMITTABLE_NEED_ATTRS,
+                "preferred_layout": "Banquet",
+                "equipment_needs": NOT_REQUIRED,
+            }
+        )
+
+        calls = []
+
+        def rpc(name, payload):
+            calls.append((name, payload))
+            return type("Rpc", (), {"execute": lambda self: type("Result", (), {"data": True})()})()
+
+        monkeypatch.setattr(recorder, "rpc", rpc, raising=False)
+
+        SupabaseEvents().save_event_with_tracking(
+            42,
+            **{**DETAIL_KWARGS, "starts_at": previous.starts_at, "ends_at": previous.ends_at},
+            editor_id=COORDINATOR_ID,
+            previous_event=previous,
+            needs=needs,
+        )
+
+        name, payload = calls[0]
+        assert name == "us11_edit"
+        assert [
+            (row["changed_field"], row["old_value"], row["new_value"], row["change_type"])
+            for row in payload["p_changes"]
+        ] == [
+            ("preferred_layout", "Theatre", "Banquet", "important"),
+            ("equipment_needs", "Two wireless microphones", NOT_REQUIRED, "important"),
+        ]
 

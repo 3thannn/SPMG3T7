@@ -4,11 +4,13 @@
 # rather than in every story. Each test case names the one automated test that runs it.
 #
 # Fields follow the Week 4 test case template:
-#   id, ac, category (Happy path | Negative | Boundary | Cross-cutting), scenario,
+#   id, ac, category (Happy path | Negative | Boundary | Cross-cutting | Technical), scenario,
 #   preconditions, steps, data (test data), expected (expected result),
 # plus: layer (API integration | Unit | Component | E2E | DB integration), test (the
 # automated test: backend `path::Class::test`, frontend `path::title`), and why (what would
 # go wrong without it).
+# Technical store cases name one representative test; their why field explains
+# the related adapter checks grouped under that case. These do not add new Jira ACs.
 
 # ---------------------------------------------------------------- User Authorisation
 - id: TC-US1.1-01
@@ -5847,7 +5849,7 @@
   why: What staff are told before deleting.
 
 - id: TC-E2E-28
-  ac: US4.4-AC2, US4.7-AC1, US10.3-AC2
+  ac: US4.4-AC2, US4.7-AC1, US4.7-AC5, US10.3-AC2
   category: E2E
   scenario: Sent for the safety check, approved, confirmed, Organiser told
   preconditions: A Planning event with a Confirmed booking
@@ -5979,3 +5981,134 @@
   layer: E2E
   test: frontend/e2e-isolated/equipment.spec.ts::US19.3: more than the usable stock shows the shortfall and cannot be reserved
   why: US19.3's block in the browser.
+
+
+- id: TC-STORE-01
+  ac: US14.1-AC1
+  category: Technical
+  scenario: Booking store reads bookings for the selected event
+  preconditions: Use a recording database client; no live database
+  steps: Ask the store for event 900 bookings and inspect the query
+  data: Event ID 900
+  expected: The query uses the booking table, booking fields and only event 900
+  layer: Unit
+  test: backend/tests/test_booking_store.py::TestSupabaseListing::test_it_reads_the_booking_table_for_one_event
+  why: The production store sends the right queries; the other booking store contracts cover create,
+    cancel, holds, decisions and conflicts in the same adapter.
+
+- id: TC-STORE-02
+  ac: US19.1-AC1
+  category: Technical
+  scenario: Equipment store reads the catalogue in name order
+  preconditions: Use a recording database client; no live database
+  steps: List equipment and inspect the selected fields and order
+  data: Recorded equipment rows
+  expected: The store selects the catalogue fields and orders by name
+  layer: Unit
+  test: backend/tests/test_equipment_store.py::TestTheCatalogue::test_items_are_listed_by_name
+  why: The production store sends the right queries; the rest of this file's tests check the same
+    adapter.
+
+- id: TC-STORE-03
+  ac: US10.1-AC1
+  category: Technical
+  scenario: Notification store reads only the selected user's notices
+  preconditions: Use a recording database client; no live database
+  steps: List the user's notices and inspect the filter and ordering
+  data: One user ID and recorded notification rows
+  expected: Only that user's notices are requested, unread first then newest
+  layer: Unit
+  test: backend/tests/test_notification_store.py::TestReading::test_a_recipient_sees_only_their_own_unread_first_then_newest
+  why: The production store sends the right queries; this file and the coordinator notification
+    store class cover the same adapter.
+
+- id: TC-STORE-04
+  ac: US20.1-AC1
+  category: Technical
+  scenario: Registration store sends the settings and actor to the database
+  preconditions: Use a recording database client with a saved response
+  steps: Open registration with capacity 40 and inspect the call
+  data: Event 950; actor 2; open; capacity 40
+  expected: The registration function receives every argument and the saved settings are read back
+  layer: Unit
+  test: backend/tests/test_registration_store.py::TestSavingTheSettings::test_it_calls_the_function_with_every_argument
+  why: The production store sends the right queries; the rest of this file's tests check the same
+    adapter.
+
+- id: TC-STORE-05
+  ac: US1.1-AC1
+  category: Technical
+  scenario: User store checks the identity returned by authentication
+  preconditions: Use fake authentication and profile clients
+  steps: Sign in and inspect which address is used to load the profile
+  data: Authentication returns a proven email address
+  expected: The profile is looked up using the address returned by authentication
+  layer: Unit
+  test: backend/tests/test_user_store.py::TestSigningIn::test_a_proven_identity_is_looked_up_by_the_address_auth_returns
+  why: The production store sends the right queries; the rest of this file's tests check the same
+    adapter.
+
+- id: TC-STORE-06
+  ac: US9.2-AC1
+  category: Technical
+  scenario: Venue store reads the fields shown on venue pages
+  preconditions: Use a recording database client; no live database
+  steps: List the catalogue and inspect the selected columns
+  data: Recorded venue rows
+  expected: All fields needed by the venue pages are selected
+  layer: Unit
+  test: backend/tests/test_venue_store.py::TestReadingTheCatalogue::test_it_selects_every_column_the_pages_render
+  why: The production store sends the right queries; this file and the venue turnaround store class
+    check the same adapter.
+
+- id: TC-STORE-07
+  ac: US12.1-AC1
+  category: Technical
+  scenario: Unavailability store reads blackout ranges for one venue
+  preconditions: Use a recording database client; no live database
+  steps: List blackout ranges for the chosen venue and inspect the filter
+  data: One venue ID
+  expected: The query selects blackout fields and filters by that venue
+  layer: Unit
+  test: backend/tests/test_venue_unavailability_store.py::TestSupabaseListing::test_it_reads_the_blackout_table_for_one_venue
+  why: The production store sends the right queries; the rest of this file's tests check the same
+    adapter.
+
+- id: TC-STORE-08
+  ac: US2.2-AC1
+  category: Technical
+  scenario: Draft storage keeps incomplete dates and typed text
+  preconditions: Use a recording database client; no live database
+  steps: Save a draft without a date and inspect the stored and returned values
+  data: Blank date; description with surrounding spaces
+  expected: The date is stored as null and the description is preserved
+  layer: Unit
+  test: backend/tests/test_draft_store.py::test_a_partial_draft_writes_a_null_date_without_trimming_text
+  why: The production store sends the right queries; this case checks the partial-draft part of the
+    event adapter.
+
+- id: TC-STORE-09
+  ac: US11.1-AC2
+  category: Technical
+  scenario: Event store sends a complete change request in one call
+  preconditions: Use a recording database client; no live database
+  steps: Submit a title and attendance change and inspect the call
+  data: Event 42; title change; attendance change; request note
+  expected: One review call contains the actor, revision, note and both changes
+  layer: Unit
+  test: backend/tests/test_change_requests.py::TestSupabaseStore::test_a_request_is_one_rpc_carrying_every_change
+  why: The production store sends the right queries; restored event store classes also cover needs,
+    decisions, review, cancellation, confirmation and reassignment in the same adapter.
+
+- id: TC-STORE-10
+  ac: US17.2-AC1
+  category: Technical
+  scenario: Safety decision store records a decision in one call
+  preconditions: Use a recording database client; no live database
+  steps: Record a safety decision and inspect the call
+  data: A safety decision with event, actor and outcome
+  expected: One database call carries the decision details
+  layer: Unit
+  test: backend/tests/test_safety_decision_us17_2.py::TestSupabaseStore::test_record_is_one_rpc
+  why: The production store sends the right queries; the rest of this store class checks reads,
+    flags and stale decisions in the same adapter.

@@ -11,10 +11,9 @@ pythonpath = ["."]
 
 # `pytest --cov` measures app/ by line and by branch. The suite is the tests
 # traced to acceptance criteria (docs/testing/test_cases.txt), not a test per
-# line, so the floor is what that suite reaches. What it leaves out (mainly the
-# Supabase store adapters and database-down branches, which the DB integration
-# tests and E2E journeys exercise instead) is explained in the workbook's
-# Summary. Raise this when tests are added.
+# line, so the floor is what that suite reaches. Grouped Technical cases also
+# cover the Supabase adapters using recording clients. The remaining untested
+# branches are described in the workbook Summary, not counted as E2E coverage.
 [tool.coverage.run]
 source = ["app"]
 branch = true
@@ -22,4 +21,4 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-fail_under = 77
+fail_under = 85.6

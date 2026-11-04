@@ -2,8 +2,9 @@
 
 import pytest
 
+from app import supabase_client
 from app.event_status import EventStatus, transition_allowed
-from app.event_store import Event
+from app.event_store import Event, StaleEventStatus, SupabaseEvents
 from app.permissions import Role
 from app.users import User
 from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
@@ -220,6 +221,42 @@ class TestDecisionNegativeCases:
 
         assert response.status_code == 404
 
+
+class TestAtomicDecisionStore:
+    class FakeRpcCall:
+        def __init__(self, data: bool):
+            self.data = data
+
+        def execute(self):
+            return self
+
+    class FakeAdmin:
+        def __init__(self, data: bool):
+            self.data = data
+            self.calls: list[tuple[str, dict]] = []
+
+        def rpc(self, name: str, params: dict):
+            self.calls.append((name, params))
+            return TestAtomicDecisionStore.FakeRpcCall(self.data)
+
+        def table(self, _name: str):
+            raise AssertionError("decisions must not use separate table requests")
+
+
+    def test_rpc_compare_and_set_failure_is_reported_as_stale(self, monkeypatch):
+        admin = self.FakeAdmin(False)
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+
+        with pytest.raises(StaleEventStatus):
+            SupabaseEvents().decide_event(
+                901,
+                actor_id=COORDINATOR_ID,
+                from_status=EventStatus.UNDER_REVIEW,
+                to_status=EventStatus.APPROVED,
+                reason="",
+            )
+
+        assert len(admin.calls) == 1
 
 
 

@@ -19,10 +19,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from app import supabase_client
 from app.booking_store import Booking, BookingStatus
 from app.equipment_store import EquipmentRequest
 from app.event_status import EventStatus, transition_allowed
-from app.event_store import Event
+from app.event_store import Event, StaleEventStatus, SupabaseEvents
 from app.safety_check import (
     EQUIPMENT_RESERVED,
     SafetyCheckRefusal,
@@ -32,6 +33,7 @@ from app.safety_check import (
 from tests.conftest import (
     COORDINATOR_ID,
     ORGANISER_ID,
+    SAFETY_OFFICER_ID,
     SUBMITTABLE_NEED_ATTRS,
     SUBMITTABLE_NEEDS,
 )
@@ -313,4 +315,47 @@ class RpcAdmin:
     def execute(self):
         return SimpleNamespace(data=self.result)
 
+
+class TestSupabaseStore:
+    def test_send_uses_the_atomic_rpc(self, monkeypatch):
+        admin = RpcAdmin(True)
+        marker = object()
+        store = SupabaseEvents()
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+        monkeypatch.setattr(store, "get_event", lambda _id: marker)
+        assert store.send_to_safety_check(42, actor_id=COORDINATOR_ID) is marker
+        assert admin.calls == [
+            ("send_event_to_safety_check", {"p_event_id": 42, "p_coordinator_id": COORDINATOR_ID})
+        ]
+        admin.result = False
+        with pytest.raises(StaleEventStatus):
+            store.send_to_safety_check(42, actor_id=COORDINATOR_ID)
+
+    def test_decide_uses_the_atomic_rpc(self, monkeypatch):
+        admin = RpcAdmin(True)
+        marker = object()
+        store = SupabaseEvents()
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+        monkeypatch.setattr(store, "get_event", lambda _id: marker)
+        assert store.decide_safety_check(
+            42, actor_id=SAFETY_OFFICER_ID, to_status=EventStatus.CONFIRMED, note=""
+        ) is marker
+        assert store.decide_safety_check(
+            42, actor_id=SAFETY_OFFICER_ID, to_status=EventStatus.PLANNING, note="Fix exits"
+        ) is marker
+        assert admin.calls == [
+            ("decide_safety_check", {
+                "p_event_id": 42, "p_new_status": "Confirmed",
+                "p_officer_id": SAFETY_OFFICER_ID, "p_notes": None,
+            }),
+            ("decide_safety_check", {
+                "p_event_id": 42, "p_new_status": "Planning",
+                "p_officer_id": SAFETY_OFFICER_ID, "p_notes": "Fix exits",
+            }),
+        ]
+        admin.result = None
+        with pytest.raises(StaleEventStatus):
+            store.decide_safety_check(
+                42, actor_id=SAFETY_OFFICER_ID, to_status=EventStatus.CONFIRMED, note=""
+            )
 

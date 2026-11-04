@@ -9,9 +9,10 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from app import notifications
+from app import notifications, supabase_client
 from app.event_status import EventStatus
 from app.event_store import Event
+from app.notification_store import TABLE, SupabaseNotifications
 from app.notifications import CoordinatorNotice
 from tests.conftest import COORDINATOR_ID, ORGANISER_ID, SUBMITTABLE_NEEDS
 
@@ -222,4 +223,25 @@ class FakeClient:
         self.query.calls.append(("table", name))
         return self.query
 
+
+class TestTheSupabaseStore:
+    def test_tc_cn20_create_notice_writes_a_coordinator_row(self, monkeypatch):
+        query = FakeQuery()
+        monkeypatch.setattr(supabase_client, "admin", lambda: FakeClient(query))
+
+        created = SupabaseNotifications().create_notice(
+            user_id=COORDINATOR_ID, event_id=7, kind="hold-expired", message="m"
+        )
+
+        assert query.calls[0] == ("table", TABLE)
+        [(_, inserted)] = [call for call in query.calls if call[0] == "insert"]
+        assert inserted["user_id"] == COORDINATOR_ID
+        assert inserted["event_id"] == 7
+        assert inserted["kind"] == "hold-expired"
+        # The kind check requires both of these to be empty for a Coordinator notice.
+        assert inserted["status"] is None
+        assert "equipment_request_id" not in inserted
+        assert created.kind == "hold-expired"
+        assert created.event_title == "Careers Fair"
+        assert created.status is None
 
