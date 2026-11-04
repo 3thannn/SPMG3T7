@@ -31,7 +31,7 @@ Week 9 > Week 7 > Week 4 > Week 2. Branch: `fix/close-audit-gaps`.
 
 ## Jira: changes to make
 
-Done in Jira on 4 November 2026, except the epics' housekeeping (last item).
+Done in Jira on 4 November 2026.
 Each edited story keeps its original ACs struck through above the current ones,
 so the change history stays visible, and carries the label `reworked-wk9`.
 
@@ -129,8 +129,8 @@ so the change history stays visible, and carries the label `reworked-wk9`.
   >
   > _Added 4 Nov 2026 to close G13 (Week 1 briefing, notifications)._
 
-- [ ] **Epics**: move the 20 epics whose stories are all Done to Done (baseline
-  section 3 housekeeping), so the backlog export reads correctly.
+- [x] **Epics**: the 20 epics still at To Do (SPMG3T7-3 to -21 and -67) moved to
+  Done; all 66 of their stories were already Done. All 22 epics are now Done.
 
 ## Product backlog workbook (`Product_Backlog.xlsx`): changes to make
 

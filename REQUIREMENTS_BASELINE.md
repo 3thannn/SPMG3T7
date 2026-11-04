@@ -90,9 +90,8 @@ Expired, Replaced, and the flags "Needs replacement" (venue closed) and
 | — | Technical enablers | -21 | US6.1 Repo and CI, US6.2 Database schema |
 
 That is 65 stories: 64 Done, and US14.6 To Do. Every core feature has at least one
-Done story. Housekeeping: 20 of the 22 epics are still "To Do" in Jira even though
-their stories are Done. The backlog export is a graded deliverable, so tidy this
-before exporting.
+Done story. Housekeeping done 4 Nov 2026: all 22 epics are now Done in Jira, as
+every story under them is.
 
 ## 4. Rules the customer changed or clarified (current rule wins)
 
