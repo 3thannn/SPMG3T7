@@ -47,3 +47,6 @@ lerna-debug.log*
 *.sw?
 .mcp.json
 TEST_CASE_REPORT.md
+
+# Office lock files (an open workbook leaves one beside it)
+~$*

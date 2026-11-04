@@ -1,5 +1,7 @@
 # Handover: test traceability, test cut, defect fixes
 
+> **Historical, kept as process evidence.** This was the working handover between AI-assisted sessions during the test cut (PR #64, merged 4 Nov 2026). Its steps are done and its numbers are from that day; do not follow it as instructions. Current sources: [`REQUIREMENTS_BASELINE.md`](REQUIREMENTS_BASELINE.md) (what the system must do, and the decisions on each gap), [`docs/testing/acceptance_criteria.yaml`](docs/testing/acceptance_criteria.yaml) and [`docs/testing/test_cases.txt`](docs/testing/test_cases.txt) (the ACs and their test cases; the workbook is generated from them), [`docs/GAP_CLOSURE_CHANGE_LOG.md`](docs/GAP_CLOSURE_CHANGE_LOG.md) (what changed on 4 Nov 2026 and why), and [`docs/design/C4.md`](docs/design/C4.md) (system design).
+
 Branch: `chore/playwright-test-reduction-handover`. Commit as
 `3thannn <ethan.leong@gmail.com>`. Read this first; it supersedes
 `HANDOVER_CLOUD_SESSION.md` for the testing work.

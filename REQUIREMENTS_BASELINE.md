@@ -132,7 +132,7 @@ them as core. An answer about a feature outside those 20 does not make it core.
 | G12 | A Confirmed event whose venue closes reverts to planning/change review, with stakeholders notified and agreement offline | Wk9 | **Yes**: Week 7 change #2 | **Met (2026-11-04).** The closure trigger moves a Confirmed event to Planning at once, with who closed the venue and why in its history, and tells the Coordinator and the Organiser; it is never cancelled (`SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql`, US12.4-AC1 amended) |
 | G13 | Notices for: booking requested (to Venue Staff), registration opens/closes, an attendee withdraws and frees a place, upcoming event with incomplete arrangements | Wk1 notification list | **Partly**: core "Notification System"; the last item is G5 | **Met for the first three (2026-11-04)**, as new story US10.5. The last is G5 |
 | G14 | Mobile-friendly and accessible | Wk1 s7; Wk4 (team's call) | **Yes**: non-functional requirement | **Met for layout (2026-11-04).** A phone-width Playwright spec (390 px) checks every role's home page and the main workflow pages fit the screen; it found the header notch and wide date fields overflowing, both fixed. Screen-reader use was not tested |
-| G11 | Safety Officer checks emergency access, crowd movement and equipment placement | Wk7 #6 | **Yes** | The review shows attendance, capacity, layout, accessibility and equipment. Wk9 says the Safety Officer "do not need to input but to approve", which may be enough. Worth one sentence in the docs |
+| G11 | Safety Officer checks emergency access, crowd movement and equipment placement | Wk7 #6 | **Yes** | **Met as the customer framed it (written 5 Nov 2026).** The Safety Officer's review page shows what those checks need (attendance against each venue's capacity, layout, accessibility features, operating hours and every equipment line), and they approve, reject or request changes with flags on the arrangements at fault (US17.1, US17.2). Week 9 says the Safety Officer "do not need to input but to approve", so the system records the decision rather than a checklist of findings |
 | G4b | A waiting list is supported | Wk2, Wk4 | **No**: "Attendee Waiting List" is a separate, non-core feature | Not built |
 | G5 | Reminders for incomplete arrangements, frequency configurable | Wk4 | **No**: "Reminder System" is non-core, though the answer was given about notifications | Not built; only hold-expiry notices exist |
 | G8 | A single event calendar across all events | Wk4 | **No**: "Event Calendar" is non-core | US12.3 is per venue only |
@@ -179,6 +179,6 @@ and exports.
 ## 7. Open questions for the team
 
 1. Settled 2026-11-04: G2, G3, G7, G12, G13 and G14 built; G6 and G10 written
-   decisions; G11 needs one sentence in the docs; G5 stays out of Release 1.
+   decisions; G11 met as framed (section 5); G5 stays out of Release 1.
 2. Should the AC-to-test mapping go into the existing `MASTER_TEST_PLAN.md`, or into
    a separate traceability file?
