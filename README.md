@@ -132,6 +132,11 @@ The list lives in one place, [`backend/scripts/fresh_install.py`](backend/script
    `password`).
 4. Start both halves (below) and sign in as `organiser@connectsphere.com`.
 
+In the SQL Editor, a script that adds an enum value (`ALTER TYPE ... ADD VALUE`,
+for example in `SUPABASE_ADD_NEW_ROLES.sql`) must have those lines run on their
+own first: Postgres will not use a new value in the transaction that added it.
+`fresh_install.py` does this for you.
+
 Do **not** run `SUPABASE_FIX_UNAVAILABILITY_NOTICE.sql` on a new database: it
 repaired a live function changed outside the repo, and on a fresh one it would
 put back the closure trigger from before US12.4.

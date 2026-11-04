@@ -158,8 +158,13 @@ class CancelledEvent:
 
 
 def _now() -> str:
-    """A naive UTC timestamp, matching the column type. See the module docstring."""
-    return datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
+    """A naive UTC timestamp, to the microsecond as Postgres records it. See the module docstring.
+
+    Seconds were not enough: a safety check sent back and resubmitted within one
+    second looked like the same check, so its approval was refused as already
+    decided (seen in the e2e safety journey).
+    """
+    return datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="microseconds")
 
 
 def _embedded_name(row: dict) -> str:

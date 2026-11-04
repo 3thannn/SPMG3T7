@@ -19,6 +19,7 @@ The Supabase roles (anon, authenticated, service_role) are created if the
 server lacks them, as they are on plain PostgreSQL.
 """
 
+import re
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -111,14 +112,29 @@ def ensure_roles(connection: psycopg.Connection) -> None:
             connection.execute(f'CREATE ROLE "{role}"')
 
 
+#: `ALTER TYPE ... ADD VALUE` lines. Postgres refuses to use a new enum value in
+#: the transaction that added it, and a script sent in one go is one
+#: transaction, so these are committed first, one by one. Every one of them is
+#: IF NOT EXISTS, so running it again with its script changes nothing. In the
+#: Supabase SQL Editor, run such a line on its own first (SUPABASE_ADD_NEW_ROLES.sql).
+ENUM_ADDITION = re.compile(r"^ALTER TYPE [^;]+ ADD VALUE [^;]+;", re.IGNORECASE | re.MULTILINE)
+
+
+def apply_script(connection: psycopg.Connection, name: str) -> None:
+    text = (BACKEND / name).read_text(encoding="utf-8")
+    try:
+        for addition in ENUM_ADDITION.findall(text):
+            connection.execute(addition)
+        connection.execute(text)
+    except psycopg.Error as error:
+        raise RuntimeError(f"{name} failed: {error}") from error
+
+
 def apply_all(connection: psycopg.Connection, *, passes: int = 2) -> None:
     """Apply every script in order, `passes` times. Stops at the first failure."""
     for _ in range(passes):
         for name in ORDER:
-            try:
-                connection.execute((BACKEND / name).read_text(encoding="utf-8"))
-            except psycopg.Error as error:
-                raise RuntimeError(f"{name} failed: {error}") from error
+            apply_script(connection, name)
 
 
 @contextmanager
