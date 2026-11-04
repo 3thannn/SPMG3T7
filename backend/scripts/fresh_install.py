@@ -20,9 +20,14 @@ server lacks them, as they are on plain PostgreSQL.
 """
 
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from uuid import uuid4
 
 import psycopg
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -114,6 +119,26 @@ def apply_all(connection: psycopg.Connection, *, passes: int = 2) -> None:
                 connection.execute((BACKEND / name).read_text(encoding="utf-8"))
             except psycopg.Error as error:
                 raise RuntimeError(f"{name} failed: {error}") from error
+
+
+@contextmanager
+def fresh_database(dsn: str, *, passes: int = 1) -> Iterator[str]:
+    """A new database on `dsn`'s server, built from `ORDER`; its URL; dropped after.
+
+    For the database tests (TEST_POSTGRES_DSN in CI), so none of them needs a
+    project of its own or touches the shared one.
+    """
+    name = f"fresh_{uuid4().hex}"
+    with psycopg.connect(dsn, autocommit=True) as admin:
+        ensure_roles(admin)
+        admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+        try:
+            url = make_conninfo(dsn, dbname=name)
+            with psycopg.connect(url, autocommit=True) as connection:
+                apply_all(connection, passes=passes)
+            yield url
+        finally:
+            admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name)))
 
 
 def main(dsn: str) -> None:

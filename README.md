@@ -328,11 +328,11 @@ in `backend/SUPABASE_*.sql`, and several rules live there: approving a booking
 under a lock on the venue, the conflict check, registering for a place,
 recording a safety decision. Those are tested against a real database by
 `backend/integration/`, which CI runs against a disposable PostgreSQL 16 (the
-"Test database migrations" step), including the fresh-install build. Two older
-`*_db.py` tests in `backend/tests/` (the hold sweep, TC-US14.4-02, and the
-equipment race, TC-US19.3-08) still run only against a project you point them
-at: set `SPMG3T7_DB_TESTS=1` (or `US19_DB_TEST_URL`) with `SUPABASE_DB_URL` in
-`backend/.env`. Point them at a disposable database, never the shared one.
+"Test database migrations" step), including the fresh-install build. The same
+step runs the hold sweep (TC-US14.4-02) and the equipment race (TC-US19.3-08)
+from `backend/tests/`, each on a new database built by
+`scripts/fresh_install.py`. Locally they skip unless `TEST_POSTGRES_DSN` points
+at a disposable server.
 
 ### Dates in the tests
 
