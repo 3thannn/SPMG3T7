@@ -62,6 +62,13 @@ up above the real result). Next: add 10 grouped Technical cases, then run all
 four JUnit suites and rebuild the workbook. Local PostgreSQL 16 installation
 is in progress for disposable integration databases; never use live Supabase.
 
+Step 3 complete: generated TC-STORE-01 through TC-STORE-10 with `tcgen.py`.
+There are now **498 cases**, including ten grouped Technical adapter cases.
+`tcparse.py` reports no missing fields and `tcrefs.py` no missing references.
+Each group has one representative test and plain wording explaining the other
+checks for that adapter. Next: raise the floor to 85.6%, regenerate the four
+JUnit reports, rebuild the workbook and publish the same tree to both branches.
+
 - Backend: 591 pass (`pytest --cov`, floor 77% in `backend/pyproject.toml`).
 - DB suites: 20 tests on Postgres (`integration/`).
 - Frontend: 66 Vitest tests, floors in `frontend/vite.config.ts` (lines 52 / statements 51 / functions 49 / branches 48); lint, `tsc -b` and build clean.
