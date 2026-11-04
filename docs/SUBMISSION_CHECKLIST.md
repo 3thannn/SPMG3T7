@@ -52,8 +52,8 @@ git archive --format=zip -o 6-release.zip HEAD
 
 ## Folder 7: Repository access
 
-- [ ] A short README: the GitHub URL, the submitted commit hash, and confirmation
-      that both instructors have access.
+- [ ] [`REPOSITORY_ACCESS.md`](REPOSITORY_ACCESS.md), with the submitted commit hash
+      and the instructors' accounts filled in.
 
 ## Last check
 
