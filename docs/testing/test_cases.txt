@@ -3965,15 +3965,15 @@
   ac: US14.4-AC2, US14.4-AC3
   category: Happy path
   scenario: The sweep expires, warns, and tells the Coordinator once
-  preconditions: The live database with the US14.4 migration; holds past, near and far from expiry
+  preconditions: A disposable Postgres built from the repo's SQL; holds past, near and far from expiry
   steps: Run the sweep twice
   data: One hold per case
   expected: Past holds become Expired; holds within 24h are warned; one expired and one warning
     notice; the second sweep adds nothing
   layer: DB integration
   test: backend/tests/test_hold_expiry_db.py::test_the_sweep_expires_warns_and_tells_the_coordinator_once
-  why: The only proof of the sweep. Opt-in against the live project (SPMG3T7_DB_TESTS=1), rolled
-    back; CI does not run it.
+  why: The only proof of the sweep. CI runs it against a fresh database built by
+    scripts/fresh_install.py (A8); it can still be pointed at a project with SPMG3T7_DB_TESTS=1.
 
 - id: TC-US14.4-03
   ac: US14.4-AC2
@@ -4876,8 +4876,8 @@
   expected: Exactly one succeeds
   layer: DB integration
   test: backend/tests/test_equipment_reservations_db.py::test_competing_requests_cannot_double_promise
-  why: The rule must hold under concurrency, which needs the real database lock. Opt-in
-    (US19_DB_TEST_URL); CI does not run it.
+  why: The rule must hold under concurrency, which needs the real database lock. CI runs it
+    against a fresh database built by scripts/fresh_install.py (A8).
 
 
 - id: TC-US4.4-01

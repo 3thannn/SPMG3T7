@@ -63,6 +63,7 @@ jobs:
           integration/test_us12_4_db.py integration/test_us8_4_db.py
           integration/test_safety_check_changes_db.py integration/test_organiser_registration_db.py
           integration/test_fresh_install_db.py
+          tests/test_hold_expiry_db.py tests/test_equipment_reservations_db.py
 
   frontend:
     runs-on: ubuntu-24.04

@@ -1,12 +1,15 @@
 """US14.4 against the real database: the sweep the pg_cron job runs.
 
-CI has no database, so this file is opt-in. Apply
-SUPABASE_US14_4_HOLD_EXPIRY.sql first, then run it from backend/:
+It runs in one of two ways:
+
+* With TEST_POSTGRES_DSN set (CI's database step), against a new database
+  built from the repo's SQL by scripts/fresh_install.py and dropped after.
+  This is TC-US14.4-02's evidence (A8).
+* Opt-in, against a project you point it at: SPMG3T7_DB_TESTS=1 with
+  `SUPABASE_DB_URL` in backend/.env. Point it at a disposable project.
 
     SPMG3T7_DB_TESTS=1 python -m pytest tests/test_hold_expiry_db.py          # bash
     $env:SPMG3T7_DB_TESTS=1; python -m pytest tests/test_hold_expiry_db.py    # PowerShell
-
-It needs `SUPABASE_DB_URL` in backend/.env and psycopg (requirements-dev.txt).
 
 Everything happens in one transaction that is rolled back at the end, so the
 test leaves nothing behind in the shared project: its users, venue, events,
@@ -16,6 +19,7 @@ hold it touches stays locked for the second or so the test takes.
 """
 
 import os
+import sys
 import uuid
 from datetime import timedelta
 from pathlib import Path
@@ -23,9 +27,10 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-if not os.getenv("SPMG3T7_DB_TESTS"):
+FRESH_DSN = os.getenv("TEST_POSTGRES_DSN")
+if not (FRESH_DSN or os.getenv("SPMG3T7_DB_TESTS")):
     pytest.skip(
-        "opt-in: set SPMG3T7_DB_TESTS=1 to run against SUPABASE_DB_URL",
+        "needs TEST_POSTGRES_DSN, or opt in with SPMG3T7_DB_TESTS=1 and SUPABASE_DB_URL",
         allow_module_level=True,
     )
 
@@ -36,14 +41,27 @@ from app.event_status import EventStatus  # noqa: E402
 from app.event_store import Event  # noqa: E402
 
 
-@pytest.fixture
-def db():
-    """A cursor in a transaction that is always rolled back."""
+@pytest.fixture(scope="module")
+def database_url():
+    """A fresh database built from the repo when CI gives a server, else the opted-in one."""
+    if FRESH_DSN:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from fresh_install import fresh_database
+
+        with fresh_database(FRESH_DSN) as url:
+            yield url
+        return
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     url = os.getenv("SUPABASE_DB_URL")
     if not url:
         pytest.skip("SUPABASE_DB_URL is not set in backend/.env")
-    connection = psycopg.connect(url, connect_timeout=15)
+    yield url
+
+
+@pytest.fixture
+def db(database_url):
+    """A cursor in a transaction that is always rolled back."""
+    connection = psycopg.connect(database_url, connect_timeout=15)
     try:
         with connection.cursor() as cursor:
             yield cursor
