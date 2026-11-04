@@ -260,6 +260,9 @@ a {
   flex-direction: column;
   gap: 0.4rem;
   text-align: left;
+  /* G14: a field in a grid or flex row may shrink below its input's natural
+     width (a date input's is wide), so a form never widens a phone screen. */
+  min-width: 0;
 }
 
 .field > label {
@@ -284,6 +287,7 @@ a {
   border-radius: var(--radius-sm);
   padding: 0.66rem 0.85rem;
   width: 100%;
+  min-width: 0;
   transition:
     border-color 120ms ease,
     box-shadow 120ms ease;

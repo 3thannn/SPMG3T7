@@ -242,6 +242,16 @@ function asRuleError(error: unknown): never {
  * sentence, the way a refused write does. Everything else stays an `ApiError`
  * for the page to describe as the unexpected failure it is.
  */
+/**
+ * Week 9 (G7/A7): the layouts an event request may prefer. The standard names,
+ * then every other layout a venue in the catalogue lists, so a layout Venue
+ * Staff add can be chosen. Any signed-in user may read it.
+ */
+export async function listLayoutOptions(session: Session): Promise<string[]> {
+  const response = await authorizedFetch('/venues/layouts', session.token)
+  return (await response.json()) as string[]
+}
+
 export async function listVenues(
   session: Session,
   filters: VenueFilters = NO_FILTERS,

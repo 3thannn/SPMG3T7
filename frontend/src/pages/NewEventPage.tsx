@@ -361,7 +361,13 @@ export default function NewEventPage({ session }: NewEventPageProps) {
               )}
             </div>
 
-            <EventNeedsFields needs={fields} onChange={set} errors={errors} disabled={busy} />
+            <EventNeedsFields
+              needs={fields}
+              onChange={set}
+              errors={errors}
+              disabled={busy}
+              session={session}
+            />
           </div>
 
           <div className="detail-actions">

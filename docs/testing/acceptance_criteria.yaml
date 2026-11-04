@@ -45,8 +45,11 @@
       venue requirements, preferred layout, accessibility needs, equipment needs, registration needs.'
     kind: behaviour
   - id: US2.1-AC2
-    text: Layout, facilities and accessibility use fixed lists that match the venue catalogue (US9.1a).
+    text: Layout, facilities and accessibility use lists that match the venue catalogue (US9.1a). The
+      layout list is the standard names plus every layout a venue in the catalogue lists, so a layout
+      Venue Staff add, rename or remove on a venue is reflected (Week 9).
     kind: behaviour
+    note: Amended 2026-11-04 to close G7/A7 (Week 9 G3-5 D2). Was a fixed list only.
   - id: US2.1-AC3
     text: Fields that may not apply have a 'None / Not required' option.
     kind: behaviour
@@ -641,28 +644,40 @@
     kind: behaviour
 - story: US14.3
   jira: SPMG3T7-59
-  title: Place a tentative hold with an expiry
+  title: Approve a booking request as a tentative hold with an expiry
   core_feature: Venue Booking Request
+  change_note: Reworked 2026-11-04 to close G3/A1. Week 9 (G3-5 D20, D27) says the tentative hold
+    starts after venue approval and the Coordinator confirms once Venue Staff approve. The earlier
+    order (Venue Staff place a hold, the Coordinator turns it into a request, Venue Staff then
+    approve it) is superseded.
   acceptance_criteria:
   - id: US14.3-AC1
-    text: A hold is a venue booking with status Held, linked to an event and its Coordinator.
+    text: Venue Staff can approve a Requested booking as a tentative hold instead of confirming it
+      outright. It becomes Held, linked to the event and its Coordinator, with the approval (who, when),
+      who holds it and the expiry on record. Approving with no expiry still confirms outright (US16.1).
     kind: behaviour
   - id: US14.3-AC2
-    text: Expiry date/time is required and must be in the future.
+    text: The hold's expiry date/time is required and must be in the future, and no later than the
+      booking starts.
     kind: behaviour
   - id: US14.3-AC3
     text: While Held and not expired, the slot counts as taken in US15.1.
     kind: behaviour
   - id: US14.3-AC4
-    text: Coordinator can turn the hold into a booking request before it expires (status → Requested).
+    text: The assigned Coordinator confirms the held booking before it expires (Held → Confirmed). An
+      expired hold cannot be confirmed, and its slot is free (US14.4).
     kind: behaviour
   - id: US14.3-AC5
-    text: A Held booking is never shown or counted as Confirmed.
+    text: A Held booking is never shown or counted as Confirmed until the Coordinator confirms it, so
+      it holds up the safety check (US4.4) until then. Venue Staff cannot decide it a second time.
     kind: behaviour
   - id: US14.3-AC6
-    text: 'Assumption: Venue Staff place holds (customer to confirm if Coordinators can too).'
+    text: The Coordinator is told when Venue Staff approve a booking as a hold, and until when (US10.2).
+    kind: behaviour
+  - id: US14.3-AC7
+    text: 'Venue Staff place holds (Week 9 confirmed). There is no hold without a request first.'
     kind: note
-    note: Assumption; Week 9 confirmed Venue Staff set the hold (see US14.6 for updating it).
+    note: Customer-confirmed in Week 9; see US14.6 for changing or releasing a hold.
 - story: US4.5
   jira: SPMG3T7-60
   title: Missing lifecycle transitions
@@ -724,9 +739,9 @@
       the full occupied window including setup/turnaround (US15.1), headcount and layout.
     kind: behaviour
   - id: US16.1-AC2
-    text: Approve → booking status Confirmed. The conflict check (US15.1) runs again at approval. If the
-      booking now clashes, approval is blocked and the clash is shown, so two requests for the same slot
-      can't both be approved.
+    text: Approve → booking status Confirmed, or Held with an expiry when approved as a tentative hold
+      (US14.3). The conflict check (US15.1) runs again at approval. If the booking now clashes, approval
+      is blocked and the clash is shown, so two requests for the same slot can't both be approved.
     kind: behaviour
   - id: US16.1-AC3
     text: Reject → reason required; Venue Staff can optionally suggest an alternative venue or time (free
@@ -837,8 +852,9 @@
     note: The 24-hour warning is a team assumption the customer accepted as 'before or when the hold expires'
       (Week 9).
   - id: US14.4-AC4
-    text: Expired holds stay in history and can't be turned into a booking request.
+    text: Expired holds stay in history and can't be confirmed (US14.3 as reworked).
     kind: behaviour
+    note: Was "can't be turned into a booking request" before US14.3 was reworked on 2026-11-04.
   - id: US14.4-AC5
     text: First time using a scheduler (e.g. Supabase pg_cron), so sized up for uncertainty.
     kind: note
@@ -1269,16 +1285,20 @@
   core_feature: Venue Booking Request
   acceptance_criteria:
   - id: US12.4-AC1
-    text: When a booking on a Confirmed event is flagged "Needs replacement" (US12.2), the event status
-      does not change automatically. The Coordinator acts, because the customer said the system should
-      not update this on its own.
+    text: When a booking on a Confirmed event is flagged "Needs replacement" (US12.2), the event moves
+      Confirmed → Planning at once, with who marked the venue unavailable and why in its history. It is
+      never cancelled, and its other bookings are untouched (Week 7 #2, Week 9).
     kind: behaviour
+    note: Amended 2026-11-04 to close G12/C1. Week 9 asks for "status reverting to planning/change
+      review"; the earlier AC kept the event Confirmed until a replacement was requested.
   - id: US12.4-AC2
-    text: Besides the Coordinator, the Organiser is also notified that a venue on their event is affected.
+    text: The Coordinator is told about the booking and that the event is back in Planning; the
+      Organiser is told the event is back in Planning, and why.
     kind: behaviour
   - id: US12.4-AC3
-    text: Requesting a replacement venue (US14.5) on a Confirmed event moves it Confirmed → Planning,
-      with the reason recorded. The event's other bookings are untouched.
+    text: Requesting a replacement venue (US14.5) on an event still Confirmed (one flagged before this
+      change) moves it Confirmed → Planning, with the reason recorded. The event's other bookings are
+      untouched.
     kind: behaviour
   - id: US12.4-AC4
     text: The replacement has to be approved by Venue Staff. The event then goes through the safety check
@@ -1289,7 +1309,7 @@
       US4.7).
     kind: behaviour
   story_test_hints:
-  - unavailability on a Confirmed event → booking flagged, event still Confirmed, Organiser and Coordinator
+  - unavailability on a Confirmed event → booking flagged, event back in Planning, Organiser and Coordinator
     notified
   - request a replacement → Planning
   - full path back to Confirmed
@@ -1315,30 +1335,54 @@
   jira: SPMG3T7-89
   title: Venue Staff update or release a hold
   core_feature: Venue Booking Request
+  change_note: Built 2026-11-04 to close G2/A2 (Week 9 G3-5 D21, D24 - Venue Staff set and update the
+    hold duration). Was To Do and P3.
   acceptance_criteria:
   - id: US14.6-AC1
-    text: Venue Staff can change the expiry of a Held booking. The new expiry must be in the future, and
-      no later than the booking start (US14.3 rule).
-    kind: not built
-    note: Story is To Do in Jira; not built for Release 1, so it has no tests.
+    text: Venue Staff can change the expiry of a Held booking, longer or shorter. The new expiry must be
+      in the future, and no later than the booking start (US14.3 rule). An expired hold cannot be changed.
+    kind: behaviour
   - id: US14.6-AC2
-    text: Venue Staff can release a hold early. Its status becomes Cancelled and the slot is freed (no
-      longer counted in US15.1).
-    kind: not built
-    note: Story is To Do in Jira; not built for Release 1, so it has no tests.
+    text: Venue Staff can release a hold early, with a reason. Its status becomes Cancelled and the slot
+      is freed (no longer counted in US15.1).
+    kind: behaviour
   - id: US14.6-AC3
     text: The assigned Coordinator is notified of either change (US10.2).
-    kind: not built
-    note: Story is To Do in Jira; not built for Release 1, so it has no tests.
+    kind: behaviour
   - id: US14.6-AC4
-    text: Each change is timestamped and attributable (US4.2 pattern).
-    kind: not built
-    note: Story is To Do in Jira; not built for Release 1, so it has no tests.
+    text: A release is recorded with who, when and why (US14.2's cancellation record). An expiry change
+      is recorded in the Coordinator's notice, with the new expiry.
+    kind: behaviour
   - id: US14.6-AC5
     text: Venue Staff only.
-    kind: not built
-    note: Story is To Do in Jira; not built for Release 1, so it has no tests.
-  status: Story is To Do in Jira; not built for Release 1, so it has no tests.
+    kind: behaviour
+- story: US10.5
+  jira: TBD
+  title: Week 1 notifications for booking requests, registration and withdrawals
+  core_feature: Notification System
+  change_note: Added 2026-11-04 to close G13. The Week 1 briefing's notification list had four triggers
+    no story covered.
+  acceptance_criteria:
+  - id: US10.5-AC1
+    text: When a Coordinator requests a venue booking (US14.1, or a replacement in US14.5), every Venue
+      Staff member is notified with the venue, event and start.
+    kind: behaviour
+  - id: US10.5-AC2
+    text: When registration opens for an event (US20.1), every Attendee is notified. Saving it open again
+      notifies nobody.
+    kind: behaviour
+  - id: US10.5-AC3
+    text: When registration closes, each Attendee with an active registration is notified that their
+      place is kept.
+    kind: behaviour
+  - id: US10.5-AC4
+    text: When an Attendee withdraws (US20.2), the Organiser and the assigned Coordinator are notified that
+      a place is free again.
+    kind: behaviour
+  - id: US10.5-AC5
+    text: Uses US10.1's list and read/unread toggle. In-app only, best effort.
+    kind: note
+    note: 'Constraint: in-app notices only.'
 - story: US10.4
   jira: SPMG3T7-90
   title: Notify registered Attendees when their event's date, time or venue changes

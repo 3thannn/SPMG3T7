@@ -54,12 +54,93 @@ cd frontend
 npm install
 ```
 
-### Required SQL migrations
+### Fresh install: one tested order
 
-`SUPABASE_SETUP.sql` creates the base schema. Fresh and existing projects need
-the applicable additions below applied in dependency order in the Supabase SQL Editor
-(Dashboard → SQL Editor → New Query → paste → Run). All of them are idempotent,
-so running one twice is a no-op.
+For a new Supabase project, apply the scripts in this order. CI builds an empty
+PostgreSQL 16 database from exactly this list, twice over to prove each script
+is safe to re-run, and then approves and confirms a tentative hold on it
+([`backend/integration/test_fresh_install_db.py`](backend/integration/test_fresh_install_db.py)).
+The list lives in one place, [`backend/scripts/fresh_install.py`](backend/scripts/fresh_install.py).
+
+1. **Schema.** Either paste each script into the Supabase SQL Editor (Dashboard →
+   SQL Editor → New Query → paste → Run), in the order below, or run them all
+   with the project's Postgres connection string:
+
+   ```bash
+   cd backend
+   python scripts/fresh_install.py "postgresql://postgres:<password>@<host>:5432/postgres"
+   ```
+
+   1. [`SUPABASE_SETUP.sql`](backend/SUPABASE_SETUP.sql)
+   2. [`SUPABASE_ADD_NEW_ROLES.sql`](backend/SUPABASE_ADD_NEW_ROLES.sql)
+   3. [`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`](backend/SUPABASE_ALLOW_PARTIAL_DRAFTS.sql)
+   4. [`SUPABASE_CASCADE_STATUS_CHANGES.sql`](backend/SUPABASE_CASCADE_STATUS_CHANGES.sql)
+   5. [`SUPABASE_ATOMIC_EVENT_DECISIONS.sql`](backend/SUPABASE_ATOMIC_EVENT_DECISIONS.sql)
+   6. [`SUPABASE_ADD_COORDINATOR_ASSIGNMENT.sql`](backend/SUPABASE_ADD_COORDINATOR_ASSIGNMENT.sql)
+   7. [`SUPABASE_ADD_VENUE_LAYOUTS.sql`](backend/SUPABASE_ADD_VENUE_LAYOUTS.sql)
+   8. [`SUPABASE_ADD_VENUE_TURNAROUND.sql`](backend/SUPABASE_ADD_VENUE_TURNAROUND.sql)
+   9. [`SUPABASE_ADD_VENUE_UNAVAILABILITY.sql`](backend/SUPABASE_ADD_VENUE_UNAVAILABILITY.sql)
+   10. [`SUPABASE_ADD_NOTIFICATIONS.sql`](backend/SUPABASE_ADD_NOTIFICATIONS.sql)
+   11. [`SUPABASE_ADD_EQUIPMENT_REQUESTS.sql`](backend/SUPABASE_ADD_EQUIPMENT_REQUESTS.sql)
+   12. [`SUPABASE_ADD_COORDINATOR_NOTIFICATIONS.sql`](backend/SUPABASE_ADD_COORDINATOR_NOTIFICATIONS.sql)
+   13. [`SUPABASE_ADD_VENUE_BOOKINGS.sql`](backend/SUPABASE_ADD_VENUE_BOOKINGS.sql)
+   14. [`SUPABASE_CANCEL_VENUE_BOOKINGS.sql`](backend/SUPABASE_CANCEL_VENUE_BOOKINGS.sql)
+   15. [`SUPABASE_ADD_BOOKING_NEEDS.sql`](backend/SUPABASE_ADD_BOOKING_NEEDS.sql)
+   16. [`SUPABASE_ADD_CHANGE_REQUESTS.sql`](backend/SUPABASE_ADD_CHANGE_REQUESTS.sql)
+   17. [`SUPABASE_US4_5_LIFECYCLE.sql`](backend/SUPABASE_US4_5_LIFECYCLE.sql)
+   18. [`SUPABASE_ADD_EVENT_NEEDS.sql`](backend/SUPABASE_ADD_EVENT_NEEDS.sql)
+   19. [`SUPABASE_ADD_VENUE_HOLDS.sql`](backend/SUPABASE_ADD_VENUE_HOLDS.sql)
+   20. [`SUPABASE_ADD_BOOKING_DECISIONS.sql`](backend/SUPABASE_ADD_BOOKING_DECISIONS.sql)
+   21. [`SUPABASE_ADD_BOOKING_CONFLICTS.sql`](backend/SUPABASE_ADD_BOOKING_CONFLICTS.sql)
+   22. [`SUPABASE_US14_4_HOLD_EXPIRY.sql`](backend/SUPABASE_US14_4_HOLD_EXPIRY.sql)
+   23. [`SUPABASE_US12_2_FLAG_UNAVAILABLE_BOOKINGS.sql`](backend/SUPABASE_US12_2_FLAG_UNAVAILABLE_BOOKINGS.sql)
+   24. [`SUPABASE_US14_5_REPLACED_STATUS.sql`](backend/SUPABASE_US14_5_REPLACED_STATUS.sql)
+   25. [`SUPABASE_FIX_DECISION_RECORDED.sql`](backend/SUPABASE_FIX_DECISION_RECORDED.sql)
+   26. [`SUPABASE_ADD_SAFETY_CHECK_STATUS.sql`](backend/SUPABASE_ADD_SAFETY_CHECK_STATUS.sql)
+   27. [`SUPABASE_US4_6_CANCEL_EVENT.sql`](backend/SUPABASE_US4_6_CANCEL_EVENT.sql)
+   28. [`SUPABASE_US20_1_REGISTRATION.sql`](backend/SUPABASE_US20_1_REGISTRATION.sql)
+   29. [`SUPABASE_US20_2_WITHDRAW.sql`](backend/SUPABASE_US20_2_WITHDRAW.sql)
+   30. [`SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql`](backend/SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql)
+   31. [`SUPABASE_US17_2_SAFETY_DECISIONS.sql`](backend/SUPABASE_US17_2_SAFETY_DECISIONS.sql)
+   32. [`SUPABASE_US19_3_EQUIPMENT_RESERVATIONS.sql`](backend/SUPABASE_US19_3_EQUIPMENT_RESERVATIONS.sql)
+   33. [`SUPABASE_US19_EXACT_ITEM_REQUESTS.sql`](backend/SUPABASE_US19_EXACT_ITEM_REQUESTS.sql)
+   34. [`SUPABASE_US19_REPAIR_EQUIPMENT_NOTICES.sql`](backend/SUPABASE_US19_REPAIR_EQUIPMENT_NOTICES.sql)
+   35. [`SUPABASE_US11_2_CHANGE_REVIEW.sql`](backend/SUPABASE_US11_2_CHANGE_REVIEW.sql)
+   36. [`SUPABASE_US11_2_REVIEW_FIXES.sql`](backend/SUPABASE_US11_2_REVIEW_FIXES.sql)
+   37. [`SUPABASE_US11_3_RECONFIRM.sql`](backend/SUPABASE_US11_3_RECONFIRM.sql)
+   38. [`SUPABASE_US4_7_CONFIRM_EVENT.sql`](backend/SUPABASE_US4_7_CONFIRM_EVENT.sql)
+   39. [`SUPABASE_FIX_SAFETY_CHECK_CHANGES.sql`](backend/SUPABASE_FIX_SAFETY_CHECK_CHANGES.sql)
+   40. [`SUPABASE_FIX_ORGANISER_REGISTRATION.sql`](backend/SUPABASE_FIX_ORGANISER_REGISTRATION.sql)
+   41. [`SUPABASE_US10_4_EVENT_UPDATED_NOTICE.sql`](backend/SUPABASE_US10_4_EVENT_UPDATED_NOTICE.sql)
+   42. [`SUPABASE_US8_4_REASSIGN_COORDINATOR.sql`](backend/SUPABASE_US8_4_REASSIGN_COORDINATOR.sql)
+   43. [`SUPABASE_US9_5_DELETE_VENUE_HISTORY.sql`](backend/SUPABASE_US9_5_DELETE_VENUE_HISTORY.sql)
+   44. [`SUPABASE_US14_5_REQUEST_REPLACEMENT_VENUE.sql`](backend/SUPABASE_US14_5_REQUEST_REPLACEMENT_VENUE.sql)
+   45. [`SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql`](backend/SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql)
+   46. [`SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql`](backend/SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql)
+   47. [`SUPABASE_US14_6_HOLD_AFTER_APPROVAL.sql`](backend/SUPABASE_US14_6_HOLD_AFTER_APPROVAL.sql)
+   48. [`SUPABASE_G13_WEEK1_NOTICES.sql`](backend/SUPABASE_G13_WEEK1_NOTICES.sql)
+   49. [`SUPABASE_HARDENING.sql`](backend/SUPABASE_HARDENING.sql)
+   50. [`SUPABASE_SEED_VENUES.sql`](backend/SUPABASE_SEED_VENUES.sql)
+
+2. **Scheduler (Supabase only).** Run
+   [`SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql`](backend/SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql)
+   last. It needs pg_cron, which plain PostgreSQL does not have, so the CI
+   build leaves it out.
+3. **Accounts.** With `backend/.env` filled in, `python backend/seed_new_users.py`
+   creates one account per role (all seven, eight accounts) in Supabase Auth and
+   `public.users`. Every account's password is `SEED_PASSWORD` (default
+   `password`).
+4. Start both halves (below) and sign in as `organiser@connectsphere.com`.
+
+Do **not** run `SUPABASE_FIX_UNAVAILABILITY_NOTICE.sql` on a new database: it
+repaired a live function changed outside the repo, and on a fresh one it would
+put back the closure trigger from before US12.4.
+
+### Upgrading an existing project
+
+An existing project only needs the scripts it has not had yet, in the order
+above. The table says what each one is for and what breaks without it. All of
+them are idempotent, so running one twice is a no-op.
 
 | Script | Needed for | If you skip it |
 | ------ | ---------- | -------------- |
@@ -73,7 +154,7 @@ so running one twice is a no-op.
 | [`SUPABASE_ALLOW_PARTIAL_DRAFTS.sql`](backend/SUPABASE_ALLOW_PARTIAL_DRAFTS.sql) | US4.2 partial drafts | Saving a draft with no date fails |
 | [`SUPABASE_ADD_CHANGE_REQUESTS.sql`](backend/SUPABASE_ADD_CHANGE_REQUESTS.sql) | US11.1 change requests — and every events page | **`GET /events` and every event page return 500**, which the browser reports as a CORS error. See below |
 | [`SUPABASE_US4_5_LIFECYCLE.sql`](backend/SUPABASE_US4_5_LIFECYCLE.sql) | US4.5 lifecycle; run after coordinator assignment, venue bookings and needs, and change requests | Assignment, booking, completion and change-request writes require its RPCs and column; event reads also require `request_note` |
-| [`SUPABASE_ADD_VENUE_HOLDS.sql`](backend/SUPABASE_ADD_VENUE_HOLDS.sql) | US14.3 tentative holds. Run after the US14.2, US18.1 and US4.5 scripts | Every `/events/{id}/bookings` route returns 500, because each booking read selects the hold columns; `/holds` returns 500 and a hold cannot be requested |
+| [`SUPABASE_ADD_VENUE_HOLDS.sql`](backend/SUPABASE_ADD_VENUE_HOLDS.sql) | US14.3 tentative holds: the Held status and hold columns. Run after the US14.2, US18.1 and US4.5 scripts. Its hold-first function is dropped by the US14.6 script below | Every `/events/{id}/bookings` route returns 500, because each booking read selects the hold columns; `/holds` returns 500 |
 | [`SUPABASE_ADD_BOOKING_DECISIONS.sql`](backend/SUPABASE_ADD_BOOKING_DECISIONS.sql) | US16.1 Venue Staff approve or reject requests. Run after the US14.3, US9.4 and US10.2 scripts | Every `/events/{id}/bookings` route returns 500, because each booking read selects the decision columns; `/booking-requests` returns 500 and nothing can be approved |
 | [`SUPABASE_ADD_BOOKING_CONFLICTS.sql`](backend/SUPABASE_ADD_BOOKING_CONFLICTS.sql) | US15.1 conflict check incl. setup/turnaround and unavailability; US15.2 conflict flags. Run after the US16.1, US12.1 and US4.5 scripts | Every `/events/{id}/bookings` route, `/booking-requests`, `/booking-conflicts` and `/holds` return 500, because each booking read selects the flag columns. Two requests for one slot at the same moment could both be stored |
 | [`SUPABASE_ADD_SAFETY_CHECK_STATUS.sql`](backend/SUPABASE_ADD_SAFETY_CHECK_STATUS.sql) | US4.4 Pending Safety Check status and transitions. Run after the US4.5, US15.2 and US19 scripts | Sending an event for its safety check and the Safety Officer's decisions return 500; nothing else is affected. Without its trigger, an event could still be moved to Confirmed by a direct status write |
@@ -90,7 +171,11 @@ so running one twice is a no-op.
 | [`SUPABASE_US4_7_CONFIRM_EVENT.sql`](backend/SUPABASE_US4_7_CONFIRM_EVENT.sql) | US4.7: the Coordinator confirms the event (`confirm_event`), a safety approval no longer confirms it, the guard that makes confirming the only way into Confirmed, and the `safety-approved` notice kind. Run after the US17.2, US11.2 and US11.3 scripts | **Confirming returns 500**, and a safety approval still confirms the event on its own, as before US4.7 |
 | [`SUPABASE_FIX_SAFETY_CHECK_CHANGES.sql`](backend/SUPABASE_FIX_SAFETY_CHECK_CHANGES.sql) | An important change (date, time, attendance, venue or equipment) to an event Pending Safety Check sends it back to Planning, through a Coordinator's edit (`us11_edit`, which gains an optional `p_reason`) or an accepted change request (`us11_approve_change`), so an earlier safety approval cannot confirm it. Run after the US11.2, US11.3 and US4.7 scripts, and before deploying the backend that sends `p_reason` | **Coordinator edits return 500** once the new backend is deployed; before that, an important change during the safety check keeps the old approval |
 | [`SUPABASE_FIX_ORGANISER_REGISTRATION.sql`](backend/SUPABASE_FIX_ORGANISER_REGISTRATION.sql) | D3 (applied live 2026-11-03): the owning Organiser may open and close registration and set its capacity, as well as the assigned Coordinator (`set_event_registration`). Run after the US20.1 script | An Organiser's registration save is refused (409, "changed while you were working on it"); the Coordinator's still works |
-| [`SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql`](backend/SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql) | US12.4: a venue closure also tells the Organiser of a Confirmed event (the event stays Confirmed), and `us12_4_request_replacement` requests the replacement through the live `request_replacement_venue` and moves a Confirmed event back to Planning in the same transaction. Run after the US12.2 (or its fix), US14.5 and US11.3 scripts | **Requesting a replacement venue returns 500**; searching for one and every other route are unaffected. Organisers are not told about a closure |
+| [`SUPABASE_US14_5_REQUEST_REPLACEMENT_VENUE.sql`](backend/SUPABASE_US14_5_REQUEST_REPLACEMENT_VENUE.sql) | US14.5: `request_replacement_venue`, which used to exist only on the live database. Created only where it is missing, so the live version is kept. Run after the US14.5 status and US15.2 scripts | **A fresh database cannot request a replacement venue** (500) |
+| [`SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql`](backend/SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql) | US12.4: `us12_4_request_replacement` requests the replacement through `request_replacement_venue` and moves an event still Confirmed back to Planning in the same transaction. Run after the US12.2 (or its fix), US14.5 and US11.3 scripts | **Requesting a replacement venue returns 500**; searching for one and every other route are unaffected |
+| [`SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql`](backend/SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql) | US12.4 as Week 9 settled it (G12): a venue closure sends a Confirmed event back to Planning at once, with the reason in its history, and tells the Coordinator and the Organiser. Also compares a hold's expiry in Singapore time. Run after the script above | A closure flags the booking but leaves the event showing Confirmed with a venue it cannot use |
+| [`SUPABASE_US14_6_HOLD_AFTER_APPROVAL.sql`](backend/SUPABASE_US14_6_HOLD_AFTER_APPROVAL.sql) | US14.3 reworked and US14.6 (Week 9): Venue Staff approve a request as a hold (`approve_venue_booking_as_hold`), the Coordinator confirms it (`confirm_held_booking`), and the hold notice kinds. Drops the old hold-first `request_held_booking`. Run after the US14.4, decision-recorded fix and US10.4 scripts | **Approving as a hold and confirming a hold return 500**; approving outright still works |
+| [`SUPABASE_G13_WEEK1_NOTICES.sql`](backend/SUPABASE_G13_WEEK1_NOTICES.sql) | G13: the notice kinds for a booking requested, registration opened or closed, and an Attendee withdrawing. Run after the US10.4 script | Those notices are rejected and only logged; the actions themselves succeed |
 | [`SUPABASE_US10_4_EVENT_UPDATED_NOTICE.sql`](backend/SUPABASE_US10_4_EVENT_UPDATED_NOTICE.sql) | US10.4: the `event-updated` notice kind, which tells registered Attendees their event has a new date, time or venue. Run after the US4.7 script | Attendees' notices are rejected by the `kind` check, so none are written. Approving the change or the replacement venue still succeeds; the failure is only logged |
 | [`SUPABASE_US8_4_REASSIGN_COORDINATOR.sql`](backend/SUPABASE_US8_4_REASSIGN_COORDINATOR.sql) | US8.4: `reassign_event_coordinator`, which moves an assigned, active event to another Coordinator, logs it naming the previous one and notifies both. First created on the live database by an uncommitted repair script; this is that function with two US8.4 changes (finished events refused, names in the log). Run after the US10.2 and US12.2 scripts | **A fresh database cannot reassign** (the API answers 409). On the live database, the repair script's version stays: finished events can be reassigned and the log gives ids |
 | [`SUPABASE_US17_2_SAFETY_DECISIONS.sql`](backend/SUPABASE_US17_2_SAFETY_DECISIONS.sql) | US17.2 Safety Officer decisions: the `safety_reviews` and `safety_review_flags` tables, `record_safety_decision`, the re-review check in `send_event_to_safety_check`, and the `safety-rejected` notice kind. Run after the US4.4 and US20.1 scripts | Recording a safety decision, listing an event's decisions, resolving a flag and checking safety-check readiness return 500; every other route is unaffected |
@@ -127,10 +212,13 @@ PostgREST, which does not run DDL.
 
 ### Development accounts
 
-Nothing in the app creates an account, so these are made by hand and one is
-needed per role. Each needs **two** records joined on email: an Auth user
-holding the password (Authentication → Users → Add user, with **Auto Confirm
-User** on) and a `public.users` row holding the name and role.
+Nothing in the app creates an account (there is no self-registration, as the
+customer asked). `python backend/seed_new_users.py` makes one per role. Each
+needs **two** records joined on email: an Auth user holding the password and a
+`public.users` row holding the name and role; the script writes both, and the
+dashboard (Authentication → Users → Add user, with **Auto Confirm User** on)
+works too. One person holds one role; a person with two roles uses two accounts
+(see REQUIREMENTS_BASELINE.md, G6).
 
 | Email | Role | Can |
 | ----- | ---- | --- |
@@ -194,17 +282,30 @@ cd frontend && npm run lint && npm run build && npm test -- --coverage
 
 ## Test coverage
 
-Both halves measure coverage in CI, and the build fails if it drops.
+Both halves measure coverage in CI, and the build fails if it drops below the
+floor. Measured on 4 November 2026, on the branch that closed the audit gaps:
 
-| Half | Lines | Branches | Enforced by |
-| ---- | ----- | -------- | ----------- |
-| Backend (`app/`) | 100% | 100% | `fail_under = 100` in [`backend/pyproject.toml`](backend/pyproject.toml) |
-| Frontend (`src/`) | 100% | 94.8% | `thresholds` in [`frontend/vite.config.ts`](frontend/vite.config.ts) |
+| Half | Lines | Branches | Statements / functions | Floor, enforced by |
+| ---- | ----- | -------- | ---------------------- | ------------------ |
+| Backend (`app/`, 791 tests) | 88.82% (5139 of 5786) | 74.77% (984 of 1316) | — | 85.6% lines and branches combined (86.22% now), `fail_under` in [`backend/pyproject.toml`](backend/pyproject.toml) |
+| Frontend (`src/`, 76 tests) | 53.34% | 49.73% | 51.82% / 50% | lines 52, statements 51, functions 49, branches 48, `thresholds` in [`frontend/vite.config.ts`](frontend/vite.config.ts) |
 
-Frontend lines, statements and functions are all at 100%. The branches still
-missing are mostly fallbacks in the page markup, such as a venue with no name
-showing "Unnamed venue". Raise `branches` in `vite.config.ts` as they are
-covered.
+Neither half is at 100%, and this README used to say both were. The floors were
+lowered when the suite was cut back to one test per acceptance criterion plus
+its negative and boundary cases (PR #64), which the rubric's "test cases from
+the acceptance criteria" asks for first. What is not covered is mostly:
+
+* **Backend:** the `Supabase*` store classes' error paths (a PostgREST failure,
+  a row that vanished between two reads), which need a real database to reach,
+  and validation branches in `events.py`, `equipment.py` and `venues.py` whose
+  rule is already covered from another route. The SQL itself is tested against
+  PostgreSQL in CI (below).
+* **Frontend:** loading and error states, and pages whose behaviour is tested
+  end to end by the Playwright journeys instead. Browser journeys do not count
+  towards these figures.
+
+These could be covered; they are not impossible to reach. They are left as the
+known gap, and listed here so the figures are not mistaken for 100%.
 
 ### What is excluded, and why
 
@@ -225,11 +326,13 @@ Each exclusion is marked in the code with the reason beside it.
 Coverage counts the Python and TypeScript. It does not count the SQL functions
 in `backend/SUPABASE_*.sql`, and several rules live there: approving a booking
 under a lock on the venue, the conflict check, registering for a place,
-recording a safety decision. Those are tested against a real database by the
-`*_db.py` tests in `backend/tests/` and by `backend/integration/`. They need a
-database, so they are opt-in: set `SPMG3T7_DB_TESTS=1` (or `US19_DB_TEST_URL`)
-with `SUPABASE_DB_URL` in `backend/.env`. CI runs only
-`integration/test_unavailability_db.py` today.
+recording a safety decision. Those are tested against a real database by
+`backend/integration/`, which CI runs against a disposable PostgreSQL 16 (the
+"Test database migrations" step), including the fresh-install build. Two older
+`*_db.py` tests in `backend/tests/` (the hold sweep, TC-US14.4-02, and the
+equipment race, TC-US19.3-08) still run only against a project you point them
+at: set `SPMG3T7_DB_TESTS=1` (or `US19_DB_TEST_URL`) with `SUPABASE_DB_URL` in
+`backend/.env`. Point them at a disposable database, never the shared one.
 
 ### Dates in the tests
 
@@ -265,12 +368,19 @@ to `backend/.env` for the rest.
 
 ## Continuous integration
 
-One workflow, [`.github/workflows/ci.yml`](.github/workflows/ci.yml), with a job
-per half. Both jobs lint, build and test, and both run on every push to `main`
-and on every pull request. A failing step fails the build and blocks the PR.
+One workflow, [`.github/workflows/ci.yml`](.github/workflows/ci.yml), with three
+jobs, all run on every push to `main` and on every pull request. A failing step
+fails the build and blocks the PR.
 
-The jobs run in parallel, so a full run takes as long as the slower half rather
-than the sum of the two. They show up as `CI / backend` and `CI / frontend`.
+* `CI / backend`: lint, byte-compile, the unit and API tests with coverage, then
+  the database tests and the fresh-install build against PostgreSQL 16.
+* `CI / frontend`: lint, type-check and build, then the component tests with
+  coverage.
+* `CI / e2e`: the Playwright browser journeys, against the real API over
+  in-memory stores (desktop Chromium).
+
+The jobs run in parallel, so a full run takes as long as the slowest rather
+than the sum.
 
 There are deliberately no `paths:` filters. The two halves are not independent —
 the client calls the API, so a change to one can break the other — and a check

@@ -22,7 +22,7 @@ from app.auth import require_permission
 from app.booking_store import Booking, BookingStatus
 from app.event_status import CLOSED, EventStatus
 from app.events import BookingOut, _booking_out
-from app.notifications import notify_back_in_planning
+from app.notifications import notify_back_in_planning, notify_booking_requested
 from app.permissions import Permission
 from app.users import User
 from app.venues import VenueOut, _filter_text, _min_capacity, _to_out
@@ -205,4 +205,5 @@ def request_replacement_venue(
         and reopened.status is EventStatus.PLANNING
     ):
         notify_back_in_planning(reopened, reason, actor_id=user.id)
+    notify_booking_requested(reopened or event, new_booking.venue_name, new_booking.starts_at)
     return _booking_out(new_booking)

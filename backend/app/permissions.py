@@ -93,7 +93,7 @@ class Permission(StrEnum):
     COORDINATORS_ASSIGN = "coordinators:assign"  # US8.3: Lead assigns Coordinators
     SAFETY_REVIEW = "safety:review"  # US4.4/US17.x: Safety Officer decides the check
     SAFETY_SUBMIT = "safety:submit"  # US4.4: Coordinator sends a ready event for it
-    HOLDS_PLACE = "holds:place"  # US14.3: Venue Staff keep a slot for a Coordinator
+    HOLDS_MANAGE = "holds:manage"  # US14.3/US14.6: Venue Staff change or release holds
     BOOKINGS_DECIDE = "bookings:decide"  # US16.1: Venue Staff approve or reject requests
     EQUIPMENT_READ = "equipment:read"
     EQUIPMENT_WRITE = "equipment:write"
@@ -127,7 +127,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     Permission.COORDINATORS_ASSIGN: "assign events to Coordinators",
     Permission.SAFETY_REVIEW: "review event safety",
     Permission.SAFETY_SUBMIT: "send events for a safety check",
-    Permission.HOLDS_PLACE: "place tentative venue holds",
+    Permission.HOLDS_MANAGE: "change or release tentative venue holds",
     Permission.BOOKINGS_DECIDE: "approve or reject venue booking requests",
     Permission.EQUIPMENT_READ: "view the equipment catalogue",
     Permission.EQUIPMENT_WRITE: "maintain equipment",
@@ -208,8 +208,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VENUES_CREATE,
             Permission.VENUES_EDIT,
             Permission.VENUES_DELETE,
-            # US14.3: tentative holds, which expire on their own.
-            Permission.HOLDS_PLACE,
+            # US14.3/US14.6: the holds they approve, which expire on their own.
+            Permission.HOLDS_MANAGE,
             # US16.1: only Venue Staff confirm or turn down a booking request.
             Permission.BOOKINGS_DECIDE,
             # US4.6: told when an event's bookings are released by its cancellation.

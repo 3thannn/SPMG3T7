@@ -73,7 +73,9 @@ from app.event_store import Event, StaleEventStatus
 from app.notifications import (
     notify_assigned,
     notify_attendees_of_new_time,
+    notify_attendees_of_new_venue,
     notify_back_in_planning,
+    notify_booking_requested,
     notify_change_decision,
     notify_change_submitted,
     notify_clarification,
@@ -404,7 +406,9 @@ def _validated(draft: EventDraft) -> EventDraft:
         raise _invalid("Expected attendance cannot be negative.")
     if draft.expected_attendance is not None and draft.expected_attendance > ATTENDANCE_MAX:
         raise _invalid(ATTENDANCE_TOO_LARGE)
-    needs_problem = event_needs.format_error(draft.needs())
+    needs_problem = event_needs.format_error(
+        draft.needs(), layouts=suitability.catalogue_layouts()
+    )
     if needs_problem:
         raise _invalid(needs_problem)
 
@@ -2347,6 +2351,7 @@ def request_booking(
         # Another request took the slot between the check above and the write.
         found = slot_check(venue.id, valid.starts_at, valid.ends_at, venue=venue)
         raise not_available(venue.name, found, coordinator_titles(found, user)) from None
+    notify_booking_requested(event, venue.name, created.starts_at)
     return _booking_out(created)
 
 
@@ -2488,27 +2493,28 @@ def cancel_booking(
     return _booking_out(cancelled)
 
 
-# -- US14.3: turning a tentative hold into a request -----------------------------
+# -- US14.3: confirming a booking Venue Staff approved as a tentative hold ------
 
 
-@router.post("/{event_id}/bookings/{booking_id}/request", response_model=BookingOut)
-def request_held_booking(
+@router.post("/{event_id}/bookings/{booking_id}/confirm", response_model=BookingOut)
+def confirm_held_booking(
     event_id: str,
     booking_id: str,
     user: Annotated[User, Depends(require_permission(Permission.BOOKINGS_REQUEST))],
 ) -> BookingOut:
-    """US14.3: the Coordinator asks for a venue Venue Staff held for them.
+    """US14.3: the Coordinator confirms a venue Venue Staff approved as a hold.
 
-    Held -> Requested, before the hold expires, and on the same terms as a new
-    request (US14.1): the assigned Coordinator, on an Approved or Planning
-    event, which a first request moves to Planning (US4.5). The times are the
-    ones held. 404, then 409, as for cancelling.
+    Held -> Confirmed, before the hold expires. Week 9: the hold starts after
+    venue approval, and the Coordinator confirms once Venue Staff approve. The
+    assigned Coordinator only (US8.6), and not on a closed event. 404, then
+    409, as for cancelling. The slot was already checked when Venue Staff
+    approved it, and the hold has kept it since, so it is not checked again.
 
-    US15.1: the hold's own slot is left out of the check, but a hold that has
-    clashed since it was placed (a setup or turnaround change, US15.2) cannot
-    become a request until the clash is resolved.
+    US10.4: a confirmed replacement venue is news for the event's Attendees,
+    as it is when Venue Staff confirm one outright.
     """
     event = _readable(_as_id(event_id), user)
+    _refuse_if_cancelled(event)
     try:
         booking = booking_store.repository().get_booking(int(booking_id))
     except ValueError:
@@ -2521,23 +2527,8 @@ def request_held_booking(
         raise _hold_expired(booking)
     if booking.status is not BookingStatus.HELD:
         raise _not_held(booking.status)
-    refusal = check_booking(status=event.status)
-    if refusal is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": EventError.REFUSED,
-                "message": booking_refusal_message(refusal),
-                "reason": str(refusal),
-            },
-        )
-    found = slot_check(booking.venue_id, booking.starts_at, booking.ends_at, exclude_id=booking.id)
-    if not found.available:
-        raise not_available(booking.venue_name, found, coordinator_titles(found, user))
     try:
-        requested = booking_store.repository().request_hold(
-            booking.id, actor_id=user.id, expected_status=event.status
-        )
+        confirmed = booking_store.repository().confirm_hold(booking.id, actor_id=user.id)
     except HoldExpired:
         raise _hold_expired(booking) from None
     except StaleBookingStatus:
@@ -2548,16 +2539,24 @@ def request_held_booking(
         raise _not_held(current.status if current else BookingStatus.CANCELLED) from None
     except StaleEventStatus:
         raise _stale_request() from None
-    return _booking_out(requested)
+    siblings = booking_store.repository().list_for_event(event.id)
+    if booking_store.is_replacement(confirmed, siblings):
+        venue = venue_store.repository().get_venue(confirmed.venue_id)
+        notify_attendees_of_new_venue(
+            event, confirmed.venue_name or "a new venue", venue.location if venue else ""
+        )
+    return _booking_out(confirmed)
 
 
 def _not_held(current: BookingStatus) -> HTTPException:
     message = (
-        "This hold has already been turned into a booking request."
-        if current is BookingStatus.REQUESTED
-        else "This hold has been cancelled."
+        "This booking is already confirmed."
+        if current is BookingStatus.CONFIRMED
+        else "This hold has been released or cancelled."
         if current is BookingStatus.CANCELLED
-        else "Only a hold can be turned into a booking request."
+        else "Venue Staff have not approved this booking as a hold yet."
+        if current is BookingStatus.REQUESTED
+        else "Only a tentative hold can be confirmed."
     )
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
@@ -2588,9 +2587,8 @@ def _hold_expired(booking: Booking) -> HTTPException:
             "code": EventError.REFUSED,
             "message": (
                 f"The hold on {booking.venue_name or 'this venue'} expired at "
-                f"{booking.hold_expires_at.replace('T', ' ')[:16]}. Ask Venue Staff to "
-                "hold it again, "
-                "or request the venue as a new booking."
+                f"{booking.hold_expires_at.replace('T', ' ')[:16]}, so the venue was "
+                "released. Request it again as a new booking."
             ),
             "reason": "hold-expired",
         },

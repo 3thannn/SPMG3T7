@@ -28,12 +28,14 @@ yet", which is what a draft may leave.
 This module is pure, so each rule is tested as a plain function.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass, fields
 
 #: The answer for a field that does not apply to this event.
 NOT_REQUIRED = "None / Not required"
 
-#: In the order the form lists them. The words are the venue catalogue's.
+#: In the order the form lists them. The standard names; Week 9 lets Venue
+#: Staff add their own through the catalogue, which `layout_choices` adds.
 LAYOUT_OPTIONS: tuple[str, ...] = (
     "Theatre",
     "Classroom",
@@ -123,11 +125,27 @@ def _choice_error(value: str, options: tuple[str, ...], *, what: str) -> str | N
     return None
 
 
-def format_error(needs: EventNeeds) -> str | None:
+def layout_choices(catalogue: Iterable[str]) -> tuple[str, ...]:
+    """Week 9 (G7/A7): the layouts an Organiser may prefer.
+
+    The standard names first, in form order, then every other layout a venue in
+    the catalogue lists, alphabetically, so a layout Venue Staff add to a venue
+    can be chosen. Matched ignoring case, keeping the first spelling seen.
+    """
+    seen = {name.casefold() for name in LAYOUT_OPTIONS}
+    extra: dict[str, str] = {}
+    for name in catalogue:
+        cleaned = name.strip()
+        if cleaned and cleaned.casefold() not in seen and cleaned.casefold() != "none":
+            extra.setdefault(cleaned.casefold(), cleaned)
+    return LAYOUT_OPTIONS + tuple(sorted(extra.values(), key=str.casefold))
+
+
+def format_error(needs: EventNeeds, layouts: tuple[str, ...] = LAYOUT_OPTIONS) -> str | None:
     """Why these answers could never be submitted as they stand, or None.
 
     Applies to drafts as well as submissions: blanks are allowed, values from
-    outside the fixed lists are not.
+    outside the lists are not. `layouts` is `layout_choices` of the catalogue.
     """
     problem = _choice_error(
         needs.venue_requirements, FACILITY_OPTIONS, what="the venue requirements"
@@ -137,7 +155,7 @@ def format_error(needs: EventNeeds) -> str | None:
     if problem:
         return problem
     layout = needs.preferred_layout.strip()
-    if layout and layout != NOT_REQUIRED and layout not in LAYOUT_OPTIONS:
+    if layout and layout != NOT_REQUIRED and layout not in layouts:
         return f"Choose a preferred layout from the list. {layout} is not one of the options."
     if len(needs.equipment_needs) > FREE_TEXT_MAX:
         return f"Keep the equipment needs to {FREE_TEXT_MAX} characters or fewer."

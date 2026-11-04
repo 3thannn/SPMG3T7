@@ -1,28 +1,30 @@
-"""Tentative venue holds — US14.3.
+"""Tentative venue holds — US14.3, US14.6.
 
-Venue Staff keep a slot for a Coordinator who is still finalising, without
-blocking the venue forever. A hold is a venue booking with status Held, linked
-to an event and so to the event's Coordinator, with an expiry that must be in
-the future. While it is Held and has not expired, the slot counts as taken
-(`Booking.holds_venue`, which US9.4's re-check and US15.1's availability check
-read). The Coordinator turns it into a request from the event page
-(`POST /events/{id}/bookings/{bookingId}/request` in `app.events`). A hold is
-never Confirmed on its own.
+Week 9 settled the order: a tentative hold starts after venue approval. Venue
+Staff approve a booking request as a hold, with an expiry
+(`POST /booking-requests/{id}/approve` with `holdUntil`, in
+`app.booking_decisions`), and the booking is Held. While it is Held and has not
+expired, the slot counts as taken (`Booking.holds_venue`, which US9.4's re-check
+and US15.1's availability check read). The Coordinator confirms it from the
+event page before it expires (`POST /events/{id}/bookings/{bookingId}/confirm`
+in `app.events`); if they do not, it lapses and the slot is free again (US14.4).
 
-Venue Staff hold no event permissions, so these routes show them only what a
-hold needs: the events that can take one, and the holds already at a venue.
+These routes are what Venue Staff do with a hold once it exists (US14.6, Week 9:
+Venue Staff set and update the hold duration):
+
+* list the holds at a venue, expired ones included as history;
+* change a hold's expiry, while it is still Held and has not lapsed;
+* release a hold early, with a reason.
+
+The event's Coordinator is told of each change. Venue Staff hold no event
+permissions, so a hold carries its event's title.
 
 Assumptions, not customer-confirmed:
 
-* Only Venue Staff place holds (the story's own assumption).
-* A hold can be placed only for an event a Coordinator can request venues for:
-  assigned, and Approved or Planning (US14.1's `check_booking`).
 * A hold expires no later than the booking starts. Keeping a slot past the
-  moment it is used would mean nothing.
-
-US15.1: a hold is placed only where the slot is free under the same rule a
-request is checked with, setup and turnaround included. Venue Staff see every
-event, so a clash names the other event too.
+  moment it is used would mean nothing. That is the maximum duration.
+* A released hold is Cancelled, with who released it, when and why, as a
+  Coordinator's cancellation is (US14.2).
 """
 
 import re
@@ -32,41 +34,28 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app import booking_store, event_store, users, venue_store
+from app import arrangement_review, booking_store, conflict_flags, event_store
 from app.auth import require_permission
-from app.booking_store import Booking, BookingStatus
-from app.event_status import EventStatus, booking_refusal_message, check_booking
-from app.event_store import Event
+from app.booking_store import Booking, BookingStatus, StaleBookingStatus
 from app.events import (
+    CANCELLATION_REASON_MAX,
     BookingOut,
     EventError,
+    _booking_not_found,
     _booking_out,
-    _booking_time,
     _invalid_booking,
     _venue_missing,
-    not_available,
-    slot_check,
 )
+from app.notifications import notify_hold_released, notify_hold_updated
 from app.permissions import Permission
 from app.users import User
 
 router = APIRouter(prefix="/holds", tags=["holds"])
 
-PlacesHolds = Annotated[User, Depends(require_permission(Permission.HOLDS_PLACE))]
+ManagesHolds = Annotated[User, Depends(require_permission(Permission.HOLDS_MANAGE))]
 
 _ISO_DATETIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?")
 _ID = re.compile(r"[0-9]+")
-
-
-class HoldableEventOut(BaseModel):
-    """An event Venue Staff may hold a venue for, and whose slot it would keep."""
-
-    id: str
-    title: str
-    status: EventStatus
-    coordinator_name: str = Field(serialization_alias="coordinatorName")
-    starts_at: str = Field(serialization_alias="startsAt")
-    ends_at: str = Field(serialization_alias="endsAt")
 
 
 class HoldOut(BookingOut):
@@ -75,24 +64,16 @@ class HoldOut(BookingOut):
     event_title: str = Field(serialization_alias="eventTitle")
 
 
-class HoldInput(BaseModel):
-    """What Venue Staff send to place a hold. Text, so a bad value is our 400."""
+class HoldUpdate(BaseModel):
+    """US14.6: the new expiry. Text, so a bad value is our 400."""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    venue_id: str | int | None = Field(default=None, alias="venueId")
-    event_id: str | int | None = Field(default=None, alias="eventId")
-    starts_at: str | None = Field(default=None, alias="startsAt")
-    ends_at: str | None = Field(default=None, alias="endsAt")
     expires_at: str | None = Field(default=None, alias="expiresAt")
 
 
-def _holdable(event: Event) -> bool:
-    return event.coordinator_id is not None and check_booking(status=event.status) is None
-
-
-def _coordinator_names() -> dict[int, str]:
-    return {user.id: user.name for user in users.list_users()}
+class HoldRelease(BaseModel):
+    reason: str = ""
 
 
 def _hold_out(booking: Booking, titles: dict[int, str]) -> HoldOut:
@@ -107,8 +88,8 @@ def _event_title(event_id: int) -> str:
     return event.title if event is not None else ""
 
 
-def _expiry(raw: str | None, *, starts: datetime) -> str:
-    """US14.3: required, in the future, and no later than the booking starts."""
+def expiry(raw: str | None, *, starts_at: str) -> str:
+    """US14.3/US14.6: required, in the future, and no later than the booking starts."""
     text = (raw or "").strip()
     if not text:
         raise _invalid_booking("Give the hold an expiry date and time.")
@@ -120,7 +101,11 @@ def _expiry(raw: str | None, *, starts: datetime) -> str:
         raise _invalid_booking(f"The expiry {text} is not a real date and time.") from None
     if expires <= booking_store.local_now():
         raise _invalid_booking("The hold must expire in the future.")
-    if expires > starts:
+    try:
+        starts = datetime.fromisoformat(starts_at)
+    except ValueError:
+        starts = None
+    if starts is not None and expires > starts:
         raise _invalid_booking("The hold must expire no later than the booking starts.")
     return text
 
@@ -132,28 +117,43 @@ def _refused(message: str, reason: str) -> HTTPException:
     )
 
 
-@router.get("/events", response_model=list[HoldableEventOut])
-def list_holdable_events(user: PlacesHolds) -> list[HoldableEventOut]:
-    """The events a hold can be placed for: assigned, and Approved or Planning."""
-    names = _coordinator_names()
-    events = event_store.repository().list_events(organiser_id=None, include_drafts=False)
-    return [
-        HoldableEventOut(
-            id=str(event.id),
-            title=event.title,
-            status=event.status,
-            coordinator_name=names.get(event.coordinator_id or 0, ""),
-            starts_at=event.starts_at,
-            ends_at=event.ends_at,
+def _live_hold(booking_id: str) -> Booking:
+    """A booking that is a hold Venue Staff can still change: Held, not yet lapsed."""
+    booking = (
+        booking_store.repository().get_booking(int(booking_id))
+        if _ID.fullmatch(booking_id.strip())
+        else None
+    )
+    if booking is None:
+        raise _booking_not_found()
+    if booking.hold_expired:
+        raise _refused(
+            f"The hold on {booking.venue_name or 'this venue'} expired at "
+            f"{booking.hold_expires_at.replace('T', ' ')[:16]}, so its slot is already free.",
+            "hold-expired",
         )
-        for event in sorted(events, key=lambda item: (item.starts_at, item.id))
-        if _holdable(event)
-    ]
+    if booking.status is not BookingStatus.HELD:
+        message = (
+            "The Coordinator has already confirmed this booking."
+            if booking.status is BookingStatus.CONFIRMED
+            else "This hold has already been released or cancelled."
+            if booking.status is BookingStatus.CANCELLED
+            else "Only a tentative hold can be changed or released."
+        )
+        raise _refused(message, "not-held")
+    return booking
+
+
+def _lost_race(booking: Booking) -> HTTPException:
+    """A write that matched nothing: the sweep, the Coordinator or another
+    member of staff moved the hold on first. Say what it is now."""
+    _live_hold(str(booking.id))
+    return _refused("This hold changed while you were working. Reload it and try again.", "stale")
 
 
 @router.get("", response_model=list[HoldOut])
 def list_holds(
-    user: PlacesHolds, venue_id: Annotated[str, Query(alias="venueId")] = ""
+    user: ManagesHolds, venue_id: Annotated[str, Query(alias="venueId")] = ""
 ) -> list[HoldOut]:
     """The holds at one venue, soonest first, expired ones included and flagged.
 
@@ -171,60 +171,47 @@ def list_holds(
     return [_hold_out(booking, titles) for booking in held]
 
 
-@router.post("", response_model=HoldOut, status_code=status.HTTP_201_CREATED)
-def place_hold(payload: HoldInput, user: PlacesHolds) -> HoldOut:
-    """US14.3: keep a venue's slot for an event's Coordinator until the expiry.
+@router.patch("/{booking_id}", response_model=HoldOut)
+def update_hold(booking_id: str, payload: HoldUpdate, user: ManagesHolds) -> HoldOut:
+    """US14.6: Venue Staff give a hold a new expiry, longer or shorter.
 
-    400 for what the form got wrong, then 409 for an event that cannot take a
-    hold however well-formed the request is.
+    Same rules as when the hold was approved: in the future and no later than
+    the booking starts. Only a hold still Held and not lapsed can change: an
+    expired one already gave its slot back. The Coordinator is told.
     """
-    raw_venue = "" if payload.venue_id is None else str(payload.venue_id).strip()
-    if not raw_venue:
-        raise _invalid_booking("Choose a venue.")
-    if not _ID.fullmatch(raw_venue):
-        raise _venue_missing()
-    raw_event = "" if payload.event_id is None else str(payload.event_id).strip()
-    if not raw_event:
-        raise _invalid_booking("Choose the event to hold this venue for.")
-    event = (
-        event_store.repository().get_event(int(raw_event)) if _ID.fullmatch(raw_event) else None
-    )
-    if event is None or event.status is EventStatus.DRAFT:
-        raise _invalid_booking("That event does not exist.")
+    hold = _live_hold(booking_id)
+    expires_at = expiry(payload.expires_at, starts_at=hold.starts_at)
+    try:
+        updated = booking_store.repository().update_hold(hold.id, expires_at=expires_at)
+    except StaleBookingStatus:
+        raise _lost_race(hold) from None
+    event = event_store.repository().get_event(updated.event_id)
+    if event is not None:
+        notify_hold_updated(event, updated.venue_name or "a venue", expires_at)
+    return _hold_out(updated, {updated.event_id: event.title if event else ""})
 
-    starts_at, start = _booking_time(payload.starts_at, which="start")
-    ends_at, end = _booking_time(payload.ends_at, which="end")
-    if end <= start:
-        raise _invalid_booking("The booking must end after it starts.")
-    if start <= booking_store.local_now():
-        raise _invalid_booking("A hold cannot start in the past.")
-    expires_at = _expiry(payload.expires_at, starts=start)
 
-    venue = venue_store.repository().get_venue(int(raw_venue))
-    if venue is None:
-        raise _venue_missing()
-    refusal = check_booking(status=event.status)
-    if refusal is not None:
-        raise _refused(booking_refusal_message(refusal), str(refusal))
-    if event.coordinator_id is None:
-        raise _refused(
-            "Assign a Coordinator to this event before holding a venue for it.",
-            "no-coordinator",
-        )
-    # US15.1: a hold takes its slot, so it is placed only where the slot is free.
-    found = slot_check(venue.id, starts_at, ends_at, venue=venue)
-    if not found.available:
-        titles = {item.booking.id: _event_title(item.booking.event_id) for item in found.bookings}
-        raise not_available(venue.name, found, titles)
+@router.post("/{booking_id}/release", response_model=HoldOut)
+def release_hold(booking_id: str, payload: HoldRelease, user: ManagesHolds) -> HoldOut:
+    """US14.6: Venue Staff release a hold before it expires, with a reason.
 
-    hold = booking_store.repository().place_hold(
-        event_id=event.id,
-        venue_id=venue.id,
-        starts_at=starts_at,
-        ends_at=ends_at,
-        expires_at=expires_at,
-        held_by_id=user.id,
-        # The table refuses a headcount below 1; no attendance is no headcount.
-        headcount=event.expected_attendance or None,
-    )
-    return _hold_out(hold, {event.id: event.title})
+    The booking is Cancelled with who, when and why, and its slot is free at
+    once. The Coordinator is told why.
+    """
+    hold = _live_hold(booking_id)
+    reason = payload.reason.strip()
+    if not reason:
+        raise _invalid_booking("Give the Coordinator a reason for releasing this hold.")
+    if len(reason) > CANCELLATION_REASON_MAX:
+        raise _invalid_booking(f"Keep the reason to {CANCELLATION_REASON_MAX} characters or fewer.")
+    try:
+        released = booking_store.repository().cancel(hold.id, actor_id=user.id, reason=reason)
+    except StaleBookingStatus:
+        raise _lost_race(hold) from None
+    # US15.2: a released hold frees its slot, which may resolve a flagged clash.
+    conflict_flags.resolve_quietly(released.venue_id)
+    arrangement_review.refresh_if_reviewed(released.event_id)
+    event = event_store.repository().get_event(released.event_id)
+    if event is not None:
+        notify_hold_released(event, released.venue_name or "a venue", reason)
+    return _hold_out(released, {released.event_id: event.title if event else ""})

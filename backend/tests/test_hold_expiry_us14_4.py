@@ -9,8 +9,8 @@ Acceptance criteria, and the tests that hold each one:
   tests/test_hold_expiry_db.py.
 * The Coordinator is told 24h before expiry and when it expires ->
   tests/test_hold_expiry_db.py (the job writes both, in US10.2's words).
-* Expired holds stay in history and can't be turned into a booking request ->
-  `TestExpiredHoldsStayInHistory`, `TestAnExpiredHoldCannotBeRequested`,
+* Expired holds stay in history and can't be confirmed (US14.3 as reworked) ->
+  `TestExpiredHoldsStayInHistory`, `TestAnExpiredHoldCannotBeConfirmed`,
   `TestAnExpiredHoldCannotBeCancelled`.
 
 The sweep is SQL run by pg_cron, so CI (which has no database) cannot run it.
@@ -125,12 +125,12 @@ class TestExpiredHoldsStayInHistory:
 
 
 
-class TestAnExpiredHoldCannotBeRequested:
-    def test_requesting_it_is_refused_as_expired(
+class TestAnExpiredHoldCannotBeConfirmed:
+    def test_confirming_it_is_refused_as_expired(
         self, client, coordinator, event, booking_repository
     ):
         booking_repository.bookings.append(a_hold())
-        response = client.post(booking_path(50, "request"), headers=coordinator)
+        response = client.post(booking_path(50, "confirm"), headers=coordinator)
         assert response.status_code == 409
         detail = response.json()["detail"]
         assert detail["reason"] == "hold-expired"

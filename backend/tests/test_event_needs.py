@@ -9,6 +9,7 @@ error, and drafts (US2.2) still save without these checks.
 """
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ from app.event_needs import (
     MISSING_MESSAGES,
     NOT_REQUIRED,
     EventNeeds,
+    layout_choices,
 )
 from app.event_store import SupabaseEvents, to_event
 from tests.conftest import (
@@ -88,6 +90,47 @@ class TestFixedLists:
 #: The browser's copy of the lists. The server refuses any value off its own
 #: lists, so a drift between the two would show as a form that cannot submit.
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "src" / "eventNeeds.ts"
+
+
+class TestLayoutsFromTheCatalogue:
+    """Week 9 (G7/A7): Venue Staff add, edit and delete layouts through the
+    catalogue, and the Organiser's choices follow it."""
+
+    def test_a_layout_a_venue_lists_is_added_after_the_standard_ones(self):
+        choices = layout_choices(["Theatre", "Ballroom", "ballroom", "  ", "Amphitheatre"])
+        assert choices == (*LAYOUT_OPTIONS, "Amphitheatre", "Ballroom")
+
+    def test_a_standard_name_in_another_case_is_not_repeated(self):
+        assert layout_choices(["THEATRE", "theatre"]) == LAYOUT_OPTIONS
+
+    def test_the_route_lists_what_the_catalogue_holds_now(
+        self, client, auth_headers, venue_repository
+    ):
+        venue_repository.venues[0] = replace(
+            venue_repository.venues[0], supported_layouts="Theatre, Ballroom"
+        )
+        response = client.get("/venues/layouts", headers=auth_headers(ORGANISER))
+
+        assert response.status_code == 200, response.text
+        assert response.json()[-1] == "Ballroom"
+
+    def test_an_organiser_can_choose_a_layout_venue_staff_added(
+        self, client, auth_headers, venue_repository
+    ):
+        venue_repository.venues[0] = replace(
+            venue_repository.venues[0], supported_layouts="Ballroom"
+        )
+        body = {**REQUEST, "preferredLayout": "Ballroom"}
+        created = create(client, auth_headers(ORGANISER), **body)
+        assert created["preferredLayout"] == "Ballroom"
+
+    def test_a_layout_no_venue_lists_is_still_refused(self, client, auth_headers):
+        response = client.post(
+            "/events", json={**REQUEST, "preferredLayout": "Ballroom"},
+            headers=auth_headers(ORGANISER),
+        )
+        assert response.status_code == 400
+        assert "Ballroom is not one of the options" in response.json()["detail"]["message"]
 
 
 def _frontend_list(source: str, name: str) -> tuple[str, ...]:

@@ -30,7 +30,7 @@ vi.mock('../eventsStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../eventsStore')>()),
   listBookings: vi.fn(async () => []),
   requestBooking: vi.fn(),
-  requestHeldBooking: vi.fn(),
+  confirmHeldBooking: vi.fn(),
   cancelBooking: vi.fn(),
   // US18.1: Suitable unless a test says otherwise, so the US14.1 tests below
   // are about requesting rather than about the check.

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { apiAs, approvedEvent, as, reset } from './support'
+import { apiAs, approvedEvent, as, eventBody, reset } from './support'
 
 /** No venue needs, so suitability turns on capacity and the slot alone. */
 const NO_NEEDS = {
@@ -71,7 +71,7 @@ test('US16.1/US10.2: Venue Staff approve a request and the Coordinator is told',
 }) => {
   await as(page, 'Venue Staff', '/booking-requests')
   const card = page.locator('li, article').filter({ hasText: 'Open House' }).first()
-  await card.getByRole('button', { name: /^Approve/ }).click()
+  await card.getByRole('button', { name: /^Approve .* for Open House$/ }).click()
   await expect(page.getByRole('status').first()).toBeVisible()
 
   await as(page, 'Event Coordinator', '/events/1')
@@ -166,22 +166,39 @@ test('US12.1: Venue Staff mark a venue unavailable; a Coordinator sees the dates
   await expect(page.getByRole('button', { name: 'Mark unavailable' })).toHaveCount(0)
 })
 
-test('US14.3: Venue Staff hold a venue; the Coordinator turns it into a request', async ({
+test('US14.3/US14.6: Venue Staff approve a request as a hold; the Coordinator confirms it', async ({
   page,
   request,
 }) => {
   const id = await approvedEvent(request, 'Careers Fair', { ...NO_NEEDS, expectedAttendance: 50 })
+  const body = eventBody('Careers Fair')
+  const coordinator = await apiAs(request, 'Event Coordinator')
+  await coordinator.post(`/events/${id}/bookings`, {
+    venueId: '3',
+    startsAt: body.startsAt,
+    endsAt: body.endsAt,
+  })
 
-  await as(page, 'Venue Staff', '/venues/3')
-  await page.getByLabel(/^Event/).selectOption(id)
+  // Week 9: the hold starts after venue approval.
+  await as(page, 'Venue Staff', '/booking-requests')
+  const card = page.getByRole('listitem').filter({ hasText: 'Careers Fair' }).first()
+  await card.getByRole('button', { name: /as a tentative hold$/ }).click()
   const expiry = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 16)
-  await page.getByLabel(/expir/i).fill(expiry)
-  await page.getByRole('button', { name: /Place hold/ }).click()
-  await expect(page.getByText('Held').first()).toBeVisible()
+  await card.getByLabel('Hold until').fill(expiry)
+  await card.getByRole('button', { name: 'Approve as tentative hold' }).click()
+  await expect(page.getByRole('status').first()).toContainText('as a tentative hold until')
+
+  // US14.6: Venue Staff can change the expiry from the venue page.
+  await as(page, 'Venue Staff', '/venues/3')
+  await page.getByRole('button', { name: 'Change the expiry of the hold for Careers Fair' }).click()
+  const later = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 16)
+  await page.getByLabel('New expiry').fill(later)
+  await page.getByRole('button', { name: 'Save expiry' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Its Coordinator has been told.' })).toBeVisible()
 
   await as(page, 'Event Coordinator', `/events/${id}`)
   const held = page.locator('.booking-row').filter({ hasText: 'Seminar Room 4' })
   await expect(held).toContainText('Held')
-  await held.getByRole('button', { name: /Request/ }).click()
-  await expect(held).toContainText('Requested')
+  await held.getByRole('button', { name: /^Confirm the held/ }).click()
+  await expect(held).toContainText('Confirmed')
 })

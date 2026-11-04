@@ -773,6 +773,7 @@ export default function EventDetailPage({ eventId, session }: EventDetailPagePro
                     setBanner(null)
                   }}
                   disabled={writePending}
+                  session={session}
                 />
               </div>
             ) : (
