@@ -26,18 +26,17 @@ type TeamAssignmentsPageProps = {
 
 export default function TeamAssignmentsPage({ session }: TeamAssignmentsPageProps) {
   const [allEvents, setAllEvents] = useState<EventRecord[]>([])
-  const [filteredEvents, setFilteredEvents] = useState<EventRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedCoordinator, setSelectedCoordinator] = useState<string>('all')
 
-  // Load events on mount
+  // Load events on mount. Loading and error start as they should; only the
+  // answer sets them, and an answer after the page has gone is ignored.
   useEffect(() => {
-    setLoading(true)
-    setError('')
-
+    let cancelled = false
     listEvents(session)
       .then((events) => {
+        if (cancelled) return
         // US8.5: Filter to active events only (exclude Draft, Completed, Cancelled, Rejected)
         const activeEvents = events.filter(
           (e) =>
@@ -47,26 +46,26 @@ export default function TeamAssignmentsPage({ session }: TeamAssignmentsPageProp
             e.status !== 'Rejected'
         )
         setAllEvents(activeEvents)
-        setFilteredEvents(activeEvents)
         setLoading(false)
       })
       .catch((err) => {
+        if (cancelled) return
         console.error('Failed to load events:', err)
         setError('Could not load team assignments.')
         setLoading(false)
       })
+    return () => {
+      cancelled = true
+    }
   }, [session])
 
-  // Apply coordinator filter
-  useEffect(() => {
-    if (selectedCoordinator === 'all') {
-      setFilteredEvents(allEvents)
-    } else if (selectedCoordinator === 'unassigned') {
-      setFilteredEvents(allEvents.filter((e) => !e.coordinatorId))
-    } else {
-      setFilteredEvents(allEvents.filter((e) => e.coordinatorId === selectedCoordinator))
-    }
-  }, [selectedCoordinator, allEvents])
+  // The coordinator filter, worked out from the selection on each render.
+  const filteredEvents =
+    selectedCoordinator === 'all'
+      ? allEvents
+      : selectedCoordinator === 'unassigned'
+        ? allEvents.filter((e) => !e.coordinatorId)
+        : allEvents.filter((e) => e.coordinatorId === selectedCoordinator)
 
   // Calculate coordinator statistics
   const coordinatorStats: CoordinatorStats[] = (() => {
