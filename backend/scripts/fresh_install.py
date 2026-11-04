@@ -2,8 +2,10 @@
 
     python scripts/fresh_install.py <postgres-dsn>
 
-Every script is applied in `ORDER`, then once more: each is meant to be safe to
-run twice, and the second pass proves it. `integration/test_fresh_install_db.py`
+Every script is applied in `ORDER`, then once more: each addition is meant to
+be safe to run twice, and the second pass proves it. The base schema
+(`RUN_ONCE`) creates the database from nothing and is applied once only.
+`integration/test_fresh_install_db.py`
 runs this against an empty PostgreSQL 16 in CI, so the order in the README is
 the order that was tested.
 
@@ -98,6 +100,10 @@ ORDER: tuple[str, ...] = (
     "SUPABASE_SEED_VENUES.sql",
 )
 
+#: Applied on the first pass only: it creates the base types and tables with no
+#: IF NOT EXISTS, because it is the starting point rather than an addition.
+RUN_ONCE: frozenset[str] = frozenset({"SUPABASE_SETUP.sql"})
+
 #: Kept out of `ORDER`, with the reason above.
 EXCLUDED: tuple[str, ...] = (
     "SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql",
@@ -133,8 +139,10 @@ def apply_script(connection: psycopg.Connection, name: str) -> None:
 
 def apply_all(connection: psycopg.Connection, *, passes: int = 2) -> None:
     """Apply every script in order, `passes` times. Stops at the first failure."""
-    for _ in range(passes):
+    for number in range(passes):
         for name in ORDER:
+            if number and name in RUN_ONCE:
+                continue
             apply_script(connection, name)
 
 
