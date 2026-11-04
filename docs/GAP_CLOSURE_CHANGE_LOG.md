@@ -31,12 +31,11 @@ Week 9 > Week 7 > Week 4 > Week 2. Branch: `fix/close-audit-gaps`.
 
 ## Jira: changes to make
 
-The Atlassian connector available to this session can only read the
-`SPMG3T7` project, so these edits were **not** made in Jira from here. They are
-written out below so a team member can paste them in. Once done, tick the box and
-add the date.
+Done in Jira on 4 November 2026, except the epics' housekeeping (last item).
+Each edited story keeps its original ACs struck through above the current ones,
+so the change history stays visible, and carries the label `reworked-wk9`.
 
-- [ ] **SPMG3T7-59 (US14.3)**: rename to *US14.3 Approve a booking request as a
+- [x] **SPMG3T7-59 (US14.3)**: rename to *US14.3 Approve a booking request as a
   tentative hold with an expiry*. Keep status Done, add label `reworked-wk9`, and
   replace the description with:
 
@@ -65,8 +64,7 @@ add the date.
   > starts after venue approval. The earlier order (Venue Staff hold first, the
   > Coordinator turns it into a request) is superseded._
 
-- [ ] **SPMG3T7-89 (US14.6)**: move To Do → Done, priority P3 → High, assign an
-  owner and the final sprint. Replace the ACs with:
+- [x] **SPMG3T7-89 (US14.6)**: moved To Do → Done, priority High, assigned, Sprint 5. Replace the ACs with:
 
   > * Venue Staff can change the expiry of a Held booking, longer or shorter. The
   >   new expiry must be in the future, and no later than the booking start
@@ -80,7 +78,7 @@ add the date.
   >
   > _Built 4 Nov 2026 to meet Week 9 (G3-5 D21, D24)._
 
-- [ ] **SPMG3T7-87 (US12.4)**: replace the first three ACs with:
+- [x] **SPMG3T7-87 (US12.4)**: replace the first three ACs with:
 
   > * When a booking on a Confirmed event is flagged "Needs replacement" (US12.2),
   >   the event moves Confirmed → Planning at once, with who marked the venue
@@ -96,24 +94,23 @@ add the date.
   > review"; the earlier AC kept the event Confirmed until a replacement was
   > requested._
 
-- [ ] **SPMG3T7-25 (US2.1)**: replace AC2 with: *Layout, facilities and
+- [x] **SPMG3T7-25 (US2.1)**: replace AC2 with: *Layout, facilities and
   accessibility use lists that match the venue catalogue (US9.1a). The layout list
   is the standard names plus every layout a venue in the catalogue lists, so a
   layout Venue Staff add, rename or remove on a venue is reflected (Week 9).*
 
-- [ ] **SPMG3T7-62 (US16.1)**: replace AC2 with: *Approve → booking status
+- [x] **SPMG3T7-62 (US16.1)**: replace AC2 with: *Approve → booking status
   Confirmed, or Held with an expiry when approved as a tentative hold (US14.3).
   The conflict check (US15.1) runs again at approval. If the booking now clashes,
   approval is blocked and the clash is shown, so two requests for the same slot
   can't both be approved.*
 
-- [ ] **SPMG3T7-69 (US14.4)**: replace AC4 with: *Expired holds stay in history
+- [x] **SPMG3T7-69 (US14.4)**: replace AC4 with: *Expired holds stay in history
   and can't be confirmed (US14.3 as reworked).*
 
-- [ ] **New story under the Notification System epic (SPMG3T7-20)**: *US10.5 Week 1
-  notifications for booking requests, registration and withdrawals*, status Done,
-  final sprint. Then put its key in `docs/testing/acceptance_criteria.yaml`
-  (`jira: TBD` today).
+- [x] **New story under the Notification System epic (SPMG3T7-20)**: created as
+  **SPMG3T7-92**, *US10.5 Week 1 notifications for booking requests, registration
+  and withdrawals*, Done, Sprint 5. Its key is in `docs/testing/acceptance_criteria.yaml`.
 
   > As an Organiser, Coordinator, Venue Staff member or Attendee, I want to be told
   > about the Week 1 events that concern me, so that nothing waits on someone who

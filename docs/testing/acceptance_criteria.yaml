@@ -1357,7 +1357,7 @@
     text: Venue Staff only.
     kind: behaviour
 - story: US10.5
-  jira: TBD
+  jira: SPMG3T7-92
   title: Week 1 notifications for booking requests, registration and withdrawals
   core_feature: Notification System
   change_note: Added 2026-11-04 to close G13. The Week 1 briefing's notification list had four triggers
