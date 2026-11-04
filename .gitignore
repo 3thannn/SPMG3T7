@@ -50,3 +50,6 @@ TEST_CASE_REPORT.md
 
 # Office lock files (an open workbook leaves one beside it)
 ~$*
+
+# Test results CI keeps for the workbook
+junit/
