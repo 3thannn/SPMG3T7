@@ -31,12 +31,13 @@ from app import (
     booking_store,
     conflict_flags,
     event_store,
+    suitability,
     venue_availability,
     venue_store,
     venue_turnaround,
     venue_unavailability_store,
 )
-from app.auth import require_permission
+from app.auth import CurrentUser, require_permission
 from app.permissions import Permission, has_permission
 from app.users import User
 from app.venue_store import DuplicateVenueName, Venue, VenueFilters, VenueHasFutureBookings
@@ -283,6 +284,17 @@ def list_venues(
     if needed:
         venues = [venue for venue in venues if _free(venue, *needed)]
     return [_to_out(venue) for venue in venues]
+
+
+@router.get("/layouts", response_model=list[str])
+def list_layouts(user: CurrentUser) -> list[str]:
+    """Week 9 (G7/A7): the layouts an event request may prefer, from the catalogue.
+
+    Any signed-in user: the Organiser's form needs it and Organisers cannot
+    open the catalogue. Declared before `/{venue_id}` so "layouts" is not read
+    as a venue id.
+    """
+    return list(suitability.catalogue_layouts())
 
 
 @router.get("/{venue_id}", response_model=VenueOut)

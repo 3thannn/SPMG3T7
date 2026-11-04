@@ -1,7 +1,9 @@
-"""US12.4 in the database: SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql.
+"""US12.4 in the database: SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql, then
+SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql (Week 9, G12).
 
 * A venue closure flags a Confirmed event's booking "Needs replacement" and
-  leaves the event Confirmed; its Coordinator and its Organiser are told.
+  moves the event back to Planning at once, with who closed the venue and why
+  in status_changes; its Coordinator and its Organiser are told.
 * us12_4_request_replacement replaces the booking through
   request_replacement_venue and, on a Confirmed event, moves it to Planning
   with the reason in status_changes, in one transaction.
@@ -23,6 +25,7 @@ from psycopg.rows import dict_row
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql"
+CLOSURE = ROOT / "SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql"
 
 COORDINATOR, STAFF, ORGANISER = 101, 102, 103
 HALL, OTHER_HALL = 101, 102
@@ -97,6 +100,8 @@ def database():
                 # Twice: the script says it is safe to run repeatedly.
                 connection.execute(MIGRATION.read_text(encoding="utf-8"))
                 connection.execute(MIGRATION.read_text(encoding="utf-8"))
+                connection.execute(CLOSURE.read_text(encoding="utf-8"))
+                connection.execute(CLOSURE.read_text(encoding="utf-8"))
                 yield connection
         finally:
             admin.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(name)))
@@ -160,31 +165,42 @@ def replace_booking(db, booking_id, reason=REASON):
     ).fetchone()["result"]
 
 
+CLOSURE_NOTE = (
+    "Test Hall is unavailable 10 Nov 2035–12 Nov 2035 due to scheduled maintenance. "
+    "A replacement venue is needed, then the safety check and confirmation again."
+)
+
+
 class TestTheFlag:
-    def test_a_confirmed_event_stays_confirmed_and_both_are_told(self, db):
+    def test_a_confirmed_event_goes_back_to_planning_and_both_are_told(self, db):
         booking_id = book(db)
 
         close_hall(db)
 
         assert booking_status(db, booking_id) == "Needs replacement"
-        assert event_status(db) == "Confirmed"
+        assert event_status(db) == "Planning"
+        assert [tuple(row.values()) for row in moves(db)] == [
+            (CONFIRMED_EVENT, "Confirmed", "Planning", STAFF, CLOSURE_NOTE)
+        ]
         told = notices(db)
         assert [(n["user_id"], n["kind"], n["status"]) for n in told] == [
             (COORDINATOR, "booking-conflict", None),
-            (ORGANISER, "booking-conflict", None),
+            (COORDINATOR, "back-in-planning", None),
+            (ORGANISER, "back-in-planning", None),
         ]
-        assert told[1]["message"] == (
-            'A venue for "Open House" is affected: Test Hall is unavailable '
-            "10 Nov 2035–12 Nov 2035 due to scheduled maintenance. Your Coordinator will "
-            "arrange a replacement, and the event goes back to Planning when they do."
-        )
         # The Coordinator's notice reads as it did before US12.4.
         assert told[0]["message"] == (
             'The booking of Test Hall for "Open House" needs attention: the venue is '
             "unavailable 10 Nov 2035–12 Nov 2035 due to scheduled maintenance."
         )
+        assert told[2]["message"] == f'"Open House" is back in Planning. {CLOSURE_NOTE}'
 
+    def test_a_planning_event_is_flagged_and_left_in_planning(self, db):
+        booking_id = book(db, event_id=PLANNING_EVENT)
 
+        close_hall(db)
 
-
-
+        assert booking_status(db, booking_id) == "Needs replacement"
+        assert event_status(db, PLANNING_EVENT) == "Planning"
+        assert moves(db) == []
+        assert [n["kind"] for n in notices(db)] == ["booking-conflict"]

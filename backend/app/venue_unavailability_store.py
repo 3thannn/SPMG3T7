@@ -23,10 +23,16 @@ US12.2 additions:
 * When `reason_type` is "other", `other_reason` must be provided with custom text.
 * A database trigger automatically flags affected bookings as "Needs replacement"
   and notifies the assigned Coordinator when an unavailability period is created.
+
+US12.4, as Week 9 settled it: the same trigger sends a Confirmed event back to
+Planning at once, with the reason in its history, and tells the Coordinator and
+the Organiser (SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql). The in-memory
+store does what the trigger does, so the routes and journeys can be tested
+without a database.
 """
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 
@@ -182,6 +188,60 @@ class SupabaseUnavailability:
         return to_unavailability(created.data[0])
 
 
+#: The words the trigger uses for each reason type.
+REASON_WORDS = {
+    UnavailabilityReasonType.MAINTENANCE: "scheduled maintenance",
+    UnavailabilityReasonType.EQUIPMENT_FAILURE: "equipment failure",
+    UnavailabilityReasonType.RENOVATION: "renovation work",
+    UnavailabilityReasonType.SAFETY_CONCERN: "safety concern",
+}
+
+
+def _flag_affected_bookings(entry: Unavailability) -> None:
+    """What flag_bookings_for_unavailability does in SQL, for the in-memory stores.
+
+    Every booking at the venue that still holds it, and whose occupied window
+    (setup and turnaround included) overlaps the closed days, is flagged Needs
+    replacement. Each affected event's Coordinator is told once; a Confirmed
+    event goes back to Planning and its Coordinator and Organiser are told so.
+    """
+    from app import availability, booking_store, event_store, notifications, venue_store
+    from app.event_status import EventStatus
+
+    venue = venue_store.repository().get_venue(entry.venue_id)
+    bookings = booking_store.repository()
+    if venue is None or not isinstance(bookings, booking_store.InMemoryBookings):
+        return
+    reason = REASON_WORDS.get(entry.reason_type, entry.other_reason)
+    dates = f"{entry.start_date:%d %b %Y}–{entry.end_date:%d %b %Y}"
+    closed_from = datetime.combine(entry.start_date, datetime.min.time())
+    closed_to = datetime.combine(entry.end_date, datetime.min.time()) + timedelta(days=1)
+    told: set[int] = set()
+    for booking in bookings.list_for_venue(entry.venue_id):
+        if not booking.holds_venue:
+            continue
+        window = availability.occupied(booking, venue)
+        if not (window.occupied_from < closed_to and closed_from < window.occupied_to):
+            continue
+        bookings.flag_for_unavailability(booking.id, reason=reason, unavailability_id=entry.id)
+        event = event_store.repository().get_event(booking.event_id)
+        if event is None or event.id in told:
+            continue
+        told.add(event.id)
+        notifications.notify_booking_conflict(
+            event, venue.name, f"the venue is unavailable {dates} due to {reason}."
+        )
+        if event.status is EventStatus.CONFIRMED:
+            note = (
+                f"{venue.name} is unavailable {dates} due to {reason}. A replacement venue "
+                "is needed, then the safety check and confirmation again."
+            )
+            event_store.repository().reopen_for_replacement(
+                event.id, actor_id=entry.created_by_id or 0, reason=note
+            )
+            notifications.notify_back_in_planning(event, note)
+
+
 def _sort_key(entry: Unavailability) -> tuple[date, date, int]:
     return (entry.start_date, entry.end_date, entry.id)
 
@@ -228,6 +288,7 @@ class InMemoryUnavailability:
             created_at=_now(),
         )
         self.entries.append(entry)
+        _flag_affected_bookings(entry)
         return entry
 
 

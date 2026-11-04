@@ -10,6 +10,7 @@ import {
 } from '../bookingRequestsStore'
 import { CONFLICT_LABEL, EventRuleError, formatBookingTimes } from '../eventsStore'
 import { displayEventTitle } from '../draftRules'
+import { formatTimestamp } from '../status'
 import { unexpectedFailureMessage, type Session } from '../api'
 
 type BookingRequestsPageProps = {
@@ -22,6 +23,9 @@ type Queue =
   | { state: 'error'; message: string }
 
 type Rejecting = { bookingId: string; reason: string; suggestion: string }
+
+/** US14.3: a request being approved as a tentative hold, and until when. */
+type Holding = { bookingId: string; until: string }
 
 function minutes(value: number): string {
   return value === 1 ? '1 minute' : `${value} minutes`
@@ -38,11 +42,16 @@ function minutes(value: number): string {
  * US15.2: a request flagged "Conflict – review needed" after a setup or
  * turnaround change says so, with the reason. Rejecting needs a reason and may suggest an alternative. A
  * decided request leaves the queue, and its Coordinator is notified.
+ *
+ * US14.3 (Week 9): approving can instead place a tentative hold, until an
+ * expiry Venue Staff choose. The Coordinator confirms it before then, or the
+ * venue is released.
  */
 export default function BookingRequestsPage({ session }: BookingRequestsPageProps) {
   const [queue, setQueue] = useState<Queue>({ state: 'loading' })
   const [busy, setBusy] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState<Rejecting | null>(null)
+  const [holding, setHolding] = useState<Holding | null>(null)
   const [rowError, setRowError] = useState<{ bookingId: string; message: string } | null>(null)
   const [notice, setNotice] = useState('')
 
@@ -70,6 +79,7 @@ export default function BookingRequestsPage({ session }: BookingRequestsPageProp
         : current,
     )
     setRejecting(null)
+    setHolding(null)
     setNotice(message)
   }
 
@@ -96,6 +106,28 @@ export default function BookingRequestsPage({ session }: BookingRequestsPageProp
         ),
       )
       .catch((error: unknown) => failed(request, error, 'approve this booking'))
+      .finally(() => setBusy(null))
+  }
+
+  function approveAsHold(request: BookingRequest) {
+    const until = holding?.until.trim() ?? ''
+    if (!until) {
+      setRowError({ bookingId: request.id, message: 'Give the hold an expiry date and time.' })
+      return
+    }
+    setBusy(request.id)
+    setRowError(null)
+    setNotice('')
+    approveBookingRequest(request.id, session, until)
+      .then((held) =>
+        decided(
+          request,
+          `Approved ${held.venueName} for ${displayEventTitle(held.eventTitle)} as a tentative ` +
+            `hold until ${formatTimestamp(held.holdExpiresAt ?? until)}. The Coordinator has been ` +
+            'told to confirm it before then.',
+        ),
+      )
+      .catch((error: unknown) => failed(request, error, 'approve this booking as a hold'))
       .finally(() => setBusy(null))
   }
 
@@ -255,6 +287,8 @@ export default function BookingRequestsPage({ session }: BookingRequestsPageProp
 
         {rejectOpen ? (
           renderRejectForm(request)
+        ) : holding?.bookingId === request.id ? (
+          renderHoldForm(request, blocked)
         ) : (
           <div className="booking-request-actions">
             <button
@@ -265,6 +299,19 @@ export default function BookingRequestsPage({ session }: BookingRequestsPageProp
               disabled={busy !== null || blocked}
             >
               {working ? 'Approving…' : 'Approve'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              aria-label={`Approve ${venueName} for ${title} as a tentative hold`}
+              onClick={() => {
+                setHolding({ bookingId: request.id, until: '' })
+                setRejecting(null)
+                setRowError(null)
+              }}
+              disabled={busy !== null || blocked}
+            >
+              Approve as hold
             </button>
             <button
               type="button"
@@ -281,6 +328,51 @@ export default function BookingRequestsPage({ session }: BookingRequestsPageProp
           </div>
         )}
       </li>
+    )
+  }
+
+  function renderHoldForm(request: BookingRequest, blocked: boolean) {
+    const untilId = `hold-until-${request.id}`
+    const working = busy === request.id
+    return (
+      <div className="booking-request-reject">
+        <div className="field">
+          <label htmlFor={untilId}>Hold until</label>
+          <input
+            id={untilId}
+            type="datetime-local"
+            max={request.startsAt.slice(0, 16)}
+            value={holding?.until ?? ''}
+            disabled={working}
+            onChange={(changeEvent) =>
+              setHolding((current) =>
+                current ? { ...current, until: changeEvent.target.value } : current,
+              )
+            }
+          />
+        </div>
+        <div className="booking-request-actions">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => approveAsHold(request)}
+            disabled={working || blocked}
+          >
+            {working ? 'Approving…' : 'Approve as tentative hold'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              setHolding(null)
+              setRowError(null)
+            }}
+            disabled={working}
+          >
+            Back
+          </button>
+        </div>
+      </div>
     )
   }
 

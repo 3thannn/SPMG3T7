@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Seed development accounts in Supabase Auth and public.users.
 
+With no flag, every demo account for all seven roles is created (A3): the
+Organiser, Coordinator and Venue Staff that used to be made by hand, then the
+Lead, Safety Officer, Technical Support and the two Attendees. Existing
+accounts are left as they are.
+
 For Coordinator Lead and Safety Officer, run SUPABASE_ADD_NEW_ROLES.sql first.
 Technical Support and Attendee are already in the base role enum. The two
 Attendees (US20.1) are two so that registering for the last place can be tried
@@ -30,6 +35,28 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
 
 # Create Supabase admin client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+#: The three accounts the base schema's roles need, once made by hand.
+CORE_USERS = [
+    {
+        "email": "organiser@connectsphere.com",
+        "password": PASSWORD,
+        "email_confirm": True,
+        "user_metadata": {"name": "Dylan", "role": "Event Organiser"},
+    },
+    {
+        "email": "coordinator@connectsphere.com",
+        "password": PASSWORD,
+        "email_confirm": True,
+        "user_metadata": {"name": "Priya", "role": "Event Coordinator"},
+    },
+    {
+        "email": "venuestaff@connectsphere.com",
+        "password": PASSWORD,
+        "email_confirm": True,
+        "user_metadata": {"name": "Sam", "role": "Venue Staff"},
+    },
+]
 
 # New users to create
 NEW_USERS = [
@@ -123,7 +150,7 @@ if __name__ == "__main__":
     elif arguments.attendees_only:
         selected = ATTENDEES
     else:
-        selected = NEW_USERS + ATTENDEES
+        selected = CORE_USERS + NEW_USERS + ATTENDEES
     for account in selected:
         seed_user(account)
     print("Account setup complete. Newly created accounts use the configured seed password.")

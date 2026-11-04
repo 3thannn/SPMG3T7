@@ -33,6 +33,11 @@ back to Planning; the database tells the Organiser when the venue fell through.
 US10.4 tells an event's registered Attendees when its date, time or venue
 changes. Those notices carry only what an Attendee may see (US20.1): the
 event's name and the new date, time or venue, never a reason or a note.
+
+The Week 1 notification list adds four more (G13): Venue Staff are told when a
+venue booking is requested; Attendees when an event opens for registration, and
+those registered when it closes; and the Organiser and Coordinator when an
+Attendee withdraws and frees a place. Same best-effort rule.
 """
 
 import logging
@@ -296,6 +301,15 @@ class CoordinatorNotice(StrEnum):
     BACK_IN_PLANNING = "back-in-planning"
     #: US4.7: the Safety Officer approved, so confirming is now the Coordinator's move.
     SAFETY_APPROVED = "safety-approved"
+    #: US14.3: Venue Staff approved a request as a tentative hold, until an expiry.
+    HOLD_PLACED = "hold-placed"
+    #: US14.6: Venue Staff changed a hold's expiry, or released it early.
+    HOLD_UPDATED = "hold-updated"
+    HOLD_RELEASED = "hold-released"
+    #: G13 (Week 1 list): a booking request is waiting for Venue Staff.
+    BOOKING_REQUESTED = "booking-requested"
+    #: G13: an Attendee withdrew, so a place is free. The Organiser is told too.
+    ATTENDEE_WITHDREW = "attendee-withdrew"
 
 
 def _event_title(event: Event) -> str:
@@ -399,6 +413,48 @@ def notify_hold_expired(event: Event, venue_name: str) -> None:
     )
 
 
+def _expiry_words(expires_at: str) -> str:
+    """"2027-10-08T17:00" as "08 Oct 2027, 17:00", as the sweep words an expiry."""
+    try:
+        return f"{datetime.fromisoformat(expires_at):%d %b %Y, %H:%M}"
+    except ValueError:
+        return expires_at
+
+
+def notify_hold_placed(event: Event, venue_name: str, expires_at: str) -> None:
+    """US14.3: Venue Staff approved a booking as a tentative hold. Confirm it in time."""
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.HOLD_PLACED,
+        f'Venue Staff approved {venue_name} for "{_event_title(event)}" as a tentative hold '
+        f"until {_expiry_words(expires_at)}. Confirm the booking before then, or the hold "
+        "lapses and the venue is released.",
+    )
+
+
+def notify_hold_updated(event: Event, venue_name: str, expires_at: str) -> None:
+    """US14.6: Venue Staff changed when a hold lapses."""
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.HOLD_UPDATED,
+        f'Venue Staff changed the tentative hold on {venue_name} for "{_event_title(event)}": '
+        f"it now expires {_expiry_words(expires_at)}.",
+    )
+
+
+def notify_hold_released(event: Event, venue_name: str, reason: str) -> None:
+    """US14.6: Venue Staff released a hold early, and why."""
+    _notify_coordinator(
+        event.coordinator_id,
+        event,
+        CoordinatorNotice.HOLD_RELEASED,
+        f'Venue Staff released the tentative hold on {venue_name} for "{_event_title(event)}". '
+        f"Reason: {reason}",
+    )
+
+
 def notify_booking_conflict(event: Event, venue_name: str, reason: str) -> None:
     """US12.2/US15.2: a booking is hit by venue unavailability or a setup change."""
     _notify_coordinator(
@@ -470,6 +526,24 @@ def notify_booking_decision(
     )
 
 
+def notify_booking_requested(event: Event, venue_name: str, starts_at: str) -> None:
+    """G13: tell every Venue Staff member a booking request is waiting for them."""
+    message = (
+        f'{venue_name or "A venue"} was requested for "{_event_title(event)}" on '
+        f"{_expiry_words(starts_at)}. It is waiting for your approval."
+    )
+    for person in users.list_users():
+        if person.role is Role.VENUE_STAFF:
+            _notify_coordinator(person.id, event, CoordinatorNotice.BOOKING_REQUESTED, message)
+
+
+def notify_attendee_withdrew(event: Event) -> None:
+    """G13: an Attendee gave their place back. The Organiser and Coordinator hear."""
+    message = f'An Attendee withdrew from "{_event_title(event)}", so a place is free again.'
+    for person in dict.fromkeys((event.coordinator_id, event.organiser_id)):
+        _notify_coordinator(person, event, CoordinatorNotice.ATTENDEE_WITHDREW, message)
+
+
 def notify_event_full(event: Event, capacity: int) -> None:
     """US20.1: the last place was taken. The assigned Coordinator and the Organiser hear.
 
@@ -496,6 +570,10 @@ def notify_back_in_planning(event: Event, reason: str, *, actor_id: int | None =
             _notify_coordinator(person, event, CoordinatorNotice.BACK_IN_PLANNING, message)
 
 
+#: G13: an Attendee's notice that an event opened, or closed, for registration.
+REGISTRATION_OPENED = "registration-opened"
+REGISTRATION_CLOSED = "registration-closed"
+
 #: US10.4: the kind of an Attendee's notice that their event's date, time or
 #: venue changed.
 EVENT_UPDATED = "event-updated"
@@ -517,7 +595,32 @@ def _when(event: Event) -> str:
     return f"{_day(start)}, {start:%H:%M} to {_day(end)}, {end:%H:%M}"
 
 
-def _notify_attendees(event: Event, message: str) -> None:
+def notify_registration_opened(event: Event) -> None:
+    """G13: every Attendee may register now, so every Attendee is told."""
+    message = f'"{_event_title(event)}" is open for registration.'
+    for person in users.list_users():
+        if person.role is Role.ATTENDEE:
+            try:
+                notification_store.repository().create_notice(
+                    user_id=person.id, event_id=event.id, kind=REGISTRATION_OPENED,
+                    message=message,
+                )
+            except Exception:
+                logger.exception(
+                    "Could not write the G13 notice for event %s to user %s", event.id, person.id
+                )
+
+
+def notify_registration_closed(event: Event) -> None:
+    """G13: registration closed. Those registered keep their place, and are told."""
+    _notify_attendees(
+        event,
+        f'Registration for "{_event_title(event)}" has closed. Your place is kept.',
+        kind=REGISTRATION_CLOSED,
+    )
+
+
+def _notify_attendees(event: Event, message: str, *, kind: str = "") -> None:
     """One notice per Attendee whose registration is active. Withdrawn ones are not told."""
     try:
         registrations = registration_store.repository().list_for_event(event.id)
@@ -532,7 +635,7 @@ def _notify_attendees(event: Event, message: str) -> None:
     for attendee in dict.fromkeys(attendees):
         try:
             notification_store.repository().create_notice(
-                user_id=attendee, event_id=event.id, kind=EVENT_UPDATED, message=message
+                user_id=attendee, event_id=event.id, kind=kind or EVENT_UPDATED, message=message
             )
         except Exception:
             logger.exception(

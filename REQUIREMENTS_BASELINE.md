@@ -5,6 +5,15 @@ code on `chore/playwright-test-reduction-handover` (which includes `main` at
 `a6c8213`). Its job is to say what the system must do today, so test decisions
 can be made against acceptance criteria instead of coverage.
 
+Updated 2026-11-04 after a rule-by-rule pass of every Week 7 change and Week 9
+answer through the code on `main` at `35fa869`: G7 closed, G12-G14 added, and three
+precedence calls written into section 4.
+
+Updated again on 2026-11-04 when the team decided to close the gaps rather than
+document them (branch `fix/close-audit-gaps`). G2, G3, G7, G12, G13 and G14 are
+now built and tested; G6 and G10 are written decisions. What changed in the
+stories, the ACs and Jira is listed in [`docs/GAP_CLOSURE_CHANGE_LOG.md`](docs/GAP_CLOSURE_CHANGE_LOG.md).
+
 ## 1. Sources and precedence
 
 | # | Source | What it gives | Read |
@@ -41,14 +50,17 @@ Planning --all bookings Confirmed + equipment Reserved--> Pending Safety Check
 Pending Safety Check --Safety approves--> (stays, "approved, awaiting Coordinator")
 Pending Safety Check --Safety requests changes / rejects--> Planning
 Pending Safety Check --Coordinator confirms, all approvals in--> Confirmed
-Confirmed --important change accepted / replacement venue requested--> Planning
+Confirmed --important change accepted / a booked venue closes (Wk9)--> Planning
 Confirmed --after end time, Coordinator--> Completed
 any open status --Organiser or Coordinator, reason--> Cancelled (terminal)
 ```
 
-**Venue booking lifecycle:** Held (Venue Staff, with expiry) → Requested → Confirmed
-or Rejected; also Cancelled, Expired, Replaced, and the flags "Needs replacement"
-(venue closed) and "Conflict – review needed" (setup or turnaround changed).
+**Venue booking lifecycle (Week 9 order):** Requested → Confirmed (Venue Staff
+approve outright), or Requested → Held (Venue Staff approve as a tentative hold,
+with an expiry they set and can change) → Confirmed (the Coordinator confirms
+before it lapses); Rejected, Cancelled (including a hold Venue Staff release),
+Expired, Replaced, and the flags "Needs replacement" (venue closed) and
+"Conflict – review needed" (setup or turnaround changed).
 
 ## 3. The 20 core features and the stories that deliver them
 
@@ -78,9 +90,8 @@ or Rejected; also Cancelled, Expired, Replaced, and the flags "Needs replacement
 | — | Technical enablers | -21 | US6.1 Repo and CI, US6.2 Database schema |
 
 That is 65 stories: 64 Done, and US14.6 To Do. Every core feature has at least one
-Done story. Housekeeping: 20 of the 22 epics are still "To Do" in Jira even though
-their stories are Done. The backlog export is a graded deliverable, so tidy this
-before exporting.
+Done story. Housekeeping done 4 Nov 2026: all 22 epics are now Done in Jira, as
+every story under them is.
 
 ## 4. Rules the customer changed or clarified (current rule wins)
 
@@ -94,7 +105,11 @@ before exporting.
 | Safety reject | Unclear | Back to Planning, like "request changes" | Wk9 | US17.2 | Done |
 | Editing a Confirmed event | Coordinator may edit (US5.2) | No direct edits once Confirmed; use a change request | Wk4, Wk9 | US5.3 | Done (merged today) |
 | Important change after Confirmed | Status kept, arrangements flagged (US11.2) | Back to Planning; all checks again, then re-confirm | Wk4, Wk9 | US11.3 | Done |
-| Venue closed after booking | Event untouched (US12.2) | Don't cancel; flag and notify; for a Confirmed event the Coordinator reopens planning via a replacement | Wk7 #2, Wk9 | US12.2, US12.4 | Done |
+| Venue closed after booking | Event untouched (US12.2) | Don't cancel; flag and notify; a Confirmed event reverts to Planning at once (Wk9) | Wk7 #2, Wk9 | US12.2, US12.4 (amended) | Done (G12 closed 2026-11-04) |
+| Tentative holds | Venue Staff hold a slot, the Coordinator turns it into a request, Venue Staff then approve (US14.3) | The hold starts after venue approval; Venue Staff set and update its duration; the Coordinator confirms | Wk9 | US14.3 (reworked), US14.6 | Done (G2, G3 closed 2026-11-04) |
+| Room layouts | A fixed list (US2.1) | Managed through the catalogue; the team names them | Wk9 | US2.1-AC2 (amended) | Done (G7 closed 2026-11-04) |
+| Coordinator visibility of others' events | Coordinators can view (not edit) others' events; the previous Coordinator keeps view access (Wk4) | A Coordinator sees only their own; the Lead sees all | Wk9 | US8.5, US8.6 | Done. Deliberate: Wk9 wins, so this is not a bug |
+| Reassignment | Original Coordinator asks the new one to accept (Wk4) | Lead reassigns; no acceptance step; both Coordinators notified | Wk7 #5, Wk9 | US8.4 | Done. Deliberate: Wk9 wins |
 | One venue per event | "Each event can only have one venue" (Wk4) | Several venues per event, each checked on its own | Wk7 #3 | US14.1, US18.1 | Done |
 | Setup and turnaround | Not modelled | Part of every availability and conflict check | Wk7 #1 | US9.4, US15.1, US15.2 | Done |
 | Equipment setup time | — | Not needed for Release 1 | Wk9 | — | n/a |
@@ -109,21 +124,24 @@ them as core. An answer about a feature outside those 20 does not make it core.
 | # | Customer said | Source | Release 1? | State in Jira and code |
 | --- | --- | --- | --- | --- |
 | G1 | Rejected events can be resubmitted after changes | Wk4 (three answers) | **Yes**: core "Event Review and Approval" and "Event Status Management" | **Met (D2, CODE_AUDIT.md)**: the owning Organiser revises a Rejected event and resubmits it; it rejoins the Leads' queue. Checked against the Week 4 instructions, which do not make Rejected final |
-| G2 | Venue Staff set **and update** the hold duration | Wk9 | **Yes**: Week 7 change #4 | US14.6 is **To Do**; no update or release route |
-| G3 | A hold starts **after** venue approval; the Coordinator confirms once Venue Staff approve | Wk9 | **Yes**: Week 7 change #4 | Built the other way round: Held → Requested → Confirmed (US14.3). Needs a team decision |
+| G2 | Venue Staff set **and update** the hold duration | Wk9 | **Yes**: Week 7 change #4 | **Met (2026-11-04).** US14.6 built: Venue Staff change a hold's expiry (`PATCH /holds/{id}`) or release it with a reason; the Coordinator is told. The maximum is the booking's start |
+| G3 | A hold starts **after** venue approval; the Coordinator confirms once Venue Staff approve | Wk9 | **Yes**: Week 7 change #4 | **Met (2026-11-04).** US14.3 reworked: Venue Staff approve a request as a hold (Requested → Held), the Coordinator confirms it (Held → Confirmed) before it lapses. The hold-first route is gone |
 | G4a | Registration timing and closing are the **Organiser's** call, and capacity is at the Organiser's discretion | Wk4 | **Partly**: core "Attendee Registration" says "where enabled" but not by whom | **Met (D3, CODE_AUDIT.md)**: the owning Organiser opens, closes and sizes registration, as well as the assigned Coordinator (US20.1); `SUPABASE_FIX_ORGANISER_REGISTRATION.sql` applied to the live database on 2026-11-03 |
-| G6 | One person can hold several roles | Wk4 (three answers) | **Partly**: core "User Authorisation and Authentication" | **No story.** A user has exactly one `role` |
-| G7 | Room layouts are managed in the venue catalogue (add, edit, delete) | Wk9 | **Partly**: core "Venue Catalogue" includes supported layouts; "Room Layout Management" itself is not core | Layouts are a fixed list in `event_needs.py` |
+| G6 | One person can hold several roles | Wk4 (three answers) | **Partly**: core "User Authorisation and Authentication" | **Written decision (2026-11-04): not built for Release 1.** A user has exactly one `role`, and every permission check reads it. Changing that touches sign-in and every role check two days before submission, a regression risk the team judged larger than the gain. A person with two roles uses two accounts. Recorded as a known limitation in the README and the backlog |
+| G7 | Room layouts are managed in the venue catalogue (add, edit, delete) | Wk9 | **Partly**: core "Venue Catalogue" includes supported layouts; "Room Layout Management" itself is not core | **Met (2026-11-04).** Venue Staff add, edit and delete layouts on each venue; the Organiser's choices are the standard names plus every layout the catalogue lists now (`GET /venues/layouts`), so the two cannot diverge |
+| G12 | A Confirmed event whose venue closes reverts to planning/change review, with stakeholders notified and agreement offline | Wk9 | **Yes**: Week 7 change #2 | **Met (2026-11-04).** The closure trigger moves a Confirmed event to Planning at once, with who closed the venue and why in its history, and tells the Coordinator and the Organiser; it is never cancelled (`SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql`, US12.4-AC1 amended) |
+| G13 | Notices for: booking requested (to Venue Staff), registration opens/closes, an attendee withdraws and frees a place, upcoming event with incomplete arrangements | Wk1 notification list | **Partly**: core "Notification System"; the last item is G5 | **Met for the first three (2026-11-04)**, as new story US10.5. The last is G5 |
+| G14 | Mobile-friendly and accessible | Wk1 s7; Wk4 (team's call) | **Yes**: non-functional requirement | **Met for layout (2026-11-04).** A phone-width Playwright spec (390 px) checks every role's home page and the main workflow pages fit the screen; it found the header notch and wide date fields overflowing, both fixed. Screen-reader use was not tested |
 | G11 | Safety Officer checks emergency access, crowd movement and equipment placement | Wk7 #6 | **Yes** | The review shows attendance, capacity, layout, accessibility and equipment. Wk9 says the Safety Officer "do not need to input but to approve", which may be enough. Worth one sentence in the docs |
 | G4b | A waiting list is supported | Wk2, Wk4 | **No**: "Attendee Waiting List" is a separate, non-core feature | Not built |
 | G5 | Reminders for incomplete arrangements, frequency configurable | Wk4 | **No**: "Reminder System" is non-core, though the answer was given about notifications | Not built; only hold-expiry notices exist |
 | G8 | A single event calendar across all events | Wk4 | **No**: "Event Calendar" is non-core | US12.3 is per venue only |
 | G9 | Organisers in one organisation see the organisation's events | Wk2, Wk4 | **No**: "Client Management" is non-core | Organisers see only their own events |
-| G10 | Organiser can ask to withdraw a request via the Coordinator | Wk4 | **No**: "Cancellation Management" is non-core | Partly met anyway: US4.6 lets the Organiser cancel |
+| G10 | Organiser can ask to withdraw a request via the Coordinator | Wk4 | **No**: "Cancellation Management" is non-core | **Written decision (2026-11-04): kept as built.** The owning Organiser cancels directly, with a reason, and the Coordinator is told (US4.6, Done). That gives the Organiser what the answer asked for (a way out) without a second approval step for a non-core feature; the cancellation is recorded and attributable either way |
 
-G1 and G4a are now met (D2, D3). G2 and G3 are the ones an instructor is most likely to test, because they sit
-inside core features or Week 7 changes. The "No" rows need only a written
-"not in Release 1" note in the backlog, not code or tests.
+G1, G2, G3, G4a, G7, G12, G13 (first three triggers) and G14 are met. G6 and G10
+are written decisions above. The "No" rows need only a written "not in Release 1"
+note in the backlog, not code or tests.
 
 ### Week 1 features outside the Release 1 core
 
@@ -151,16 +169,16 @@ and exports.
    (US8.1), Safety approval confirming the event (US4.4/US17.2 original), hard
    deletion with bookings (US9.1c), and direct edits of a Confirmed event (US5.2).
    One regression per rule that proves the *new* behaviour stays.
-3. **Tests that encode a team assumption the customer contradicted** (G3, G4, G7)
-   should stay until the team decides, and be labelled as assumptions.
-4. **Gaps (section 5) have no tests,** and none should be written until the team
-   decides what to build. Write the decision down either way.
+3. **Tests that encoded a team assumption the customer contradicted** (G3, G12)
+   were rewritten to the customer's rule on 2026-11-04 (test_venue_holds.py,
+   test_venue_problem_us12_4.py, integration/test_us12_4_db.py).
+4. **Gaps still open (section 5) have no tests;** each has a written decision.
 5. **Coverage is a safety net, not the rule.** Keep 100% (the rubric asks for it),
    but choose tests by AC first.
 
 ## 7. Open questions for the team
 
-1. For G1, G2, G3, G4a, G6, G7 and G11, which will the team build before Week 12,
-   and which get a written decision instead?
+1. Settled 2026-11-04: G2, G3, G7, G12, G13 and G14 built; G6 and G10 written
+   decisions; G11 needs one sentence in the docs; G5 stays out of Release 1.
 2. Should the AC-to-test mapping go into the existing `MASTER_TEST_PLAN.md`, or into
    a separate traceability file?

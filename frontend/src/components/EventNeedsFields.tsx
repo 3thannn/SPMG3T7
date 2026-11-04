@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import './EventNeedsFields.css'
+import type { Session } from '../api'
+import { listLayoutOptions } from '../venuesStore'
 import {
   ACCESSIBILITY_OPTIONS,
   FACILITY_OPTIONS,
@@ -17,6 +20,31 @@ type EventNeedsFieldsProps = {
   onChange: (key: keyof EventNeeds, value: string) => void
   errors?: NeedErrors
   disabled?: boolean
+  /** Given, the layout choices come from the venue catalogue (Week 9); else the standard list. */
+  session?: Session
+}
+
+/**
+ * Week 9 (G7/A7): the catalogue's layouts, standard names first. Until they
+ * load, or if they cannot, the standard list, so the form never goes blank.
+ */
+function useLayoutOptions(session: Session | undefined): readonly string[] {
+  const [layouts, setLayouts] = useState<readonly string[]>(LAYOUT_OPTIONS)
+  useEffect(() => {
+    if (!session) return
+    let cancelled = false
+    listLayoutOptions(session)
+      .then((loaded) => {
+        if (!cancelled && loaded.length > 0) setLayouts(loaded)
+      })
+      .catch(() => {
+        // The standard list stays: the server still checks the choice.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session])
+  return layouts
 }
 
 /** The hint under a field, or its error once there is one. */
@@ -126,7 +154,16 @@ export default function EventNeedsFields({
   onChange,
   errors = {},
   disabled = false,
+  session,
 }: EventNeedsFieldsProps) {
+  const catalogue = useLayoutOptions(session)
+  // A saved answer the catalogue no longer lists still shows as chosen.
+  const layoutChoices =
+    needs.preferredLayout &&
+    needs.preferredLayout !== NOT_REQUIRED &&
+    !catalogue.includes(needs.preferredLayout)
+      ? [...catalogue, needs.preferredLayout]
+      : catalogue
   return (
     <>
       <ChoiceGroup
@@ -151,7 +188,7 @@ export default function EventNeedsFields({
           disabled={disabled}
         >
           <option value="">Choose a layout…</option>
-          {LAYOUT_OPTIONS.map((layout) => (
+          {layoutChoices.map((layout) => (
             <option key={layout} value={layout}>
               {layout}
             </option>

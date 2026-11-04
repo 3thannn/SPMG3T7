@@ -10,7 +10,7 @@ import {
   formatBookingTimes,
   listBookings,
   requestBooking,
-  requestHeldBooking,
+  confirmHeldBooking,
   requestReplacementVenue,
   searchReplacementVenues,
   validateBooking,
@@ -130,10 +130,10 @@ function describeNeeds(booking: BookingRecord): string {
  * changed is marked "Conflict – review needed" with the reason. It keeps its
  * status; nothing was cancelled.
  *
- * US14.3: Venue Staff may hold a venue for the Coordinator. A hold shows as
- * Held with its expiry, never as Confirmed, and the Coordinator can request it
- * until it expires; after that it is marked expired and no longer keeps the
- * slot. A hold can be released with the same Cancel as a request.
+ * US14.3 (Week 9): Venue Staff may approve a request as a tentative hold. It
+ * shows as Held with its expiry, never as Confirmed, and the Coordinator
+ * confirms it until it expires; after that it is marked expired and no longer
+ * keeps the slot. A hold can be given up with the same Cancel as a request.
  *
  * Its own card and its own request, as US12.1's blackout card is, so a failure
  * to load the bookings says so here and leaves the event above it readable.
@@ -164,7 +164,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
   )
   const [cancelError, setCancelError] = useState('')
   const [cancelBusy, setCancelBusy] = useState(false)
-  // US14.3: the hold being requested, and a refusal shown under its row.
+  // US14.3: the hold being confirmed, and a refusal shown under its row.
   const [holdBusy, setHoldBusy] = useState<string | null>(null)
   const [holdError, setHoldError] = useState<{ bookingId: string; message: string } | null>(
     null,
@@ -324,15 +324,15 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
     )
   }
 
-  /** US14.3: turn a hold into a request. The event may move to Planning. */
-  function requestHold(booking: BookingRecord) {
+  /** US14.3: confirm a venue Venue Staff approved as a hold, before it lapses. */
+  function confirmHold(booking: BookingRecord) {
     setHoldBusy(booking.id)
     setHoldError(null)
     setNotice('')
-    requestHeldBooking(event.id, booking.id, session)
-      .then((requested) => {
-        replaceBooking(requested)
-        setNotice(`Requested ${requested.venueName}. It now waits for Venue Staff to approve it.`)
+    confirmHeldBooking(event.id, booking.id, session)
+      .then((confirmed) => {
+        replaceBooking(confirmed)
+        setNotice(`Confirmed ${confirmed.venueName}. The hold is now a confirmed booking.`)
         onBookingRequested?.()
       })
       .catch((error: unknown) => {
@@ -341,7 +341,7 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
           message:
             error instanceof EventRuleError
               ? error.message
-              : unexpectedFailureMessage(error, 'request this venue'),
+              : unexpectedFailureMessage(error, 'confirm this venue'),
         })
       })
       .finally(() => setHoldBusy(null))
@@ -545,11 +545,11 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
             <button
               type="button"
               className="btn btn-primary btn-sm booking-request-hold"
-              aria-label={`Request the held ${venueName}`}
-              onClick={() => requestHold(booking)}
+              aria-label={`Confirm the held ${venueName}`}
+              onClick={() => confirmHold(booking)}
               disabled={holdBusy !== null || cancelBusy}
             >
-              {holdBusy === booking.id ? 'Requesting…' : 'Request this venue'}
+              {holdBusy === booking.id ? 'Confirming…' : 'Confirm this venue'}
             </button>
           )}
           {mayRequest && cancellable && !cancelOpen && (
@@ -575,15 +575,15 @@ export default function EventBookings({ event, session, onBookingRequested }: Ev
             </button>
           )}
         </div>
-        {booking.holdExpiresAt && (isHeld || holdExpired || booking.status === 'Requested') && (
+        {booking.holdExpiresAt && (isHeld || holdExpired || booking.status === 'Confirmed') && (
           <p className={`booking-hold${holdExpired ? ' is-expired' : ''}`}>
             {holdExpired
               ? `Hold expired ${formatTimestamp(booking.holdExpiresAt)}. The venue is no longer kept for this event.`
               : !isHeld
-                ? `Requested from a hold${booking.heldByName ? ` by ${booking.heldByName}` : ''}.`
-                : `Held${booking.heldByName ? ` by ${booking.heldByName}` : ''} until ${formatTimestamp(
+                ? `Confirmed from a tentative hold${booking.heldByName ? ` approved by ${booking.heldByName}` : ''}.`
+                : `Approved as a tentative hold${booking.heldByName ? ` by ${booking.heldByName}` : ''} until ${formatTimestamp(
                     booking.holdExpiresAt,
-                  )}. Request it before then to keep the slot.`}
+                  )}. Confirm it before then to keep the slot.`}
           </p>
         )}
         {booking.conflict && (

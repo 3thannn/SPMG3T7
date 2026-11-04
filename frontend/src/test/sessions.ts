@@ -64,7 +64,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'venues:edit',
     'venues:delete',
     // US14.3: tentative holds for a Coordinator.
-    'holds:place',
+    'holds:manage',
     // US16.1: approve or reject booking requests.
     'bookings:decide',
     // US4.6: told when a cancelled event's bookings are released.

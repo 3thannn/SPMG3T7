@@ -72,13 +72,20 @@ export async function listBookingRequests(session: Session): Promise<BookingRequ
   return (await response.json()) as BookingRequest[]
 }
 
+/**
+ * US16.1: approve a request outright (Confirmed), or, with `holdUntil`
+ * (US14.3, Week 9), as a tentative hold the Coordinator confirms before then.
+ */
 export async function approveBookingRequest(
   bookingId: string,
   session: Session,
+  holdUntil = '',
 ): Promise<BookingRequest> {
   try {
     const response = await authorizedFetch(`/booking-requests/${bookingId}/approve`, session.token, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(holdUntil ? { holdUntil } : {}),
     })
     return (await response.json()) as BookingRequest
   } catch (error) {

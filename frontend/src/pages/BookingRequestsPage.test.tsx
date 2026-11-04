@@ -3,8 +3,9 @@
  *
  * The rules (who decides, the clash check, the reason) are the server's and are
  * tested in backend/tests/test_booking_decisions.py. This page's job is the
- * queue as the server orders it, with what a decision needs, the two decisions,
- * and showing why one was refused.
+ * queue as the server orders it, with what a decision needs, the decisions
+ * (approve, approve as a tentative hold, reject), and showing why one was
+ * refused.
  */
 
 import { render, screen, within } from '@testing-library/react'
@@ -12,6 +13,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import BookingRequestsPage from './BookingRequestsPage'
 import {
+  approveBookingRequest,
   listBookingRequests,
   rejectBookingRequest,
   type BookingRequest,
@@ -28,6 +30,7 @@ vi.mock('../bookingRequestsStore', async (importOriginal) => ({
 const listMock = vi.mocked(listBookingRequests)
 
 const rejectMock = vi.mocked(rejectBookingRequest)
+const approveMock = vi.mocked(approveBookingRequest)
 const staff = buildSession({ role: 'Venue Staff', id: '4', name: 'Sam' })
 
 function request(overrides: Partial<BookingRequest> = {}): BookingRequest {
@@ -92,7 +95,10 @@ it('TC-DF11 shows a known clash and will not approve into it', async () => {
     'Clashes with a booking that already takes this slot.',
   )
   expect(within(row).getByRole('note')).toHaveTextContent('Careers Fair (Confirmed)')
-  expect(within(row).getByRole('button', { name: /^Approve/ })).toBeDisabled()
+  expect(within(row).getByRole('button', { name: 'Approve Great Hall for Open Day' })).toBeDisabled()
+  expect(
+    within(row).getByRole('button', { name: 'Approve Great Hall for Open Day as a tentative hold' }),
+  ).toBeDisabled()
   expect(within(row).getByRole('button', { name: /^Reject/ })).toBeEnabled()
 })
 
@@ -116,3 +122,35 @@ it('TC-DF14 rejects with a reason and a suggested alternative', async () => {
   )
 })
 
+
+it('TC-DF15 approves as a tentative hold until an expiry (US14.3)', async () => {
+  approveMock.mockResolvedValue(
+    request({ status: 'Held', holdExpiresAt: '2027-10-08T17:00:00', heldByName: 'Sam' }),
+  )
+  render(<BookingRequestsPage session={staff} />)
+  await userEvent.click(
+    await screen.findByRole('button', {
+      name: 'Approve Great Hall for Open Day as a tentative hold',
+    }),
+  )
+  await userEvent.type(screen.getByLabelText('Hold until'), '2027-10-08T17:00')
+  await userEvent.click(screen.getByRole('button', { name: 'Approve as tentative hold' }))
+
+  expect(approveMock).toHaveBeenCalledWith('11', staff, '2027-10-08T17:00')
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Approved Great Hall for Open Day as a tentative hold until',
+  )
+})
+
+it('TC-DF16 asks for an expiry before approving as a hold', async () => {
+  render(<BookingRequestsPage session={staff} />)
+  await userEvent.click(
+    await screen.findByRole('button', {
+      name: 'Approve Great Hall for Open Day as a tentative hold',
+    }),
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Approve as tentative hold' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Give the hold an expiry date and time.')
+  expect(approveMock).not.toHaveBeenCalled()
+})

@@ -7,7 +7,9 @@ where they stand:
   Staff need to decide: the event, venue, booking time, the full occupied
   window including setup and turnaround (US9.4, used by US15.1), headcount and
   layout, and any booking already taking an overlapping slot.
-* Approve -> Confirmed. The conflict check (US15.1, `availability`) runs again
+* Approve -> Confirmed, or (US14.3, Week 9) approve as a tentative hold ->
+  Held until an expiry Venue Staff choose, which the Coordinator then confirms
+  (`app.events`) before it lapses. Either way the conflict check (US15.1, `availability`) runs again
   at approval: a Confirmed or unexpired Held booking whose occupied window
   overlaps, or a venue unavailability period, blocks it and is shown, so two
   requests for the same slot cannot both be approved. Another Requested booking
@@ -25,7 +27,7 @@ where they stand:
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app import (
     arrangement_review,
@@ -41,7 +43,12 @@ from app.auth import require_permission
 from app.availability import SlotCheck
 from app.booking_store import Booking, BookingStatus, SlotTaken, StaleBookingStatus
 from app.events import BookingOut, EventError, _booking_out, _invalid_booking
-from app.notifications import notify_attendees_of_new_venue, notify_booking_decision
+from app.holds import expiry
+from app.notifications import (
+    notify_attendees_of_new_venue,
+    notify_booking_decision,
+    notify_hold_placed,
+)
 from app.permissions import Permission
 from app.users import User
 from app.venue_store import Venue
@@ -92,6 +99,14 @@ class BookingRequestOut(BookingOut):
     clashes: list[ClashOut]
     #: US15.1: unavailability periods it overlaps. Approval is blocked by these too.
     unavailable: list[UnavailableOut] = Field(default_factory=list)
+
+
+class Approval(BaseModel):
+    """US14.3: give `holdUntil` to approve as a tentative hold rather than outright."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    hold_until: str | None = Field(default=None, alias="holdUntil")
 
 
 class Rejection(BaseModel):
@@ -214,7 +229,9 @@ _ALREADY = {
     BookingStatus.CONFIRMED: "This booking has already been confirmed.",
     BookingStatus.REJECTED: "This booking has already been rejected.",
     BookingStatus.CANCELLED: "The Coordinator cancelled this booking.",
-    BookingStatus.HELD: "This is a tentative hold. The Coordinator has not requested it yet.",
+    BookingStatus.HELD: (
+        "This booking is already approved as a tentative hold. The Coordinator confirms it."
+    ),
 }
 
 
@@ -309,19 +326,39 @@ def list_booking_requests(user: DecidesBookings) -> list[BookingRequestOut]:
 
 
 @router.post("/{booking_id}/approve", response_model=BookingRequestOut)
-def approve_booking_request(booking_id: str, user: DecidesBookings) -> BookingRequestOut:
-    """Requested -> Confirmed, unless the slot is already taken (US15.1, again)."""
+def approve_booking_request(
+    booking_id: str, user: DecidesBookings, payload: Approval | None = None
+) -> BookingRequestOut:
+    """Requested -> Confirmed, unless the slot is already taken (US15.1, again).
+
+    US14.3: with `holdUntil`, Requested -> Held instead: approved, and kept for
+    the Coordinator until then. The expiry follows the hold rules (`expiry`).
+    """
     booking = _requested(booking_id)
+    raw_expiry = payload.hold_until if payload is not None else None
+    expires_at = (
+        expiry(raw_expiry, starts_at=booking.starts_at) if (raw_expiry or "").strip() else ""
+    )
     context = _Context()
     if not context.check(booking).available:
         raise _slot_taken(booking, context)
     try:
-        confirmed = booking_store.repository().approve(booking.id, actor_id=user.id)
+        if expires_at:
+            held = booking_store.repository().approve_as_hold(
+                booking.id, actor_id=user.id, expires_at=expires_at
+            )
+        else:
+            confirmed = booking_store.repository().approve(booking.id, actor_id=user.id)
     except SlotTaken:
         # Another approval took the slot between the check above and the write.
         raise _slot_taken(booking, _Context()) from None
     except StaleBookingStatus:
         raise _not_requested(_current_status(booking.id)) from None
+    if expires_at:
+        event = event_store.repository().get_event(held.event_id)
+        if event is not None:
+            notify_hold_placed(event, held.venue_name or "a venue", expires_at)
+        return context.request_out(held)
     _notify(confirmed, confirmed=True)
     _notify_attendees_if_replaced(confirmed)
     return context.request_out(confirmed)

@@ -67,6 +67,14 @@ function target(
   }
   // US10.2: the event was taken off this Coordinator, so they can no longer open it.
   if (item.kind === 'unassigned') return null
+  // G13: Venue Staff cannot open events; the request waits in their queue.
+  if (item.kind === 'booking-requested' && canOpen(session, '/booking-requests')) {
+    return { path: '/booking-requests', label: 'Open booking requests' }
+  }
+  // G13: an Attendee registers from the open events list.
+  if (item.kind === 'registration-opened' && canOpen(session, '/attend')) {
+    return { path: '/attend', label: 'Open events' }
+  }
   const path = `/events/${item.eventId}`
   if (!canOpen(session, path)) {
     return canOpen(session, '/my-registrations')

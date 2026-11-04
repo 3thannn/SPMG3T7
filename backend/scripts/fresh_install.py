@@ -1,0 +1,129 @@
+"""Build a fresh ConnectSphere database from the SQL scripts, in the one order that works.
+
+    python scripts/fresh_install.py <postgres-dsn>
+
+Every script is applied in `ORDER`, then once more: each is meant to be safe to
+run twice, and the second pass proves it. `integration/test_fresh_install_db.py`
+runs this against an empty PostgreSQL 16 in CI, so the order in the README is
+the order that was tested.
+
+Two scripts are left out on purpose:
+
+* SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql needs pg_cron, which only a Supabase
+  project has. On Supabase, run it last (README step 3).
+* SUPABASE_FIX_UNAVAILABILITY_NOTICE.sql repaired a live function changed
+  outside the repo. On a fresh database it would put back the pre-US12.4
+  trigger, so it must not be run.
+
+The Supabase roles (anon, authenticated, service_role) are created if the
+server lacks them, as they are on plain PostgreSQL.
+"""
+
+import sys
+from pathlib import Path
+
+import psycopg
+
+BACKEND = Path(__file__).resolve().parents[1]
+
+#: The fresh-install order. Each script's own header names what it must follow.
+ORDER: tuple[str, ...] = (
+    # Base schema and early additions.
+    "SUPABASE_SETUP.sql",
+    "SUPABASE_ADD_NEW_ROLES.sql",
+    "SUPABASE_ALLOW_PARTIAL_DRAFTS.sql",
+    "SUPABASE_CASCADE_STATUS_CHANGES.sql",
+    "SUPABASE_ATOMIC_EVENT_DECISIONS.sql",
+    "SUPABASE_ADD_COORDINATOR_ASSIGNMENT.sql",
+    # Venues.
+    "SUPABASE_ADD_VENUE_LAYOUTS.sql",
+    "SUPABASE_ADD_VENUE_TURNAROUND.sql",
+    "SUPABASE_ADD_VENUE_UNAVAILABILITY.sql",
+    # Notifications and equipment (the notice-kind list is rebuilt here, so the
+    # scripts that replace it outright come before every script that adds to it).
+    "SUPABASE_ADD_NOTIFICATIONS.sql",
+    "SUPABASE_ADD_EQUIPMENT_REQUESTS.sql",
+    "SUPABASE_ADD_COORDINATOR_NOTIFICATIONS.sql",
+    # Bookings and the event lifecycle.
+    "SUPABASE_ADD_VENUE_BOOKINGS.sql",
+    "SUPABASE_CANCEL_VENUE_BOOKINGS.sql",
+    "SUPABASE_ADD_BOOKING_NEEDS.sql",
+    "SUPABASE_ADD_CHANGE_REQUESTS.sql",
+    "SUPABASE_US4_5_LIFECYCLE.sql",
+    "SUPABASE_ADD_EVENT_NEEDS.sql",
+    "SUPABASE_ADD_VENUE_HOLDS.sql",
+    "SUPABASE_ADD_BOOKING_DECISIONS.sql",
+    "SUPABASE_ADD_BOOKING_CONFLICTS.sql",
+    "SUPABASE_US14_4_HOLD_EXPIRY.sql",
+    "SUPABASE_US12_2_FLAG_UNAVAILABLE_BOOKINGS.sql",
+    "SUPABASE_US14_5_REPLACED_STATUS.sql",
+    "SUPABASE_FIX_DECISION_RECORDED.sql",
+    # Safety check, cancellation and registration.
+    "SUPABASE_ADD_SAFETY_CHECK_STATUS.sql",
+    "SUPABASE_US4_6_CANCEL_EVENT.sql",
+    "SUPABASE_US20_1_REGISTRATION.sql",
+    "SUPABASE_US20_2_WITHDRAW.sql",
+    "SUPABASE_US4_6_CANCEL_REGISTRATIONS.sql",
+    "SUPABASE_US17_2_SAFETY_DECISIONS.sql",
+    # Equipment reservations.
+    "SUPABASE_US19_3_EQUIPMENT_RESERVATIONS.sql",
+    "SUPABASE_US19_EXACT_ITEM_REQUESTS.sql",
+    "SUPABASE_US19_REPAIR_EQUIPMENT_NOTICES.sql",
+    # Change review, reconfirmation and confirming.
+    "SUPABASE_US11_2_CHANGE_REVIEW.sql",
+    "SUPABASE_US11_2_REVIEW_FIXES.sql",
+    "SUPABASE_US11_3_RECONFIRM.sql",
+    "SUPABASE_US4_7_CONFIRM_EVENT.sql",
+    "SUPABASE_FIX_SAFETY_CHECK_CHANGES.sql",
+    "SUPABASE_FIX_ORGANISER_REGISTRATION.sql",
+    "SUPABASE_US10_4_EVENT_UPDATED_NOTICE.sql",
+    "SUPABASE_US8_4_REASSIGN_COORDINATOR.sql",
+    "SUPABASE_US9_5_DELETE_VENUE_HISTORY.sql",
+    # Replacement venues and closures (US14.5, US12.4).
+    "SUPABASE_US14_5_REQUEST_REPLACEMENT_VENUE.sql",
+    "SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql",
+    "SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql",
+    # The 2026-11-04 gap closure.
+    "SUPABASE_US14_6_HOLD_AFTER_APPROVAL.sql",
+    "SUPABASE_G13_WEEK1_NOTICES.sql",
+    # Security and sample data.
+    "SUPABASE_HARDENING.sql",
+    "SUPABASE_SEED_VENUES.sql",
+)
+
+#: Kept out of `ORDER`, with the reason above.
+EXCLUDED: tuple[str, ...] = (
+    "SUPABASE_US14_4_SCHEDULE_HOLD_SWEEP.sql",
+    "SUPABASE_FIX_UNAVAILABILITY_NOTICE.sql",
+)
+
+SUPABASE_ROLES = ("anon", "authenticated", "service_role")
+
+
+def ensure_roles(connection: psycopg.Connection) -> None:
+    for role in SUPABASE_ROLES:
+        if not connection.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,)).fetchone():
+            connection.execute(f'CREATE ROLE "{role}"')
+
+
+def apply_all(connection: psycopg.Connection, *, passes: int = 2) -> None:
+    """Apply every script in order, `passes` times. Stops at the first failure."""
+    for _ in range(passes):
+        for name in ORDER:
+            try:
+                connection.execute((BACKEND / name).read_text(encoding="utf-8"))
+            except psycopg.Error as error:
+                raise RuntimeError(f"{name} failed: {error}") from error
+
+
+def main(dsn: str) -> None:
+    with psycopg.connect(dsn, autocommit=True) as connection:
+        ensure_roles(connection)
+        apply_all(connection)
+    print(f"Applied {len(ORDER)} scripts twice.")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    main(sys.argv[1])

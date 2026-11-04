@@ -93,6 +93,22 @@ def _array_literal_items(inner: str) -> list[str]:
     return items
 
 
+def catalogue_layouts() -> tuple[str, ...]:
+    """Week 9 (G7/A7): the layouts an Organiser may choose, from the catalogue.
+
+    The standard names plus every layout a venue lists now, so adding a layout
+    to a venue makes it choosable and renaming one offers the new name.
+    """
+    from app import event_needs, venue_store
+
+    listed = (
+        item
+        for venue in venue_store.repository().list_venues()
+        for item in listed_items(venue.supported_layouts or "")
+    )
+    return event_needs.layout_choices(listed)
+
+
 def listed_items(text: str) -> tuple[str, ...]:
     """The items a venue lists in one of its free-text fields, as written.
 
