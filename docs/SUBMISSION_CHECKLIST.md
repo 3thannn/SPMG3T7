@@ -15,7 +15,7 @@ spare. Tick each line when the file is in the folder.
 
 - [ ] `Product_Backlog.xlsx`, reconciled with Jira (statuses, US14.3/US14.6/US12.4
       ACs, the new US10.5; list in [`GAP_CLOSURE_CHANGE_LOG.md`](GAP_CLOSURE_CHANGE_LOG.md)).
-- [ ] Jira export of project SPMG3T7 (all 22 epics and 67 stories, completed and pending).
+- [ ] Jira export of project SPMG3T7 (all 22 epics and 66 stories, completed and pending).
 
 ## Folder 2: System design (C4)
 
