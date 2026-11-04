@@ -53,6 +53,15 @@ Next: restore suitable embedded Supabase contract classes, then add grouped
 Technical cases and regenerate all JUnit results/workbook. The numbers below
 are the previous baseline until the final refresh. Live Supabase is off limits.
 
+Step 2 complete: restored 15 embedded store classes from `da67018` in 14
+files, with only their needed helpers/imports. `ruff check tests` passes;
+`pytest --cov` reports **747 passed, 2 skipped, 85.66%**. All restored tests
+passed against current application code without compatibility edits. This is
+the requested roughly 86%; use 85.6 as the enforceable floor (do not round it
+up above the real result). Next: add 10 grouped Technical cases, then run all
+four JUnit suites and rebuild the workbook. Local PostgreSQL 16 installation
+is in progress for disposable integration databases; never use live Supabase.
+
 - Backend: 591 pass (`pytest --cov`, floor 77% in `backend/pyproject.toml`).
 - DB suites: 20 tests on Postgres (`integration/`).
 - Frontend: 66 Vitest tests, floors in `frontend/vite.config.ts` (lines 52 / statements 51 / functions 49 / branches 48); lint, `tsc -b` and build clean.

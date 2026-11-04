@@ -21,8 +21,11 @@ import pytest
 
 from app.event_status import EventStatus
 from app.event_store import (
+    EVENTS_TABLE,
     Event,
+    StaleEventStatus,
     StatusChange,
+    SupabaseEvents,
 )
 from app.notifications import CoordinatorNotice
 from app.permissions import Role
@@ -190,6 +193,52 @@ class TestTheLog:
         assert logged["notes"] == "Coordinator reassigned from Priya to Alex."
         assert logged["kind"] == "reassignment"
 
+
+class TestTheRealStore:
+    ROW = {
+        "id": EVENT_ID,
+        "name": "Open House",
+        "status": "Planning",
+        "organiser_id": ORGANISER_ID,
+        "coordinator_id": NEW_COORDINATOR_ID,
+        "created_at": "2099-01-01T09:00:00",
+        "updated_at": UPDATED_AT,
+    }
+
+    def test_it_reassigns_through_the_database_function(self, fake):
+        fake.rows = {EVENTS_TABLE: [self.ROW]}
+        fake.rpc_answers = {"reassign_event_coordinator": True}
+
+        moved = SupabaseEvents().reassign_coordinator(
+            EVENT_ID,
+            NEW_COORDINATOR_ID,
+            reassigned_by_id=COORDINATOR_LEAD_ID,
+            expected_updated_at=UPDATED_AT,
+        )
+
+        assert fake.rpcs == [
+            (
+                "reassign_event_coordinator",
+                {
+                    "p_event_id": EVENT_ID,
+                    "p_coordinator_id": NEW_COORDINATOR_ID,
+                    "p_assigned_by_id": COORDINATOR_LEAD_ID,
+                    "p_expected_updated_at": UPDATED_AT,
+                },
+            )
+        ]
+        assert moved.coordinator_id == NEW_COORDINATOR_ID
+
+    def test_a_refusal_is_stale(self, fake):
+        fake.rpc_answers = {"reassign_event_coordinator": False}
+
+        with pytest.raises(StaleEventStatus):
+            SupabaseEvents().reassign_coordinator(
+                EVENT_ID,
+                NEW_COORDINATOR_ID,
+                reassigned_by_id=COORDINATOR_LEAD_ID,
+                expected_updated_at=UPDATED_AT,
+            )
 
 
 

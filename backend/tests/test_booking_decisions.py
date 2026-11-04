@@ -15,7 +15,7 @@ from datetime import datetime
 import pytest
 
 from app import booking_store
-from app.booking_store import Booking, BookingStatus
+from app.booking_store import Booking, BookingStatus, SlotTaken
 from app.event_status import EventStatus
 from tests.conftest import COORDINATOR_ID, VENUE_STAFF_ID
 from tests.test_venue_bookings import EVENT_ID, seed_event
@@ -345,6 +345,82 @@ class TestVenueStaffOnly:
         assert decision.by_name == "Sam"
         assert decision.at
 
+
+class TestTheSupabaseStore:
+    class Fake:
+        """Records calls; answers reads with one row and RPCs with `answer`."""
+
+        def __init__(self, answer="confirmed", updated=True):
+            self.calls: list[tuple] = []
+            self.answer = answer
+            self.updated = updated
+            self._rpc = False
+
+        def __getattr__(self, name):
+            def record(*args, **_kwargs):
+                self.calls.append((name, *args))
+                if name == "rpc":
+                    self._rpc = True
+                return self
+
+            return record
+
+        def execute(self):
+            if self._rpc:
+                self._rpc = False
+                return type("R", (), {"data": self.answer})()
+            if any(call[0] == "update" for call in self.calls) and not self.updated:
+                return type("R", (), {"data": []})()
+            row = {
+                "id": 11, "event_id": EVENT_ID, "venue_id": 1, "start_at": "2027-11-02T09:00",
+                "end_at": "2027-11-02T17:00", "status": "Confirmed", "created_at": "2027-09-01",
+                "decided_at": "2027-10-01T01:00:00", "decided_by_id": VENUE_STAFF_ID,
+                "decided_by": {"name": "Sam"},
+            }
+            return type("R", (), {"data": [row]})()
+
+    def use(self, monkeypatch, fake):
+        monkeypatch.setattr(booking_store.supabase_client, "admin", lambda: fake)
+        return booking_store.SupabaseBookings()
+
+    def test_tc_d41_approve_calls_the_locking_rpc(self, monkeypatch):
+        fake = self.Fake("confirmed")
+        confirmed = self.use(monkeypatch, fake).approve(11, actor_id=VENUE_STAFF_ID)
+        assert ("rpc", "approve_venue_booking", {"p_booking_id": 11,
+                "p_actor_id": VENUE_STAFF_ID}) in fake.calls
+        assert confirmed.decision.by_name == "Sam"
+
+    @pytest.mark.parametrize(
+        ("answer", "error"),
+        [("clash", SlotTaken), ("not-requested", booking_store.StaleBookingStatus)],
+    )
+    def test_tc_d42_each_rpc_refusal_is_its_own_error(self, monkeypatch, answer, error):
+        with pytest.raises(error):
+            self.use(monkeypatch, self.Fake(answer)).approve(11, actor_id=VENUE_STAFF_ID)
+
+    def test_tc_d43_reject_writes_only_a_still_requested_row(self, monkeypatch):
+        fake = self.Fake()
+        self.use(monkeypatch, fake).reject(
+            11, actor_id=VENUE_STAFF_ID, reason="Closed.", suggestion=""
+        )
+        [(_, changes)] = [call for call in fake.calls if call[0] == "update"]
+        assert changes["status"] == "Rejected"
+        assert changes["rejection_reason"] == "Closed."
+        assert changes["suggested_alternative"] is None
+        assert changes["decided_by_id"] == VENUE_STAFF_ID
+        assert ("eq", "status", "Requested") in fake.calls
+
+    def test_tc_d44_no_row_rejected_means_it_was_already_decided(self, monkeypatch):
+        with pytest.raises(booking_store.StaleBookingStatus):
+            self.use(monkeypatch, self.Fake(updated=False)).reject(
+                11, actor_id=VENUE_STAFF_ID, reason="Closed."
+            )
+
+    def test_tc_d45_the_queue_reads_requested_oldest_first(self, monkeypatch):
+        fake = self.Fake()
+        self.use(monkeypatch, fake).list_requested()
+        assert ("eq", "status", "Requested") in fake.calls
+        assert fake.calls.index(("order", "created_at")) < fake.calls.index(("order", "id"))
 
 
 

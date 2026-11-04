@@ -23,16 +23,20 @@ every line of the feature runs without a database.
 
 import pytest
 
-from app import change_requests
+from app import change_requests, supabase_client
 from app.change_requests import (
     CHANGE_REQUEST_REFUSAL_MESSAGES,
     IMPORTANT_FIELDS,
     ChangeRequestRefusal,
+    FieldChange,
     is_important,
+    reopen_reason,
 )
 from app.event_status import EventStatus
 from app.event_store import (
+    CHANGE_REQUESTS_TABLE,
     Event,
+    SupabaseEvents,
 )
 from app.events import PURPOSE_MAX, TITLE_MAX
 from app.permissions import Role
@@ -722,4 +726,94 @@ def answered_row(status: str, reviewed_at: str, note: str | None = None) -> dict
         "review_note": note,
     }
 
+
+class TestSupabaseStore:
+    def test_a_request_is_one_rpc_carrying_every_change(self, monkeypatch):
+        admin = FakeAdmin(True)
+        store = SupabaseEvents()
+        returned = _event(status=EventStatus.UNDER_REVIEW)
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+        monkeypatch.setattr(store, "get_event", lambda _event_id: returned)
+
+        result = store.submit_change_request(
+            42,
+            actor_id=ORGANISER_ID,
+            from_status=EventStatus.SUBMITTED,
+            changes=(
+                FieldChange("name", "Old", "New", False),
+                FieldChange("expected_attendance", "120", "150", True),
+            ),
+            note="Updated numbers.",
+        )
+
+        assert result is returned
+        assert admin.calls == [
+            (
+                "us11_review",
+                {
+                    "p_event_id": 42,
+                    "p_action": "submit",
+                    "p_revision": 0,
+                    "p_actor_id": ORGANISER_ID,
+                    "p_payload": {
+                        "changes": [
+                            {
+                                "changed_field": "name",
+                                "old_value": "Old",
+                                "new_value": "New",
+                                "change_type": "routine",
+                            },
+                            {
+                                "changed_field": "expected_attendance",
+                                "old_value": "120",
+                                "new_value": "150",
+                                "change_type": "important",
+                            },
+                        ],
+                        "note": "Updated numbers.",
+                    },
+                },
+            )
+        ]
+
+
+
+
+    def test_an_approval_is_one_rpc_carrying_the_us11_3_reason(self, monkeypatch):
+        """US11.3: the database decides whether the event goes back to Planning;
+        the API sends the words its history entry would carry."""
+        admin = FakeAdmin(True)
+        store = SupabaseEvents()
+        attendance = FieldChange("expected_attendance", "50", "75", important=True)
+        returned = _event(status=EventStatus.CONFIRMED, pending_changes=(attendance,))
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+        monkeypatch.setattr(store, "get_event", lambda _event_id: returned)
+
+        result = store.resolve_change_request(42, actor_id=COORDINATOR_ID, approve=True, note="")
+
+        assert result is returned
+        assert admin.calls == [
+            (
+                "us11_approve_change",
+                {
+                    "p_event_id": 42,
+                    "p_revision": 0,
+                    "p_actor_id": COORDINATOR_ID,
+                    "p_payload": {"note": ""},
+                    "p_reason": reopen_reason((attendance,)),
+                },
+            )
+        ]
+
+
+
+
+
+
+    def test_an_empty_list_reads_no_requests(self, monkeypatch):
+        admin = FakeAdmin(rows={"events": []})
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+
+        assert SupabaseEvents().list_events(organiser_id=None, include_drafts=False) == []
+        assert all(table != CHANGE_REQUESTS_TABLE for table, _ in admin.queries)
 

@@ -28,7 +28,11 @@ from app.booking_store import (
     Booking,
     BookingStatus,
     ConflictFlag,
+    SlotTaken,
+    StaleBookingStatus,
+    SupabaseBookings,
 )
+from app.event_store import StaleEventStatus
 from tests.conftest import COORDINATOR_ID, COORDINATOR_LEAD_ID, VENUE_STAFF_ID
 from tests.test_venue_bookings import EVENT_ID, seed_event
 
@@ -608,6 +612,64 @@ ROW = {
     "conflict_flagged_at": "2027-10-01T01:00:00", "conflict_reason": "Overlaps booking #12.",
 }
 
+
+class TestTheSupabaseStore:
+    def use(self, monkeypatch, fake):
+        monkeypatch.setattr(booking_store.supabase_client, "admin", lambda: fake)
+        return SupabaseBookings()
+
+
+
+    def test_tc_f33_flagging_writes_when_and_why_and_nothing_else(self, monkeypatch):
+        fake = FakeClient(rows=[ROW])
+        flagged = self.use(monkeypatch, fake).flag_conflict(11, reason="Overlaps booking #12.")
+        [(_, changes)] = [call for call in fake.calls if call[0] == "update"]
+        assert set(changes) == {"conflict_flagged_at", "conflict_reason"}
+        assert changes["conflict_reason"] == "Overlaps booking #12."
+        assert ("eq", "id", 11) in fake.calls
+        assert flagged.status is BookingStatus.CONFIRMED
+
+
+    @pytest.mark.parametrize("method", ["flag", "clear"])
+    def test_tc_f35_a_booking_that_is_gone_is_stale(self, monkeypatch, method):
+        store = self.use(monkeypatch, FakeClient(rows=[]))
+        with pytest.raises(StaleBookingStatus):
+            if method == "flag":
+                store.flag_conflict(11, reason="x")
+            else:
+                store.clear_conflict(11)
+
+    def test_tc_f36_the_flagged_list_reads_flagged_rows_soonest_first(self, monkeypatch):
+        fake = FakeClient(rows=[ROW])
+        [booking] = self.use(monkeypatch, fake).list_flagged()
+        assert (
+            "or_", "conflict_flagged_at.not.is.null,event_conflict_at.not.is.null"
+        ) in fake.calls
+        assert fake.calls.index(("order", "start_at")) < fake.calls.index(("order", "id"))
+        assert booking.conflict is not None
+
+    def test_tc_f36b_no_rows_is_an_empty_list(self, monkeypatch):
+        fake = FakeClient(rows=None)
+        fake.rows = None
+        assert self.use(monkeypatch, fake).list_flagged() == []
+
+    def test_tc_c32_a_taken_slot_from_the_request_rpc_is_slot_taken(self, monkeypatch):
+        from app.event_status import EventStatus
+
+        store = self.use(monkeypatch, FakeClient(rows=[ROW], answer=booking_store.RPC_CLASH))
+        with pytest.raises(SlotTaken):
+            store.create(event_id=EVENT_ID, venue_id=1, starts_at=at("10:00"),
+                         ends_at=at("12:00"), requested_by_id=COORDINATOR_ID, headcount=30,
+                         expected_status=EventStatus.APPROVED)
+
+    def test_tc_c33_a_stale_event_is_still_its_own_answer(self, monkeypatch):
+        from app.event_status import EventStatus
+
+        store = self.use(monkeypatch, FakeClient(rows=[ROW], answer=None))
+        with pytest.raises(StaleEventStatus):
+            store.create(event_id=EVENT_ID, venue_id=1, starts_at=at("10:00"),
+                         ends_at=at("12:00"), requested_by_id=COORDINATOR_ID, headcount=30,
+                         expected_status=EventStatus.APPROVED)
 
 
 

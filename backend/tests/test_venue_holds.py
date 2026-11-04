@@ -15,7 +15,8 @@ from datetime import datetime
 import pytest
 
 from app import booking_store
-from app.booking_store import BookingStatus
+from app.booking_store import BookingStatus, HoldExpired
+from app.event_status import EventStatus
 from tests.conftest import COORDINATOR_ID, VENUE_STAFF_ID
 from tests.test_venue_bookings import EVENT_ID, seed_event
 
@@ -298,6 +299,57 @@ class FakeSupabase:
             return type("Response", (), {"data": answer})()
         return type("Response", (), {"data": [dict(HELD_ROW)]})()
 
+
+class TestTheSupabaseStore:
+    def test_tc_h49_place_hold_writes_a_held_row_with_its_expiry(self, monkeypatch):
+        fake = FakeSupabase()
+        monkeypatch.setattr(booking_store.supabase_client, "admin", lambda: fake)
+
+        hold = booking_store.SupabaseBookings().place_hold(
+            event_id=EVENT_ID, venue_id=1, starts_at="2027-11-02T09:00",
+            ends_at="2027-11-02T17:00", expires_at="2027-10-08T17:00",
+            held_by_id=VENUE_STAFF_ID, headcount=30,
+        )
+
+        [row] = fake.inserted
+        assert row["status"] == "Held"
+        assert row["hold_expires_at"] == "2027-10-08T17:00"
+        assert row["held_by_id"] == VENUE_STAFF_ID
+        assert row["requested_by_id"] is None
+        assert hold.status is BookingStatus.HELD
+        assert hold.held_by_name == "Sam"
+        assert hold.hold_expires_at == "2027-10-08T17:00:00"
+
+    def test_tc_h50_request_hold_calls_the_rpc_with_the_expected_status(self, monkeypatch):
+        fake = FakeSupabase("requested")
+        monkeypatch.setattr(booking_store.supabase_client, "admin", lambda: fake)
+
+        booking_store.SupabaseBookings().request_hold(
+            41, actor_id=COORDINATOR_ID, expected_status=EventStatus.APPROVED
+        )
+
+        assert fake.rpcs == [
+            (
+                "request_held_booking",
+                {"p_booking_id": 41, "p_expected_status": "Approved",
+                 "p_requested_by_id": COORDINATOR_ID},
+            )
+        ]
+
+    @pytest.mark.parametrize(
+        ("answer", "error"),
+        [
+            ("expired", HoldExpired),
+            ("stale-event", booking_store.event_store.StaleEventStatus),
+            ("not-held", booking_store.StaleBookingStatus),
+        ],
+    )
+    def test_tc_h51_each_rpc_refusal_becomes_its_own_error(self, monkeypatch, answer, error):
+        monkeypatch.setattr(booking_store.supabase_client, "admin", lambda: FakeSupabase(answer))
+        with pytest.raises(error):
+            booking_store.SupabaseBookings().request_hold(
+                41, actor_id=COORDINATOR_ID, expected_status=EventStatus.APPROVED
+            )
 
 
 

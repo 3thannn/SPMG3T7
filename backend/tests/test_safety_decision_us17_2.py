@@ -27,11 +27,20 @@ from types import SimpleNamespace
 
 import pytest
 
+from app import supabase_client
 from app.booking_store import Booking, BookingStatus
 from app.equipment_store import RESERVED, EquipmentRequest
 from app.event_status import EventStatus
-from app.event_store import Event, StatusChange
+from app.event_store import Event, StaleEventStatus, StatusChange
 from app.notifications import CoordinatorNotice
+from app.safety_decision_store import (
+    COLUMNS,
+    FLAG_COLUMNS,
+    ReviewFlag,
+    StaleFlag,
+    SupabaseSafetyDecisions,
+    to_flag,
+)
 from app.safety_decisions import (
     CHECK_MOVED_ON,
     NOTE_REQUIRED,
@@ -433,6 +442,91 @@ class FakeAdmin:
     def execute(self):
         return SimpleNamespace(data=self._answer)
 
+
+class TestSupabaseStore:
+    @pytest.fixture
+    def admin(self, monkeypatch):
+        fake = FakeAdmin()
+        monkeypatch.setattr(supabase_client, "admin", lambda: fake)
+        return fake
+
+
+    def test_a_joined_name_may_come_as_a_list_or_not_at_all(self):
+        resolved = {**FLAG_ROW, "resolved_at": "2099-01-03T09:00:00", "resolved_by_id": 2}
+        assert to_flag({**resolved, "resolved_by": [{"name": "Priya"}]}).resolved_by_name == "Priya"
+        assert to_flag({**resolved, "resolved_by": []}).resolved_by_name == ""
+        assert to_flag(FLAG_ROW) == ReviewFlag(4, 3, EVENT_ID, booking_id=BOOKING_ID)
+
+    def test_record_is_one_rpc(self, admin):
+        admin.rpc_result = 3
+        admin.rows = [DECISION_ROW]
+        decision = SupabaseSafetyDecisions().record(
+            EVENT_ID,
+            officer_id=SAFETY_OFFICER_ID,
+            outcome=SafetyOutcome.CHANGES_REQUESTED,
+            note="Fix exits",
+            check_started_at=ENTERED,
+            booking_ids=(BOOKING_ID,),
+            equipment_ids=(LINE_ID,),
+        )
+        assert decision.id == 3
+        assert admin.calls[0] == (
+            "rpc",
+            "record_safety_decision",
+            {
+                "p_event_id": EVENT_ID,
+                "p_outcome": "changes-requested",
+                "p_officer_id": SAFETY_OFFICER_ID,
+                "p_note": "Fix exits",
+                "p_check_started_at": ENTERED,
+                "p_booking_ids": [BOOKING_ID],
+                "p_equipment_ids": [LINE_ID],
+            },
+        )
+
+
+    @pytest.mark.parametrize("answer", [None, False])
+    def test_a_refused_record_is_stale(self, admin, answer):
+        admin.rpc_result = answer
+        with pytest.raises(StaleEventStatus):
+            SupabaseSafetyDecisions().record(
+                EVENT_ID, officer_id=SAFETY_OFFICER_ID, outcome=SafetyOutcome.APPROVED,
+                note="", check_started_at="", booking_ids=(), equipment_ids=(),
+            )
+
+    def test_list_is_newest_first(self, admin):
+        admin.rows = [DECISION_ROW]
+        assert [item.id for item in SupabaseSafetyDecisions().list_for_event(EVENT_ID)] == [3]
+        assert admin.calls == [
+            ("table", "safety_reviews"),
+            ("select", COLUMNS),
+            ("eq", "event_id", EVENT_ID),
+            ("order", "decided_at", True),
+            ("order", "id", True),
+        ]
+        admin.rows = None
+        assert SupabaseSafetyDecisions().list_for_event(EVENT_ID) == []
+
+    def test_get_flag(self, admin):
+        admin.rows = [FLAG_ROW]
+        assert SupabaseSafetyDecisions().get_flag(4).id == 4
+        assert ("select", FLAG_COLUMNS) in admin.calls
+        admin.rows = []
+        assert SupabaseSafetyDecisions().get_flag(4) is None
+
+    def test_resolve_only_an_open_flag_on_its_event(self, admin, monkeypatch):
+        store = SupabaseSafetyDecisions()
+        admin.rows = [FLAG_ROW]
+        marker = ReviewFlag(4, 3, EVENT_ID, resolved_at="now", resolved_by_id=COORDINATOR_ID)
+        monkeypatch.setattr(store, "get_flag", lambda _id: marker)
+        assert store.resolve_flag(4, event_id=EVENT_ID, actor_id=COORDINATOR_ID) is marker
+        update = next(call for call in admin.calls if call[0] == "update")
+        assert update[1]["resolved_by_id"] == COORDINATOR_ID
+        assert ("eq", "event_id", EVENT_ID) in admin.calls
+        assert ("is_", "resolved_at", "null") in admin.calls
+        admin.rows = []
+        with pytest.raises(StaleFlag):
+            store.resolve_flag(4, event_id=EVENT_ID, actor_id=COORDINATOR_ID)
 
 
 

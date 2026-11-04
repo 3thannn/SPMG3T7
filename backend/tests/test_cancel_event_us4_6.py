@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app import supabase_client
 from app.booking_store import Booking, BookingStatus
 from app.equipment_store import EquipmentRequest
 from app.event_cancellation import (
@@ -26,7 +27,7 @@ from app.event_cancellation import (
     READ_ONLY_MESSAGE,
 )
 from app.event_status import CANCELLABLE, EventStatus
-from app.event_store import Event
+from app.event_store import CancelledEvent, Event, StaleEventStatus, SupabaseEvents
 from app.registration_store import Registration, RegistrationStatus
 from tests.conftest import (
     ATTENDEE_ID,
@@ -467,6 +468,36 @@ class RpcAdmin:
     def execute(self):
         return SimpleNamespace(data=self.result)
 
+
+class TestSupabaseStore:
+    def test_cancel_uses_the_atomic_rpc(self, monkeypatch):
+        admin = RpcAdmin({"bookings": [3, 4], "equipment": [9]})
+        marker = object()
+        store = SupabaseEvents()
+        monkeypatch.setattr(supabase_client, "admin", lambda: admin)
+        monkeypatch.setattr(store, "get_event", lambda _id: marker)
+
+        result = store.cancel_event(
+            42, actor_id=COORDINATOR_ID, from_status=EventStatus.CONFIRMED, reason=REASON
+        )
+
+        assert result == CancelledEvent(event=marker, booking_ids=(3, 4), equipment_ids=(9,))
+        assert admin.calls == [
+            ("cancel_event", {
+                "p_event_id": 42, "p_expected_status": "Confirmed",
+                "p_actor_id": COORDINATOR_ID, "p_reason": REASON,
+            })
+        ]
+
+
+
+
+    def test_null_from_the_rpc_is_stale(self, monkeypatch):
+        monkeypatch.setattr(supabase_client, "admin", lambda: RpcAdmin(None))
+        with pytest.raises(StaleEventStatus):
+            SupabaseEvents().cancel_event(
+                42, actor_id=ORGANISER_ID, from_status=EventStatus.PLANNING, reason=REASON
+            )
 
 
 
