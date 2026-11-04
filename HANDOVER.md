@@ -87,8 +87,30 @@ which was stopped afterwards. No Docker needed.
 
 Publish this checkpoint to the working branch and the identical tree to
 `final-amendments-after-audit`, with its current remote tip as parent (no force).
-Remaining user actions: open that branch's PR, wait for GitHub checks, use
-Squash and merge, delete Jira SPMG3T7-91, and re-sync old local branches.
+Done: both branches held the same tree.
+
+Step 5 (4 November 2026): removed `backend/SUPABASE_FOUR_STORY_FIX.sql`. It came
+in with `98b65e8` ("prepare test reduction handover"), nothing referenced it,
+and its header said to run the whole file in the SQL Editor. It holds older
+copies of functions that later scripts replaced, so running it would undo two
+stories: its `reassign_event_coordinator` lets a Lead reassign Completed,
+Cancelled or Rejected events again (US8.4 refuses them, see
+`SUPABASE_US8_4_REASSIGN_COORDINATOR.sql`), and its
+`flag_bookings_for_unavailability` stops telling Organisers about a venue
+closure (US12.4, `SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql`). Every change it
+makes is covered by the per-story scripts in the README's table. No application
+code, test or live database changed. Re-checked locally on this tree: backend
+`ruff check` and `pytest --cov` (747 passed, 85.66%), frontend lint, `tsc -b`,
+build and Vitest coverage (66 passed, every floor met), and the 38 Playwright
+journeys. The DB suites were not run locally (no PostgreSQL on that machine);
+CI runs them.
+
+Remaining user actions: open the PR from `final-amendments-after-audit` into
+`main`, wait for GitHub checks (CI runs only on pull requests and on `main`, so
+the PR is the first CI run of this tree), get the team's agreement (it deletes
+the cut tests, about 32,700 lines), use Squash and merge, and decide whether to
+delete the old `backend/tests/test_cases_*.md` docs. SPMG3T7-91 is already
+gone (see the Jira section).
 
 - Backend: 747 passed, 2 skipped (`pytest --cov`, floor 85.6% in `backend/pyproject.toml`).
 - DB suites: 20 tests on Postgres (`integration/`).
@@ -121,7 +143,8 @@ and tests are in CODE_AUDIT.md section 4 and as `TC-D*` cases.
 Stories amended to match the code: SPMG3T7-38 (US4.3, resubmit Rejected),
 -79 (US20.1, Organiser controls registration), -58 (US14.2, cancel Confirmed or
 flagged bookings), -86 (US11.3, important change during the safety check).
-SPMG3T7-91 was created by mistake; the user will delete it. Do not create new
+SPMG3T7-91 was created by mistake and has been deleted: on 4 November 2026 Jira
+answered "not found" for it while SPMG3T7-86 still loaded. Do not create new
 Jira issues.
 
 ## Completed task (user approved; kept for audit)
