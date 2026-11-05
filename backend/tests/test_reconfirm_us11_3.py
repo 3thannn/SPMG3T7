@@ -17,6 +17,8 @@ Acceptance criteria, and the tests that hold each one:
   The database half is SUPABASE_US11_3_RECONFIRM.sql.
 """
 
+from dataclasses import replace
+
 import pytest
 
 from app.booking_store import Booking, BookingStatus
@@ -197,6 +199,12 @@ class TestArrangements:
         self, client, auth_headers, confirmed, booking_repository
     ):
         confirmed(BERTHA_ROOM)
+        # Update the booking's headcount to exceed Bertha Room's capacity (40)
+        booking = booking_repository.get_booking(BOOKING_ID)
+        booking_repository.bookings = [
+            b if b.id != BOOKING_ID else replace(b, headcount=41)
+            for b in booking_repository.bookings
+        ]
 
         event = change_and_accept(client, auth_headers, expectedAttendance=41)
 
