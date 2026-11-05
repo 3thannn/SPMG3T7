@@ -77,7 +77,6 @@ def recheck(event: Event) -> Event:
             reasons: list[str] = []
             if booking.holds_venue_at(now):
                 venue = venue_store.repository().get_venue(booking.venue_id)
-                reasons += coverage(event, booking.starts_at, booking.ends_at)
                 if venue is None:
                     reasons.append("The venue is no longer available in the catalogue.")
                 else:
@@ -94,7 +93,7 @@ def recheck(event: Event) -> Event:
                             "or unavailability period."
                         )
                     needs = BookingNeeds(
-                        headcount=event.expected_attendance or booking.headcount or 0,
+                        headcount=booking.headcount or 0,
                         starts_at=datetime.fromisoformat(booking.starts_at),
                         ends_at=datetime.fromisoformat(booking.ends_at),
                         layout=booking.required_layout,
@@ -125,7 +124,6 @@ def recheck(event: Event) -> Event:
         try:
             reasons = []
             if reservation.status == equipment_store.RESERVED:
-                reasons += coverage(event, reservation.starts_at, reservation.ends_at)
                 choices = equipment_store.repository().reservation_availability(reservation.id)
                 stock = next(
                     (c for c in choices if str(c["equipmentId"]) == str(reservation.equipment_id)),
