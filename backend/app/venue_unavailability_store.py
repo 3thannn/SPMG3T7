@@ -92,6 +92,8 @@ class Repository(Protocol):
 
     def list_for_venue(self, venue_id: int) -> list[Unavailability]: ...
 
+    def list_for_venues(self, venue_ids: list[int]) -> dict[int, list[Unavailability]]: ...
+
     def venues_unavailable_between(self, start: date, end: date) -> frozenset[int]: ...
 
     def create(
@@ -129,6 +131,29 @@ class SupabaseUnavailability:
             or []
         )
         return [to_unavailability(row) for row in rows]
+
+    def list_for_venues(self, venue_ids: list[int]) -> dict[int, list[Unavailability]]:
+        """All blackout periods for a queue's venues in one database round trip."""
+        wanted = sorted(set(venue_ids))
+        if not wanted:
+            return {}
+        rows = (
+            supabase_client.admin()
+            .table(TABLE)
+            .select(COLUMNS)
+            .in_("venue_id", wanted)
+            .order("venue_id")
+            .order("start_date")
+            .order("end_date")
+            .order("id")
+            .execute()
+            .data
+            or []
+        )
+        grouped: dict[int, list[Unavailability]] = {venue_id: [] for venue_id in wanted}
+        for row in rows:
+            grouped[row["venue_id"]].append(to_unavailability(row))
+        return grouped
 
     def venues_unavailable_between(self, start: date, end: date) -> frozenset[int]:
         """Venues with any blackout touching `start`..`end`, both ends included.
@@ -256,6 +281,16 @@ class InMemoryUnavailability:
 
     def list_for_venue(self, venue_id: int) -> list[Unavailability]:
         return sorted((e for e in self.entries if e.venue_id == venue_id), key=_sort_key)
+
+    def list_for_venues(self, venue_ids: list[int]) -> dict[int, list[Unavailability]]:
+        wanted = set(venue_ids)
+        return {
+            venue_id: sorted(
+                (entry for entry in self.entries if entry.venue_id == venue_id),
+                key=_sort_key,
+            )
+            for venue_id in wanted
+        }
 
     def venues_unavailable_between(self, start: date, end: date) -> frozenset[int]:
         """The same overlap test as the SQL above."""

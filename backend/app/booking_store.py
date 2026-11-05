@@ -355,6 +355,8 @@ class Repository(Protocol):
 
     def list_for_venue(self, venue_id: int) -> list[Booking]: ...
 
+    def list_for_venues(self, venue_ids: list[int]) -> dict[int, list[Booking]]: ...
+
     def get_booking(self, booking_id: int) -> Booking | None: ...
 
     def create(
@@ -667,6 +669,29 @@ class SupabaseBookings:
         )
         return [to_booking(row) for row in rows]
 
+    def list_for_venues(self, venue_ids: list[int]) -> dict[int, list[Booking]]:
+        """All bookings for a queue's venues in one database round trip."""
+        wanted = sorted(set(venue_ids))
+        if not wanted:
+            return {}
+        rows = (
+            supabase_client.admin()
+            .table(TABLE)
+            .select(COLUMNS)
+            .in_("venue_id", wanted)
+            .order("venue_id")
+            .order("start_at")
+            .order("end_at")
+            .order("id")
+            .execute()
+            .data
+            or []
+        )
+        grouped: dict[int, list[Booking]] = {venue_id: [] for venue_id in wanted}
+        for row in rows:
+            grouped[row["venue_id"]].append(to_booking(row))
+        return grouped
+
     def list_requested(self) -> list[Booking]:
         """US16.1: every Requested booking, oldest request first, then by id."""
         rows = (
@@ -866,6 +891,16 @@ class InMemoryBookings:
 
     def list_for_venue(self, venue_id: int) -> list[Booking]:
         return sorted((b for b in self.bookings if b.venue_id == venue_id), key=_sort_key)
+
+    def list_for_venues(self, venue_ids: list[int]) -> dict[int, list[Booking]]:
+        wanted = set(venue_ids)
+        return {
+            venue_id: sorted(
+                (booking for booking in self.bookings if booking.venue_id == venue_id),
+                key=_sort_key,
+            )
+            for venue_id in wanted
+        }
 
     def get_booking(self, booking_id: int) -> Booking | None:
         return next((b for b in self.bookings if b.id == booking_id), None)
