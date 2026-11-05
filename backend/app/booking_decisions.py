@@ -127,6 +127,32 @@ class _Context:
         self._at_venue: dict[int, list[Booking]] = {}
         self._blackouts: dict[int, list[Unavailability]] = {}
         self._names: dict[int, str] | None = None
+        self._coordinators: dict[int, int | None] = {}
+
+    def _preload_for_bookings(self, bookings: list[Booking]) -> None:
+        """Load a queue's related rows with a bounded number of database queries."""
+        if not bookings:
+            return
+        event_ids = sorted({booking.event_id for booking in bookings})
+        venue_ids = sorted({booking.venue_id for booking in bookings})
+        summaries = event_store.repository().get_summaries(event_ids)
+        self._titles.update({event_id: item.title for event_id, item in summaries.items()})
+        self._coordinators.update(
+            {event_id: item.coordinator_id for event_id, item in summaries.items()}
+        )
+        wanted_venues = set(venue_ids)
+        self._venues.update(
+            {
+                venue.id: venue
+                for venue in venue_store.repository().list_venues()
+                if venue.id in wanted_venues
+            }
+        )
+        self._at_venue.update(booking_store.repository().list_for_venues(venue_ids))
+        self._blackouts.update(
+            venue_unavailability_store.repository().list_for_venues(venue_ids)
+        )
+        self._names = {user.id: user.name for user in users.list_users()}
 
     def title(self, event_id: int) -> str:
         if event_id not in self._titles:
@@ -135,6 +161,9 @@ class _Context:
         return self._titles[event_id]
 
     def coordinator_name(self, event_id: int) -> str:
+        if event_id in self._coordinators:
+            coordinator_id = self._coordinators[event_id]
+            return self._names.get(coordinator_id, "") if coordinator_id is not None else ""
         event = event_store.repository().get_event(event_id)
         if event is None or event.coordinator_id is None:
             return ""
@@ -321,8 +350,10 @@ def _notify_attendees_if_replaced(booking: Booking) -> None:
 @router.get("", response_model=list[BookingRequestOut])
 def list_booking_requests(user: DecidesBookings) -> list[BookingRequestOut]:
     """Every Requested booking, oldest request first, with what a decision needs."""
+    bookings = booking_store.repository().list_requested()
     context = _Context()
-    return [context.request_out(item) for item in booking_store.repository().list_requested()]
+    context._preload_for_bookings(bookings)
+    return [context.request_out(item) for item in bookings]
 
 
 @router.post("/{booking_id}/approve", response_model=BookingRequestOut)

@@ -136,6 +136,15 @@ class Event:
         return EventNeeds(**{name: getattr(self, name) for name in NEED_FIELDS})
 
 
+@dataclass(frozen=True)
+class EventSummary:
+    """The event fields another queue needs without its audit history."""
+
+    id: int
+    title: str
+    coordinator_id: int | None
+
+
 class StaleEventStatus(RuntimeError):
     """The event changed after the route checked its current status."""
 
@@ -301,6 +310,8 @@ class Repository(Protocol):
     def list_unassigned(self) -> list[Event]: ...
 
     def get_event(self, event_id: int) -> Event | None: ...
+
+    def get_summaries(self, event_ids: list[int]) -> dict[int, EventSummary]: ...
 
     def create_event(
         self,
@@ -501,6 +512,28 @@ class SupabaseEvents:
             self._changes_for([event_id]).get(event_id),
             self._requests_for([event_id]).get(event_id),
         )
+
+    def get_summaries(self, event_ids: list[int]) -> dict[int, EventSummary]:
+        """Read queue labels in one query, without fetching event audit history."""
+        if not event_ids:
+            return {}
+        rows = (
+            supabase_client.admin()
+            .table(EVENTS_TABLE)
+            .select("id, name, coordinator_id")
+            .in_("id", sorted(set(event_ids)))
+            .execute()
+            .data
+            or []
+        )
+        return {
+            row["id"]: EventSummary(
+                id=row["id"],
+                title=row.get("name") or "",
+                coordinator_id=row.get("coordinator_id"),
+            )
+            for row in rows
+        }
 
     def create_event(
         self,
@@ -1070,6 +1103,14 @@ class InMemoryEvents:
 
     def get_event(self, event_id: int) -> Event | None:
         return next((event for event in self.events if event.id == event_id), None)
+
+    def get_summaries(self, event_ids: list[int]) -> dict[int, EventSummary]:
+        wanted = set(event_ids)
+        return {
+            event.id: EventSummary(event.id, event.title, event.coordinator_id)
+            for event in self.events
+            if event.id in wanted
+        }
 
     def create_event(
         self,

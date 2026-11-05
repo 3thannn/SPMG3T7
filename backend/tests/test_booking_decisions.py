@@ -129,6 +129,49 @@ class TestTheQueue:
         assert listed.status_code == 200, listed.text
         assert [item["id"] for item in listed.json()] == ["12", "13", "11"]
 
+    def test_tc_d02_multiple_requested_rows_use_bulk_database_reads(
+        self,
+        client,
+        staff,
+        events,
+        booking_repository,
+        event_repository,
+        venue_repository,
+        unavailability_repository,
+        monkeypatch,
+    ):
+        """The shared-db state that made the queue appear stuck must not cause N+1 reads."""
+        seed(booking_repository, 11, event_id=EVENT_ID, venue_id=1)
+        seed(
+            booking_repository,
+            12,
+            event_id=OTHER_EVENT,
+            venue_id=2,
+            starts_at="2027-11-05T09:00",
+            ends_at="2027-11-05T10:00",
+        )
+        calls = {"events": 0, "venues": 0, "bookings": 0, "blackouts": 0}
+
+        def counted(target, method, key):
+            original = getattr(target, method)
+
+            def wrapper(*args, **kwargs):
+                calls[key] += 1
+                return original(*args, **kwargs)
+
+            monkeypatch.setattr(target, method, wrapper)
+
+        counted(event_repository, "get_summaries", "events")
+        counted(venue_repository, "list_venues", "venues")
+        counted(booking_repository, "list_for_venues", "bookings")
+        counted(unavailability_repository, "list_for_venues", "blackouts")
+
+        response = client.get("/booking-requests", headers=staff)
+
+        assert response.status_code == 200, response.text
+        assert [item["id"] for item in response.json()] == ["11", "12"]
+        assert calls == {"events": 1, "venues": 1, "bookings": 1, "blackouts": 1}
+
 
     def test_tc_d03_each_request_shows_what_a_decision_needs(
         self, client, staff, events, booking_repository

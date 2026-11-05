@@ -154,3 +154,12 @@ it('TC-DF16 asks for an expiry before approving as a hold', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Give the hold an expiry date and time.')
   expect(approveMock).not.toHaveBeenCalled()
 })
+
+it('leaves the loading state and shows the existing error when the queue request fails', async () => {
+  listMock.mockRejectedValue(new Error('database unavailable'))
+
+  render(<BookingRequestsPage session={staff} />)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not load the booking requests')
+  expect(screen.queryByText('Loading booking requests…')).not.toBeInTheDocument()
+})
