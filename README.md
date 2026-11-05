@@ -1,5 +1,9 @@
 # SPMG3T7
 
+**ConnectSphere Event Management System**
+
+Repository: https://github.com/3thannn/SPMG3T7
+
 Monorepo holding both halves of the SPMG3T7 project:
 
 | Directory                | What it is                                   | Stack                                   |
@@ -20,7 +24,7 @@ directory.
 ## First-time setup
 
 ```bash
-git clone <this repo>
+git clone https://github.com/3thannn/SPMG3T7.git
 cd SPMG3T7
 ```
 
@@ -229,9 +233,12 @@ works too. One person holds one role; a person with two roles uses two accounts
 | Email | Role | Can |
 | ----- | ---- | --- |
 | `organiser@connectsphere.com` | Event Organiser | create, read own and submit events |
-| `coordinator@connectsphere.com` | Event Coordinator | review and edit submitted events, read the venue catalogue |
-| `venuestaff@connectsphere.com` | Venue Staff | read the venue catalogue and maintain the records in it |
-| `attendee@connectsphere.com`, `attendee2@connectsphere.com` | Attendee | see the Confirmed events taking registrations and register for them (US20.1). Created by `python backend/seed_new_users.py --attendees-only` |
+| `coordinator@connectsphere.com` | Event Coordinator | review and edit assigned events, read the venue catalogue |
+| `coordinatorlead@connectsphere.com` | Event Coordinator Lead | assign and reassign events, see all events (US8.2-8.5) |
+| `venuestaff@connectsphere.com` | Venue Staff | manage the venue catalogue and approve booking requests |
+| `safetyofficer@connectsphere.com` | Safety Officer | review events for safety compliance (US17.1-17.2) |
+| `technicalsupport@connectsphere.com` | Technical Support Staff | manage equipment catalogue and reservations (US19) |
+| `attendee@connectsphere.com`, `attendee2@connectsphere.com` | Attendee | see Confirmed events taking registrations and register (US20.1) |
 
 The role strings are `user_role` enum values, so Postgres rejects a typo rather
 than creating a user nobody has permissions for. These are development
@@ -266,7 +273,8 @@ Sign in with one of the development accounts, both with the password
 | Email                     | Role              | Can do                                |
 | ------------------------- | ----------------- | ------------------------------------- |
 | `organiser@connectsphere.com`   | Event Organiser   | create, edit and submit their events  |
-| `coordinator@connectsphere.com` | Event Coordinator | see submitted events, review them     |
+| `coordinator@connectsphere.com` | Event Coordinator | see assigned events, review them     |
+| `coordinatorlead@connectsphere.com` | Event Coordinator Lead | assign events, see all events |
 
 The role names come from the `user_role` enum in the database, which is why they
 read as `Event Organiser` rather than `Organiser`.

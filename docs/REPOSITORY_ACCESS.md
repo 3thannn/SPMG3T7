@@ -15,7 +15,7 @@ Copy this file into submission folder 7 and fill in the two blanks.
 - `REQUIREMENTS_BASELINE.md`: what the system must do, and the decision on each gap.
 - `docs/design/C4.md`: system design (also folder 2).
 - `docs/testing/`: acceptance criteria, test cases and the generated workbook (also folder 3).
-- `docs/GAP_CLOSURE_CHANGE_LOG.md`: the customer-driven changes of the final sprint.
+- `docs/testing/test_cases.txt` and `docs/testing/ConnectSphere_Test_Cases.xlsx`: test case documentation.
 
 ## Getting the submitted commit
 
