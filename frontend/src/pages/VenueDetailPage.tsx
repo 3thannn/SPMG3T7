@@ -52,7 +52,7 @@ export default function VenueDetailPage({ venueId, session }: VenueDetailPagePro
 
   const mayEdit = can(session, 'venues:edit')
   // US14.3: Venue Staff keep a slot for a Coordinator.
-  const mayHold = can(session, 'holds:place')
+  const mayHold = can(session, 'holds:manage')
   const mayDelete = can(session, 'venues:delete')
 
   useEffect(() => {

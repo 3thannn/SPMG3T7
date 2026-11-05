@@ -36,6 +36,17 @@ export type CoordinatorNoticeKind =
   | 'safety-approved'
   /** US10.4: an Attendee's event has a new date, time or venue. */
   | 'event-updated'
+  /** US14.3/US14.6: Venue Staff approved a request as a hold, changed its expiry, or released it. */
+  | 'hold-placed'
+  | 'hold-updated'
+  | 'hold-released'
+  /** G13 (Week 1 list): a booking request waits for Venue Staff. */
+  | 'booking-requested'
+  /** G13: an event opened, or closed, for registration (Attendees). */
+  | 'registration-opened'
+  | 'registration-closed'
+  /** G13: an Attendee withdrew and freed a place (Organiser and Coordinator). */
+  | 'attendee-withdrew'
 
 export type NotificationKind = 'event-status' | 'equipment-request' | CoordinatorNoticeKind
 
@@ -62,6 +73,13 @@ export const KIND_LABELS: Record<Exclude<NotificationKind, 'event-status'>, stri
   'back-in-planning': 'Back in planning',
   'safety-approved': 'Safety approved',
   'event-updated': 'Event updated',
+  'hold-placed': 'Tentative hold',
+  'hold-updated': 'Hold changed',
+  'hold-released': 'Hold released',
+  'booking-requested': 'Booking requested',
+  'registration-opened': 'Registration open',
+  'registration-closed': 'Registration closed',
+  'attendee-withdrew': 'Attendee withdrew',
 }
 
 export type NotificationRecord = {

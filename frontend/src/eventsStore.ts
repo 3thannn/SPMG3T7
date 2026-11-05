@@ -797,17 +797,18 @@ export async function cancelBooking(
 }
 
 /**
- * US14.3: turn a hold Venue Staff placed into a booking request, before it
- * expires. An expired or already-requested hold comes back as a refusal.
+ * US14.3: confirm a booking Venue Staff approved as a tentative hold, before
+ * it expires. An expired, released or already-confirmed hold comes back as a
+ * refusal.
  */
-export async function requestHeldBooking(
+export async function confirmHeldBooking(
   eventId: string,
   bookingId: string,
   session: Session,
 ): Promise<BookingRecord> {
   try {
     const response = await authorizedFetch(
-      `/events/${eventId}/bookings/${bookingId}/request`,
+      `/events/${eventId}/bookings/${bookingId}/confirm`,
       session.token,
       { method: 'POST' },
     )

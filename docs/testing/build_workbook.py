@@ -12,6 +12,7 @@ A test case is "Passed" only if its automated test ran in those results and
 nothing in it failed. The layout follows the seniors' test script sheets.
 """
 
+import os
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -47,6 +48,10 @@ def junit(name):
 
 RUNS = {key: junit(f"{key}.xml") for key in ("backend", "db", "frontend", "e2e")}
 
+#: Which run the results came from, for the summary sheet, e.g. "CI run 41870262896
+#: on commit 62f66c4". Set RESULTS_FROM when building from a CI run's artifacts.
+RESULTS_FROM = os.environ.get("RESULTS_FROM", "A local run")
+
 
 def outcome(ref):
     """Passed / Failed / Not run for one test reference."""
@@ -57,7 +62,9 @@ def outcome(ref):
         rel = path[len("backend/") :].removesuffix(".py").replace("/", ".")
         cls = ".".join([rel, *names[:-1]])
         test = names[-1]
-        runs = RUNS["db"] if rel.startswith("integration") else RUNS["backend"]
+        # tests/*_db.py are skipped in the backend job and run in the db job,
+        # so a backend test counts from either run.
+        runs = RUNS["db"] if rel.startswith("integration") else RUNS["backend"] + RUNS["db"]
         hits = [r for r in runs if r[0] == cls and re.sub(r"\[.*\]$", "", r[1]) == test]
     else:
         title = "::".join(names)
@@ -239,12 +246,14 @@ def main():
         *[[f"  {k}", str(v)] for k, v in sorted(layers.items())],
         ["Results of the run", ", ".join(f"{k} {v}" for k, v in sorted(statuses.items()))],
         ["Defects found and fixed", "D1, D2, D3, D4, D7, D8 (see CODE_AUDIT.md), each with a failing test first"],
-        ["Coverage", "Backend 85.66% combined line/branch coverage (88.38% lines); CI floor 85.6%. "
-         "Frontend 52.76% lines, 51.30% statements, 49.20% functions and 48.89% branches. "
-         "Ten grouped Technical cases cover the restored Supabase adapters using recording clients. "
-         "Remaining gaps include defensive database-error branches and UI loading/error states. "
-         "The suite follows AC rules rather than one test per line; defensive code is retained. "
-         "Local PostgreSQL suites check SQL contracts; isolated E2E uses in-memory stores, not Supabase."],
+        ["Results from", RESULTS_FROM],
+        ["Coverage", "Measured 4 Nov 2026. Backend 86.22% combined line/branch coverage "
+         "(88.82% lines, 74.77% branches); CI floor 85.6%. Frontend 53.34% lines, 51.82% "
+         "statements, 50.00% functions and 49.73% branches. Not 100%: tests are chosen by "
+         "acceptance criterion, not by line. Remaining gaps are mostly defensive database-error "
+         "branches in the Supabase stores and UI loading/error states covered by the browser "
+         "journeys instead. The SQL is tested on PostgreSQL 16 in CI, including a database built "
+         "from nothing; the browser journeys use in-memory stores, not Supabase."],
         ["Source of truth", "docs/testing/test_cases.txt and acceptance_criteria.yaml; this file is generated "
          "by docs/testing/build_workbook.py"],
     ]

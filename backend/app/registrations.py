@@ -53,7 +53,12 @@ from app.events import (
     _refuse_if_cancelled,
     _stale_request,
 )
-from app.notifications import notify_event_full
+from app.notifications import (
+    notify_attendee_withdrew,
+    notify_event_full,
+    notify_registration_closed,
+    notify_registration_opened,
+)
 from app.permissions import Permission
 from app.registration_store import (
     SETTABLE,
@@ -245,6 +250,7 @@ def save_registration_settings(
     capacity = _capacity(payload.capacity)
 
     store = registration_store.repository()
+    was_open = store.settings_for(event.id).is_open
     if payload.open and capacity is None:
         stored = store.settings_for(event.id).capacity
         capacity = stored if stored is not None else (event.expected_attendance or None)
@@ -258,6 +264,11 @@ def save_registration_settings(
         raise _below_registered(error.registered) from None
     except StaleRegistrationSettings:
         raise _stale_request() from None
+    # G13: opening tells the Attendees; closing tells those registered.
+    if saved.is_open and not was_open:
+        notify_registration_opened(event)
+    elif was_open and not saved.is_open:
+        notify_registration_closed(event)
     return _settings_out(saved, event)
 
 
@@ -547,6 +558,9 @@ def withdraw(registration_id: str, user: Attendee) -> MyRegistrationOut:
         reason, message = WITHDRAW_REFUSALS[result.outcome]
         raise _refused(reason, message)
     assert result.registration is not None  # noqa: S101 - WITHDRAWN carries it
+    event = event_store.repository().get_event(result.registration.event_id)
+    if event is not None:
+        notify_attendee_withdrew(event)
     return _my_out(result.registration, store.get_open(result.registration.event_id))
 
 

@@ -119,7 +119,8 @@ async function sentWith(page: Page, eventId: string, action: string, click: () =
 }
 
 const status = (page: Page) => page.locator('.detail-banner[role="status"]')
-const NAIVE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/
+// Naive (no time zone). Postgres keeps microseconds, so fractional seconds are allowed.
+const NAIVE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/
 
 test.beforeEach(async ({ request }) => {
   expect((await request.post(`${API}/__test__/reset`)).ok()).toBeTruthy()

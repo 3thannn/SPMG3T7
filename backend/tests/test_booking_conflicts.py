@@ -294,9 +294,10 @@ class TestTheRefusalSaysWhatItClashesWith:
         self, client, coordinator, events, booking_repository, unavailability_repository,
         buffered_hall,
     ):
+        # Closed first: marking it after would flag the two bookings (US12.2).
+        blackout(unavailability_repository, DAY, DAY)
         seed(booking_repository, 11, "11:30", "12:30")
         seed(booking_repository, 10, "08:00", "09:15", status=BookingStatus.REQUESTED)
-        blackout(unavailability_repository, DAY, DAY)
 
         detail = not_available(request(client, coordinator))
 

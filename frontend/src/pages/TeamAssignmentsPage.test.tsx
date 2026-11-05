@@ -109,3 +109,31 @@ it('allows filtering by coordinator', async () => {
   expect(screen.getByText('Alice Event 2')).toBeInTheDocument()
   expect(screen.queryByText('Bob Event')).not.toBeInTheDocument()
 })
+
+it('filters to unassigned events, and back to all', async () => {
+  listEventsMock.mockResolvedValue([
+    buildEvent({ id: '101', title: 'Alice Event', coordinatorId: '2', coordinatorName: 'Alice Chen' }),
+    buildEvent({ id: '102', title: 'Nobody Event', coordinatorId: null, coordinatorName: undefined }),
+  ])
+
+  render(<TeamAssignmentsPage session={lead} />)
+
+  await screen.findByText('Alice Event')
+  const filterSelect = screen.getByLabelText('Filter by Coordinator:')
+  await userEvent.selectOptions(filterSelect, 'unassigned')
+
+  expect(screen.getByText('Nobody Event')).toBeInTheDocument()
+  expect(screen.queryByText('Alice Event')).not.toBeInTheDocument()
+
+  await userEvent.selectOptions(filterSelect, 'all')
+  expect(screen.getByText('Alice Event')).toBeInTheDocument()
+})
+
+it('says so when the events cannot be loaded', async () => {
+  listEventsMock.mockRejectedValue(new Error('offline'))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+
+  render(<TeamAssignmentsPage session={lead} />)
+
+  expect(await screen.findByText('Could not load team assignments.')).toBeInTheDocument()
+})

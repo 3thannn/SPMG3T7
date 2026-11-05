@@ -80,8 +80,8 @@ class StaleFlag(RuntimeError):
 
 
 def _now() -> str:
-    """A naive UTC timestamp, like every other recorded time."""
-    return datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
+    """A naive UTC timestamp to the microsecond, like every other recorded time."""
+    return datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="microseconds")
 
 
 def _embedded_name(row: dict, key: str) -> str:
@@ -269,7 +269,9 @@ class InMemorySafetyDecisions:
                 event_id, actor_id=officer_id, to_status=to_status(outcome), note=note
             ).updated_at
             if outcome is not SafetyOutcome.APPROVED
-            else datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
+            # To the microsecond, as the event store's times are, so an approval
+            # sorts after a rejection made in the same second.
+            else datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="microseconds")
         )
         decision_id = self.next_id
         self.next_id += 1

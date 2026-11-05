@@ -1,14 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import './VenueHolds.css'
 import {
-  EMPTY_HOLD,
-  listHoldableEvents,
   listHolds,
   nowLocal,
-  placeHold,
-  validateHold,
-  type HoldableEvent,
-  type HoldInput,
+  releaseHold,
+  updateHold,
+  validateExpiry,
   type HoldRecord,
 } from '../holdsStore'
 import { EventRuleError, formatBookingTimes } from '../eventsStore'
@@ -23,33 +20,28 @@ type VenueHoldsProps = {
   now?: string
 }
 
-type Loaded<T> =
+type Loaded =
   | { state: 'loading' }
-  | { state: 'loaded'; items: T[] }
+  | { state: 'loaded'; items: HoldRecord[] }
   | { state: 'error'; message: string }
 
-function bySchedule(a: HoldRecord, b: HoldRecord): number {
-  return a.startsAt.localeCompare(b.startsAt) || a.endsAt.localeCompare(b.endsAt)
-}
-
-/** A datetime-local value from a stored time, which may carry seconds. */
-function asInputValue(iso: string): string {
-  return iso.slice(0, 16)
-}
+/** What a row's open form is doing: changing the expiry, or releasing the hold. */
+type Editing = { holdId: string; mode: 'expiry' | 'release'; value: string }
 
 /**
- * A venue's tentative holds — US14.3, for Venue Staff.
+ * A venue's tentative holds — US14.3 and US14.6, for Venue Staff.
  *
- * A hold keeps this venue's slot for an event's Coordinator until it expires;
- * the Coordinator turns it into a request from the event page. Its own card
+ * A hold starts when Venue Staff approve a booking request as one (Booking
+ * requests page), and keeps this venue's slot until it expires or the
+ * Coordinator confirms it. Here Venue Staff change a live hold's expiry or
+ * release it with a reason; the Coordinator is told either way. Its own card
  * and its own requests, like US12.1's, so a failure here leaves the venue
  * details readable. An expired hold stays listed, marked expired, because it
  * no longer keeps the slot but is still the record of what was offered.
  */
 export default function VenueHolds({ venueId, session, now }: VenueHoldsProps) {
-  const [holds, setHolds] = useState<Loaded<HoldRecord>>({ state: 'loading' })
-  const [events, setEvents] = useState<Loaded<HoldableEvent>>({ state: 'loading' })
-  const [fields, setFields] = useState<HoldInput>(EMPTY_HOLD)
+  const [holds, setHolds] = useState<Loaded>({ state: 'loading' })
+  const [editing, setEditing] = useState<Editing | null>(null)
   const [formError, setFormError] = useState('')
   const [saved, setSaved] = useState('')
   const [busy, setBusy] = useState(false)
@@ -65,69 +57,75 @@ export default function VenueHolds({ venueId, session, now }: VenueHoldsProps) {
           setHolds({ state: 'error', message: unexpectedFailureMessage(error, 'load the holds') })
         }
       })
-    listHoldableEvents(session)
-      .then((items) => {
-        if (!cancelled) setEvents({ state: 'loaded', items })
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setEvents({
-            state: 'error',
-            message: unexpectedFailureMessage(error, 'load the events you can hold for'),
-          })
-        }
-      })
     return () => {
       cancelled = true
     }
   }, [venueId, session, session.token])
 
-  function set<K extends keyof HoldInput>(field: K, value: string) {
-    setFields((current) => ({ ...current, [field]: value }))
-    setSaved('')
+  function open(hold: HoldRecord, mode: Editing['mode']) {
+    setEditing({
+      holdId: hold.id,
+      mode,
+      value: mode === 'expiry' ? (hold.holdExpiresAt ?? '').slice(0, 16) : '',
+    })
     setFormError('')
+    setSaved('')
   }
 
-  /** Picking an event starts the times at the event's own, the likeliest slot. */
-  function chooseEvent(eventId: string) {
-    const chosen = events.state === 'loaded' ? events.items.find((e) => e.id === eventId) : null
-    setFields((current) => ({
-      ...current,
-      eventId,
-      startsAt: chosen ? asInputValue(chosen.startsAt) : current.startsAt,
-      endsAt: chosen ? asInputValue(chosen.endsAt) : current.endsAt,
-    }))
-    setSaved('')
-    setFormError('')
+  function swap(updated: HoldRecord) {
+    setHolds((current) =>
+      current.state === 'loaded'
+        ? {
+            state: 'loaded',
+            items: current.items
+              .map((item) => (item.id === updated.id ? updated : item))
+              // A released hold is Cancelled: no longer a hold on this venue.
+              .filter((item) => item.status === 'Held' || item.status === 'Expired'),
+          }
+        : current,
+    )
   }
 
-  function submit(submitEvent: FormEvent) {
+  function submit(submitEvent: FormEvent, hold: HoldRecord) {
     submitEvent.preventDefault()
-    const problem = validateHold(fields, now ?? nowLocal())
+    if (editing === null) return
+    const value = editing.value.trim()
+    const problem =
+      editing.mode === 'expiry'
+        ? validateExpiry(value, hold.startsAt, now ?? nowLocal())
+        : value
+          ? ''
+          : 'Give the Coordinator a reason for releasing this hold.'
     if (problem) {
       setFormError(problem)
       return
     }
     setBusy(true)
     setFormError('')
-    placeHold(venueId, fields, session)
-      .then((created) => {
-        setHolds((current) =>
-          current.state === 'loaded'
-            ? { state: 'loaded', items: [...current.items, created].sort(bySchedule) }
-            : current,
-        )
-        setFields(EMPTY_HOLD)
+    const action =
+      editing.mode === 'expiry'
+        ? updateHold(hold.id, value, session)
+        : releaseHold(hold.id, value, session)
+    action
+      .then((updated) => {
+        swap(updated)
+        setEditing(null)
         setSaved(
-          `Held for ${displayEventTitle(created.eventTitle)} until ` +
-            `${formatTimestamp(created.holdExpiresAt ?? '')}. Its Coordinator can now request it.`,
+          editing.mode === 'expiry'
+            ? `The hold for ${displayEventTitle(updated.eventTitle)} now expires ` +
+                `${formatTimestamp(updated.holdExpiresAt ?? '')}. Its Coordinator has been told.`
+            : `Released the hold for ${displayEventTitle(updated.eventTitle)}. ` +
+                'Its Coordinator has been told why.',
         )
       })
       .catch((error: unknown) => {
         setFormError(
           error instanceof EventRuleError
             ? error.message
-            : unexpectedFailureMessage(error, 'place this hold'),
+            : unexpectedFailureMessage(
+                error,
+                editing.mode === 'expiry' ? 'change this hold' : 'release this hold',
+              ),
         )
       })
       .finally(() => setBusy(false))
@@ -139,11 +137,15 @@ export default function VenueHolds({ venueId, session, now }: VenueHoldsProps) {
         Tentative holds
       </h2>
       <p className="venue-holds-lede">
-        A hold keeps a slot for an event's Coordinator until it expires. It is not a confirmed
-        booking.
+        A hold starts when you approve a booking request as one, and keeps the slot until the
+        Coordinator confirms it or it expires. It is not a confirmed booking.
       </p>
+      {saved && (
+        <p className="hold-saved" role="status">
+          {saved}
+        </p>
+      )}
       {renderHolds()}
-      {renderForm()}
     </section>
   )
 
@@ -170,96 +172,74 @@ export default function VenueHolds({ venueId, session, now }: VenueHoldsProps) {
             </span>
             <span className="hold-expiry">
               {hold.holdExpired ? 'Expired' : 'Until'} {formatTimestamp(hold.holdExpiresAt ?? '')}
-              {hold.heldByName && ` · by ${hold.heldByName}`}
+              {hold.heldByName && ` · approved by ${hold.heldByName}`}
             </span>
+            {!hold.holdExpired && editing?.holdId !== hold.id && (
+              <span className="hold-actions">
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  aria-label={`Change the expiry of the hold for ${displayEventTitle(hold.eventTitle)}`}
+                  onClick={() => open(hold, 'expiry')}
+                >
+                  Change expiry
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  aria-label={`Release the hold for ${displayEventTitle(hold.eventTitle)}`}
+                  onClick={() => open(hold, 'release')}
+                >
+                  Release
+                </button>
+              </span>
+            )}
+            {editing?.holdId === hold.id && renderForm(hold, editing)}
           </li>
         ))}
       </ul>
     )
   }
 
-  function renderForm() {
-    const noEvents = events.state === 'loaded' && events.items.length === 0
+  function renderForm(hold: HoldRecord, current: Editing) {
+    const isExpiry = current.mode === 'expiry'
+    const inputId = `hold-${current.mode}-${hold.id}`
     return (
-      <form className="hold-form" onSubmit={submit} noValidate>
-        <h3 className="hold-form-title">Place a hold</h3>
-        {events.state === 'error' && (
-          <p className="form-error" role="alert">
-            {events.message}
-          </p>
-        )}
-        {noEvents && (
-          <p className="muted">
-            No events can take a hold right now. An event needs a Coordinator and to be Approved
-            or in Planning.
-          </p>
-        )}
+      <form className="hold-form" onSubmit={(submitEvent) => submit(submitEvent, hold)} noValidate>
         {formError && (
           <p className="form-error" role="alert">
             {formError}
           </p>
         )}
-        {saved && (
-          <p className="hold-saved" role="status">
-            {saved}
-          </p>
-        )}
-
-        <fieldset className="hold-fields" disabled={busy || events.state !== 'loaded' || noEvents}>
-          <div className="field hold-event-field">
-            <label htmlFor="hold-event">Event</label>
-            <select
-              id="hold-event"
-              value={fields.eventId}
-              onChange={(changeEvent) => chooseEvent(changeEvent.target.value)}
-            >
-              <option value="">Choose an event…</option>
-              {events.state === 'loaded' &&
-                events.items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {displayEventTitle(item.title)}
-                    {item.coordinatorName ? ` — ${item.coordinatorName}` : ''}
-                  </option>
-                ))}
-            </select>
-          </div>
-
+        <fieldset className="hold-fields" disabled={busy}>
           <div className="field">
-            <label htmlFor="hold-start">Starts</label>
+            <label htmlFor={inputId}>{isExpiry ? 'New expiry' : 'Reason for releasing'}</label>
             <input
-              id="hold-start"
-              type="datetime-local"
-              value={fields.startsAt}
-              onChange={(changeEvent) => set('startsAt', changeEvent.target.value)}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="hold-end">Ends</label>
-            <input
-              id="hold-end"
-              type="datetime-local"
-              min={fields.startsAt || undefined}
-              value={fields.endsAt}
-              onChange={(changeEvent) => set('endsAt', changeEvent.target.value)}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="hold-expiry">Hold expires</label>
-            <input
-              id="hold-expiry"
-              type="datetime-local"
-              min={now ?? nowLocal()}
-              max={fields.startsAt || undefined}
-              value={fields.expiresAt}
-              onChange={(changeEvent) => set('expiresAt', changeEvent.target.value)}
+              id={inputId}
+              type={isExpiry ? 'datetime-local' : 'text'}
+              min={isExpiry ? (now ?? nowLocal()) : undefined}
+              max={isExpiry ? hold.startsAt.slice(0, 16) : undefined}
+              value={current.value}
+              onChange={(changeEvent) => {
+                setEditing({ ...current, value: changeEvent.target.value })
+                setFormError('')
+              }}
             />
           </div>
         </fieldset>
-
-        <button type="submit" className="btn btn-primary" disabled={busy || noEvents}>
-          {busy ? 'Placing…' : 'Place hold'}
+        <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+          {busy ? 'Saving…' : isExpiry ? 'Save expiry' : 'Release hold'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={busy}
+          onClick={() => {
+            setEditing(null)
+            setFormError('')
+          }}
+        >
+          Keep as is
         </button>
       </form>
     )

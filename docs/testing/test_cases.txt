@@ -322,8 +322,8 @@
   expected: Every catalogue term is offered
   layer: Unit
   test: backend/tests/test_event_needs.py::TestFixedLists::test_the_lists_use_the_venue_catalogue_s_words
-  why: Suitability (US18.1) matches requests to venues by these words. Note - the customer later said
-    layouts should be managed in the catalogue (Week 9); this test holds the team's fixed list.
+  why: Suitability (US18.1) matches requests to venues by these words. The catalogue's own layouts
+    are added to these (Week 9; TC-US2.1-20 to 27).
 
 - id: TC-US2.1-05
   ac: US2.1-AC3
@@ -372,6 +372,102 @@
   layer: Component
   test: frontend/src/pages/NewEventPage.test.tsx::saves a draft with every need unanswered and shows no errors
   why: Drafts skip the submit checks.
+
+- id: TC-US2.1-20
+  ac: US2.1-AC2
+  category: Happy path
+  scenario: A layout a venue lists joins the standard ones
+  preconditions: None
+  steps: layout_choices over the catalogue's layouts
+  data: Theatre, Ballroom, ballroom, Amphitheatre
+  expected: The standard list, then Amphitheatre, Ballroom
+  layer: Unit
+  test: backend/tests/test_event_needs.py::TestLayoutsFromTheCatalogue::test_a_layout_a_venue_lists_is_added_after_the_standard_ones
+  why: Week 9: layouts are managed in the catalogue.
+
+- id: TC-US2.1-21
+  ac: US2.1-AC2
+  category: Boundary
+  scenario: A standard name in another case is not repeated
+  preconditions: None
+  steps: layout_choices
+  data: THEATRE, theatre
+  expected: The standard list only
+  layer: Unit
+  test: backend/tests/test_event_needs.py::TestLayoutsFromTheCatalogue::test_a_standard_name_in_another_case_is_not_repeated
+  why: Matching ignores case.
+
+- id: TC-US2.1-22
+  ac: US2.1-AC2
+  category: Happy path
+  scenario: The route lists what the catalogue holds now
+  preconditions: Great Hall lists Ballroom
+  steps: GET /venues/layouts as the Organiser
+  data: Ballroom
+  expected: 200; Ballroom last
+  layer: API integration
+  test: backend/tests/test_event_needs.py::TestLayoutsFromTheCatalogue::test_the_route_lists_what_the_catalogue_holds_now
+  why: The form reads this.
+
+- id: TC-US2.1-23
+  ac: US2.1-AC2
+  category: Happy path
+  scenario: An Organiser can choose a layout Venue Staff added
+  preconditions: Great Hall lists Ballroom
+  steps: Create an event preferring Ballroom
+  data: Ballroom
+  expected: 201
+  layer: API integration
+  test: backend/tests/test_event_needs.py::TestLayoutsFromTheCatalogue::test_an_organiser_can_choose_a_layout_venue_staff_added
+  why: G7/A7 closed.
+
+- id: TC-US2.1-24
+  ac: US2.1-AC2
+  category: Negative
+  scenario: A layout no venue lists is still refused
+  preconditions: No venue lists Ballroom
+  steps: Create an event preferring Ballroom
+  data: Ballroom
+  expected: 400 'Ballroom is not one of the options'
+  layer: API integration
+  test: backend/tests/test_event_needs.py::TestLayoutsFromTheCatalogue::test_a_layout_no_venue_lists_is_still_refused
+  why: Removing a layout removes the choice.
+
+- id: TC-US2.1-25
+  ac: US2.1-AC2
+  category: Happy path
+  scenario: The form offers a layout Venue Staff added
+  preconditions: The catalogue lists Ballroom
+  steps: Render the needs fields
+  data: Ballroom
+  expected: Ballroom is an option
+  layer: Component
+  test: frontend/src/components/EventNeedsFields.test.tsx::TC-NF01 offers a layout Venue Staff added to a venue
+  why: AC2 on screen.
+
+- id: TC-US2.1-26
+  ac: US2.1-AC2
+  category: Negative
+  scenario: The form keeps the standard list offline
+  preconditions: The catalogue cannot be read
+  steps: Render the needs fields
+  data: None
+  expected: Theatre offered; Ballroom not
+  layer: Component
+  test: frontend/src/components/EventNeedsFields.test.tsx::TC-NF02 keeps the standard list when the catalogue cannot be read
+  why: Error path.
+
+- id: TC-US2.1-27
+  ac: US2.1-AC2
+  category: Boundary
+  scenario: A saved layout the catalogue dropped still shows
+  preconditions: An event preferring Ballroom
+  steps: Render with no catalogue
+  data: Ballroom
+  expected: Ballroom is shown as chosen
+  layer: Component
+  test: frontend/src/components/EventNeedsFields.test.tsx::TC-NF03 still shows a saved layout the catalogue no longer lists
+  why: Removal does not blank an existing answer.
 
 - id: TC-US2.2-01
   ac: US2.2-AC1
@@ -2161,6 +2257,78 @@
   test: frontend/src/pages/NotificationsPage.test.tsx::US10.4 labels an Attendee notice of a new date, time or venue
   why: AC5: the Attendee uses the same list; they cannot open the event itself, hence the link.
 
+- id: TC-US10.5-01
+  ac: US10.5-AC1
+  category: Happy path
+  scenario: Venue Staff are told a request is waiting
+  preconditions: A Planning event
+  steps: Request the Great Hall as Priya
+  data: 2 Nov 2027 09:00
+  expected: One booking-requested notice to Sam naming the venue, event and start
+  layer: API integration
+  test: backend/tests/test_week1_notices.py::TestBookingRequested::test_venue_staff_are_told_a_request_is_waiting
+  why: AC1.
+
+- id: TC-US10.5-02
+  ac: US10.5-AC1
+  category: Negative
+  scenario: A refused request tells nobody
+  preconditions: A Planning event
+  steps: Request with no start
+  data: None
+  expected: No notice
+  layer: API integration
+  test: backend/tests/test_week1_notices.py::TestBookingRequested::test_a_refused_request_tells_nobody
+  why: Only a stored request is news.
+
+- id: TC-US10.5-03
+  ac: US10.5-AC2
+  category: Happy path
+  scenario: Opening registration tells every Attendee
+  preconditions: A Confirmed event, registration closed
+  steps: Open it as the Coordinator
+  data: Capacity 30
+  expected: One registration-opened notice per Attendee
+  layer: API integration
+  test: backend/tests/test_week1_notices.py::TestRegistrationOpensAndCloses::test_opening_tells_every_attendee
+  why: AC2.
+
+- id: TC-US10.5-04
+  ac: US10.5-AC2
+  category: Negative
+  scenario: Saving it open again tells nobody
+  preconditions: Registration already open
+  steps: Save it open with a new capacity
+  data: Capacity 40
+  expected: No notice
+  layer: API integration
+  test: backend/tests/test_week1_notices.py::TestRegistrationOpensAndCloses::test_saving_it_open_again_tells_nobody_twice
+  why: AC2's second sentence.
+
+- id: TC-US10.5-05
+  ac: US10.5-AC3
+  category: Happy path
+  scenario: Closing tells those registered
+  preconditions: Open, with one registration
+  steps: Close it as the Coordinator
+  data: Casey
+  expected: One registration-closed notice, to Casey
+  layer: API integration
+  test: backend/tests/test_week1_notices.py::TestRegistrationOpensAndCloses::test_closing_tells_those_registered
+  why: AC3.
+
+- id: TC-US10.5-06
+  ac: US10.5-AC4
+  category: Happy path
+  scenario: A withdrawal tells the Organiser and Coordinator
+  preconditions: Open, with one registration
+  steps: Casey withdraws
+  data: Casey
+  expected: One attendee-withdrew notice each to Priya and Dylan
+  layer: API integration
+  test: backend/tests/test_week1_notices.py::TestAttendeeWithdraws::test_the_organiser_and_coordinator_are_told_a_place_is_free
+  why: AC4.
+
 - id: TC-US11.1-01
   ac: US11.1-AC1
   category: Happy path
@@ -2741,14 +2909,14 @@
 - id: TC-US12.2-05
   ac: US12.2-AC3
   category: Happy path
-  scenario: The event stays Confirmed when a booking is flagged
+  scenario: The flagged booking's event is never cancelled
   preconditions: A disposable Postgres; a Confirmed event with a booking
   steps: Close the hall
   data: Test Hall
-  expected: The booking is Needs replacement; the event is still Confirmed
+  expected: The booking is Needs replacement; the event is Planning, not Cancelled (US12.4 AC1)
   layer: DB integration
-  test: backend/integration/test_us12_4_db.py::TestTheFlag::test_a_confirmed_event_stays_confirmed_and_both_are_told
-  why: AC3, and US12.4 AC1 and AC2 (see TC-US12.4-02).
+  test: backend/integration/test_us12_4_db.py::TestTheFlag::test_a_confirmed_event_goes_back_to_planning_and_both_are_told
+  why: AC3 ("not cancelled"); since Week 9 the event goes back to Planning (TC-US12.4-09).
 
 - id: TC-US12.2-06
   ac: US12.2-AC5
@@ -2801,28 +2969,27 @@
 
 - id: TC-US12.4-01
   ac: US12.4-AC1
-  category: Negative
-  scenario: A flag alone does not change the event
-  preconditions: A Confirmed event whose booking was flagged
-  steps: GET the event
-  data: None
-  expected: Still Confirmed
+  category: Happy path
+  scenario: A closure sends a Confirmed event back to Planning
+  preconditions: A Confirmed event with Great Hall and Third Venue bookings
+  steps: Venue Staff mark Great Hall unavailable that day
+  data: 2 Nov 2099, maintenance
+  expected: 1 booking flagged; event Planning; history Confirmed to Planning by Sam with the reason
   layer: API integration
-  test: backend/tests/test_venue_problem_us12_4.py::TestTheFlagAlone::test_the_event_stays_confirmed
-  why: AC1: the Coordinator acts, not the system.
+  test: backend/tests/test_venue_problem_us12_4.py::TestTheClosureReopensPlanning::test_the_event_goes_back_to_planning_with_the_reason
+  why: AC1 (Week 9: status reverts).
 
 - id: TC-US12.4-02
   ac: US12.4-AC2
   category: Happy path
-  scenario: The Organiser is told as well as the Coordinator
-  preconditions: As TC-US12.2-05
-  steps: Close the hall
-  data: Test Hall, 10 to 12 Nov 2035
-  expected: Booking-conflict notices to the Coordinator and the Organiser, the Organiser's saying
-    the Coordinator will arrange a replacement
-  layer: DB integration
-  test: backend/integration/test_us12_4_db.py::TestTheFlag::test_a_confirmed_event_stays_confirmed_and_both_are_told
-  why: AC2; the same test as TC-US12.2-05, which checks a different part of it.
+  scenario: The Coordinator and the Organiser are told
+  preconditions: As TC-US12.4-01
+  steps: Close the hall; read notices
+  data: Great Hall
+  expected: Coordinator: booking-conflict and back-in-planning; Organiser: back-in-planning
+  layer: API integration
+  test: backend/tests/test_venue_problem_us12_4.py::TestTheClosureReopensPlanning::test_coordinator_and_organiser_are_told
+  why: AC2.
 
 - id: TC-US12.4-03
   ac: US12.4-AC3
@@ -2874,6 +3041,54 @@
   test: backend/tests/test_confirm_event_us4_7.py::TestRefusals::test_a_booking_needing_a_replacement_is_refused
   why: AC5, enforced by US4.7.
 
+
+- id: TC-US12.4-07
+  ac: US12.4-AC1
+  category: Happy path
+  scenario: Only the closed venue is flagged
+  preconditions: As TC-US12.4-01
+  steps: Close the hall
+  data: Great Hall
+  expected: Great Hall Needs replacement; Third Venue still Confirmed
+  layer: API integration
+  test: backend/tests/test_venue_problem_us12_4.py::TestTheClosureReopensPlanning::test_only_the_closed_venue_is_flagged
+  why: AC1's 'other bookings untouched'.
+
+- id: TC-US12.4-08
+  ac: US12.4-AC1
+  category: Negative
+  scenario: A Planning event is flagged but not moved
+  preconditions: A Planning event with a Great Hall booking
+  steps: Close the hall
+  data: Great Hall
+  expected: Booking flagged; event still Planning
+  layer: API integration
+  test: backend/tests/test_venue_problem_us12_4.py::TestTheClosureReopensPlanning::test_a_planning_event_is_flagged_but_not_moved
+  why: Only Confirmed moves.
+
+- id: TC-US12.4-09
+  ac: US12.4-AC1, US12.4-AC2
+  category: Happy path
+  scenario: The trigger moves the event and tells both
+  preconditions: A disposable Postgres; a Confirmed event with a booking
+  steps: Close the hall
+  data: Test Hall
+  expected: Booking Needs replacement; event Planning with status_changes by Staff; three notices in order
+  layer: DB integration
+  test: backend/integration/test_us12_4_db.py::TestTheFlag::test_a_confirmed_event_goes_back_to_planning_and_both_are_told
+  why: The database half of AC1 and AC2.
+
+- id: TC-US12.4-10
+  ac: US12.4-AC1
+  category: Negative
+  scenario: The trigger leaves a Planning event in Planning
+  preconditions: A disposable Postgres; a Planning event with a booking
+  steps: Close the hall
+  data: Test Hall
+  expected: Booking flagged; no status change; one notice
+  layer: DB integration
+  test: backend/integration/test_us12_4_db.py::TestTheFlag::test_a_planning_event_is_flagged_and_left_in_planning
+  why: Only Confirmed moves, in SQL too.
 
 - id: TC-US14.1-01
   ac: US14.1-AC1
@@ -3413,88 +3628,136 @@
 - id: TC-US14.3-01
   ac: US14.3-AC1
   category: Happy path
-  scenario: Venue Staff place a hold
-  preconditions: An Approved event with a Coordinator
-  steps: POST a hold as Venue Staff
-  data: Great Hall, 2 Nov 09:00-17:00, expires 8 Oct 17:00
-  expected: 201; status Held, linked to the event, with its expiry and who held it
+  scenario: Venue Staff approve a request as a hold
+  preconditions: A Planning event with a Requested Great Hall booking
+  steps: Approve it with holdUntil as Venue Staff
+  data: Expires 8 Oct 17:00
+  expected: 200; status Held, its expiry, held by Sam
   layer: API integration
-  test: backend/tests/test_venue_holds.py::TestPlacingAHold::test_tc_h01_venue_staff_place_a_hold
-  why: AC1.
+  test: backend/tests/test_venue_holds.py::TestTheHoldStartsAfterApproval::test_tc_h01_venue_staff_approve_a_request_as_a_hold
+  why: AC1: the hold starts after approval (Week 9).
 
 - id: TC-US14.3-02
   ac: US14.3-AC1
   category: Happy path
-  scenario: A hold is stored as a booking nobody has requested yet
+  scenario: The approval is recorded on the hold
   preconditions: As TC-US14.3-01
-  steps: Place a hold; read the store
+  steps: Approve as a hold; read the store
   data: As above
-  expected: status Held, held_by Venue Staff, requested_by empty
+  expected: Held; requested by Priya; held by and decided by Sam
   layer: API integration
-  test: backend/tests/test_venue_holds.py::TestPlacingAHold::test_tc_h02_it_is_stored_as_a_booking_nobody_has_requested_yet
-  why: AC1: a hold is a venue booking.
+  test: backend/tests/test_venue_holds.py::TestTheHoldStartsAfterApproval::test_tc_h02_the_approval_is_recorded_on_the_hold
+  why: AC1: approval, holder and expiry on record.
 
 - id: TC-US14.3-03
-  ac: US14.3-AC6
+  ac: US14.3-AC7
   category: Negative
-  scenario: Only Venue Staff place holds
+  scenario: There is no hold without a request
+  preconditions: Venue Staff
+  steps: POST /holds
+  data: Empty body
+  expected: 405: the route no longer exists
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestTheHoldStartsAfterApproval::test_tc_h03_there_is_no_hold_before_a_request
+  why: The old hold-first order is gone.
+
+- id: TC-US14.3-04
+  ac: US14.3-AC1
+  category: Happy path
+  scenario: Approving with no expiry still confirms outright
+  preconditions: As TC-US14.3-01
+  steps: Approve with no holdUntil
+  data: None
+  expected: Confirmed
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestTheHoldStartsAfterApproval::test_tc_h04_approving_without_an_expiry_still_confirms_outright
+  why: AC1's last sentence; US16.1 unchanged.
+
+- id: TC-US14.3-05
+  ac: US14.3-AC6
+  category: Happy path
+  scenario: The Coordinator is told to confirm in time
+  preconditions: As TC-US14.3-01
+  steps: Approve as a hold; read notices
+  data: Expires 8 Oct 17:00
+  expected: One hold-placed notice naming 08 Oct 2027, 17:00
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestTheHoldStartsAfterApproval::test_tc_h05_the_coordinator_is_told_to_confirm_in_time
+  why: AC6.
+
+- id: TC-US14.3-06
+  ac: US14.3-AC1
+  category: Negative
+  scenario: Only Venue Staff approve holds
   preconditions: Any other role
-  steps: Place a hold
+  steps: Approve as a hold
   data: One row per role
   expected: 403
   layer: API integration
-  test: backend/tests/test_venue_holds.py::TestPlacingAHold::test_tc_h06_only_venue_staff_place_holds
-  why: AC6's assumption, built as stated.
-
-- id: TC-US14.3-04
-  ac: US14.3-AC2
-  category: Negative
-  scenario: An expiry is required
-  preconditions: As TC-US14.3-01
-  steps: Place a hold with no expiry
-  data: None
-  expected: 400 with a sentence
-  layer: API integration
-  test: backend/tests/test_venue_holds.py::TestExpiry::test_tc_h11_expiry_is_required
-  why: AC2.
-
-- id: TC-US14.3-05
-  ac: US14.3-AC2
-  category: Boundary
-  scenario: An expiry of exactly now is refused
-  preconditions: Now = 1 Oct 2027 09:00
-  steps: Place a hold expiring at 09:00
-  data: 2027-10-01T09:00
-  expected: 400
-  layer: API integration
-  test: backend/tests/test_venue_holds.py::TestExpiry::test_tc_h16_expiry_exactly_now_is_refused
-  why: AC2's "in the future", at the boundary.
-
-- id: TC-US14.3-06
-  ac: US14.3-AC2
-  category: Boundary
-  scenario: An expiry a minute from now is accepted
-  preconditions: As TC-US14.3-05
-  steps: Place a hold expiring at 09:01
-  data: 2027-10-01T09:01
-  expected: 201
-  layer: API integration
-  test: backend/tests/test_venue_holds.py::TestExpiry::test_tc_h17_expiry_a_minute_from_now_is_accepted
-  why: Just above the boundary.
+  test: backend/tests/test_venue_holds.py::TestTheHoldStartsAfterApproval::test_tc_h06_only_venue_staff_approve_holds
+  why: Venue Staff decide bookings (US16.1).
 
 - id: TC-US14.3-07
   ac: US14.3-AC2
   category: Negative
+  scenario: A malformed expiry is refused
+  preconditions: As TC-US14.3-01
+  steps: Approve with holdUntil 'next week'
+  data: next week
+  expected: 400 with a sentence
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestExpiry::test_tc_h11_a_malformed_expiry_is_refused
+  why: AC2.
+
+- id: TC-US14.3-08
+  ac: US14.3-AC2
+  category: Boundary
+  scenario: An expiry of exactly now is refused
+  preconditions: Now = 1 Oct 2027 09:00
+  steps: Approve as a hold expiring at 09:00
+  data: 2027-10-01T09:00
+  expected: 400
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestExpiry::test_tc_h16_expiry_exactly_now_is_refused
+  why: AC2's 'in the future', at the boundary.
+
+- id: TC-US14.3-09
+  ac: US14.3-AC2
+  category: Boundary
+  scenario: An expiry a minute from now is accepted
+  preconditions: As TC-US14.3-08
+  steps: Approve as a hold expiring at 09:01
+  data: 2027-10-01T09:01
+  expected: 200
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestExpiry::test_tc_h17_expiry_a_minute_from_now_is_accepted
+  why: Just above the boundary.
+
+- id: TC-US14.3-10
+  ac: US14.3-AC2
+  category: Boundary
   scenario: An expiry after the booking starts is refused
   preconditions: As TC-US14.3-01
-  steps: Place a hold expiring one minute after the start
+  steps: Approve as a hold expiring a minute after the start
   data: 2027-11-02T09:01
   expected: 400
   layer: API integration
   test: backend/tests/test_venue_holds.py::TestExpiry::test_tc_h18_expiry_after_the_booking_starts_is_refused
-  why: Team rule (later written into US14.6 AC1): a hold must expire by the time the booking starts.
+  why: AC2's upper bound, just over.
 
-- id: TC-US14.3-08
+- id: TC-US14.3-11
+  ac: US14.3-AC2
+  category: Boundary
+  scenario: An expiry exactly at the start is accepted
+  preconditions: As TC-US14.3-01
+  steps: Approve as a hold expiring at the start
+  data: 2027-11-02T09:00
+  expected: 200
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestExpiry::test_tc_h19_expiry_exactly_at_the_start_is_accepted
+  why: AC2's upper bound, at it.
+
+- id: TC-US14.3-12
   ac: US14.3-AC3
   category: Happy path
   scenario: An unexpired hold takes the slot
@@ -3504,67 +3767,187 @@
   expected: holds_venue true
   layer: API integration
   test: backend/tests/test_venue_holds.py::TestTheSlotIsTaken::test_tc_h23_a_minute_before_expiry_it_still_holds
-  why: AC3, just inside the boundary; the blocking itself is TC-US15.1-02's Held row.
+  why: AC3, just inside the boundary.
 
-- id: TC-US14.3-09
+- id: TC-US14.3-13
+  ac: US14.3-AC3
+  category: Boundary
+  scenario: At expiry the slot is free
+  preconditions: A hold in place
+  steps: Read the booking at the expiry
+  data: Now = 8 Oct 17:00
+  expected: holds_venue false
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestTheSlotIsTaken::test_tc_h24_at_expiry_the_slot_is_free
+  why: AC3 at the boundary.
+
+- id: TC-US14.3-14
   ac: US14.3-AC4
   category: Happy path
-  scenario: The Coordinator turns the hold into a request
+  scenario: The Coordinator confirms a held venue
   preconditions: A hold in place
-  steps: Request it as the assigned Coordinator
+  steps: POST /events/{id}/bookings/{bid}/confirm as Priya
   data: The hold
-  expected: 200; status Requested, same times; requested by Priya; still holds the venue
+  expected: 200; Confirmed; the expiry kept as history; still holds the venue
   layer: API integration
-  test: backend/tests/test_venue_holds.py::TestTurningAHoldIntoARequest::test_tc_h27_the_coordinator_requests_a_held_venue
+  test: backend/tests/test_venue_holds.py::TestTheCoordinatorConfirms::test_tc_h27_the_coordinator_confirms_a_held_venue
   why: AC4.
 
-- id: TC-US14.3-10
+- id: TC-US14.3-15
   ac: US14.3-AC4
   category: Negative
-  scenario: An expired hold cannot be requested
-  preconditions: A hold expiring 8 Oct 17:00
-  steps: Request it at 17:00
-  data: Now = 2027-10-08 17:00
-  expected: 409 hold-expired, "expired at 2027-10-08 17:00"; still Held
+  scenario: Only the assigned Coordinator confirms
+  preconditions: A hold in place
+  steps: Confirm as Venue Staff
+  data: The hold
+  expected: 403
   layer: API integration
-  test: backend/tests/test_venue_holds.py::TestTurningAHoldIntoARequest::test_tc_h30_an_expired_hold_cannot_be_requested
-  why: AC4's "before it expires", at the boundary.
+  test: backend/tests/test_venue_holds.py::TestTheCoordinatorConfirms::test_tc_h28_only_the_assigned_coordinator_confirms
+  why: AC4's 'assigned Coordinator'.
 
-- id: TC-US14.3-11
+- id: TC-US14.3-16
+  ac: US14.3-AC4
+  category: Negative
+  scenario: A request not yet approved cannot be confirmed
+  preconditions: A Requested booking
+  steps: Confirm it
+  data: The request
+  expected: 409 not-held, 'not approved this booking as a hold yet'
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestTheCoordinatorConfirms::test_tc_h29_a_request_not_yet_approved_cannot_be_confirmed
+  why: AC4: approval comes first.
+
+- id: TC-US14.3-17
+  ac: US14.3-AC4
+  category: Boundary
+  scenario: An expired hold cannot be confirmed
+  preconditions: A hold expiring 8 Oct 17:00
+  steps: Confirm at 17:00
+  data: Now = 2027-10-08 17:00
+  expected: 409 hold-expired, 'expired at 2027-10-08 17:00'; still Held
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestTheCoordinatorConfirms::test_tc_h30_an_expired_hold_cannot_be_confirmed
+  why: AC4's 'before it expires', at the boundary.
+
+- id: TC-US14.3-18
+  ac: US14.3-AC4
+  category: Negative
+  scenario: A confirmed hold cannot be confirmed twice
+  preconditions: A confirmed hold
+  steps: Confirm again
+  data: The booking
+  expected: 409 'This booking is already confirmed.'
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestTheCoordinatorConfirms::test_tc_h31_a_confirmed_hold_cannot_be_confirmed_twice
+  why: One confirmation per hold.
+
+- id: TC-US14.3-19
   ac: US14.3-AC5
   category: Negative
-  scenario: Venue Staff cannot confirm a hold
+  scenario: Venue Staff cannot decide a hold again
   preconditions: A hold in place
   steps: POST /booking-requests/{id}/approve
   data: The hold
-  expected: Refused not-requested; still Held
+  expected: Refused not-requested, 'already approved as a tentative hold'; still Held
   layer: API integration
-  test: backend/tests/test_venue_holds.py::TestNeverConfirmed::test_tc_h41_venue_staff_cannot_confirm_a_hold
-  why: AC5: a hold is never Confirmed.
+  test: backend/tests/test_venue_holds.py::TestNeverConfirmedOnItsOwn::test_tc_h41_venue_staff_cannot_approve_a_hold_again
+  why: AC5: only the Coordinator turns it Confirmed.
 
-- id: TC-US14.3-12
+- id: TC-US14.3-20
   ac: US14.3-AC5
   category: Happy path
   scenario: A hold is shown as Held however long it waits
   preconditions: A hold in place
-  steps: List it at several moments before expiry
+  steps: List it at several moments
   data: Several times
   expected: status Held each time
   layer: API integration
-  test: backend/tests/test_venue_holds.py::TestNeverConfirmed::test_tc_h42_a_hold_is_reported_as_held_however_long_it_waits
-  why: AC5's "never shown as Confirmed".
+  test: backend/tests/test_venue_holds.py::TestNeverConfirmedOnItsOwn::test_tc_h42_a_hold_is_reported_as_held_however_long_it_waits
+  why: AC5's 'never shown as Confirmed'.
 
-- id: TC-US14.3-13
+- id: TC-US14.3-21
+  ac: US14.3-AC5
+  category: Negative
+  scenario: A held booking holds up the safety check
+  preconditions: A Planning event whose only booking is Held
+  steps: Send it for its safety check
+  data: The event
+  expected: 409
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestNeverConfirmedOnItsOwn::test_tc_h43_a_held_booking_holds_up_the_safety_check
+  why: AC5's second sentence.
+
+- id: TC-US14.3-22
   ac: US14.3-AC1
   category: Happy path
-  scenario: Venue Staff place a hold from the venue page
-  preconditions: Venue Staff on a venue's page
-  steps: Choose an event, set times and expiry, place
-  data: One event
-  expected: The hold is sent and listed
+  scenario: Venue Staff approve as a hold from the queue
+  preconditions: Venue Staff on Booking requests
+  steps: Approve as hold, give an expiry
+  data: 2027-10-08T17:00
+  expected: The approval is sent with holdUntil; the queue says until when
   layer: Component
-  test: frontend/src/components/VenueHolds.test.tsx::TC-HF14 places a hold and lists it
+  test: frontend/src/pages/BookingRequestsPage.test.tsx::TC-DF15 approves as a tentative hold until an expiry (US14.3)
   why: AC1 on screen.
+
+- id: TC-US14.3-23
+  ac: US14.3-AC2
+  category: Negative
+  scenario: The queue asks for an expiry first
+  preconditions: As TC-US14.3-22
+  steps: Approve as hold with no expiry
+  data: None
+  expected: 'Give the hold an expiry date and time.'; nothing sent
+  layer: Component
+  test: frontend/src/pages/BookingRequestsPage.test.tsx::TC-DF16 asks for an expiry before approving as a hold
+  why: AC2 on screen.
+
+- id: TC-US14.3-24
+  ac: US14.3-AC1
+  category: Happy path
+  scenario: The approval RPC carries the expiry
+  preconditions: A fake Supabase client
+  steps: approve_as_hold
+  data: Booking 41
+  expected: approve_venue_booking_as_hold called; Held
+  layer: Unit
+  test: backend/tests/test_venue_holds.py::TestTheSupabaseStore::test_tc_h49_approve_as_hold_calls_the_rpc_with_the_expiry
+  why: The store sends what the database needs.
+
+- id: TC-US14.3-25
+  ac: US14.3-AC1
+  category: Negative
+  scenario: Each approval refusal has its own error
+  preconditions: A fake Supabase client
+  steps: approve_as_hold answering clash, not-requested, bad-expiry
+  data: One row each
+  expected: SlotTaken, StaleBookingStatus
+  layer: Unit
+  test: backend/tests/test_venue_holds.py::TestTheSupabaseStore::test_tc_h50_each_approval_refusal_becomes_its_own_error
+  why: The store's error mapping.
+
+- id: TC-US14.3-26
+  ac: US14.3-AC4
+  category: Happy path
+  scenario: The confirm RPC is called
+  preconditions: A fake Supabase client
+  steps: confirm_hold
+  data: Booking 41
+  expected: confirm_held_booking called
+  layer: Unit
+  test: backend/tests/test_venue_holds.py::TestTheSupabaseStore::test_tc_h51_confirm_hold_calls_the_rpc
+  why: The store sends what the database needs.
+
+- id: TC-US14.3-27
+  ac: US14.3-AC4
+  category: Negative
+  scenario: Each confirm refusal has its own error
+  preconditions: A fake Supabase client
+  steps: confirm_hold answering expired, stale-event, not-held
+  data: One row each
+  expected: HoldExpired, StaleEventStatus, StaleBookingStatus
+  layer: Unit
+  test: backend/tests/test_venue_holds.py::TestTheSupabaseStore::test_tc_h52_each_confirm_refusal_becomes_its_own_error
+  why: The store's error mapping.
 
 - id: TC-US14.4-01
   ac: US14.4-AC1
@@ -3582,15 +3965,15 @@
   ac: US14.4-AC2, US14.4-AC3
   category: Happy path
   scenario: The sweep expires, warns, and tells the Coordinator once
-  preconditions: The live database with the US14.4 migration; holds past, near and far from expiry
+  preconditions: A disposable Postgres built from the repo's SQL; holds past, near and far from expiry
   steps: Run the sweep twice
   data: One hold per case
   expected: Past holds become Expired; holds within 24h are warned; one expired and one warning
     notice; the second sweep adds nothing
   layer: DB integration
   test: backend/tests/test_hold_expiry_db.py::test_the_sweep_expires_warns_and_tells_the_coordinator_once
-  why: The only proof of the sweep. Opt-in against the live project (SPMG3T7_DB_TESTS=1), rolled
-    back; CI does not run it.
+  why: The only proof of the sweep. CI runs it against a fresh database built by
+    scripts/fresh_install.py (A8); it can still be pointed at a project with SPMG3T7_DB_TESTS=1.
 
 - id: TC-US14.4-03
   ac: US14.4-AC2
@@ -3619,13 +4002,13 @@
 - id: TC-US14.4-05
   ac: US14.4-AC4
   category: Negative
-  scenario: An expired hold cannot become a request
+  scenario: An expired hold cannot be confirmed
   preconditions: An Expired hold
-  steps: Request it
+  steps: Confirm it as the Coordinator
   data: The hold
   expected: 409 hold-expired; still Expired
   layer: API integration
-  test: backend/tests/test_hold_expiry_us14_4.py::TestAnExpiredHoldCannotBeRequested::test_requesting_it_is_refused_as_expired
+  test: backend/tests/test_hold_expiry_us14_4.py::TestAnExpiredHoldCannotBeConfirmed::test_confirming_it_is_refused_as_expired
   why: AC4's second half.
 
 - id: TC-US14.5-01
@@ -3700,6 +4083,246 @@
   layer: Component
   test: frontend/src/components/EventBookings.replacement.test.tsx::searches the same time slot, unfiltered, from the flagged booking
   why: AC1 on screen.
+
+- id: TC-US14.6-01
+  ac: US14.6-AC1, US14.6-AC3
+  category: Happy path
+  scenario: Venue Staff extend a hold
+  preconditions: A hold expiring 8 Oct 17:00
+  steps: PATCH /holds/{id} with a later expiry
+  data: 2027-10-15T12:00
+  expected: 200; the new expiry stored; a hold-updated notice naming 15 Oct 2027, 12:00
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffUpdateTheExpiry::test_tc_h60_venue_staff_extend_a_hold
+  why: AC1 and AC3.
+
+- id: TC-US14.6-02
+  ac: US14.6-AC1
+  category: Happy path
+  scenario: Venue Staff shorten a hold
+  preconditions: As TC-US14.6-01
+  steps: PATCH an earlier expiry
+  data: 2027-10-02T09:00
+  expected: 200; the new expiry
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffUpdateTheExpiry::test_tc_h61_venue_staff_shorten_a_hold
+  why: AC1's 'longer or shorter'.
+
+- id: TC-US14.6-03
+  ac: US14.6-AC1
+  category: Negative
+  scenario: The new expiry follows the hold rules
+  preconditions: As TC-US14.6-01
+  steps: PATCH with none, now, and after the start
+  data: One row each
+  expected: 400 with the rule's sentence
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffUpdateTheExpiry::test_tc_h62_the_new_expiry_follows_the_hold_rules
+  why: AC1's rules, at their boundaries.
+
+- id: TC-US14.6-04
+  ac: US14.6-AC1
+  category: Negative
+  scenario: An expired hold cannot be changed
+  preconditions: A hold past its expiry
+  steps: PATCH a new expiry
+  data: Now = 8 Oct 17:00
+  expected: 409 hold-expired
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffUpdateTheExpiry::test_tc_h63_an_expired_hold_cannot_be_changed
+  why: AC1's last sentence.
+
+- id: TC-US14.6-05
+  ac: US14.6-AC1
+  category: Negative
+  scenario: A confirmed booking is no longer a hold
+  preconditions: A hold the Coordinator confirmed
+  steps: PATCH a new expiry
+  data: The booking
+  expected: 409 'The Coordinator has already confirmed this booking.'
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffUpdateTheExpiry::test_tc_h64_a_confirmed_booking_is_no_longer_a_hold
+  why: Only a Held booking changes.
+
+- id: TC-US14.6-06
+  ac: US14.6-AC5
+  category: Negative
+  scenario: Only Venue Staff change holds
+  preconditions: Any other role
+  steps: PATCH a new expiry
+  data: One row per role
+  expected: 403
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffUpdateTheExpiry::test_tc_h65_only_venue_staff_change_holds
+  why: AC5.
+
+- id: TC-US14.6-07
+  ac: US14.6-AC1
+  category: Negative
+  scenario: An unknown hold is 404
+  preconditions: None
+  steps: PATCH /holds/999
+  data: 999
+  expected: 404
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffUpdateTheExpiry::test_tc_h66_an_unknown_hold_is_404
+  why: Error path.
+
+- id: TC-US14.6-08
+  ac: US14.6-AC2, US14.6-AC3, US14.6-AC4
+  category: Happy path
+  scenario: Venue Staff release a hold
+  preconditions: A hold in place
+  steps: POST /holds/{id}/release with a reason
+  data: Hall needed for exams.
+  expected: 200; Cancelled; slot free; cancelled by Sam with the reason; a hold-released notice with it
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffReleaseAHold::test_tc_h70_venue_staff_release_a_hold
+  why: AC2, AC3 and AC4 in one case.
+
+- id: TC-US14.6-09
+  ac: US14.6-AC2
+  category: Negative
+  scenario: A reason is required
+  preconditions: A hold in place
+  steps: Release with a blank reason
+  data: ' '
+  expected: 400 with a sentence
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffReleaseAHold::test_tc_h71_a_reason_is_required
+  why: AC2.
+
+- id: TC-US14.6-10
+  ac: US14.6-AC2
+  category: Negative
+  scenario: A released hold cannot be confirmed
+  preconditions: A released hold
+  steps: The Coordinator confirms it
+  data: The booking
+  expected: 409 'This hold has been released or cancelled.'
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffReleaseAHold::test_tc_h72_a_released_hold_cannot_be_confirmed
+  why: Released means gone.
+
+- id: TC-US14.6-11
+  ac: US14.6-AC2
+  category: Negative
+  scenario: A released hold cannot be released again
+  preconditions: A released hold
+  steps: Release again
+  data: The booking
+  expected: 409 not-held
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffReleaseAHold::test_tc_h73_a_released_hold_cannot_be_released_again
+  why: One release per hold.
+
+- id: TC-US14.6-12
+  ac: US14.6-AC5
+  category: Happy path
+  scenario: Venue Staff list a venue's holds
+  preconditions: A hold at the Great Hall
+  steps: GET /holds?venueId=1
+  data: Venue 1
+  expected: The hold, with its event's title
+  layer: API integration
+  test: backend/tests/test_venue_holds.py::TestVenueStaffReleaseAHold::test_tc_h74_the_venue_list_shows_holds_for_staff
+  why: Where Venue Staff manage holds.
+
+- id: TC-US14.6-13
+  ac: US14.6-AC1
+  category: Happy path
+  scenario: The update matches only a live hold
+  preconditions: A fake Supabase client
+  steps: update_hold
+  data: Booking 41
+  expected: Filters status Held and expiry after now; clears the warning
+  layer: Unit
+  test: backend/tests/test_venue_holds.py::TestTheSupabaseStore::test_tc_h53_update_hold_matches_only_a_live_hold_and_clears_the_warning
+  why: The database half of AC1, and the sweep warns again.
+
+- id: TC-US14.6-14
+  ac: US14.6-AC1
+  category: Negative
+  scenario: An update that matched nothing is stale
+  preconditions: A fake Supabase client
+  steps: update_hold matching no row
+  data: Booking 41
+  expected: StaleBookingStatus
+  layer: Unit
+  test: backend/tests/test_venue_holds.py::TestTheSupabaseStore::test_tc_h54_update_hold_that_matched_nothing_is_stale
+  why: A race with the sweep or the Coordinator.
+
+- id: TC-US14.6-15
+  ac: US14.6-AC1
+  category: Happy path
+  scenario: Venue Staff see their holds with who approved them
+  preconditions: A hold on the venue
+  steps: Open the venue page
+  data: Open Day
+  expected: The hold, until when, approved by Sam
+  layer: Component
+  test: frontend/src/components/VenueHolds.test.tsx::TC-HF14 lists the holds, with who approved them and until when
+  why: AC1 on screen.
+
+- id: TC-US14.6-16
+  ac: US14.6-AC1, US14.6-AC3
+  category: Happy path
+  scenario: Venue Staff change an expiry on screen
+  preconditions: As TC-US14.6-15
+  steps: Change expiry, save
+  data: 2027-10-15T12:00
+  expected: The update is sent; 'Its Coordinator has been told.'
+  layer: Component
+  test: frontend/src/components/VenueHolds.test.tsx::TC-HF15 changes a hold expiry and says the Coordinator was told
+  why: AC1 on screen.
+
+- id: TC-US14.6-17
+  ac: US14.6-AC1
+  category: Negative
+  scenario: An expiry after the start is refused on screen
+  preconditions: As TC-US14.6-15
+  steps: Change expiry to after the start
+  data: 2027-11-03T09:00
+  expected: The rule's sentence; nothing sent
+  layer: Component
+  test: frontend/src/components/VenueHolds.test.tsx::TC-HF16 refuses an expiry after the booking starts without asking the server
+  why: AC1 on screen.
+
+- id: TC-US14.6-18
+  ac: US14.6-AC2
+  category: Happy path
+  scenario: Venue Staff release a hold on screen
+  preconditions: As TC-US14.6-15
+  steps: Release, give a reason
+  data: Hall needed for exams.
+  expected: The release is sent; the hold leaves the list
+  layer: Component
+  test: frontend/src/components/VenueHolds.test.tsx::TC-HF17 releases a hold with a reason and takes it off the list
+  why: AC2 on screen.
+
+- id: TC-US14.6-19
+  ac: US14.6-AC2
+  category: Negative
+  scenario: A release needs a reason on screen
+  preconditions: As TC-US14.6-15
+  steps: Release with no reason
+  data: None
+  expected: The rule's sentence; nothing sent
+  layer: Component
+  test: frontend/src/components/VenueHolds.test.tsx::TC-HF18 asks for a reason before releasing
+  why: AC2 on screen.
+
+- id: TC-US14.6-20
+  ac: US14.6-AC2
+  category: Negative
+  scenario: A refusal is shown; an expired hold offers nothing
+  preconditions: A live hold and an expired one
+  steps: Release the live one; the server refuses
+  data: Two holds
+  expected: The server's sentence; no actions on the expired hold
+  layer: Component
+  test: frontend/src/components/VenueHolds.test.tsx::TC-HF19 shows the server refusal, and offers no actions on an expired hold
+  why: Error path on screen.
 
 - id: TC-US16.1-01
   ac: US16.1-AC1
@@ -4253,8 +4876,8 @@
   expected: Exactly one succeeds
   layer: DB integration
   test: backend/tests/test_equipment_reservations_db.py::test_competing_requests_cannot_double_promise
-  why: The rule must hold under concurrency, which needs the real database lock. Opt-in
-    (US19_DB_TEST_URL); CI does not run it.
+  why: The rule must hold under concurrency, which needs the real database lock. CI runs it
+    against a fresh database built by scripts/fresh_install.py (A8).
 
 
 - id: TC-US4.4-01
@@ -5311,7 +5934,7 @@
   test: evidence: backend/SUPABASE_SEED_VENUES.sql
   why: Seed data; the filters in TC-US9.3-01 use the same variety.
 
-- id: TC-US8.4-01
+- id: TC-US8.4-09
   ac: US8.4-AC6
   category: Evidence
   scenario: The reassignment function is a committed migration
@@ -5777,16 +6400,16 @@
   why: US12.1 across two roles, and D8.
 
 - id: TC-E2E-22
-  ac: US14.3-AC1, US14.3-AC4
+  ac: US14.3-AC1, US14.3-AC4, US14.6-AC1
   category: E2E
-  scenario: Venue Staff hold a venue; the Coordinator requests it
-  preconditions: An Approved event
-  steps: Place a hold with an expiry; Priya requests it from the event
+  scenario: Venue Staff approve a request as a hold, change its expiry; the Coordinator confirms it
+  preconditions: An Approved event with a Requested Seminar Room 4 booking
+  steps: Approve as a tentative hold; change the expiry on the venue page; Priya confirms it
   data: Seminar Room 4
-  expected: Held, then Requested
+  expected: Held, the new expiry saved, then Confirmed
   layer: E2E
-  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US14.3: Venue Staff hold a venue; the Coordinator turns it into a request
-  why: US14.3 across two roles.
+  test: frontend/e2e-isolated/venues-and-bookings.spec.ts::US14.3/US14.6: Venue Staff approve a request as a hold; the Coordinator confirms it
+  why: US14.3 and US14.6 across two roles, in Week 9's order.
 
 - id: TC-E2E-23
   ac: US9.5-AC1

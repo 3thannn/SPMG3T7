@@ -16,13 +16,12 @@ import {
   listUnavailability,
   type VenueRecord,
 } from '../venuesStore'
-import { listHoldableEvents, listHolds } from '../holdsStore'
+import { listHolds } from '../holdsStore'
 import { buildSession } from '../test/sessions'
 
 vi.mock('../holdsStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../holdsStore')>()),
   listHolds: vi.fn(),
-  listHoldableEvents: vi.fn(),
 }))
 
 vi.mock('../venuesStore', async (importOriginal) => ({
@@ -51,7 +50,6 @@ beforeEach(() => {
     entries: [],
   })
   vi.mocked(listHolds).mockResolvedValue([])
-  vi.mocked(listHoldableEvents).mockResolvedValue([])
 })
 
 afterEach(() => {

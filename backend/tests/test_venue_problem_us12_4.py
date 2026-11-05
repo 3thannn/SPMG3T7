@@ -2,15 +2,16 @@
 
 Acceptance criteria, and the tests that hold each one:
 
-* A booking on a Confirmed event flagged "Needs replacement" (US12.2) does not
-  change the event's status; the Coordinator acts -> `TestTheFlagAlone`. The
-  flag is written by the database's trigger, so the notices it writes (the
-  Coordinator's and, now, the Organiser's) are held by
-  integration/test_us12_4_db.py.
-* Requesting a replacement (US14.5) on a Confirmed event moves it
-  Confirmed -> Planning, with the reason recorded; its other bookings are
-  untouched -> `TestRequestingAReplacement`. The database half is
-  SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql.
+* Week 9 (G12): a venue closing under a Confirmed event sends it back to
+  Planning at once, with the reason recorded, and tells the Coordinator and the
+  Organiser; it is never cancelled, and its other bookings are untouched ->
+  `TestTheClosureReopensPlanning`. The trigger is
+  SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql, held in the database by
+  integration/test_us12_4_db.py; the in-memory store mirrors it.
+* Requesting a replacement (US14.5) on an event still Confirmed (flagged before
+  the Week 9 change) moves it Confirmed -> Planning, with the reason recorded;
+  its other bookings are untouched -> `TestRequestingAReplacement`. The
+  database half is SUPABASE_US12_4_REOPEN_FOR_REPLACEMENT.sql.
 * The Organiser is told it is back in Planning (US10.3) -> `TestNotices`.
 * Venue Staff approve the replacement, the event goes through the safety check
   again and the Coordinator confirms it (US4.7) -> `TestTheFullPath`.
@@ -133,11 +134,83 @@ def event_json(client, auth_headers) -> dict:
     return response.json()
 
 
-class TestTheFlagAlone:
-    def test_the_event_stays_confirmed(self, client, auth_headers, flagged):
-        flagged()
+def close_great_hall(client, auth_headers):
+    response = client.post(
+        f"/venues/{GREAT_HALL}/unavailability",
+        json={"startDate": "2099-11-02", "endDate": "2099-11-02", "reasonType": "maintenance"},
+        headers=auth_headers(STAFF),
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
 
-        assert event_json(client, auth_headers)["status"] == "Confirmed"
+
+CLOSURE_NOTE = (
+    "Great Hall is unavailable 02 Nov 2099–02 Nov 2099 due to scheduled maintenance. "
+    "A replacement venue is needed, then the safety check and confirmation again."
+)
+
+
+class TestTheClosureReopensPlanning:
+    @pytest.fixture
+    def confirmed(self, flagged, booking_repository):
+        """The same Confirmed event, its Great Hall booking still Confirmed."""
+        event = flagged()
+        booking_repository.bookings = [
+            booking(FLAGGED, GREAT_HALL, "Great Hall", BookingStatus.CONFIRMED),
+            *[b for b in booking_repository.bookings if b.id != FLAGGED],
+        ]
+        return event
+
+    def test_the_event_goes_back_to_planning_with_the_reason(
+        self, client, auth_headers, confirmed
+    ):
+        assert close_great_hall(client, auth_headers)["flaggedBookingsCount"] == 1
+
+        body = event_json(client, auth_headers)
+        assert body["status"] == "Planning"
+        last = body["history"][-1]
+        assert (last["from"], last["to"], last["byName"]) == ("Confirmed", "Planning", "Sam")
+        assert last["notes"] == CLOSURE_NOTE
+
+    def test_only_the_closed_venue_is_flagged(
+        self, client, auth_headers, confirmed, booking_repository
+    ):
+        close_great_hall(client, auth_headers)
+
+        statuses = {b.id: b.status for b in booking_repository.bookings}
+        assert statuses == {
+            FLAGGED: BookingStatus.NEEDS_REPLACEMENT,
+            OTHER: BookingStatus.CONFIRMED,
+        }
+
+    def test_coordinator_and_organiser_are_told(
+        self, client, auth_headers, confirmed, notification_repository
+    ):
+        close_great_hall(client, auth_headers)
+
+        told = sorted(
+            (notice.user_id, notice.kind)
+            for notice in notification_repository.notifications
+        )
+        assert told == sorted(
+            [
+                (COORDINATOR_ID, CoordinatorNotice.BOOKING_CONFLICT),
+                (COORDINATOR_ID, CoordinatorNotice.BACK_IN_PLANNING),
+                (ORGANISER_ID, CoordinatorNotice.BACK_IN_PLANNING),
+            ]
+        )
+
+    def test_a_planning_event_is_flagged_but_not_moved(
+        self, client, auth_headers, flagged, booking_repository
+    ):
+        flagged(EventStatus.PLANNING)
+        booking_repository.bookings = [
+            booking(FLAGGED, GREAT_HALL, "Great Hall", BookingStatus.CONFIRMED),
+        ]
+        close_great_hall(client, auth_headers)
+
+        assert event_json(client, auth_headers)["status"] == "Planning"
+        assert booking_repository.bookings[0].status is BookingStatus.NEEDS_REPLACEMENT
 
 
 class TestRequestingAReplacement:

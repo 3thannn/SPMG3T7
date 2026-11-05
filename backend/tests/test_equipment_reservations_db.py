@@ -1,27 +1,47 @@
-"""Opt-in two-connection tests against a migrated, disposable PostgreSQL database.
+"""Two-connection tests against a migrated, disposable PostgreSQL database.
 
-Set US19_DB_TEST_URL to a test database with all application migrations applied.
-Creates uniquely named fixtures, commits race outcomes, and deletes fixtures.
-Never point this at the shared/live database.
+With TEST_POSTGRES_DSN set (CI's database step), a new database is built from
+the repo's SQL by scripts/fresh_install.py and dropped after: TC-US19.3-08's
+evidence (A8). Or set US19_DB_TEST_URL to a test database with every migration
+applied. Creates uniquely named fixtures, commits race outcomes, and deletes
+fixtures. Never point this at the shared/live database.
 """
 
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Barrier
 from uuid import uuid4
 
 import pytest
 
-URL = os.getenv("US19_DB_TEST_URL")
-pytestmark = pytest.mark.skipif(not URL, reason="requires disposable US19_DB_TEST_URL")
+FRESH_DSN = os.getenv("TEST_POSTGRES_DSN")
+OPTED_IN_URL = os.getenv("US19_DB_TEST_URL")
+pytestmark = pytest.mark.skipif(
+    not (FRESH_DSN or OPTED_IN_URL),
+    reason="requires TEST_POSTGRES_DSN or a disposable US19_DB_TEST_URL",
+)
 psycopg = pytest.importorskip("psycopg")
 
 
+@pytest.fixture(scope="module")
+def database_url():
+    if FRESH_DSN:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from fresh_install import fresh_database
+
+        with fresh_database(FRESH_DSN) as url:
+            yield url
+        return
+    yield OPTED_IN_URL
+
+
 @pytest.fixture
-def world():
+def world(database_url):
     tag = uuid4().hex
     users, events, requests = [], [], []
-    with psycopg.connect(URL, autocommit=True) as db:
+    with psycopg.connect(database_url, autocommit=True) as db:
 
         def one(sql, params=()):
             return db.execute(sql, params).fetchone()[0]
@@ -68,12 +88,12 @@ def world():
                 db.execute("DELETE FROM users WHERE id=%s", (user,))
 
 
-def test_competing_requests_cannot_double_promise(world):
+def test_competing_requests_cannot_double_promise(world, database_url):
     db, item, users, events, requests = world
     barrier = Barrier(2)
 
     def decide(request):
-        with psycopg.connect(URL) as connection:
+        with psycopg.connect(database_url) as connection:
             connection.execute("SET LOCAL lock_timeout = '5s'")
             barrier.wait(timeout=5)
             return connection.execute(

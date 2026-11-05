@@ -41,7 +41,7 @@ export type Permission =
   | 'equipment:write'
   | 'equipment:request'
   | 'equipment:queue'
-  | 'holds:place'
+  | 'holds:manage'
   | 'bookings:decide'
   | 'registration:manage'
   | 'registrations:create'

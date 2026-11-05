@@ -1,5 +1,7 @@
 # Code audit: what ConnectSphere actually does
 
+> **Historical, kept as process evidence.** The audit of 3 Nov 2026; its line counts, route counts and test numbers are from that day. Defects D1-D4, D7 and D8 are fixed (see each row). Current sources: [`REQUIREMENTS_BASELINE.md`](REQUIREMENTS_BASELINE.md) (what the system must do, and the decisions on each gap), [`docs/testing/acceptance_criteria.yaml`](docs/testing/acceptance_criteria.yaml) and [`docs/testing/test_cases.txt`](docs/testing/test_cases.txt) (the ACs and their test cases; the workbook is generated from them), [`docs/GAP_CLOSURE_CHANGE_LOG.md`](docs/GAP_CLOSURE_CHANGE_LOG.md) (what changed on 4 Nov 2026 and why), and [`docs/design/C4.md`](docs/design/C4.md) (system design).
+
 Audited on 2026-11-03 on `chore/playwright-test-reduction-handover` (includes `main`
 at `a6c8213`). Everything below was checked by reading the code, running it, or
 querying the live database's metadata. Read alongside `REQUIREMENTS_BASELINE.md`.
