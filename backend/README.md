@@ -1083,6 +1083,4 @@ New endpoints: `GET /equipment-requests/{id}/availability`,
 `POST /equipment-requests/{id}/reserve` (`version`, integer `equipmentId`), and
 `POST /equipment-requests/{id}/unavailable` (`version`, `reason`). Reservation
 conflicts return 409 with current `availableQuantity` and `shortfall`.
-See [US19.3 test cases and rollout](tests/test_cases_us19_3.md), including the
-opt-in disposable-database concurrency tests. This migration must be applied
-before the new request response columns can be read.
+This migration must be applied before the new request response columns can be read.

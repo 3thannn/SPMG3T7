@@ -11,8 +11,7 @@ precedence calls written into section 4.
 
 Updated again on 2026-11-04 when the team decided to close the gaps rather than
 document them (branch `fix/close-audit-gaps`). G2, G3, G7, G12, G13 and G14 are
-now built and tested; G6 and G10 are written decisions. What changed in the
-stories, the ACs and Jira is listed in [`docs/GAP_CLOSURE_CHANGE_LOG.md`](docs/GAP_CLOSURE_CHANGE_LOG.md).
+now built and tested; G6 and G10 are written decisions.
 
 ## 1. Sources and precedence
 
@@ -123,10 +122,10 @@ them as core. An answer about a feature outside those 20 does not make it core.
 
 | # | Customer said | Source | Release 1? | State in Jira and code |
 | --- | --- | --- | --- | --- |
-| G1 | Rejected events can be resubmitted after changes | Wk4 (three answers) | **Yes**: core "Event Review and Approval" and "Event Status Management" | **Met (D2, CODE_AUDIT.md)**: the owning Organiser revises a Rejected event and resubmits it; it rejoins the Leads' queue. Checked against the Week 4 instructions, which do not make Rejected final |
+| G1 | Rejected events can be resubmitted after changes | Wk4 (three answers) | **Yes**: core "Event Review and Approval" and "Event Status Management" | **Met**: the owning Organiser revises a Rejected event and resubmits it; it rejoins the Leads' queue. Checked against the Week 4 instructions, which do not make Rejected final |
 | G2 | Venue Staff set **and update** the hold duration | Wk9 | **Yes**: Week 7 change #4 | **Met (2026-11-04).** US14.6 built: Venue Staff change a hold's expiry (`PATCH /holds/{id}`) or release it with a reason; the Coordinator is told. The maximum is the booking's start |
 | G3 | A hold starts **after** venue approval; the Coordinator confirms once Venue Staff approve | Wk9 | **Yes**: Week 7 change #4 | **Met (2026-11-04).** US14.3 reworked: Venue Staff approve a request as a hold (Requested → Held), the Coordinator confirms it (Held → Confirmed) before it lapses. The hold-first route is gone |
-| G4a | Registration timing and closing are the **Organiser's** call, and capacity is at the Organiser's discretion | Wk4 | **Partly**: core "Attendee Registration" says "where enabled" but not by whom | **Met (D3, CODE_AUDIT.md)**: the owning Organiser opens, closes and sizes registration, as well as the assigned Coordinator (US20.1); `SUPABASE_FIX_ORGANISER_REGISTRATION.sql` applied to the live database on 2026-11-03 |
+| G4a | Registration timing and closing are the **Organiser's** call, and capacity is at the Organiser's discretion | Wk4 | **Partly**: core "Attendee Registration" says "where enabled" but not by whom | **Met**: the owning Organiser opens, closes and sizes registration, as well as the assigned Coordinator (US20.1); `SUPABASE_FIX_ORGANISER_REGISTRATION.sql` applied to the live database on 2026-11-03 |
 | G6 | One person can hold several roles | Wk4 (three answers) | **Partly**: core "User Authorisation and Authentication" | **Written decision (2026-11-04): not built for Release 1.** A user has exactly one `role`, and every permission check reads it. Changing that touches sign-in and every role check two days before submission, a regression risk the team judged larger than the gain. A person with two roles uses two accounts. Recorded as a known limitation in the README and the backlog |
 | G7 | Room layouts are managed in the venue catalogue (add, edit, delete) | Wk9 | **Partly**: core "Venue Catalogue" includes supported layouts; "Room Layout Management" itself is not core | **Met (2026-11-04).** Venue Staff add, edit and delete layouts on each venue; the Organiser's choices are the standard names plus every layout the catalogue lists now (`GET /venues/layouts`), so the two cannot diverge |
 | G12 | A Confirmed event whose venue closes reverts to planning/change review, with stakeholders notified and agreement offline | Wk9 | **Yes**: Week 7 change #2 | **Met (2026-11-04).** The closure trigger moves a Confirmed event to Planning at once, with who closed the venue and why in its history, and tells the Coordinator and the Organiser; it is never cancelled (`SUPABASE_US12_4_CLOSURE_REOPENS_CONFIRMED.sql`, US12.4-AC1 amended) |
@@ -180,5 +179,5 @@ and exports.
 
 1. Settled 2026-11-04: G2, G3, G7, G12, G13 and G14 built; G6 and G10 written
    decisions; G11 met as framed (section 5); G5 stays out of Release 1.
-2. Should the AC-to-test mapping go into the existing `MASTER_TEST_PLAN.md`, or into
-   a separate traceability file?
+2. The AC-to-test mapping is maintained in `docs/testing/test_cases.txt` and
+   generated into `docs/testing/ConnectSphere_Test_Cases.xlsx`.
