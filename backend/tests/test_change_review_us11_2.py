@@ -223,7 +223,9 @@ def test_partial_event_arrangements_are_not_falsely_flagged_after_attendance_cha
     main = booking_repository.get_booking(1)
     breakout_after = booking_repository.get_booking(2)
     assert not main.event_conflict_reason, "Main room should not be flagged"
-    assert not breakout_after.event_conflict_reason, "Breakout room with its own headcount should not be flagged"
+    assert not breakout_after.event_conflict_reason, (
+        "Breakout room with its own headcount should not be flagged"
+    )
     assert main.status == BookingStatus.CONFIRMED
     assert breakout_after.status == BookingStatus.CONFIRMED
 
