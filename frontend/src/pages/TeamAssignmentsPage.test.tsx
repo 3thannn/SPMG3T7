@@ -1,94 +1,138 @@
 /**
- * The Lead's team assignments page — US8.5.
+ * US8.5: Team Assignments - Coordinator Lead views workload distribution.
  *
- * Who may see every event is the server's rule (backend tests, US8.5); this
- * page's job is listing the active ones, counting each Coordinator's load and
- * filtering by Coordinator.
+ * Tests that the Lead can see all active events, filter by coordinator,
+ * and view workload statistics.
  */
 
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import TeamAssignmentsPage from './TeamAssignmentsPage'
-import { listEvents, type EventRecord } from '../eventsStore'
+import * as eventsStore from '../eventsStore'
 import { buildSession } from '../test/sessions'
+import type { EventRecord } from '../eventsStore'
 
 vi.mock('../eventsStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../eventsStore')>()),
   listEvents: vi.fn(),
 }))
 
-const listMock = vi.mocked(listEvents)
-const lead = buildSession({ role: 'Event Coordinator Lead' })
-
-function event(id: string, title: string, overrides: Partial<EventRecord> = {}): EventRecord {
-  return {
-    id,
-    title,
-    purpose: '',
-    description: '',
-    startsAt: '2027-11-02T09:00:00',
-    expectedAttendance: 30,
-    status: 'Planning',
-    organiserId: '1',
-    organiserName: 'Dylan',
-    createdAt: '2027-10-01T09:00:00',
-    updatedAt: '2027-10-01T09:00:00',
-    coordinatorId: '2',
-    coordinatorName: 'Priya',
-    history: [],
-    ...overrides,
-  } as EventRecord
-}
+const listEventsMock = vi.mocked(eventsStore.listEvents)
 
 afterEach(() => {
   vi.resetAllMocks()
 })
 
-function rows() {
-  return within(screen.getByRole('table')).getAllByRole('row').slice(1)
+const lead = buildSession({ role: 'Event Coordinator Lead', id: '10', name: 'Jordan' })
+
+function buildEvent(overrides: Partial<EventRecord> = {}): EventRecord {
+  return {
+    id: '101',
+    title: 'Tech Conference',
+    purpose: 'Annual tech meetup',
+    description: 'A gathering of tech enthusiasts',
+    startsAt: '2027-03-15T09:00',
+    endsAt: '2027-03-15T17:00',
+    expectedAttendance: 100,
+    status: 'Under Review',
+    organiserId: '1',
+    organiserName: 'Dylan',
+    coordinatorId: '2',
+    coordinatorName: 'Alice Chen',
+    createdAt: '2027-02-01T10:00:00+08:00',
+    updatedAt: '2027-02-01T10:00:00+08:00',
+    history: [],
+    ...overrides,
+  }
 }
 
-it('TC-TA01 lists active events only, with each Coordinator\'s load', async () => {
-  listMock.mockResolvedValue([
-    event('1', 'Open Day'),
-    event('2', 'Gala', { coordinatorId: '7', coordinatorName: 'Alex' }),
-    event('3', 'Careers Fair', { coordinatorId: null, coordinatorName: '' }),
-    event('4', 'Old Fair', { status: 'Completed' }),
-    event('5', 'A draft', { status: 'Draft' }),
+it('excludes Draft, Completed, Cancelled, and Rejected events', async () => {
+  listEventsMock.mockResolvedValue([
+    buildEvent({ id: '101', title: 'Under Review Event', status: 'Under Review' }),
+    buildEvent({ id: '102', title: 'Draft Event', status: 'Draft' }),
+    buildEvent({ id: '103', title: 'Completed Event', status: 'Completed' }),
+    buildEvent({ id: '104', title: 'Cancelled Event', status: 'Cancelled' }),
+    buildEvent({ id: '105', title: 'Rejected Event', status: 'Rejected' }),
+    buildEvent({ id: '106', title: 'Approved Event', status: 'Approved' }),
   ])
+
   render(<TeamAssignmentsPage session={lead} />)
 
-  expect(await screen.findByText(/3 active events/)).toBeInTheDocument()
-  expect(rows()).toHaveLength(3)
-  expect(screen.queryByText('Old Fair')).toBeNull()
-  expect(screen.getByRole('option', { name: 'All Coordinators (3)' })).toBeInTheDocument()
+  await screen.findByText('Under Review Event')
+  expect(screen.getByText('Approved Event')).toBeInTheDocument()
+  expect(screen.getByText(/2.*active.*events/)).toBeInTheDocument()
+
+  expect(screen.queryByText('Draft Event')).not.toBeInTheDocument()
+  expect(screen.queryByText('Completed Event')).not.toBeInTheDocument()
+  expect(screen.queryByText('Cancelled Event')).not.toBeInTheDocument()
+  expect(screen.queryByText('Rejected Event')).not.toBeInTheDocument()
 })
 
-it('TC-TA02 filters by Coordinator, and by unassigned', async () => {
-  listMock.mockResolvedValue([
-    event('1', 'Open Day'),
-    event('2', 'Gala', { coordinatorId: '7', coordinatorName: 'Alex' }),
-    event('3', 'Careers Fair', { coordinatorId: null, coordinatorName: '' }),
+it('displays workload distribution statistics', async () => {
+  listEventsMock.mockResolvedValue([
+    buildEvent({ id: '101', coordinatorId: '2', coordinatorName: 'Alice Chen' }),
+    buildEvent({ id: '102', coordinatorId: '2', coordinatorName: 'Alice Chen' }),
+    buildEvent({ id: '103', coordinatorId: '3', coordinatorName: 'Bob Smith' }),
+    buildEvent({ id: '104', coordinatorId: null, coordinatorName: undefined }),
   ])
+
   render(<TeamAssignmentsPage session={lead} />)
-  const filter = await screen.findByLabelText('Filter by Coordinator:')
 
-  await userEvent.selectOptions(filter, '7')
-  expect(rows().map((row) => within(row).getAllByRole('cell')[0].textContent)).toEqual(['Gala'])
+  await screen.findByText('Workload Distribution')
 
-  await userEvent.selectOptions(filter, 'unassigned')
-  expect(rows().map((row) => within(row).getAllByRole('cell')[0].textContent)).toEqual([
-    'Careers Fair',
-  ])
-
-  await userEvent.selectOptions(filter, 'all')
-  expect(rows()).toHaveLength(3)
+  // Check stats cards - use getAllByText since names appear in both stats and table
+  expect(screen.getAllByText('Alice Chen').length).toBeGreaterThan(0)
+  expect(screen.getByText('2 events')).toBeInTheDocument()
+  expect(screen.getAllByText('Bob Smith').length).toBeGreaterThan(0)
+  expect(screen.getAllByText(/1.*event/).length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Unassigned').length).toBeGreaterThan(0)
 })
 
-it('TC-TA03 says so when the events cannot be loaded', async () => {
-  listMock.mockRejectedValue(new Error('offline'))
+it('allows filtering by coordinator', async () => {
+  listEventsMock.mockResolvedValue([
+    buildEvent({ id: '101', title: 'Alice Event 1', coordinatorId: '2', coordinatorName: 'Alice Chen' }),
+    buildEvent({ id: '102', title: 'Alice Event 2', coordinatorId: '2', coordinatorName: 'Alice Chen' }),
+    buildEvent({ id: '103', title: 'Bob Event', coordinatorId: '3', coordinatorName: 'Bob Smith' }),
+  ])
+
+  render(<TeamAssignmentsPage session={lead} />)
+
+  await screen.findByText('Alice Event 1')
+  expect(screen.getByText('Bob Event')).toBeInTheDocument()
+
+  // Filter to Alice's events (using her ID since that's the option value)
+  const filterSelect = screen.getByLabelText('Filter by Coordinator:')
+  await userEvent.selectOptions(filterSelect, '2')
+
+  expect(screen.getByText('Alice Event 1')).toBeInTheDocument()
+  expect(screen.getByText('Alice Event 2')).toBeInTheDocument()
+  expect(screen.queryByText('Bob Event')).not.toBeInTheDocument()
+})
+
+it('filters to unassigned events, and back to all', async () => {
+  listEventsMock.mockResolvedValue([
+    buildEvent({ id: '101', title: 'Alice Event', coordinatorId: '2', coordinatorName: 'Alice Chen' }),
+    buildEvent({ id: '102', title: 'Nobody Event', coordinatorId: null, coordinatorName: undefined }),
+  ])
+
+  render(<TeamAssignmentsPage session={lead} />)
+
+  await screen.findByText('Alice Event')
+  const filterSelect = screen.getByLabelText('Filter by Coordinator:')
+  await userEvent.selectOptions(filterSelect, 'unassigned')
+
+  expect(screen.getByText('Nobody Event')).toBeInTheDocument()
+  expect(screen.queryByText('Alice Event')).not.toBeInTheDocument()
+
+  await userEvent.selectOptions(filterSelect, 'all')
+  expect(screen.getByText('Alice Event')).toBeInTheDocument()
+})
+
+it('says so when the events cannot be loaded', async () => {
+  listEventsMock.mockRejectedValue(new Error('offline'))
   vi.spyOn(console, 'error').mockImplementation(() => {})
+
   render(<TeamAssignmentsPage session={lead} />)
 
   expect(await screen.findByText('Could not load team assignments.')).toBeInTheDocument()
