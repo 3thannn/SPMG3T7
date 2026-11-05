@@ -1,5 +1,9 @@
 # SPMG3T7
 
+**ConnectSphere Event Management System**
+
+Repository: https://github.com/3thannn/SPMG3T7
+
 Monorepo holding both halves of the SPMG3T7 project:
 
 | Directory                | What it is                                   | Stack                                   |
@@ -20,7 +24,7 @@ directory.
 ## First-time setup
 
 ```bash
-git clone <this repo>
+git clone https://github.com/3thannn/SPMG3T7.git
 cd SPMG3T7
 ```
 
